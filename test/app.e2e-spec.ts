@@ -1,11 +1,24 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
-import { App } from 'supertest/types';
+import request from 'supertest';
+import { Server as NetServer } from 'net';
 import { AppModule } from './../src/app.module';
 
+type SupertestRequestTarget = string | NetServer;
+
+function isSupertestTarget(server: unknown): server is SupertestRequestTarget {
+  return typeof server === 'string' || server instanceof NetServer;
+}
+
+function toSupertestTarget(server: unknown): SupertestRequestTarget {
+  if (isSupertestTarget(server)) {
+    return server;
+  }
+  throw new Error('Invalid server type passed to supertest request(...)');
+}
+
 describe('AppController (e2e)', () => {
-  let app: INestApplication<App>;
+  let app: INestApplication;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -16,8 +29,8 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
+  it('/ (GET)', async () => {
+    return await request(toSupertestTarget(app.getHttpServer()))
       .get('/')
       .expect(200)
       .expect('Hello World!');

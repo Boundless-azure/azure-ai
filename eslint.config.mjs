@@ -28,7 +28,16 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn'
+      '@typescript-eslint/no-unsafe-argument': 'warn',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      "@typescript-eslint/no-unsafe-assignment": "off",
+    },
+  },
+  // 为测试文件关闭对 Jest 匹配器的误报
+  {
+    files: ['**/*.spec.ts', '**/*.test.ts', 'test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-member-access': 'off',
     },
   },
 );

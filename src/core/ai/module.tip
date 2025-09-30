@@ -1,0 +1,224 @@
+# Module Tip（自动生成，AST+AI 组合）
+目标目录: E:\project\azure-ai\src\core\ai
+生成时间: 2025-09-30T04:06:40.093Z
+
+文件列表（File List）
+- core/ai/ai-core.module.ts：ai-core.module.ts
+- core/ai/entities/ai-model.entity.ts：ai-model.entity.ts
+- core/ai/entities/base.entity.ts：base.entity.ts
+- core/ai/entities/chat-session.entity.ts：chat-session.entity.ts
+- core/ai/entities/index.ts：index.ts
+- core/ai/entities/prompt-template.entity.ts：prompt-template.entity.ts
+- core/ai/index.ts：index.ts
+- core/ai/services/ai-model.service.ts：ai-model.service.ts
+- core/ai/services/context.service.ts：context.service.ts
+- core/ai/services/index.ts：index.ts
+- core/ai/types/ai-model.types.ts：ai-model.types.ts
+- core/ai/types/context.types.ts：context.types.ts
+- core/ai/types/index.ts：index.ts
+
+函数索引（Function Index）
+- 文件：core/ai/ai-core.module.ts
+  - class: AICoreModule (line 78)
+  - method: forRoot (line 94)
+  - method: forRootAsync (line 110)
+  - method: forFeature (line 128)
+- 文件：core/ai/entities/ai-model.entity.ts
+  - class: AIModelEntity (line 9)
+- 文件：core/ai/entities/base.entity.ts
+  - class: BaseAuditedEntity (line 18)
+  - method: setIdIfMissing (line 23)
+- 文件：core/ai/entities/chat-session.entity.ts
+  - class: ChatSessionEntity (line 8)
+- 文件：core/ai/entities/index.ts
+- 文件：core/ai/entities/prompt-template.entity.ts
+  - class: PromptTemplateEntity (line 8)
+- 文件：core/ai/index.ts
+- 文件：core/ai/services/ai-model.service.ts
+  - class: AIModelService (line 37)
+  - constructor: constructor (line 42)
+  - method: onModuleInit (line 47)
+  - method: initializeModels (line 54)
+  - method: createModelInstance (line 92)
+  - method: chat (line 172)
+  - method: chatStream (line 228)
+  - method: createModel (line 281)
+  - method: updateModel (line 315)
+  - method: deleteModel (line 352)
+  - method: getModels (line 372)
+  - method: getModel (line 386)
+  - method: getEnabledModels (line 395)
+  - method: testModel (line 404)
+  - method: getModelInstance (line 421)
+  - method: convertToLangChainMessages (line 447)
+  - method: applyModelParams (line 465)
+  - method: extractTokenUsage (line 501)
+  - method: hasTokenUsage (line 517)
+  - method: generateRequestId (line 530)
+- 文件：core/ai/services/context.service.ts
+  - class: ContextService (line 19)
+  - constructor: constructor (line 31)
+  - method: createContext (line 41)
+  - method: getContext (line 75)
+  - method: addMessage (line 93)
+  - method: getFormattedMessages (line 122)
+  - method: trimContext (line 141)
+  - method: deleteContext (line 168)
+  - method: createPromptTemplate (line 184)
+  - method: renderPrompt (line 206)
+  - method: getPromptTemplates (line 240)
+  - method: getPromptTemplate (line 250)
+  - method: updateContextMetadata (line 259)
+  - method: getActiveSessions (line 278)
+  - method: getContextStats (line 285)
+  - method: getContextSummary (line 310)
+  - method: cleanupExpiredContexts (line 332)
+  - method: updatePromptTemplate (line 367)
+  - method: deletePromptTemplate (line 392)
+  - method: saveContextToDatabase (line 409)
+  - method: loadContextFromDatabase (line 442)
+- 文件：core/ai/services/index.ts
+- 文件：core/ai/types/ai-model.types.ts
+- 文件：core/ai/types/context.types.ts
+- 文件：core/ai/types/index.ts
+
+文件说明
+- （AI 未生成，待补充）
+
+函数说明
+- （AI 未生成，待补充）
+
+关键词索引（中文 / English Keyword Index）
+- "ai-core.module" / "ai-core.module.ts" -> core/ai/ai-core.module.ts
+- "AICoreModule class" -> core/ai/ai-core.module.ts
+- "forRoot method" -> core/ai/ai-core.module.ts
+- "forRootAsync method" -> core/ai/ai-core.module.ts
+- "forFeature method" -> core/ai/ai-core.module.ts
+- "ai-model.entity" / "ai-model.entity.ts" -> core/ai/entities/ai-model.entity.ts
+- "AIModelEntity class" -> core/ai/entities/ai-model.entity.ts
+- "base.entity" / "base.entity.ts" -> core/ai/entities/base.entity.ts
+- "BaseAuditedEntity class" -> core/ai/entities/base.entity.ts
+- "setIdIfMissing method" -> core/ai/entities/base.entity.ts
+- "chat-session.entity" / "chat-session.entity.ts" -> core/ai/entities/chat-session.entity.ts
+- "ChatSessionEntity class" -> core/ai/entities/chat-session.entity.ts
+- "index" / "index.ts" -> core/ai/entities/index.ts
+- "prompt-template.entity" / "prompt-template.entity.ts" -> core/ai/entities/prompt-template.entity.ts
+- "PromptTemplateEntity class" -> core/ai/entities/prompt-template.entity.ts
+- "index" / "index.ts" -> core/ai/index.ts
+- "ai-model.service" / "ai-model.service.ts" -> core/ai/services/ai-model.service.ts
+- "AIModelService class" -> core/ai/services/ai-model.service.ts
+- "constructor constructor" -> core/ai/services/ai-model.service.ts
+- "onModuleInit method" -> core/ai/services/ai-model.service.ts
+- "initializeModels method" -> core/ai/services/ai-model.service.ts
+- "createModelInstance method" -> core/ai/services/ai-model.service.ts
+- "chat method" -> core/ai/services/ai-model.service.ts
+- "chatStream method" -> core/ai/services/ai-model.service.ts
+- "createModel method" -> core/ai/services/ai-model.service.ts
+- "updateModel method" -> core/ai/services/ai-model.service.ts
+- "deleteModel method" -> core/ai/services/ai-model.service.ts
+- "getModels method" -> core/ai/services/ai-model.service.ts
+- "getModel method" -> core/ai/services/ai-model.service.ts
+- "getEnabledModels method" -> core/ai/services/ai-model.service.ts
+- "testModel method" -> core/ai/services/ai-model.service.ts
+- "getModelInstance method" -> core/ai/services/ai-model.service.ts
+- "convertToLangChainMessages method" -> core/ai/services/ai-model.service.ts
+- "applyModelParams method" -> core/ai/services/ai-model.service.ts
+- "extractTokenUsage method" -> core/ai/services/ai-model.service.ts
+- "hasTokenUsage method" -> core/ai/services/ai-model.service.ts
+- "generateRequestId method" -> core/ai/services/ai-model.service.ts
+- "context.service" / "context.service.ts" -> core/ai/services/context.service.ts
+- "ContextService class" -> core/ai/services/context.service.ts
+- "constructor constructor" -> core/ai/services/context.service.ts
+- "createContext method" -> core/ai/services/context.service.ts
+- "getContext method" -> core/ai/services/context.service.ts
+- "addMessage method" -> core/ai/services/context.service.ts
+- "getFormattedMessages method" -> core/ai/services/context.service.ts
+- "trimContext method" -> core/ai/services/context.service.ts
+- "deleteContext method" -> core/ai/services/context.service.ts
+- "createPromptTemplate method" -> core/ai/services/context.service.ts
+- "renderPrompt method" -> core/ai/services/context.service.ts
+- "getPromptTemplates method" -> core/ai/services/context.service.ts
+- "getPromptTemplate method" -> core/ai/services/context.service.ts
+- "updateContextMetadata method" -> core/ai/services/context.service.ts
+- "getActiveSessions method" -> core/ai/services/context.service.ts
+- "getContextStats method" -> core/ai/services/context.service.ts
+- "getContextSummary method" -> core/ai/services/context.service.ts
+- "cleanupExpiredContexts method" -> core/ai/services/context.service.ts
+- "updatePromptTemplate method" -> core/ai/services/context.service.ts
+- "deletePromptTemplate method" -> core/ai/services/context.service.ts
+- "saveContextToDatabase method" -> core/ai/services/context.service.ts
+- "loadContextFromDatabase method" -> core/ai/services/context.service.ts
+- "index" / "index.ts" -> core/ai/services/index.ts
+- "ai-model.types" / "ai-model.types.ts" -> core/ai/types/ai-model.types.ts
+- "context.types" / "context.types.ts" -> core/ai/types/context.types.ts
+- "index" / "index.ts" -> core/ai/types/index.ts
+
+快速检索映射（Keywords -> Files）
+- "ai-core.module" -> core/ai/ai-core.module.ts
+- "AICoreModule" -> core/ai/ai-core.module.ts
+- "forRoot" -> core/ai/ai-core.module.ts
+- "forRootAsync" -> core/ai/ai-core.module.ts
+- "forFeature" -> core/ai/ai-core.module.ts
+- "ai-model.entity" -> core/ai/entities/ai-model.entity.ts
+- "AIModelEntity" -> core/ai/entities/ai-model.entity.ts
+- "base.entity" -> core/ai/entities/base.entity.ts
+- "BaseAuditedEntity" -> core/ai/entities/base.entity.ts
+- "setIdIfMissing" -> core/ai/entities/base.entity.ts
+- "chat-session.entity" -> core/ai/entities/chat-session.entity.ts
+- "ChatSessionEntity" -> core/ai/entities/chat-session.entity.ts
+- "index" -> core/ai/entities/index.ts
+- "prompt-template.entity" -> core/ai/entities/prompt-template.entity.ts
+- "PromptTemplateEntity" -> core/ai/entities/prompt-template.entity.ts
+- "index" -> core/ai/index.ts
+- "ai-model.service" -> core/ai/services/ai-model.service.ts
+- "AIModelService" -> core/ai/services/ai-model.service.ts
+- "constructor" -> core/ai/services/ai-model.service.ts
+- "onModuleInit" -> core/ai/services/ai-model.service.ts
+- "initializeModels" -> core/ai/services/ai-model.service.ts
+- "createModelInstance" -> core/ai/services/ai-model.service.ts
+- "chat" -> core/ai/services/ai-model.service.ts
+- "chatStream" -> core/ai/services/ai-model.service.ts
+- "createModel" -> core/ai/services/ai-model.service.ts
+- "updateModel" -> core/ai/services/ai-model.service.ts
+- "deleteModel" -> core/ai/services/ai-model.service.ts
+- "getModels" -> core/ai/services/ai-model.service.ts
+- "getModel" -> core/ai/services/ai-model.service.ts
+- "getEnabledModels" -> core/ai/services/ai-model.service.ts
+- "testModel" -> core/ai/services/ai-model.service.ts
+- "getModelInstance" -> core/ai/services/ai-model.service.ts
+- "convertToLangChainMessages" -> core/ai/services/ai-model.service.ts
+- "applyModelParams" -> core/ai/services/ai-model.service.ts
+- "extractTokenUsage" -> core/ai/services/ai-model.service.ts
+- "hasTokenUsage" -> core/ai/services/ai-model.service.ts
+- "generateRequestId" -> core/ai/services/ai-model.service.ts
+- "context.service" -> core/ai/services/context.service.ts
+- "ContextService" -> core/ai/services/context.service.ts
+- "constructor" -> core/ai/services/context.service.ts
+- "createContext" -> core/ai/services/context.service.ts
+- "getContext" -> core/ai/services/context.service.ts
+- "addMessage" -> core/ai/services/context.service.ts
+- "getFormattedMessages" -> core/ai/services/context.service.ts
+- "trimContext" -> core/ai/services/context.service.ts
+- "deleteContext" -> core/ai/services/context.service.ts
+- "createPromptTemplate" -> core/ai/services/context.service.ts
+- "renderPrompt" -> core/ai/services/context.service.ts
+- "getPromptTemplates" -> core/ai/services/context.service.ts
+- "getPromptTemplate" -> core/ai/services/context.service.ts
+- "updateContextMetadata" -> core/ai/services/context.service.ts
+- "getActiveSessions" -> core/ai/services/context.service.ts
+- "getContextStats" -> core/ai/services/context.service.ts
+- "getContextSummary" -> core/ai/services/context.service.ts
+- "cleanupExpiredContexts" -> core/ai/services/context.service.ts
+- "updatePromptTemplate" -> core/ai/services/context.service.ts
+- "deletePromptTemplate" -> core/ai/services/context.service.ts
+- "saveContextToDatabase" -> core/ai/services/context.service.ts
+- "loadContextFromDatabase" -> core/ai/services/context.service.ts
+- "index" -> core/ai/services/index.ts
+- "ai-model.types" -> core/ai/types/ai-model.types.ts
+- "context.types" -> core/ai/types/context.types.ts
+- "index" -> core/ai/types/index.ts
+
+#problems_and_diagnostics
+- [info] 此 tip 文件由 AST+AI 组合生成。添加新服务或方法后请更新关键词索引
+- [warning] 若函数索引为空，AST 解析可能受限或目录不正确
+- [info] Provider 说明需与实际支持的提供者保持一致：openai、anthropic、google、gemini、deepseek
