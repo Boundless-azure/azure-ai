@@ -93,4 +93,31 @@ describe('TipController (Gemini test cases)', () => {
     const res = await controller.generate({} as unknown as TipGenerateOptions);
     expect(res).toEqual({ error: 'Missing field: dir' });
   });
+  it('POST /tip/generate should write module.tip when writeToFile=true (Gemini)', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tip-ctrl-write-'));
+    fs.writeFileSync(
+      path.join(tmpDir, 'd.ts'),
+      `/** @tip 控制器写入测试 */\nexport const d = 4;\n`,
+      'utf-8',
+    );
+
+    const res = await controller.generate({
+      dir: tmpDir,
+      writeToFile: true,
+      aiIncludeCode: true,
+      aiIncludeCommentsOnly: true,
+      aiCommentTags: ['@tip', '@doc', '@purpose'],
+      aiMaxCodeChars: 2000,
+      outputFileName: 'module.tip',
+    });
+
+    expect('error' in res).toBe(false);
+    const tipPath = path.join(tmpDir, 'module.tip');
+    expect(fs.existsSync(tipPath)).toBe(true);
+    const tipContent = fs.readFileSync(tipPath, 'utf-8');
+    expect(tipContent).toContain('#problems_and_diagnostics');
+
+    // cleanup
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 });

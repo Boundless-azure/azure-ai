@@ -105,4 +105,36 @@ describe('TipGeneratorService (Gemini test cases)', () => {
     expect(fail.content).toContain('[error] AI 生成失败');
     expect(fail.error).toBeUndefined();
   });
+
+  it('should write module.tip to disk when writeToFile=true (Gemini)', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tipgen-write-'));
+    const filePath = path.join(tmpDir, 'b.ts');
+    fs.writeFileSync(
+      filePath,
+      `/** @tip 写入测试 */\nexport const b = 2;\n`,
+      'utf-8',
+    );
+
+    const res: TipGenerateResult = await service.generateModuleTip({
+      dir: tmpDir,
+      writeToFile: true,
+      outputFileName: 'module.tip',
+      aiIncludeCode: true,
+      aiIncludeCommentsOnly: true,
+      aiCommentTags: ['@tip', '@doc', '@purpose'],
+      aiMaxCodeChars: 2000,
+    });
+
+    expect(res).toBeTruthy();
+    const tipPath = path.join(tmpDir, 'module.tip');
+    expect(fs.existsSync(tipPath)).toBe(true);
+    const tipContent = fs.readFileSync(tipPath, 'utf-8');
+    expect(tipContent).toContain('#problems_and_diagnostics');
+
+    // ensure AI was invoked in combined generation
+    expect((mockAI.chat as jest.Mock).mock.calls.length).toBeGreaterThan(0);
+
+    // cleanup
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 });

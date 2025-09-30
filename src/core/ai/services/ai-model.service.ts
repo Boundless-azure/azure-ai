@@ -27,6 +27,7 @@ import {
   ModelParameters,
 } from '../types';
 import { AIModelEntity } from '../entities';
+import { applyAIProxyFromEnv } from '../proxy.config';
 // 删除重复导入，保留上方综合导入块
 // 已删除: import { AIModelRequest, AIModelResponse, TokenUsage, ModelTokenUsageMeta, ModelBindParams } from '../types';
 
@@ -45,6 +46,8 @@ export class AIModelService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    // Apply proxy configuration from environment before initializing models
+    applyAIProxyFromEnv(this.logger);
     await this.initializeModels();
   }
 

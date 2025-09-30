@@ -1,0 +1,22 @@
+# Module Tip（自动生成，AST+AI 组合）
+目标目录: E:\project\azure-ai\tmp-tip-write
+生成时间: 2025-09-30T07:06:08.865Z
+
+文件列表（File List）
+
+函数索引（Function Index）
+
+文件说明
+- （AI 未生成，待补充）
+
+函数说明
+- （AI 未生成，待补充）
+
+关键词索引（中文 / English Keyword Index）
+
+快速检索映射（Keywords -> Files）
+
+#problems_and_diagnostics
+- [info] 此 tip 文件由 AST+AI 组合生成。添加新服务或方法后请更新关键词索引
+- [warning] 若函数索引为空，AST 解析可能受限或目录不正确
+- [info] Provider 说明需与实际支持的提供者保持一致：openai、anthropic、google、gemini、deepseek
