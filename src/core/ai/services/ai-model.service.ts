@@ -27,7 +27,13 @@ import {
   ModelParameters,
 } from '../types';
 import { AIModelEntity } from '../entities';
-import { applyAIProxyFromEnv } from '../proxy.config';
+import {
+  applyAIProxyFromEnv,
+  applyAIProxyFetchOverride,
+} from '../proxy.config';
+// 避免 barrel 导致的类型不精确问题，直接从具体文件与类型定义导入
+import { loadAIConfigFromEnv } from '../../../config/ai.config';
+import type { AIConfig } from '../../../config/types';
 // 删除重复导入，保留上方综合导入块
 // 已删除: import { AIModelRequest, AIModelResponse, TokenUsage, ModelTokenUsageMeta, ModelBindParams } from '../types';
 
@@ -48,6 +54,8 @@ export class AIModelService implements OnModuleInit {
   async onModuleInit() {
     // Apply proxy configuration from environment before initializing models
     applyAIProxyFromEnv(this.logger);
+    // Ensure fetch and undici use proxy globally
+    applyAIProxyFetchOverride(this.logger);
     await this.initializeModels();
   }
 
@@ -95,7 +103,9 @@ export class AIModelService implements OnModuleInit {
   private createModelInstance(config: AIModelEntity): BaseChatModel {
     try {
       let model: BaseChatModel;
-
+      const aiConf: AIConfig = loadAIConfigFromEnv();
+      const maxRetries = aiConf.client.maxRetries;
+      // 代理已在 onModuleInit 通过 applyAIProxyFetchOverride 全局生效，无需在此重复设置
       switch (config.provider) {
         case AIProvider.OPENAI:
           model = new ChatOpenAI({
@@ -103,6 +113,7 @@ export class AIModelService implements OnModuleInit {
             modelName: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxTokens: config.defaultParams?.maxTokens || 4096,
+            maxRetries,
             ...(config.baseURL && {
               configuration: { baseURL: config.baseURL },
             }),
@@ -116,6 +127,7 @@ export class AIModelService implements OnModuleInit {
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
+              maxRetries,
               configuration: { baseURL },
             });
           }
@@ -127,6 +139,7 @@ export class AIModelService implements OnModuleInit {
             modelName: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxTokens: config.defaultParams?.maxTokens || 4096,
+            maxRetries,
             ...(config.baseURL && {
               clientOptions: { baseURL: config.baseURL },
             }),
@@ -139,6 +152,7 @@ export class AIModelService implements OnModuleInit {
             model: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxOutputTokens: config.defaultParams?.maxTokens || 4096,
+            maxRetries,
           });
           break;
 
@@ -148,6 +162,7 @@ export class AIModelService implements OnModuleInit {
             model: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxOutputTokens: config.defaultParams?.maxTokens || 4096,
+            maxRetries,
           });
           break;
 

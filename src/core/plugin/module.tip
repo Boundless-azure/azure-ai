@@ -1,0 +1,68 @@
+模块名称：core/plugin（插件元信息与录入模块）
+
+概述
+- 负责插件信息的入库（name、version、description、hooks、keywords）、关键词生成（AI）、以及基础的增删改查接口。
+- 录入流程通过读取指定目录的 plugin.conf.ts（纯数据对象，默认导出），生成关键词并 upsert 至数据库。
+
+文件清单（File List）
+- core/plugin/types.ts
+- core/plugin/plugin.entity.ts
+- core/plugin/plugin.keywords.service.ts
+- core/plugin/plugin.service.ts
+- core/plugin/plugin.controller.ts
+- core/plugin/plugin.module.ts
+
+函数清单（Function Index）
+- PluginKeywordsService
+  - method: generateKeywords
+  - method: pickDefaultModelId
+  - method: buildPrompt (private)
+  - method: safeParseKeywords (private)
+  - method: normalize (private)
+- PluginService
+  - method: list
+  - method: get
+  - method: delete
+  - method: registerByDir
+  - method: update
+  - method: loadConfig (private)
+- PluginController
+  - method: list (GET /plugin)
+  - method: get (GET /plugin/:id)
+  - method: register (POST /plugin/register)
+  - method: update (PUT /plugin/:id)
+  - method: delete (DELETE /plugin/:id)
+
+文件说明
+- types.ts：约定 PluginConfig、HookDescriptor、PluginHookTuple，以及校验方法。
+- plugin.entity.ts：插件实体，包含索引/约束与字段定义。
+- plugin.keywords.service.ts：关键词生成服务，依赖 AIModelService。
+- plugin.service.ts：录入流程与 CRUD。
+- plugin.controller.ts：REST 接口。
+- plugin.module.ts：模块声明，集成 TypeORM 与 AI Core。
+
+关键词索引（中文 / English Keyword Index）
+core/plugin/types.ts
+core/plugin/plugin.entity.ts
+core/plugin/plugin.keywords.service.ts
+core/plugin/plugin.service.ts
+core/plugin/plugin.controller.ts
+core/plugin/plugin.module.ts
+PluginKeywordsService
+PluginService
+PluginController
+PluginModule
+
+快速检索映射（Keywords -> Files）
+- "plugin.types" / "types.ts" -> core/plugin/types.ts
+- "PluginEntity" -> core/plugin/plugin.entity.ts
+- "PluginKeywordsService" -> core/plugin/plugin.keywords.service.ts
+- "PluginService" -> core/plugin/plugin.service.ts
+- "PluginController" -> core/plugin/plugin.controller.ts
+- "PluginModule" -> core/plugin/plugin.module.ts
+
+#problems_and_diagnostics
+- [info] 录入时请确保 plugin.conf.ts 默认导出纯数据对象（export default），避免运行时转译失败。
+- [warning] 若关键词为空或较少，请补充 description 与 hook 的 payloadDescription；同时确认至少有一个启用的 AI 模型。
+- [info] 数据库存储：hooks 为 JSON 字符串；keywords_zh/keywords_en 为逗号分隔文本，便于 FULLTEXT 检索。
+- [warning] 目录传参必须为相对项目根的有效路径（例如 plugins/<plugin-name>），否则 /plugin/register 会失败。

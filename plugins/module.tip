@@ -1,0 +1,54 @@
+模块名称：plugins（插件目录与约定）
+
+目标
+- 为系统提供可扩展的插件机制。每个插件是一个 Nest Module，并在其目录内提供：
+  - plugin.conf.ts：插件配置（名称、版本、描述、对外 hooks、payload 的业务语义描述）
+  - plugin.d.ts：声明该插件支持的 Hook 元祖类型（左侧为 hook 名，右侧为 payload 类型）
+  - <plugin-name>.module.ts：Nest 模块定义（按需导出服务/控制器）
+
+文件结构示例（plugins/customer-analytics）
+- plugins/
+  - customer-analytics/
+    - plugin.conf.ts
+    - plugin.d.ts
+    - customer-analytics.module.ts
+
+约定与生成规则
+1) plugin.conf.ts 必须默认导出一个 PluginConfig：
+   {
+     name: string;
+     version: string;
+     description: string;
+     hooks: Array<{ name: string; payloadDescription: string }>;
+   }
+   - payloadDescription 是对该 hook 的 payload 的简要业务描述，辅助 AI 生成关键词。
+   - 不依赖外部导入，保持为纯数据对象，便于运行时转译与加载。
+
+2) plugin.d.ts 必须声明 PluginHook 的联合类型，符合：
+   export type PluginHooks = PluginHookTuple<'hook.name', PayloadType> | ...
+   - 其中 PluginHookTuple 来自 src/core/plugin/types。
+   - 此文件用于类型声明，不参与运行时加载。
+
+3) 录入流程（由 PluginModule 提供）：
+   - 通过 REST 接口 POST /plugin/register，传入 { pluginDir }（相对项目根，如 "plugins/customer-analytics"）。
+   - 系统读取对应目录的 plugin.conf.ts，使用 TypeScript 在运行时转译并动态导入。
+   - 基于描述与 hooks 的 payloadDescription，调用 AI 生成中英文关键词（尽可能全面），并归一化去重。
+   - 将插件信息（name、version、description、hooks、keywords_zh、keywords_en、plugin_dir、registered）入库（upsert）。
+
+4) 数据库与索引：
+   - 表：plugins（见 src/migrations/*-CreatePlugins.ts）
+   - 字段：name, version, description, hooks(text), keywords_zh(text), keywords_en(text), plugin_dir(varchar), registered(boolean)
+   - 约束：UNIQUE(name, version)
+   - 索引：FULLTEXT(name, description, keywords_zh, keywords_en)
+
+5) 注意事项：
+   - plugin.conf.ts 应尽量包含详尽但简洁的描述，以及针对每个 hook 的 payloadDescription。
+   - plugin.d.ts 仅用于类型约束，便于 IDE 与编译期检查，不作为运行时依赖。
+   - 每个插件是一个独立的 Nest 模块，按需暴露服务/控制器；是否在应用中启用由业务自行决定。
+
+#problems_and_diagnostics
+- [info] 录入时请确保 plugin.conf.ts 默认导出（export default）且为纯数据对象，否则运行时转译可能失败。
+- [warning] 若 /plugin/register 返回目录未找到，请检查传入的 pluginDir 是否为相对项目根的有效路径（如 plugins/customer-analytics）。
+- [warning] 若关键词生成为空或很少，请补充 description 与各 hook 的 payloadDescription，或确认系统中有启用的 AI 模型。
+- [info] hooks 会以 JSON 字符串写入数据库，字段结构为 { name, payloadDescription } 数组；注意 name 与 version 的唯一约束。
+- [info] FULLTEXT 索引覆盖 name/description/keywords_zh/keywords_en；关键词建议使用逗号分隔存储以提升检索效果。

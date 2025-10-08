@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Query, Body } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, Logger } from '@nestjs/common';
 import { TipService } from './tip.service';
 import { TipGeneratorService } from './tip.generator';
 import type { TipGenerateOptions } from './tip.types';
 
 @Controller('tip')
 export class TipController {
+  private readonly logger = new Logger(TipController.name);
   constructor(
     private readonly tipService: TipService,
     private readonly tipGenerator: TipGeneratorService,
@@ -36,6 +37,9 @@ export class TipController {
   // POST /tip/generate { dir: 'src/core/ai', writeToFile: true }
   @Post('generate')
   async generate(@Body() body: TipGenerateOptions) {
+    this.logger.log(
+      `[HTTP] /tip/generate called with dir=${body?.dir ?? ''}, writeToFile=${body?.writeToFile}, aiModelId=${body?.aiModelId ?? ''}`,
+    );
     if (!body?.dir) {
       return { error: 'Missing field: dir' };
     }
@@ -60,6 +64,10 @@ export class TipController {
     @Body()
     body: TipGenerateOptions & { aiModelId?: string; systemPrompt?: string },
   ) {
+    this.logger.log(
+      `[HTTP] /tip/generate-with-ai called with dir=${body?.dir ?? ''}, aiModelId=${body?.aiModelId ?? ''}, writeToFile=${body?.writeToFile}`,
+    );
+    console.log('controller message');
     if (!body?.dir) {
       return { error: 'Missing field: dir' };
     }

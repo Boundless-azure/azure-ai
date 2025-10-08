@@ -167,3 +167,7 @@
 - [info] 此 tip 文件由 AST+AI 组合生成。添加新服务或方法后请更新关键词索引
 - [warning] 若函数索引为空，AST 解析可能受限或目录不正确
 - [info] Provider 说明需与实际支持的提供者保持一致：openai、anthropic、google、gemini、deepseek
+- [error] 写入 module.tip 失败：输出目录不存在或权限不足。解决：提供有效的 dir，确保 writeToFile=true 且路径可写
+- [warning] diagnostics 区段内容为空。解决：检查 TipService.parseDiagnosticsSectionFromTip 的输入是否包含 '#problems_and_diagnostics'
+- [info] 仅生成 AST（useAI=false）时缺少详细函数说明。解决：配置 AI 代理与模型，启用 useAI=true 生成更丰富说明
+- [debug] 关键词索引不准确。解决：运行 generate 重新构建索引，或手动校对关键词映射

@@ -1,0 +1,98 @@
+# Redis Module Guidelines
+
+## File List
+- types/client.ts: Redis 客户端接口与辅助类型
+- services/common.service.ts: 通用 Redis 访问服务（字符串、JSON、哈希、扫描、筛选）
+- redis.module.ts: 全局 Redis 模块，导出 REDIS_CLIENT 与 CommonRedisService
+
+## Naming Rules
+- 目录结构：
+  - src/core/redis/
+    - types/
+    - services/
+    - redis.module.ts
+    - module.tip
+- 不同功能模块的 Redis 业务服务放在 services 目录下，以功能命名文件：
+  - services/user-cache.service.ts
+  - services/session.service.ts
+  - services/rate-limit.service.ts
+  - 等等…
+
+## Key Naming Conventions
+- 使用明确的前缀，避免冲突：
+  - user:{userId}:profile
+  - session:{sessionId}
+  - rate_limit:{route}:{ip}
+- 对需要批量扫描的键，统一前缀（如 user:*、session:*），便于 scanKeys 查询与清理。
+
+## TTL & Storage Rules
+- 短期数据（会话、令牌）设置合理 TTL，避免内存增长
+- JSON 数据统一使用 CommonRedisService.setJSON/getJSON，避免各处重复序列化逻辑
+- 结构化字段优先使用哈希（HSET/HGET）存储，以便更新与读取部分字段
+
+## Common Service Usage
+- 注入 CommonRedisService 后即可使用：
+  - getString/setString
+  - getJSON/setJSON
+  - hGet/hSet/hGetAll
+  - scanKeys/deleteByPattern
+  - filterKeysByValue（配合扫描实现筛选）
+- CommonRedisService 依赖令牌 REDIS_CLIENT（可由 ioredis 或兼容客户端提供）
+
+## Configuration
+- 依赖 appRedis（ConfigModule.forRoot 中加载）：
+  - REDIS_URL（优先）或 REDIS_HOST/REDIS_PORT/REDIS_PASSWORD/REDIS_DB/REDIS_TLS
+- 在 redis.module.ts 中动态引入 ioredis；如未安装，仅提供空客户端以允许应用启动（调用前需校验 isAvailable）
+
+## Function Index
+- CommonRedisService
+  - isAvailable(): boolean
+  - getString(key): Promise<string|null>
+  - setString(key, value, ttlSeconds?): Promise<boolean>
+  - delKeys(keys): Promise<number>
+  - hGetAll(key): Promise<Record<string,string>>
+  - hGet(key, field): Promise<string|null>
+  - hSet(key, field, value): Promise<number>
+  - getJSON<T>(key): Promise<T|null>
+  - setJSON(key, value, { ttlSeconds }?): Promise<boolean>
+  - scanKeys({ pattern, count? }): Promise<string[]>
+  - deleteByPattern(pattern, countPerPage?): Promise<number>
+  - filterKeysByValue(pattern, predicate): Promise<string[]>
+
+#problems_and_diagnostics
+诊断清单（Checklist）
+- 已安装并正确注入 ioredis 客户端（REDIS_CLIENT Provider 可用）
+- 环境变量正确：REDIS_URL 或 REDIS_HOST/PORT/PASSWORD/DB/TLS
+- 键前缀统一（如 user:*、session:*），避免全量扫描
+- 统一使用 CommonRedisService.setJSON/getJSON，避免 JSON 不兼容
+- TTL 策略明确且一致，短期数据设置合理 TTL，定期清理冷数据
+
+常见问题与解决方案
+- [error] REDIS_CLIENT 不可用（未安装客户端或未提供 Provider）
+  - 解决：安装 ioredis 并在环境中配置 appRedis，或提供兼容客户端；在使用前调用 isAvailable() 进行保
+  .护性检查
+- [error] 连接失败（ECONNREFUSED/ETIMEDOUT）
+  - 解决：检查 REDIS_URL/REDIS_HOST/REDIS_PORT/REDIS_PASSWORD/REDIS_DB/TLS 配置与网络连通性（容器网络/安全组）；必要时增加连接/重试参数
+- [warning] 扫描大键空间性能开销高
+  - 解决：使用统一前缀（如 user:*），配合 COUNT 调整批次；提供后台清理任务，对冷数据定期 purge；避免在请求链路中进行全量 scan
+- [debug] JSON 解析失败
+  - 解决：统一使用 CommonRedisService.setJSON/getJSON，避免手工序列化；为旧版本数据提供迁移脚本或向后兼容逻辑
+- [info] TTL 策略不一致导致内存增长
+  - 解决：为会话/令牌等短期数据设置 TTL；为缓存类数据增加过期与回收策略；引入监控并按阈值触发清理
+
+排查步骤（Troubleshooting Steps）
+1) 运行 isAvailable() 检查客户端注入是否成功；失败则回退至空客户端并阻止 Redis 读写
+2) 使用 ping 或 getString/setString 最小读写验证连接与权限
+3) 对热点键执行 HGET/HSET 或 JSON 操作，确认结构与序列化一致
+4) 对需要批量清理的前缀使用 scanKeys + deleteByPattern，在非高峰期执行
+
+验证与监控（Validation & Monitoring）
+- 连接与命令延迟：成功率、平均/分位延迟
+- 内存与键空间：键总量、前缀分布、过期键比率
+- JSON 错误率：解析失败次数与示例数据
+- 清理任务：每次清理规模、耗时、失败重试
+
+恢复策略（Recovery）
+- 连接不可用时降级到本地缓存或直读数据库，并打点告警
+- 清理任务失败时降低 COUNT、分批次重试，避免阻塞业务
+- 发现不兼容 JSON 结构时，按版本迁移或落地修复脚本

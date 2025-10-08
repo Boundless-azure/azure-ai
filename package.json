@@ -18,7 +18,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "typeorm": "typeorm-ts-node-commonjs -d ./src/data-source.ts",
+    "typeorm": "typeorm-ts-node-commonjs -d ./src/config/data-source.ts",
     "migration:create": "npm run typeorm -- migration:create ./src/migrations/InitSchema",
     "migration:generate": "npm run typeorm -- migration:generate ./src/migrations/InitSchema",
     "migration:run": "npm run typeorm -- migration:run",
@@ -34,13 +34,15 @@
     "@nestjs/core": "^11.1.6",
     "@nestjs/platform-express": "^11.1.6",
     "@nestjs/typeorm": "^11.0.0",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.8.0",
     "langchain": "^0.3.34",
     "mysql2": "^3.15.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "sqlite3": "^5.1.7",
     "typeorm": "^0.3.27",
-    "dotenv": "^16.4.5"
+    "undici": "^7.16.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -73,7 +75,9 @@
       "json",
       "ts"
     ],
-    "roots": ["<rootDir>/test"],
+    "roots": [
+      "<rootDir>/test"
+    ],
     "testMatch": [
       "**/*.spec.ts",
       "!**/*.e2e-spec.ts"

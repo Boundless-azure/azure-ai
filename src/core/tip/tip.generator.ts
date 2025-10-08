@@ -82,6 +82,9 @@ export class TipGeneratorService {
     let aiFileDesc = '';
     let aiFuncDesc = '';
     const modelId = await this.pickAIModelId(opts.aiModelId);
+    this.logger.log(
+      `[AI] generateModuleTip: selected modelId=${modelId ?? 'none'}`,
+    );
     if (modelId) {
       try {
         const context = this.buildAIContextForDir(dir, fileInfos, opts);
@@ -92,6 +95,9 @@ export class TipGeneratorService {
             '要求：仅引用当前模块目录下的文件路径（避免跨模块）；关键词包含文件名、类名与方法名；简明但覆盖核心职责。';
         const userPrompt =
           `目标目录: ${dir}\n以下为 AST 基础索引与上下文：\n\n` + context;
+        this.logger.log(
+          `[AI] generateModuleTip: invoking chat for dir=${dir} with modelId=${modelId}`,
+        );
         const resp = await this.aiModelService.chat({
           modelId,
           messages: [
@@ -100,6 +106,9 @@ export class TipGeneratorService {
           ],
           params: { maxTokens: 4096, temperature: 0.3 },
         });
+        this.logger.log(
+          `[AI] generateModuleTip: chat done model=${resp.model ?? modelId}, time=${resp.responseTime ?? 'n/a'}, requestId=${resp.requestId ?? 'n/a'}`,
+        );
         const content = resp.content || '';
         const fileDescMatch = content.match(
           /文件说明[\s\S]*?(?=\n\s*函数说明|$)/,
@@ -118,6 +127,9 @@ export class TipGeneratorService {
           .map((l) => l.trim())
           .filter(Boolean);
       } catch (e) {
+        this.logger.error(
+          `[AI] generateModuleTip: chat failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
         warnings.push(
           `AI generation failed: ${e instanceof Error ? e.message : String(e)}`,
         );
@@ -195,6 +207,9 @@ export class TipGeneratorService {
       try {
         const enabled = await this.aiModelService.getEnabledModels();
         modelId = enabled[0]?.id;
+        this.logger.log(
+          `[AI] generateModuleTipAI: enabled models=${enabled.map((m) => m.id).join(', ') || 'none'}, selected=${modelId ?? 'none'}`,
+        );
       } catch (e) {
         this.logger.warn(`Failed to get enabled models: ${String(e)}`);
       }
@@ -230,6 +245,9 @@ export class TipGeneratorService {
 
     // 4) 调用 AI 生成
     try {
+      this.logger.log(
+        `[AI] generateModuleTipAI: invoking chat for dir=${dir} with modelId=${modelId}`,
+      );
       const resp = await this.aiModelService.chat({
         modelId,
         messages: [
@@ -238,6 +256,9 @@ export class TipGeneratorService {
         ],
         params: { maxTokens: 4096, temperature: 0.3 },
       });
+      this.logger.log(
+        `[AI] generateModuleTipAI: chat done model=${resp.model ?? modelId}, time=${resp.responseTime ?? 'n/a'}, requestId=${resp.requestId ?? 'n/a'}`,
+      );
       const content =
         (resp.content || '') +
         '\n\n#problems_and_diagnostics' +
@@ -257,6 +278,10 @@ export class TipGeneratorService {
       }
       return { outputPath, content, warnings: [] };
     } catch (e) {
+      this.logger.error(
+        `[AI] generateModuleTipAI: chat failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      console.error(e);
       // 回退：输出原始索引，并记录错误
       const fallback =
         context +

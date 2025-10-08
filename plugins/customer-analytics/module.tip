@@ -1,0 +1,37 @@
+模块名称：plugins/customer-analytics（示例插件）
+
+概述
+- 示例插件，演示如何编写 plugin.conf.ts 与 plugin.d.ts，并作为独立 Nest 模块存在。
+
+文件清单（File List）
+- plugins/customer-analytics/plugin.conf.ts
+- plugins/customer-analytics/plugin.d.ts
+- plugins/customer-analytics/customer-analytics.module.ts
+
+函数清单（Function Index）
+- （示例模块未包含服务/控制器，按需补充）
+
+文件说明
+- plugin.conf.ts：示例插件配置，包含 3 个 hook 与 payloadDescription。
+- plugin.d.ts：声明各 hook 的 payload 类型，并导出 PluginHookTuple 联合类型。
+- customer-analytics.module.ts：最小化 Nest 模块定义。
+
+关键词索引（中文 / English Keyword Index）
+customer-analytics
+plugin.conf.ts
+plugin.d.ts
+customer-analytics.module.ts
+customer.created
+customer.profile.updated
+order.paid
+
+快速检索映射（Keywords -> Files）
+- "customer-analytics" -> plugins/customer-analytics/
+- "plugin.conf" -> plugins/customer-analytics/plugin.conf.ts
+- "plugin.d.ts" -> plugins/customer-analytics/plugin.d.ts
+- "customer-analytics.module" -> plugins/customer-analytics/customer-analytics.module.ts
+
+#problems_and_diagnostics
+- [info] 如需录入该插件，请调用 POST /plugin/register，Body: { "pluginDir": "plugins/customer-analytics" }。
+- [warning] 若关键词生成为空，请丰富 plugin.conf.ts 的 description 与 payloadDescription，并确保系统中有启用的 AI 模型。
+- [info] 该示例模块为空壳，实际业务应在模块中提供服务或控制器。

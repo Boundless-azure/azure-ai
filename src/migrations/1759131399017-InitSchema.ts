@@ -15,7 +15,7 @@ export class InitSchema1759131399017 implements MigrationInterface {
                 \`id\` CHAR(36) NOT NULL PRIMARY KEY,
                 \`name\` VARCHAR(100) NOT NULL,
                 \`displayName\` VARCHAR(200),
-                \`provider\` ENUM('openai','azure-openai','anthropic','google') NOT NULL,
+                \`provider\` ENUM('openai','azure-openai','anthropic','google','gemini','deepseek') NOT NULL,
                 \`type\` ENUM('chat','completion','embedding') NOT NULL,
                 \`status\` ENUM('active','inactive','deprecated','maintenance') NOT NULL DEFAULT 'active',
                 \`apiKey\` VARCHAR(500) NOT NULL,
@@ -91,9 +91,8 @@ export class InitSchema1759131399017 implements MigrationInterface {
     await queryRunner.query(`
             INSERT INTO \`ai_models\` (id, name, displayName, provider, type, status, apiKey, description, enabled)
             VALUES
-            (UUID(), 'gpt-3.5-turbo', 'GPT-3.5 Turbo', 'openai', 'chat', 'active', 'CHANGE_ME', 'OpenAI GPT-3.5 Turbo 模型', 1),
-            (UUID(), 'gpt-4', 'GPT-4', 'openai', 'chat', 'active', 'CHANGE_ME', 'OpenAI GPT-4 模型', 1),
-            (UUID(), 'gpt-35-turbo', 'Azure GPT-3.5 Turbo', 'azure-openai', 'chat', 'active', 'CHANGE_ME', 'Azure OpenAI GPT-3.5 Turbo 模型', 1)
+            (UUID(), 'gemini-1.5-pro', 'Gemini 1.5 Pro', 'gemini', 'chat', 'active', 'CHANGE_ME', 'Google Gemini 1.5 Pro 模型', 1),
+            (UUID(), 'deepseek-chat', 'DeepSeek Chat', 'deepseek', 'chat', 'active', 'CHANGE_ME', 'DeepSeek Chat 模型', 1)
             ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP
         `);
 

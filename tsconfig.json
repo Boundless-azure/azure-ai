@@ -35,6 +35,6 @@
     /* 类型支持 */
     "types": ["node", "jest"]
   },
-  "include": ["src/**/*", "test/**/*.ts"],
+  "include": ["src/**/*", "test/**/*.ts", "plugins/**/*"],
   "exclude": ["node_modules", "dist"]
 }
