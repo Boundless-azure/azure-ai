@@ -1,13 +1,26 @@
+/**
+ * TipService：提供对 tip 文件的读取、关键词检索、AST 索引构建与诊断分析。
+ *
+ * 核心能力：
+ * - listTipFiles/readTipFiles：按配置扫描并读取 *.tip 文件
+ * - searchKeywords：优先使用“快速检索映射（Keywords -> Files）”，其次模糊匹配 tip 内容
+ * - buildAstIndex：遍历 TS 文件，提取类/方法/函数符号及位置信息
+ * - collectDiagnostics/generateDiagnosticsReport：聚合与输出诊断信息
+ *
+ * 使用建议：
+ * - 通过模块注入的 TIP_OPTIONS 控制扫描根目录、排除模式与最大深度
+ * - 与 TipGeneratorService 配合使用，可自动生成/更新 module.tip 内容
+ */
 import { Inject, Injectable } from '@nestjs/common';
-import { TIP_OPTIONS } from './tip.tokens';
-import type { TipModuleOptions } from './tip.types';
+import { TIP_OPTIONS } from '../types/tokens';
+import type { TipModuleOptions } from '../types';
 import {
   TipSearchResult,
   TipIndex,
   TipDiagnostics,
   TipProblem,
   DiagnosticsSeverity,
-} from './tip.types';
+} from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
@@ -20,6 +33,10 @@ export class TipService {
 
   // 递归列出 .tip 文件
   listTipFiles(): string[] {
+    /**
+     * 从配置的 rootDir（默认 src/core）开始递归，收集所有以 .tip 结尾的文件。
+     * 受 excludePatterns 和 maxDepth 限制。
+     */
     const root =
       this.options.rootDir ?? path.resolve(process.cwd(), 'src', 'core');
     const result: string[] = [];
@@ -52,11 +69,18 @@ export class TipService {
   }
 
   private isExcluded(p: string): boolean {
+    /**
+     * 简单的路径包含检查：将模式中的 去掉后进行 includes 判断。
+     * 用于在遍历目录时跳过无关路径（如 dist、node_modules）。
+     */
     const excludes = this.options.excludePatterns ?? [];
-    return excludes.some((pat) => p.includes(pat.replace('**/', '')));
+    return excludes.some((pat: string) => p.includes(pat.replace('**/', '')));
   }
 
   readTipFiles(): { filePath: string; content: string }[] {
+    /**
+     * 在 IDE 中调用时，返回的对象数组可直接用于展示原始 tip 文本或继续做解析处理。
+     */
     return this.listTipFiles()
       .map((filePath) => {
         try {
@@ -74,6 +98,10 @@ export class TipService {
     content: string,
     filePath: string,
   ): TipProblem[] {
+    /**
+     * 解析 tip 文本中的诊断段落（Problems & Diagnostics / 问题与诊断），
+     * 将标准格式行转换为 TipProblem 项。
+     */
     const problems: TipProblem[] = [];
     const lines = content.split(/\r?\n/);
     let inDiag = false;
@@ -110,6 +138,9 @@ export class TipService {
   }
 
   private toSeverity(s: string): DiagnosticsSeverity | undefined {
+    /**
+     * 将字符串映射到枚举 DiagnosticsSeverity，大小写不敏感。
+     */
     switch (s.toLowerCase()) {
       case 'info':
         return DiagnosticsSeverity.info;
@@ -126,6 +157,10 @@ export class TipService {
   private parseKeywordMappingsFromTip(
     content: string,
   ): Map<string, Set<string>> {
+    /**
+     * 解析“快速检索映射（Keywords -> Files）”中的行，将关键词与文件路径建立映射。
+     * 支持多关键词形式："A" / "B"。
+     */
     const map = new Map<string, Set<string>>();
     const lines = content.split(/\r?\n/);
     for (const line of lines) {
@@ -153,6 +188,10 @@ export class TipService {
 
   // 关键词检索：优先使用 tip 映射，其次在 tip 文本模糊匹配
   searchKeywords(keywords: string[], maxResults = 20): TipSearchResult[] {
+    /**
+     * 按关键词检索：先使用映射命中（score=1），再对 tip 文本做正则模糊匹配（score=0.5）。
+     * 返回去重后按最高分的命中项，最多 maxResults 条。
+     */
     const tipFiles = this.readTipFiles();
     const results: TipSearchResult[] = [];
     const mapping = new Map<string, Set<string>>();
@@ -180,7 +219,7 @@ export class TipService {
       const re = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       for (const t of tipFiles) {
         const lines = t.content.split(/\r?\n/);
-        lines.forEach((ln, idx) => {
+        lines.forEach((ln: string, idx: number) => {
           if (re.test(ln)) {
             const score = 0.5; // 较低权重
             results.push({
@@ -208,6 +247,10 @@ export class TipService {
 
   // 构建 AST 索引（简版）：提取函数/类/方法
   buildAstIndex(dir?: string): TipIndex {
+    /**
+     * 构建简版 AST 索引：遍历目录下的 TS 文件（排除 spec/e2e），
+     * 通过 TypeScript Compiler API 提取可导出的函数/类/方法等符号与位置信息。
+     */
     const root =
       dir ?? this.options.rootDir ?? path.resolve(process.cwd(), 'src', 'core');
     const files = this.listTsFiles(root);
@@ -221,6 +264,9 @@ export class TipService {
 
   // Basic diagnostics: check necessary sections existence in tip content
   private analyzeTipContent(content: string, filePath: string): TipProblem[] {
+    /**
+     * 基础内容诊断：检查 tip 文本是否缺失必须章节，并检测跨模块映射引用。
+     */
     const probs: TipProblem[] = [];
     const mustHave = [
       '关键词索引（中文 / English Keyword Index）',
@@ -280,6 +326,9 @@ export class TipService {
 
   // Collect diagnostics across all tip files
   collectDiagnostics(): TipDiagnostics {
+    /**
+     * 聚合所有 tip 文件的诊断结果，便于后续生成报告或在 IDE 中展示。
+     */
     const tips = this.readTipFiles();
     const all: TipProblem[] = [];
     for (const t of tips) {
@@ -292,6 +341,9 @@ export class TipService {
 
   // Diagnostics report text
   generateDiagnosticsReport(): string {
+    /**
+     * 将诊断结果按统一文本格式输出，包含时间戳与每条问题的严重性、位置与建议。
+     */
     const diag = this.collectDiagnostics();
     const lines: string[] = [];
     lines.push('# Problems & Diagnostics Report');
@@ -306,6 +358,9 @@ export class TipService {
   }
 
   private listTsFiles(dir: string, depth = 0, acc: string[] = []): string[] {
+    /**
+     * 遍历目录中符合条件的 TS 文件：排除 *.spec.ts 与 *.e2e-spec.ts，受 maxDepth 和 excludePatterns 限制。
+     */
     const maxDepth = this.options.maxDepth ?? 5;
     if (depth > maxDepth) return acc;
     let entries: fs.Dirent[] = [];
@@ -333,6 +388,9 @@ export class TipService {
   }
 
   private getAstFunctionsForFile(filePath: string) {
+    /**
+     * 使用 TypeScript AST 解析单个文件，提取导出的函数、类与其中的方法/构造器，以及位置信息。
+     */
     const sourceText = (() => {
       try {
         return fs.readFileSync(filePath, 'utf-8');
@@ -416,7 +474,7 @@ export class TipService {
           location: { filePath, line },
           exported,
         });
-        node.members.forEach((m) => {
+        node.members.forEach((m: ts.ClassElement) => {
           const mPos = sf.getLineAndCharacterOfPosition(m.getStart());
           const mLine = mPos.line + 1;
           if (ts.isMethodDeclaration(m) && m.name) {

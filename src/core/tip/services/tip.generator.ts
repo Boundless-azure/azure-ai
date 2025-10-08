@@ -1,17 +1,30 @@
 /* cspell:words deepseek subdirs */
+/**
+ * TipGeneratorService：结合 AST 扫描与 AI 模型，自动生成 module.tip 文档。
+ *
+ * 核心能力：
+ * - generateModuleTip：使用 AST 基础信息并尝试调用可用的 AI 模型生成文件说明/函数说明/关键词索引
+ * - generateModuleTipAI：在确保选定模型后，基于上下文提示生成完整 Tip 文档
+ * - generateTipsForModules：为 base 目录下的各子模块批量生成 module.tip
+ *
+ * 使用建议：
+ * - 通过 TIP_OPTIONS 注入模块配置（根目录、深度等）；
+ * - 在 IDE 中查看 TipGenerateResult 的结构（outputPath/content/warnings/error），便于消费与调试；
+ * - 若模型不可用，会在 warnings 中给出提示，可回退到纯 AST 输出。
+ */
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { TIP_OPTIONS } from './tip.tokens';
+import { TIP_OPTIONS } from '../types/tokens';
 import type {
   TipGenerateOptions,
   TipModuleOptions,
   TipFileInfo,
   TipFunctionInfo,
   TipGenerateResult,
-} from './tip.types';
+} from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
-import { AIModelService } from '../ai/services/ai-model.service';
+import { AIModelService } from '../../ai/services/ai-model.service';
 
 @Injectable()
 export class TipGeneratorService {
@@ -24,13 +37,19 @@ export class TipGeneratorService {
   async generateModuleTip(
     opts: TipGenerateOptions,
   ): Promise<TipGenerateResult> {
+    /**
+     * 生成指定目录的 module.tip：
+     * 1) AST 扫描：构建文件列表与函数索引
+     * 2) AI 生成（可用时）：文件说明、函数说明、关键词索引
+     * 3) 合并输出：包含诊断信息与快速检索映射
+     */
     const dir = path.resolve(opts.dir);
     const outName = opts.outputFileName ?? 'module.tip';
     const outputPath = path.join(dir, outName);
 
     // 1) AST：扫描目录与函数信息
     const files = this.listTsFiles(dir);
-    const fileInfos: TipFileInfo[] = files.map((f) =>
+    const fileInfos: TipFileInfo[] = files.map((f: string) =>
       this.getAstFunctionsForFile(f),
     );
 
@@ -49,7 +68,7 @@ export class TipGeneratorService {
       const rel = this.relativePath(info.filePath);
       keywordIndexLines.push(`- "${baseNoExt}" / "${base}" -> ${rel}`);
       quickMapLines.push(`- "${baseNoExt}" -> ${rel}`);
-      (info.functions ?? []).forEach((fn) => {
+      (info.functions ?? []).forEach((fn: TipFunctionInfo) => {
         const tokens = [fn.name, fn.kind].filter(Boolean).join(' ');
         keywordIndexLines.push(`- "${tokens}" -> ${rel}`);
         quickMapLines.push(`- "${fn.name}" -> ${rel}`);
@@ -190,13 +209,19 @@ export class TipGeneratorService {
   async generateModuleTipAI(
     opts: TipGenerateOptions,
   ): Promise<TipGenerateResult> {
+    /**
+     * 基于 AI 的 Tip 生成：
+     * - 若未提供 aiModelId，则自动选择启用模型中的第一个；
+     * - 通过系统/用户提示构建完整文档结构；
+     * - 当模型不可用时，回退输出 AST 上下文与警告。
+     */
     const dir = path.resolve(opts.dir);
     const outName = opts.outputFileName ?? 'module.tip';
     const outputPath = path.join(dir, outName);
 
     // 1) 收集上下文（文件与函数索引 + 源码/注释片段）
     const files = this.listTsFiles(dir);
-    const fileInfos: TipFileInfo[] = files.map((f) =>
+    const fileInfos: TipFileInfo[] = files.map((f: string) =>
       this.getAstFunctionsForFile(f),
     );
     const context = this.buildAIContextForDir(dir, fileInfos, opts);

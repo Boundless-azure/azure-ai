@@ -4,11 +4,16 @@ import { Repository } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
-import { PluginEntity } from './plugin.entity';
+import { PluginEntity } from '../entities/plugin.entity';
 import { PluginKeywordsService } from './plugin.keywords.service';
-import { PluginConfig, validatePluginConfig } from './types';
+import { PluginConfig, validatePluginConfig } from '../types';
 
 @Injectable()
+/**
+ * 插件服务
+ * - 提供插件的增删改查与注册（通过目录加载配置）
+ * - 在注册过程中调用 AI 生成关键词并入库
+ */
 export class PluginService {
   private readonly logger = new Logger(PluginService.name);
 
@@ -18,14 +23,27 @@ export class PluginService {
     private readonly keywords: PluginKeywordsService,
   ) {}
 
+  /**
+   * 获取所有插件列表
+   * @returns 插件实体数组（按 updatedAt 倒序）
+   */
   async list(): Promise<PluginEntity[]> {
     return this.repo.find({ order: { updatedAt: 'DESC' } });
   }
 
+  /**
+   * 根据 ID 获取插件
+   * @param id 插件主键
+   * @returns 找到则返回实体，否则返回 null
+   */
   async get(id: number): Promise<PluginEntity | null> {
     return this.repo.findOne({ where: { id } });
   }
 
+  /**
+   * 删除插件
+   * @param id 插件主键
+   */
   async delete(id: number): Promise<void> {
     await this.repo.delete({ id });
   }
@@ -69,6 +87,12 @@ export class PluginService {
     }
   }
 
+  /**
+   * 更新插件的可变字段
+   * @param id 插件主键
+   * @param updates 需要更新的字段（局部）
+   * @returns 更新后的实体
+   */
   async update(
     id: number,
     updates: Partial<PluginEntity>,
@@ -85,6 +109,9 @@ export class PluginService {
 
   /**
    * 从目录加载 plugin.conf.ts（TS 文件），使用 TypeScript 在运行时转译并以 data:URL 的方式动态导入
+   * @param dir 插件目录（相对或绝对路径）
+   * @returns 解析后的 PluginConfig
+   * @throws 当找不到配置或导出不符合约定时抛出错误
    */
   private async loadConfig(dir: string): Promise<PluginConfig> {
     const confPathTs = path.isAbsolute(dir)
