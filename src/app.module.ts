@@ -8,6 +8,7 @@ import { AICoreModule } from './core/ai/ai-core.module';
 import { TipModule } from './core/tip/tip.module';
 import { RedisModule } from './redis/redis.module';
 import { PluginModule } from './core/plugin/plugin.module';
+import { PromptModule } from './core/prompt/prompt.module';
 // 直接从具体配置文件导入，避免 Barrel 导出解析异常
 import {
   loadDatabaseConfigFromEnv,
@@ -65,6 +66,7 @@ import type { DatabaseConfig } from './config/types';
       // 可选配置：rootDir 默认指向 src/core；includePatterns 默认 ['**/*.tip']
       // rootDir: join(process.cwd(), 'src', 'core'),
     }),
+    PromptModule.forRoot({ isGlobal: true }),
     RedisModule,
     PluginModule,
   ],

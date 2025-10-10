@@ -1,0 +1,15 @@
+Prompt 模块
+用途：
+- 为一段 Prompt 模版提供数据渲染能力（支持 JS 模版语法 `${expr}`）。
+- 支持数组渲染、传值渲染、函数渲染（白名单函数）。
+- 提供严格的 JSON-only 提示能力：在需要时强制输出可解析的 JSON。
+
+约定：
+1. 模版采用普通字符串，内部使用 `${...}` 表达式占位。
+2. 表达式通过受限求值器在安全沙箱中解析，可访问传入的数据（data）与已注册的帮助函数（helpers）。
+3. 数组渲染可通过 helpers.renderList(list, itemTemplate) 实现，itemTemplate 内部同样使用 `${...}` 语法并可访问 `item` 与 `index`。
+4. JSON-only 输出通过 PromptService.renderToJson(...) 提供，若渲染结果不可被 JSON.parse 则抛出错误。
+
+注意：
+- 出于安全考虑，表达式中禁止出现高风险标识符（this/global/process/require/Function/constructor/eval/class/import 等）。
+- 若需扩展函数渲染，请通过 PromptService.registerHelper(name, fn) 注册到白名单。

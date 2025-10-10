@@ -10,7 +10,6 @@ import { BaseAuditedEntity } from '../../ai/entities/base.entity';
 @Unique('UQ_PLUGIN_NAME_VERSION', ['name', 'version'])
 export class PluginEntity extends BaseAuditedEntity {
   /** 主键 ID（UUID v7，继承自 BaseAudititedEntity {
-  /** 主键 ID（UUID v7，继承自 BaseAuditedEntity） */
   // id: string; // 由基类提供
 
   /** 插件名称（带索引，便于查询与统计） */
@@ -26,7 +25,6 @@ export class PluginEntity extends BaseAuditedEntity {
   @Column({ type: 'text' })
   description!: string;
 
-  // hooks 以 JSON 字符串形式存储（数组：{ name, payloadDescription }）
   /** hooks 以 JSON 字符串形式存储（数组：{ name, payloadDescription }） */
   @Column({ type: 'text' })
   hooks!: string;
@@ -40,12 +38,10 @@ export class PluginEntity extends BaseAuditedEntity {
   @Column({ name: 'keywords_en', type: 'text', nullable: true })
   keywordsEn?: string | null;
 
-  // 插件目录位置（相对项目根，例如 plugins/customer-analytics）
   /** 插件目录位置（相对项目根，例如 plugins/customer-analytics） */
   @Column({ name: 'plugin_dir', type: 'varchar', length: 512 })
   pluginDir!: string;
 
-  // 注册标识：true 表示已录入（不通过自动扫描）
   /** 注册标识：true 表示已录入（非自动扫描） */
   @Column({ type: 'boolean', default: true })
   registered!: boolean;
