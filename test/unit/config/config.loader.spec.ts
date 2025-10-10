@@ -1,7 +1,7 @@
-import { loadDatabaseConfigFromEnv } from '../src/config/database.config';
-import { loadAIConfigFromEnv } from '../src/config/ai.config';
-import { loadLoggingConfigFromEnv } from '../src/config/logging.config';
-import { loadHookBusConfigFromEnv } from '../src/config/hookbus.config';
+import { loadDatabaseConfigFromEnv } from '../../../src/config/database.config';
+import { loadAIConfigFromEnv } from '../../../src/config/ai.config';
+import { loadLoggingConfigFromEnv } from '../../../src/config/logging.config';
+import { loadHookBusConfigFromEnv } from '../../../src/config/hookbus.config';
 
 describe('Config loaders', () => {
   const envBackup = { ...process.env };

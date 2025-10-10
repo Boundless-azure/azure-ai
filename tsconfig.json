@@ -31,9 +31,17 @@
     /* 输出目录 */
     "outDir": "./dist",
     "baseUrl": "./",
+    "paths": {
+      "@/*": ["src/*"],
+      "@core/*": ["src/core/*"],
+      "@plugin/*": ["plugins/*"]
+    },
 
     /* 类型支持 */
     "types": ["node", "jest"]
+  },
+  "ts-node": {
+    "require": ["tsconfig-paths/register"]
   },
   "include": ["src/**/*", "test/**/*.ts", "plugins/**/*"],
   "exclude": ["node_modules", "dist"]

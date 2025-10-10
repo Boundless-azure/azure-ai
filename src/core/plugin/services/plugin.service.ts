@@ -4,6 +4,9 @@ import { Repository } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
+import * as os from 'os';
+import { createHash } from 'crypto';
+import { pathToFileURL } from 'url';
 import { PluginEntity } from '../entities/plugin.entity';
 import { PluginKeywordsService } from './plugin.keywords.service';
 import { PluginConfig, validatePluginConfig } from '../types';
@@ -36,7 +39,7 @@ export class PluginService {
    * @param id 插件主键
    * @returns 找到则返回实体，否则返回 null
    */
-  async get(id: number): Promise<PluginEntity | null> {
+  async get(id: string): Promise<PluginEntity | null> {
     return this.repo.findOne({ where: { id } });
   }
 
@@ -44,7 +47,7 @@ export class PluginService {
    * 删除插件
    * @param id 插件主键
    */
-  async delete(id: number): Promise<void> {
+  async delete(id: string): Promise<void> {
     await this.repo.delete({ id });
   }
 
@@ -78,10 +81,13 @@ export class PluginService {
       this.logger.log(`Updated plugin: ${conf.name}@${conf.version}`);
       return saved;
     } else {
-      const created = await this.repo.save({
-        ...entityData,
-        createdAt: new Date(),
-      } as PluginEntity);
+      // 新增插件：使用 insert 让数据库通过 DEFAULT(UUID()) 生成主键
+      const instance = Object.assign(new PluginEntity(), entityData);
+      await this.repo.insert(instance);
+      const created = await this.repo.findOne({
+        where: { name: conf.name, version: conf.version },
+      });
+      if (!created) throw new Error('Plugin insert failed');
       this.logger.log(`Registered plugin: ${conf.name}@${conf.version}`);
       return created;
     }
@@ -94,7 +100,7 @@ export class PluginService {
    * @returns 更新后的实体
    */
   async update(
-    id: number,
+    id: string,
     updates: Partial<PluginEntity>,
   ): Promise<PluginEntity> {
     const existing = await this.get(id);
@@ -124,7 +130,8 @@ export class PluginService {
     const transpiled = ts.transpileModule(source, {
       compilerOptions: {
         target: ts.ScriptTarget.ES2019,
-        module: ts.ModuleKind.ESNext,
+        // Use CommonJS to allow loading via require() in Jest/Node
+        module: ts.ModuleKind.CommonJS,
         esModuleInterop: true,
         moduleResolution: ts.ModuleResolutionKind.NodeJs,
         skipLibCheck: true,
@@ -134,14 +141,32 @@ export class PluginService {
     });
 
     const code = transpiled.outputText;
-    const dataUrl =
-      'data:text/javascript;base64,' +
-      Buffer.from(code, 'utf-8').toString('base64');
-    const mod: unknown = await import(dataUrl);
+    // Write transpiled code to a temporary .cjs file to avoid Jest resolver issues with data: URLs
+    const hash = createHash('sha1')
+      .update(confPathTs + source)
+      .digest('hex')
+      .slice(0, 8);
+    const tempFile = path.join(
+      os.tmpdir(),
+      `azureai-plugin-conf-${hash}-${Date.now()}.cjs`,
+    );
+    fs.writeFileSync(tempFile, code, 'utf-8');
+
+    // Use dynamic import for better ESM/CJS interop and to satisfy eslint no-require-imports
+    const mod: unknown = await import(pathToFileURL(tempFile).href);
+    // Clean up temp file best-effort
+    try {
+      fs.unlinkSync(tempFile);
+    } catch (e: any) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      this.logger.warn(`Failed to delete temp file ${tempFile}: ${e.message}`);
+    }
+
     let confUnknown: unknown;
     if (mod && typeof mod === 'object') {
       const rec = mod as Record<string, unknown>;
-      confUnknown = rec.default ?? rec.pluginConfig;
+      // Support both CommonJS default export and named export
+      confUnknown = rec.default ?? rec.pluginConfig ?? mod;
     }
     if (!confUnknown || typeof confUnknown !== 'object') {
       throw new Error('plugin.conf.ts must export default PluginConfig');

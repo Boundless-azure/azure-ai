@@ -1,9 +1,10 @@
+import 'dotenv/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { Server as NetServer } from 'net';
-import { AppModule } from './../src/app.module';
-import { AIModelService } from '../src/core/ai/services/ai-model.service';
+import { AppModule } from '../../../src/app.module';
+import { AIModelService } from '../../../src/core/ai/services/ai-model.service';
 import * as fs from 'fs';
 import * as path from 'path';
 

@@ -1,8 +1,9 @@
+import 'dotenv/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import { TipGeneratorService } from '../src/core/tip/tip.generator';
-import type { TipGenerateResult } from '../src/core/tip/tip.types';
-import { AIModelService } from '../src/core/ai/services/ai-model.service';
-import { AppModule } from '../src/app.module';
+import { TipGeneratorService } from '../../../src/core/tip';
+import type { TipGenerateResult } from '../../../src/core/tip';
+import { AIModelService } from '../../../src/core/ai/services/ai-model.service';
+import { AppModule } from '../../../src/app.module';
 import * as fs from 'fs';
 import * as path from 'path';
 

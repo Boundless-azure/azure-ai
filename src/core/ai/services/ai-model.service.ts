@@ -45,6 +45,8 @@ import type { AIConfig } from '../../../config/types';
 export class AIModelService implements OnModuleInit {
   private readonly logger = new Logger(AIModelService.name);
   private modelInstances = new Map<string, BaseChatModel>();
+  // Ensure proxy is applied even if Nest lifecycle hooks are not triggered
+  private static proxyConfigured = false;
 
   constructor(
     @InjectRepository(AIModelEntity)
@@ -52,11 +54,21 @@ export class AIModelService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // Apply proxy configuration from environment before initializing models
-    applyAIProxyFromEnv(this.logger);
-    // Ensure fetch and undici use proxy globally
-    applyAIProxyFetchOverride(this.logger);
+    // Apply proxy configuration via lifecycle hook
+    this.ensureProxyConfigured();
     await this.initializeModels();
+  }
+
+  /**
+   * Fallback proxy configuration to cover scenarios where onModuleInit is not called
+   * (e.g., direct service usage in tests without full Nest application bootstrap).
+   */
+  private ensureProxyConfigured(): void {
+    if (!AIModelService.proxyConfigured) {
+      applyAIProxyFromEnv(this.logger);
+      applyAIProxyFetchOverride(this.logger);
+      AIModelService.proxyConfigured = true;
+    }
   }
 
   /**
@@ -191,6 +203,8 @@ export class AIModelService implements OnModuleInit {
     const startTime = Date.now();
 
     try {
+      // Ensure proxy is applied in case lifecycle hook didn't run
+      this.ensureProxyConfigured();
       const model = await this.getModelInstance(request.modelId);
       const messages = this.convertToLangChainMessages(request.messages);
 
@@ -249,6 +263,8 @@ export class AIModelService implements OnModuleInit {
     const startTime = Date.now();
 
     try {
+      // Ensure proxy is applied in case lifecycle hook didn't run
+      this.ensureProxyConfigured();
       const model = await this.getModelInstance(request.modelId);
       const messages = this.convertToLangChainMessages(request.messages);
 

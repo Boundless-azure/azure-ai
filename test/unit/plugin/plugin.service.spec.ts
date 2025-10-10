@@ -1,17 +1,17 @@
-import { PluginService } from '../src/core/plugin/plugin.service';
-import type { PluginConfig } from '../src/core/plugin/types';
-import type { PluginEntity } from '../src/core/plugin/plugin.entity';
+import { PluginService } from '../../../src/core/plugin/services/plugin.service';
+import type { PluginConfig } from '../../../src/core/plugin/types';
+import { PluginEntity } from '../../../src/core/plugin/entities/plugin.entity';
 import type { Repository } from 'typeorm';
-import type { PluginKeywordsService } from '../src/core/plugin/plugin.keywords.service';
+import type { PluginKeywordsService } from '../../../src/core/plugin/services/plugin.keywords.service';
 
 type FindOneMock = jest.Mock<
   Promise<PluginEntity | null>,
-  [{ where: { name?: string; version?: string; id?: number } }]
+  [{ where: { name?: string; version?: string; id?: string } }]
 >;
-type SaveMock = jest.Mock<Promise<PluginEntity>, [Partial<PluginEntity>]>;
+type InsertMock = jest.Mock<Promise<unknown>, [PluginEntity]>;
 interface PluginRepo {
   findOne: FindOneMock;
-  save: SaveMock;
+  insert: InsertMock;
 }
 
 type GenerateKeywordsMock = jest.Mock<
@@ -28,7 +28,10 @@ describe('PluginService', () => {
       ReturnType<FindOneMock>,
       Parameters<FindOneMock>
     >() as FindOneMock,
-    save: jest.fn<ReturnType<SaveMock>, Parameters<SaveMock>>() as SaveMock,
+    insert: jest.fn<
+      ReturnType<InsertMock>,
+      Parameters<InsertMock>
+    >() as InsertMock,
   };
   const keywords: KeywordsGen = {
     generateKeywords: jest.fn<
@@ -66,24 +69,37 @@ describe('PluginService', () => {
     );
     spyLoad.mockResolvedValue(config);
 
-    repo.findOne.mockResolvedValue(null);
+    // First call: check existing -> null, Second call: fetch created -> returns entity
+    repo.findOne.mockResolvedValueOnce(null);
     keywords.generateKeywords.mockResolvedValue({
       zh: ['客户', '注册'],
       en: ['customer', 'signup'],
     });
-    repo.save.mockImplementation((entity: Partial<PluginEntity>) =>
-      Promise.resolve({
-        ...(entity as PluginEntity),
-        id: (entity as PluginEntity).id ?? 1,
-      }),
-    );
+    repo.insert.mockResolvedValue(Promise.resolve({}));
+
+    const createdEntity = Object.assign(new PluginEntity(), {
+      id: 'mock-id-uuid',
+      name: config.name,
+      version: config.version,
+      description: config.description,
+      hooks: JSON.stringify(config.hooks),
+      keywordsZh: '客户, 注册',
+      keywordsEn: 'customer, signup',
+      pluginDir: 'plugins/customer-analytics',
+      registered: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      isDelete: false,
+      deletedAt: null,
+    } as Partial<PluginEntity>);
+    repo.findOne.mockResolvedValueOnce(createdEntity);
 
     const pluginDir = 'plugins/customer-analytics';
     const saved = await service.registerByDir(pluginDir);
 
     expect(repo.findOne).toHaveBeenCalled();
     expect(keywords.generateKeywords).toHaveBeenCalled();
-    expect(repo.save).toHaveBeenCalled();
+    expect(repo.insert).toHaveBeenCalled();
 
     // Verify critical fields
     expect(saved.pluginDir).toBe(pluginDir);

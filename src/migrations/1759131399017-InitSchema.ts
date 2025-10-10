@@ -12,7 +12,7 @@ export class InitSchema1759131399017 implements MigrationInterface {
     // 创建 AI 模型表
     await queryRunner.query(`
             CREATE TABLE IF NOT EXISTS \`ai_models\` (
-                \`id\` CHAR(36) NOT NULL PRIMARY KEY,
+                \`id\` CHAR(36) NOT NULL PRIMARY KEY DEFAULT (UUID()),
                 \`name\` VARCHAR(100) NOT NULL,
                 \`displayName\` VARCHAR(200),
                 \`provider\` ENUM('openai','azure-openai','anthropic','google','gemini','deepseek') NOT NULL,
@@ -42,7 +42,7 @@ export class InitSchema1759131399017 implements MigrationInterface {
     // 创建 Prompt 模板表
     await queryRunner.query(`
             CREATE TABLE IF NOT EXISTS \`prompt_templates\` (
-                \`id\` CHAR(36) NOT NULL PRIMARY KEY,
+                \`id\` CHAR(36) NOT NULL PRIMARY KEY DEFAULT (UUID()),
                 \`name\` VARCHAR(100) NOT NULL,
                 \`template\` TEXT NOT NULL,
                 \`variables\` JSON NOT NULL,
@@ -66,7 +66,7 @@ export class InitSchema1759131399017 implements MigrationInterface {
     // 创建聊天会话表
     await queryRunner.query(`
             CREATE TABLE IF NOT EXISTS \`chat_sessions\` (
-                \`id\` CHAR(36) NOT NULL PRIMARY KEY,
+                \`id\` CHAR(36) NOT NULL PRIMARY KEY DEFAULT (UUID()),
                 \`session_id\` VARCHAR(100) NOT NULL,
                 \`user_id\` VARCHAR(100),
                 \`messages\` JSON NOT NULL,

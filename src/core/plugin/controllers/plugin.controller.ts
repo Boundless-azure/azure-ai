@@ -39,7 +39,7 @@ export class PluginController {
    * @returns 找到则返回 PluginEntity，否则返回 null
    */
   async get(@Param('id') id: string): Promise<PluginEntity | null> {
-    return this.service.get(Number(id));
+    return this.service.get(id);
   }
 
   @Post('register')
@@ -57,7 +57,7 @@ export class PluginController {
   @Put(':id')
   /**
    * 更新插件的可变字段
-   * @param id 插件 ID（字符串形式，会被转换为数字）
+   * @param id 插件 ID（字符串形式）
    * @param body 局部更新的字段（例如 description、keywords 等）
    * @returns 更新后的实体
    */
@@ -65,15 +65,15 @@ export class PluginController {
     @Param('id') id: string,
     @Body() body: Partial<PluginEntity>,
   ): Promise<PluginEntity> {
-    return this.service.update(Number(id), body);
+    return this.service.update(id, body);
   }
 
   @Delete(':id')
   /**
    * 删除插件
-   * @param id 插件 ID（字符串形式，会被转换为数字）
+   * @param id 插件 ID（字符串形式）
    */
   async delete(@Param('id') id: string): Promise<void> {
-    return this.service.delete(Number(id));
+    return this.service.delete(id);
   }
 }

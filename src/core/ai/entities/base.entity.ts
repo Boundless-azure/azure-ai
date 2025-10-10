@@ -4,7 +4,6 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
-  BeforeInsert,
 } from 'typeorm';
 import { v7 as uuidv7 } from 'uuid';
 
@@ -17,15 +16,8 @@ import { v7 as uuidv7 } from 'uuid';
  */
 export abstract class BaseAuditedEntity {
   // 应用侧生成 UUID v7，数据库不设置默认值，避免 MySQL 对 DEFAULT 函数的限制
-  @PrimaryColumn({ type: 'char', length: 36 })
+  @PrimaryColumn({ type: 'char', length: 36, default: uuidv7 })
   id!: string;
-
-  @BeforeInsert()
-  private setIdIfMissing() {
-    if (!this.id) {
-      this.id = uuidv7();
-    }
-  }
 
   @Column({ name: 'created_user', type: 'char', length: 36, nullable: true })
   createdUser!: string;

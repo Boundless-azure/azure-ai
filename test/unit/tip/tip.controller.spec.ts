@@ -1,11 +1,12 @@
+import 'dotenv/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import { TipController } from '../src/core/tip/tip.controller';
+import { TipController } from '../../../src/core/tip';
 import type {
   TipGenerateOptions,
   TipGenerateResult,
-} from '../src/core/tip/tip.types';
-import { AIModelService } from '../src/core/ai/services/ai-model.service';
-import { AppModule } from '../src/app.module';
+} from '../../../src/core/tip';
+import { AIModelService } from '../../../src/core/ai/services/ai-model.service';
+import { AppModule } from '../../../src/app.module';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -52,7 +53,7 @@ describe('TipController (real AI, no mocks)', () => {
 
     expect(res).toBeTruthy();
     expect('error' in res).toBe(false);
-    const tipRes = res as TipGenerateResult;
+    const tipRes: TipGenerateResult = res;
     expect(tipRes.content).toContain('文件列表（File List）');
     expect(tipRes.content).toContain('函数索引（Function Index）');
     expect(tipRes.content).toContain('#problems_and_diagnostics');
@@ -60,7 +61,9 @@ describe('TipController (real AI, no mocks)', () => {
 
   it('POST /tip/generate should return error for missing dir', async () => {
     const res = await controller.generate({} as unknown as TipGenerateOptions);
-    expect(res).toEqual({ error: 'Missing field: dir' });
+    // After controller refactor, errors conform to TipGenerateResult shape
+    // (may include additional fields like outputPath/content). Use partial match.
+    expect(res).toMatchObject({ error: 'Missing field: dir' });
   });
 
   it('POST /tip/generate should write module.tip when writeToFile=true', async () => {

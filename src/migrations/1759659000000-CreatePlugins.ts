@@ -14,10 +14,11 @@ export class CreatePlugins1759659000000 implements MigrationInterface {
         columns: [
           {
             name: 'id',
-            type: 'int',
+            type: 'char',
+            length: '36',
             isPrimary: true,
-            isGenerated: true,
-            generationStrategy: 'increment',
+            // MySQL 8.0+ 支持表达式默认值，这里设置为 UUID()
+            default: '(UUID())',
           },
           { name: 'name', type: 'varchar', length: '255', isNullable: false },
           { name: 'version', type: 'varchar', length: '64', isNullable: false },
@@ -33,15 +34,35 @@ export class CreatePlugins1759659000000 implements MigrationInterface {
           },
           { name: 'registered', type: 'boolean', default: true },
           {
+            name: 'created_user',
+            type: 'char',
+            length: '36',
+            isNullable: true,
+          },
+          { name: 'update_user', type: 'char', length: '36', isNullable: true },
+          {
+            name: 'channel_id',
+            type: 'varchar',
+            length: '100',
+            isNullable: true,
+          },
+          { name: 'is_delete', type: 'boolean', default: false },
+          {
             name: 'created_at',
-            type: 'datetime',
+            type: 'timestamp',
             default: 'CURRENT_TIMESTAMP',
           },
           {
             name: 'updated_at',
-            type: 'datetime',
+            type: 'timestamp',
             default: 'CURRENT_TIMESTAMP',
             onUpdate: 'CURRENT_TIMESTAMP',
+          },
+          {
+            name: 'deleted_at',
+            type: 'timestamp',
+            isNullable: true,
+            default: null,
           },
         ],
         uniques: [
@@ -52,6 +73,14 @@ export class CreatePlugins1759659000000 implements MigrationInterface {
         ],
         indices: [
           new TableIndex({ name: 'IDX_PLUGIN_NAME', columnNames: ['name'] }),
+          new TableIndex({
+            name: 'idx_plugins_is_delete',
+            columnNames: ['is_delete'],
+          }),
+          new TableIndex({
+            name: 'idx_plugins_channel_id',
+            columnNames: ['channel_id'],
+          }),
         ],
       }),
       true,

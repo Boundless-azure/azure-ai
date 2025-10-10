@@ -1,12 +1,5 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  Index,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
-  Unique,
-} from 'typeorm';
+import { Column, Entity, Index, Unique } from 'typeorm';
+import { BaseAuditedEntity } from '../../ai/entities/base.entity';
 
 /**
  * 插件实体（TypeORM）
@@ -15,10 +8,10 @@ import {
  */
 @Entity('plugins')
 @Unique('UQ_PLUGIN_NAME_VERSION', ['name', 'version'])
-export class PluginEntity {
-  /** 主键 ID */
-  @PrimaryGeneratedColumn()
-  id!: number;
+export class PluginEntity extends BaseAuditedEntity {
+  /** 主键 ID（UUID v7，继承自 BaseAudititedEntity {
+  /** 主键 ID（UUID v7，继承自 BaseAuditedEntity） */
+  // id: string; // 由基类提供
 
   /** 插件名称（带索引，便于查询与统计） */
   @Column({ type: 'varchar', length: 255 })
@@ -57,11 +50,6 @@ export class PluginEntity {
   @Column({ type: 'boolean', default: true })
   registered!: boolean;
 
-  /** 创建时间 */
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt!: Date;
-
-  /** 更新时间 */
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt!: Date;
+  // 审计与软删除字段由 BaseAuditedEntity 提供：
+  // createdUser, updateUser, channelId, isDelete, createdAt, updatedAt, deletedAt
 }
