@@ -1,91 +1,89 @@
-# Project Overview (Multilingual README · English)
+# Xiaolan (Project Overview · English)
 
-Language switch: [English](/docs/readme/README.en.md) · [Deutsch](/docs/readme/README.de.md) · [中文](/docs/readme/README.zh-CN.md)
+ Language switch: [English](/docs/readme/README.en.md) · [Deutsch](/docs/readme/README.de.md) · [中文](/docs/readme/README.zh-CN.md) · [עברית](/docs/readme/README.he.md) · [ไทย](/docs/readme/README.th.md) · [Deutsch (Österreich)](/docs/readme/README.de-AT.md)
 
-This repository provides a pragmatic AI conversation and function-call platform. The focus is on clear semantics, easy extension, and controllability. We aim to ship useful capabilities first, in a way that’s straightforward to use and adapt.
+## Positioning & Goals
 
-## What’s implemented
+1. The project is called “Xiaolan”.
+2. A next‑gen interaction entrypoint: replace the old click‑heavy web model with AI. Users manage UIs or data via natural language.
+3. Self‑growth capability: AI generates code plugins that are fed back into the platform, forming a continuously growing capability loop.
+4. Generation constraints + a transaction bus (HookBus): ensure AI outputs low‑dependency, low‑nesting, enterprise‑ready code that’s controlled and auditable.
+5. A front‑end component execution spec for AI: AI can directly drive UI components in a predictable, traceable way.
 
-- Conversation with non-streaming and streaming responses
-  - Non-streaming: `ConversationService.chat()`
-  - Streaming (SSE-like): `ConversationService.chatStream()`
+## Current progress (What works now)
 
-- Native function-call integration via service-provided handles
-  - Descriptions live under `core/function-call/descriptions`; each service exposes `getHandle()` with `description/validate/execute`.
-  - The conversation layer injects `toolDescriptions` into the model request based on which services are enabled.
+- Conversation and streaming
+  - Non‑streaming: `ConversationService.chat()`
+  - Streaming (SSE‑like): `ConversationService.chatStream()`
 
-- Function-call services
+- Native function‑call via service handles
+  - Descriptions under `src/core/function-call/descriptions/`; each service exports `getHandle()` with `description/validate/execute`.
+  - The conversation layer injects `toolDescriptions` based on enabled services (native model function‑call).
+
+- Available function‑call services
   - `PluginOrchestratorService` → function: `plugin_orchestrate`
-    - Entry point for “plan first, generate later” plugin orchestration.
-    - The model only provides `input`; the system enriches `phase/modelId/temperature` automatically.
+    - “Plan first, generate later” entrypoint for plugin orchestration.
+    - The model only provides `input`; the system enriches `phase/modelId/temperature`.
   - `MysqlReadonlyService` → function: `db_mysql_select`
-    - Read-only queries. Validation rules: `params` must be an array of primitive values (string/number/boolean/null) and `limit` is required. Output is normalized to `Record<string, unknown>[]`.
+    - Read‑only queries. Validation: `params` must be an array of primitive values (string/number/boolean/null) and `limit` is required. Output: `Record<string, unknown>[]`.
   - `ContextFunctionService` → function: `context_window_keyword`
     - Alias supported: `context_keyword_window`.
 
-- Service-based function registration switch (preferred)
+- Service‑based registration switch (recommended)
   - Configure at `src/app/conversation/conversation.module.ts`.
-  - Example: enable only MySQL read-only querying
+  - Example: enable only MySQL read‑only
+    - `includeFunctionServices: [MysqlReadonlyService]`
 
-  ```ts
-  import { AICoreModule } from '@core/ai';
-  import { MysqlReadonlyService } from '@core/function-call';
+- Execution flow (`ConversationService`)
+  - Resolve by name (with alias), run `validate`, then `execute`.
+  - Special case: `plugin_orchestrate` → system enriches parameters; model provides only `input`.
 
-  @Module({
-    imports: [
-      AICoreModule.forRoot({
-        includeFunctionServices: [MysqlReadonlyService],
-      }),
-    ],
-  })
-  export class ConversationModule {}
-  ```
+- Quality & collaboration
+  - ESLint configured to ignore underscore‑prefixed unused vars; helpful in function‑call contexts.
+  - Module tips: `src/core/function-call/module.tip`.
 
-- Execution flow in the conversation layer
-  - Resolve the function by name (with alias fallback), run `validate`, then `execute`.
-  - Special case for `plugin_orchestrate`: the system enriches `phase/modelId/temperature` so the model only needs to provide `input`.
+## Front‑end component AI execution spec (overview)
 
-- Helpful code and docs
-  - Module tips: `src/core/function-call/module.tip`
-  - Function-call module: `src/core/function-call/function-call.module.ts`
-  - Function descriptions: `src/core/function-call/descriptions/`
-  - Conversation service: `src/app/conversation/services/conversation.service.ts`
-  - Conversation module: `src/app/conversation/conversation.module.ts`
-  - AI module options (with `includeFunctionServices`): `src/core/ai/types/module.types.ts`
+- Action naming: stable, replayable, e.g., `openModal` / `updateTable` / `navigate`.
+- Parameter validation: typed, required fields defined; reject unaudited side‑effect params.
+- Idempotency: repeated actions won’t diverge state; support transactional rollback.
+- Timeout & retry: each execution has timeout, retry, and fallback.
+- Security & audit: every run is logged with context snapshots.
+- Transaction bus (HookBus): unify front/back actions on the bus to guarantee order & consistency.
 
 ## Roadmap / What’s next
 
-- Direct database statement execution (write operations)
-  - A secure SQL execution entrypoint with whitelisting, placeholder checks, and sensitive operation isolation.
-  - Integrated with permission management for tenant/role-based controls and audit trails.
+- Direct DB statement execution (writes)
+  - Secure SQL entrypoint: whitelisting, placeholder checks, sensitive operation isolation.
+  - Permission integration: role/tenant controls with auditing.
 
-- Database security and permission management
-  - Fine-grained access control at schema/table/column level.
-  - Auditing and risk control with alerting and rollback strategies.
+- DB security & permission management
+  - Fine‑grained controls at schema/table/column level.
+  - Auditing & risk management with alerts and rollback.
 
-- Intelligent plugin generation
-  - Strengthen `plugin_orchestrate` to cover plan → code generation → testing → publish.
-  - Use prompt Tip mechanisms to produce business-semantic plugin scaffolds and configurations.
+- Intelligent plugin generation (strengthen self‑growth)
+  - Plan → generate → test → publish loop.
+  - Generation constraints: control dependency count, versions, licenses; avoid deep nesting.
 
 - Generate pages from existing tables
-  - Auto-generate CRUD screens with routing and permission bindings.
-  - Integrate with HookBus/plugins (e.g., `plugins/customer-analytics`) for easier extension.
+  - Auto CRUD screens with routing & permissions.
+  - Integrate with HookBus/plugins (e.g., `plugins/customer-analytics`).
 
 ## Quick start
 
-1) Install and build
+1) Install & build
 
 ```bash
 npm install
 npm run build
 ```
 
-2) Configure enabled function services (`includeFunctionServices` as shown above)
+2) Configure enabled services (`includeFunctionServices`)
 
-3) Start the dev server (if applicable)
+3) Start dev server (if any)
 
 ```bash
 npm run start:dev
 ```
 
-> Tip: For local DB development, check `docker/mysql/init` and `.env` configs. Prefer `MysqlReadonlyService` during initial integration; enable write operations only after permission and auditing are in place.
+Tip: For local DB dev, check `docker/mysql/init` and `.env`. Prefer `MysqlReadonlyService` initially; enable writes only after permissions and auditing are ready.

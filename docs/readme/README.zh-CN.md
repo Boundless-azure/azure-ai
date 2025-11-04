@@ -1,7 +1,6 @@
 # 小蓝（项目概览 · 中文）
 
-语言版本：[
-English](/docs/readme/README.en.md) · [Deutsch](/docs/readme/README.de.md) · [中文](/docs/readme/README.zh-CN.md)
+语言切换：[中文](/docs/readme/README.zh-CN.md) · [English](/docs/readme/README.en.md) · [Deutsch](/docs/readme/README.de.md) · [Deutsch (Österreich)](/docs/readme/README.de-AT.md) · [עברית](/docs/readme/README.he.md) · [ไทย](/docs/readme/README.th.md)
 
 ## 定位与目标
 
