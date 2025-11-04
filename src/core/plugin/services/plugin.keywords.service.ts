@@ -103,13 +103,14 @@ ${enPrompt}`;
       const obj: unknown = JSON.parse(content);
       let zh: string[] = [];
       let en: string[] = [];
-      if (obj && typeof obj === 'object') {
-        const rec = obj as Record<string, unknown>;
-        if (Array.isArray(rec.zh)) {
-          zh = rec.zh.map((v) => String(v));
+      if (isObject(obj)) {
+        const zhVal = obj['zh'];
+        const enVal = obj['en'];
+        if (Array.isArray(zhVal)) {
+          zh = zhVal.map((v) => String(v));
         }
-        if (Array.isArray(rec.en)) {
-          en = rec.en.map((v) => String(v));
+        if (Array.isArray(enVal)) {
+          en = enVal.map((v) => String(v));
         }
       }
       return { zh: this.normalize(zh), en: this.normalize(en) };
@@ -273,4 +274,9 @@ ${enPrompt}`;
   private isQuote(ch: string): ch is '"' | "'" {
     return ch === '"' || ch === "'";
   }
+}
+
+// 顶层对象类型守卫（避免使用类型断言）
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
 }

@@ -9,6 +9,7 @@ import { TipModule } from './core/tip/tip.module';
 import { RedisModule } from './redis/redis.module';
 import { PluginModule } from './core/plugin/plugin.module';
 import { PromptModule } from './core/prompt/prompt.module';
+import { ConversationModule } from '@/app/conversation/conversation.module';
 // 直接从具体配置文件导入，避免 Barrel 导出解析异常
 import {
   loadDatabaseConfigFromEnv,
@@ -60,6 +61,8 @@ import type { DatabaseConfig } from './config/types';
         maxMessages: 100,
         maxContextAge: 3600000, // 1小时
         cleanupInterval: 300000, // 5分钟
+        // 限制分析窗口大小，避免长上下文：仅取最近N条消息
+        analysisWindowSize: 5,
       },
     }),
     TipModule.forRoot({
@@ -69,6 +72,7 @@ import type { DatabaseConfig } from './config/types';
     PromptModule.forRoot({ isGlobal: true }),
     RedisModule,
     PluginModule,
+    ConversationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

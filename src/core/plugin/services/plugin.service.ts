@@ -157,20 +157,32 @@ export class PluginService {
     // Clean up temp file best-effort
     try {
       fs.unlinkSync(tempFile);
-    } catch (e: any) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      this.logger.warn(`Failed to delete temp file ${tempFile}: ${e.message}`);
+    } catch (e: unknown) {
+      const msgVal = isObject(e) ? e['message'] : undefined;
+      const msg = typeof msgVal === 'string' ? msgVal : String(e);
+      this.logger.warn(`Failed to delete temp file ${tempFile}: ${msg}`);
     }
 
     let confUnknown: unknown;
-    if (mod && typeof mod === 'object') {
-      const rec = mod as Record<string, unknown>;
+    if (isObject(mod)) {
+      const rec = mod;
       // Support both CommonJS default export and named export
-      confUnknown = rec.default ?? rec.pluginConfig ?? mod;
+      confUnknown = rec['default'] ?? rec['pluginConfig'] ?? mod;
     }
-    if (!confUnknown || typeof confUnknown !== 'object') {
+    if (!isPartialPluginConfig(confUnknown)) {
       throw new Error('plugin.conf.ts must export default PluginConfig');
     }
-    return confUnknown as PluginConfig;
+    validatePluginConfig(confUnknown);
+    return confUnknown;
   }
+}
+
+// 简单对象判定（顶层辅助函数）
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
+}
+
+// 将 unknown 收窄为 Partial<PluginConfig>，便于传入 validatePluginConfig
+function isPartialPluginConfig(v: unknown): v is Partial<PluginConfig> {
+  return typeof v === 'object' && v !== null;
 }

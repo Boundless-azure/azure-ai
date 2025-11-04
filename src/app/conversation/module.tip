@@ -1,0 +1,62 @@
+模块名称：app/conversation（对话模块）
+
+目标
+- 提供标准与流式（SSE 风格）AI 对话接口：
+  - POST /conversation/chat（支持流式，返回 data: <json>\n\n 分片）
+  - POST /conversation/sessions（创建新会话）
+  - GET  /conversation/sessions/:sessionId/history（会话历史）
+
+文件结构
+- controllers/conversation.controller.ts：对外 REST 接口（标准/流式）
+- services/conversation.service.ts：对话业务逻辑、AI 调用、function-call 执行
+- types/conversation.types.ts：类型声明与运行时守卫（type guards）
+- module.tip：模块说明与规范
+
+类型与守卫（types/conversation.types.ts）
+- 类型：
+  - ChatRequest / ChatResponse / StreamChunk
+  - CreateSessionRequest / CreateSessionResponse
+  - GetHistoryRequest / GetHistoryResponse
+  - MessageMetadata / FunctionCall / AIModelResponseWithFunctionCalls
+- 守卫：
+  - isObject / isStringArray
+  - isOrchestratorParams（phase/modelId/input 校验；generate 阶段要求 plan）
+  - isMysqlSelectArgs（sql:string, limit:number, params?:array）
+  - isKeywordWindowArgs（keywords:string[], limit:number, includeSystem?:boolean, matchMode?:'any'|'all'）
+
+流式传输规范（SSE 风格）
+- 响应头：
+  - Content-Type: text/event-stream（建议；当前实现为 text/stream 也可解析）
+  - Cache-Control: no-cache
+  - Connection: keep-alive
+  - Access-Control-Allow-Origin: *
+- 数据格式：按行输出 "data: {json}\n\n"
+  - 正常分片：{ type: 'content', content, sessionId }
+  - 完成标记：{ type: 'done', sessionId }
+  - 错误分片：{ type: 'error', error }
+- 前端读取：
+  - fetch + ReadableStream 逐块解析（POST 接口）
+  - 或新增 GET 接口并使用 EventSource（SSE 标准方案）
+
+注释规范
+- 源码中对外接口/类型/守卫函数均使用 JSDoc 描述用途与关键校验点
+- 对因 ESLint 类型服务误判的成员访问，使用行内精准关闭注释：
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  仅对具体行生效，避免影响其他规则与文件
+
+#problems_and_diagnostics
+诊断清单（Checklist）
+- [x] 类型与守卫集中到 types 目录并加注释
+- [x] controller/service 引用统一使用路径别名（@ / @core）
+- [x] 流式响应按 SSE 语法输出 data: {json}\n\n
+
+常见问题与处理
+- [warning] 前端无法用 EventSource 消费 POST 流
+  - 处理：使用 fetch 读取 ReadableStream，或新增 GET 流式接口
+- [info] ESLint 对成员访问误判为 error typed value
+  - 处理：保持 tsc 通过后，针对具体行添加精准关闭注释
+- [info] 相对路径在目录迁移后断裂
+  - 处理：统一使用路径别名 @ / @core 引入
+
+备注
+- 本文件仅用于目录与规范说明，便于 IDE 与开发者快速了解模块结构；不参与构建。

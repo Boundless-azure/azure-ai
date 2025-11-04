@@ -30,7 +30,17 @@ export default tseslint.config(
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
       '@typescript-eslint/no-unsafe-call': 'off',
-      "@typescript-eslint/no-unsafe-assignment": "off",
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      // 允许以下划线开头的未使用变量/参数/捕获错误，无需报错
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
   // 为测试文件关闭对 Jest 匹配器的误报

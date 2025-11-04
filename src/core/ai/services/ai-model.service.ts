@@ -1,4 +1,10 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere } from 'typeorm';
 import { ChatOpenAI } from '@langchain/openai';
@@ -26,7 +32,9 @@ import {
   // ModelBindParams, // 移除未使用的类型
   ModelParameters,
 } from '../types';
+import type { FunctionCallDescription } from '@core/function-call/descriptions';
 import { AIModelEntity } from '../entities';
+import { ContextService } from './context.service';
 import {
   applyAIProxyFromEnv,
   applyAIProxyFetchOverride,
@@ -51,6 +59,8 @@ export class AIModelService implements OnModuleInit {
   constructor(
     @InjectRepository(AIModelEntity)
     private readonly aiModelRepository: Repository<AIModelEntity>,
+    @Inject(forwardRef(() => ContextService))
+    private readonly contextService: ContextService,
   ) {}
 
   async onModuleInit() {
@@ -208,13 +218,11 @@ export class AIModelService implements OnModuleInit {
       const model = await this.getModelInstance(request.modelId);
       const messages = this.convertToLangChainMessages(request.messages);
 
-      // 每次调用按需构建调用参数，避免使用已弃用的 bind
-      const callOptions = request.params
-        ? this.applyModelParams(model, request.params)
-        : undefined;
+      // 统一初始化调用参数（仅模型参数）
+      const invocationOptions = this.buildInvocationOptions(model, request);
 
-      const response = callOptions
-        ? await model.invoke(messages, callOptions)
+      const response = invocationOptions
+        ? await model.invoke(messages, invocationOptions)
         : await model.invoke(messages);
       const responseTime = Date.now() - startTime;
 
@@ -231,6 +239,8 @@ export class AIModelService implements OnModuleInit {
         responseTime,
         requestId: this.generateRequestId(),
       };
+
+      // 不在此处提取函数调用结构
 
       // 尝试获取token使用信息
       const meta = response.response_metadata;
@@ -255,6 +265,79 @@ export class AIModelService implements OnModuleInit {
   }
 
   /**
+   * 使用会话上下文（滑动窗口）进行聊天调用。
+   * - 当提供 windowSize 时，使用最近 windowSize 条非系统消息；否则使用默认 analysisWindowSize。
+   * - includeSystem=true 时，会在返回的消息数组头部包含系统消息。
+   */
+  async chatWithContext(args: {
+    modelId: string;
+    sessionId: string;
+    windowSize?: number;
+    includeSystem?: boolean;
+    params?: Partial<ModelParameters> & {
+      stream?: boolean;
+      stop?: string[];
+    };
+  }): Promise<AIModelResponse> {
+    const {
+      modelId,
+      sessionId,
+      windowSize,
+      includeSystem = true,
+      params,
+    } = args;
+    const messages =
+      typeof windowSize === 'number' && windowSize > 0
+        ? await this.contextService.getRecentMessages(
+            sessionId,
+            windowSize,
+            includeSystem,
+          )
+        : await this.contextService.getAnalysisWindow(sessionId, includeSystem);
+
+    return this.chat({ modelId, messages, params, sessionId });
+  }
+
+  /**
+   * 使用关键词滑动窗口进行聊天调用（函数调用支持）。
+   * - keywords 由模型通过 function-call 提供；系统据此筛选上下文消息。
+   * - limit 存在时使用对应窗口大小；否则使用默认 analysisWindowSize。
+   * - includeSystem=true 时，会在消息数组头部包含系统消息。
+   */
+  async chatWithKeywordContext(args: {
+    modelId: string;
+    sessionId: string;
+    keywords: string[];
+    limit?: number;
+    includeSystem?: boolean;
+    matchMode?: 'any' | 'all';
+    params?: Partial<ModelParameters> & {
+      stream?: boolean;
+      stop?: string[];
+    };
+  }): Promise<AIModelResponse> {
+    const {
+      modelId,
+      sessionId,
+      keywords,
+      limit,
+      includeSystem = true,
+      matchMode = 'any',
+      params,
+    } = args;
+
+    const messages = await this.contextService.getKeywordContext(
+      sessionId,
+      keywords,
+      includeSystem,
+      limit,
+      matchMode,
+    );
+
+    return this.chat({ modelId, messages, params, sessionId });
+  }
+
+  /**
    * 流式聊天请求
    */
   async *chatStream(
@@ -268,13 +351,11 @@ export class AIModelService implements OnModuleInit {
       const model = await this.getModelInstance(request.modelId);
       const messages = this.convertToLangChainMessages(request.messages);
 
-      // 每次调用按需构建调用参数，避免使用已弃用的 bind
-      const callOptions = request.params
-        ? this.applyModelParams(model, request.params)
-        : undefined;
+      // 统一初始化调用参数（仅模型参数）
+      const invocationOptions = this.buildInvocationOptions(model, request);
 
-      const stream = callOptions
-        ? await model.stream(messages, callOptions)
+      const stream = invocationOptions
+        ? await model.stream(messages, invocationOptions)
         : await model.stream(messages);
       let fullContent = '';
 
@@ -292,12 +373,16 @@ export class AIModelService implements OnModuleInit {
       const responseTime = Date.now() - startTime;
 
       // 返回最终响应
-      return {
+      const aiResponse: AIModelResponse = {
         content: fullContent,
         model: request.modelId,
         responseTime,
         requestId: this.generateRequestId(),
       };
+
+      // 不在此处提取或解析函数调用结构
+
+      return aiResponse;
     } catch (error) {
       this.logger.error(
         `Stream chat failed for model ${request.modelId}`,
@@ -530,6 +615,21 @@ export class AIModelService implements OnModuleInit {
   }
 
   /**
+   * 统一构建调用参数：仅整合模型调用参数。
+   * - 根据提供的 request.params 应用模型调用参数（temperature/topP/maxTokens 等）。
+   * - 不再在此处构建或传递工具/函数调用相关配置；如需启用原生工具绑定，请由上层自行决定并整合。
+   */
+  private buildInvocationOptions(
+    model: BaseChatModel,
+    request: AIModelRequest,
+  ): BaseChatModelCallOptions | undefined {
+    const callOptions = request.params
+      ? this.applyModelParams(model, request.params)
+      : undefined;
+    return callOptions;
+  }
+
+  /**
    * 提取token使用信息
    */
   private extractTokenUsage(
@@ -563,5 +663,63 @@ export class AIModelService implements OnModuleInit {
    */
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+  /**
+   * 将通用的 FunctionCallDescription 转换为各提供商可用的“原生工具调用”配置。
+   * - OpenAI: tools = [{ type: 'function', function: { name, description, parameters } }]
+   * - Anthropic: tools = [{ name, description, input_schema }]
+   * - Gemini/GoogleGenAI: 暂不在此返回 tools（LangChain 当前缺少统一的配置入口）。
+   *
+   * 统一扩展点：如需为其它提供商启用原生工具绑定（例如 Gemini 的 bindTools），
+   * 请在此方法集中新增并维护对应的工具定义转换逻辑，保持返回结构一致，便于上层按需选择是否传入。
+   */
+  private buildProviderToolOptions(
+    model: BaseChatModel,
+    descs: FunctionCallDescription[],
+  ):
+    | {
+        tools: Array<
+          | {
+              type: 'function';
+              function: {
+                name: string;
+                description?: string;
+                parameters?: unknown;
+              };
+            }
+          | {
+              name: string;
+              description?: string;
+              input_schema?: unknown;
+            }
+        >;
+      }
+    | undefined {
+    try {
+      if (model instanceof ChatOpenAI) {
+        const tools = descs.map((d) => ({
+          type: 'function' as const,
+          function: {
+            name: d.name,
+            description: d.description,
+            parameters: d.parameters,
+          },
+        }));
+        return { tools };
+      }
+      if (model instanceof ChatAnthropic) {
+        const tools = descs.map((d) => ({
+          name: d.name,
+          description: d.description,
+          input_schema: d.parameters,
+        }));
+        return { tools };
+      }
+      // ChatGoogleGenerativeAI / Gemini 暂不在此直接注入工具（LangChain支持有限）
+      return undefined;
+    } catch (error) {
+      this.logger.warn('Failed to build provider tool options', error);
+      return undefined;
+    }
   }
 }

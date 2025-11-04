@@ -1,31 +1,94 @@
-# 小蓝 - 自动化构建 AI 平台
+# 项目概览（中文）
 
-小蓝是一款专为企业设计的**自动化 AI 构建平台**，旨在赋能后台、中台及前台团队，帮助他们快速、高效地落地 AI 智能应用。我们致力于将复杂的 AI 开发流程变得简单易懂，让企业能够专注于业务创新，而不是技术难题。
+语言版本：[
+English](/docs/readme/README.en.md) · [Deutsch](/docs/readme/README.de.md) · [中文](/docs/readme/README.zh-CN.md)
 
----
+这是一个面向业务落地的 AI 对话与函数调用平台，强调“语义化、易扩展、可控”。我们优先把有用的能力稳定地交到你手上，并且让使用方式清晰易懂。
 
-## 核心能力
+—— 不写“官方白皮书语气”，只讲现在能做什么、怎么用、以及下一步要做什么。
 
-* **后台 AI 智能系统构建**：
-    小蓝为后台团队提供一站式解决方案，从数据处理、模型训练到部署上线，全程自动化。无论是**风险控制、智能运维还是自动化审批**，后台团队都能利用小蓝快速搭建出稳定、高效的 AI 系统，提升运营效率。
-* **中台 AI 能力中心**：
-    小蓝是企业中台的强大引擎，提供可插拔的 AI 能力模块。通过标准化 API 接口，轻松将**智能推荐、个性化搜索、用户画像**等 AI 能力集成到中台服务中，为各业务线提供统一、强大的智能支撑，打破数据与能力的壁垒。
-* **前台智能化构建**：
-    小蓝让前台应用也能快速拥有“智能大脑”。通过直观的工具和丰富的组件，前台开发者能够快速实现**智能客服、人机交互、精准营销**等功能，显著提升用户体验和转化率，让产品更具竞争力。
-* **AI 数据智能分析**：
-    小蓝不仅仅是模型构建平台，更是一款强大的数据智能分析工具。我们提供可视化的数据洞察仪表盘，帮助您深入理解业务数据，**预测市场趋势，优化业务决策**。AI 提供的数据分析能力将成为您的业务增长引擎。
+## 已实现（What works now）
 
----
+- 对话与流式响应
+  - 非流式：`ConversationService.chat()`
+  - 流式：`ConversationService.chatStream()`（SSE 风格）
 
-## 为什么选择小蓝？
+- 原生 function-call 集成（由服务提供句柄）
+  - 函数描述来自 `src/core/function-call/descriptions/`；各服务通过 `getHandle()` 暴露 `description/validate/execute`。
+  - 对话层基于启用的服务自动注入 `toolDescriptions` 到模型请求（模型原生 function-call）。
 
-* **全链路赋能**：覆盖后台、中台到前台，小蓝提供端到端的 AI 解决方案，助力企业实现全方位的智能化转型。
-* **极速落地**：通过自动化和模块化设计，将 AI 项目的开发周期从数月缩短至数周，让您的想法能够更快地转化为实际价值。
-* **人人都是 AI 开发者**：降低技术门槛，让非专业人员也能轻松构建和应用 AI，真正实现 AI 的普惠化。
-* **企业级稳定保障**：提供稳定、高可用的 AI 模型部署和监控服务，确保您的智能系统在生产环境中平稳运行。
+- 函数服务（Function-Call Services）
+  - `PluginOrchestratorService` → 函数：`plugin_orchestrate`
+    - 用于“先规划（plan）后生成（generate）”的插件生成入口。
+    - 模型只需给 `input`；系统会补齐 `phase/modelId/temperature`。
+  - `MysqlReadonlyService` → 函数：`db_mysql_select`
+    - 只读查询，参数校验：`params` 必须是原始值（string/number/boolean/null）数组，必须带 `limit`，返回统一为 `Record<string, unknown>[]`。
+  - `ContextFunctionService` → 函数：`context_window_keyword`
+    - 兼容别名：`context_keyword_window`（沿用同一校验与执行器）。
 
----
+- 按“服务类”开关注册函数（优先于旧的按名称开关）
+  - 配置位置：`src/app/conversation/conversation.module.ts`
+  - 示例：只启用 MySQL 只读查询
 
-## 我们的愿景
+  ```ts
+  import { AICoreModule } from '@core/ai';
+  import { MysqlReadonlyService } from '@core/function-call';
 
-小蓝致力于成为您的 AI 伙伴，让 AI 技术不再是少数人的专利，而是每个团队都能轻松掌握的工具。我们相信，通过小蓝，企业能够更快速、更智能地应对市场挑战，抓住每一个增长机遇。
+  @Module({
+    imports: [
+      AICoreModule.forRoot({
+        includeFunctionServices: [MysqlReadonlyService],
+      }),
+    ],
+  })
+  export class ConversationModule {}
+  ```
+
+- 对话层执行逻辑（`ConversationService`）
+  - 解析函数调用：按名称找到对应句柄（兼容别名），执行 `validate` 后调用 `execute`。
+  - 特殊处理 `plugin_orchestrate`：在传参时系统补齐 `phase/modelId/temperature`，仅要求模型提供 `input`。
+
+- 相关文档与代码入口
+  - 功能模块结构与说明：`src/core/function-call/module.tip`
+  - 函数模块：`src/core/function-call/function-call.module.ts`
+  - 函数描述目录：`src/core/function-call/descriptions/`
+  - 对话服务：`src/app/conversation/services/conversation.service.ts`
+  - 对话模块：`src/app/conversation/conversation.module.ts`
+  - 模块配置类型（含 `includeFunctionServices`）：`src/core/ai/types/module.types.ts`
+
+## 下一步（Roadmap / 近期计划）
+
+- 数据库语句直接执行（非只读）
+  - 提供安全的 SQL 执行入口（白名单、占位符数量校验、敏感操作隔离）。
+  - 与权限管理打通，确保不同角色/租户的隔离与审计。
+
+- 数据库安全与权限管理
+  - 细粒度权限策略：库/表/列级别访问控制。
+  - 行为审计与风控：记录关键操作，支持告警与回滚策略。
+
+- 智能生成插件
+  - 强化 `plugin_orchestrate`：计划→代码生成→测试→发布的闭环能力。
+  - 结合现有 prompts 与 Tip 机制，生成更符合业务语义的插件骨架与配置。
+
+- 根据现有表自动生成页面能力
+  - 基于表结构生成 CRUD 页面，自动绑定路由与权限策略。
+  - 与 HookBus/插件生态打通（如 `plugins/customer-analytics`），形成低成本扩展路径。
+
+## 开始使用（Quick Start）
+
+1. 安装依赖并编译
+
+```bash
+npm install
+npm run build
+```
+
+2. 配置函数服务开关（如上 `includeFunctionServices` 示例）
+
+3. 启动开发服务器（如有）
+
+```bash
+npm run start:dev
+```
+
+提示：数据库相关的本地开发，可参考 `docker/mysql/init` 与 `.env` 中的配置；建议在只读查询阶段使用 `MysqlReadonlyService`，并在启用写操作前完成权限与审计机制。

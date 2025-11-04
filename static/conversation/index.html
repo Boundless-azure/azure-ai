@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 对话 Demo</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --card: #121a2f;
+        --muted: #9aa4b2;
+        --accent: #3b82f6;
+        --assistant: #1f2a44;
+        --user: #234b7a;
+        --border: #1e293b;
+      }
+      html, body { height: 100%; }
+      body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: var(--bg); color: #e5eefb; }
+      .container { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+      .header { text-align: center; margin-bottom: 16px; }
+      .header h1 { margin: 0; font-size: 20px; }
+      .header .desc { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+      .chat { background: var(--card); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; height: 70vh; }
+      .messages { flex: 1; overflow: auto; padding: 16px; }
+      .msg { display: flex; margin: 12px 0; }
+      .msg.assistant { justify-content: flex-start; }
+      .msg.user { justify-content: flex-end; }
+      .bubble { max-width: 75%; padding: 10px 12px; border-radius: 12px; white-space: pre-wrap; }
+      .assistant .bubble { background: var(--assistant); border: 1px solid var(--border); }
+      .user .bubble { background: var(--user); border: 1px solid var(--border); }
+      .thinking { border-top: 1px dashed var(--border); padding: 8px 16px; display: none; }
+      .thinking .title { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+      .thinking .content { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; }
+
+      .toolbar { display: flex; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--border); align-items: center; }
+      .toolbar input[type="text"] { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: #0c1428; color: #e5eefb; }
+      .toolbar button { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--accent); color: #fff; cursor: pointer; }
+      .toolbar .secondary { background: #334155; }
+
+      .options { display: flex; gap: 12px; justify-content: center; color: var(--muted); font-size: 12px; margin: 8px 0 16px; }
+      .options label { display: inline-flex; align-items: center; gap: 6px; }
+      .opts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+      .opts-row input[type="text"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: #0c1428; color: #e5eefb; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>AI 对话 Demo</h1>
+        <div class="desc">传统聊天样式，居中布局；支持流式输出与函数调用过程展示</div>
+      </div>
+
+      <div class="options">
+        <label><input id="chkStream" type="checkbox" checked /> 流式输出</label>
+        <label><input id="chkShowThinking" type="checkbox" checked /> 展示思考过程</label>
+        <label><input id="chkDeepThinking" type="checkbox" /> 深度思考</label>
+      </div>
+      <div class="opts-row">
+        <input id="sessionId" type="text" placeholder="会话ID（点击创建会话生成）" readonly />
+        <input id="modelId" type="text" placeholder="模型ID（可留空）" />
+      </div>
+      <div style="text-align:center; margin-bottom:8px;">
+        <button id="btnNewSession" class="secondary">创建会话</button>
+        <button id="btnReset" class="secondary">重置</button>
+      </div>
+
+      <div class="chat">
+        <div id="messages" class="messages"></div>
+        <div id="thinkingPanel" class="thinking">
+          <div class="title">思考过程（函数调用结果与编排）</div>
+          <div id="thinking" class="content"></div>
+        </div>
+        <div class="toolbar">
+          <input id="input" type="text" placeholder="请输入你的问题，例如：帮我分析用户购买行为并查询数据库" />
+          <button id="btnSend">发送</button>
+          <button id="btnCancel" class="secondary">取消流</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const state = { controller: null, sessionId: '' };
+      const el = (id) => document.getElementById(id);
+      const list = el('messages');
+
+      function addMsg(role, content) {
+        const item = document.createElement('div');
+        item.className = 'msg ' + role;
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.textContent = content || '';
+        item.appendChild(bubble);
+        list.appendChild(item);
+        list.scrollTop = list.scrollHeight;
+      }
+
+      async function createSession() {
+        const body = { systemPrompt: undefined, modelId: el('modelId').value || undefined };
+        const res = await fetch('/conversation/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const json = await res.json();
+        state.sessionId = json.sessionId;
+        el('sessionId').value = json.sessionId;
+        addMsg('assistant', '新建会话: ' + json.sessionId);
+      }
+
+      async function getHistory(limit = 50) {
+        if (!state.sessionId) return [];
+        const res = await fetch('/conversation/sessions/' + state.sessionId + '/history?limit=' + limit);
+        const json = await res.json();
+        return json.messages || [];
+      }
+
+      async function send() {
+        const input = el('input').value.trim();
+        if (!input) return;
+        if (!state.sessionId) await createSession();
+        const stream = el('chkStream').checked;
+        const showThinking = el('chkShowThinking').checked;
+        const deepThinking = el('chkDeepThinking').checked;
+        const systemPrompt = deepThinking ? '你可以先在心中进行深度思考与规划，然后仅输出最终答案；必要时通过函数调用获取信息，但不要泄露中间思考过程。' : undefined;
+
+        const req = { message: input, sessionId: state.sessionId, modelId: el('modelId').value || undefined, systemPrompt, stream };
+        addMsg('user', input);
+        el('input').value = '';
+
+        if (stream) await streamChat(req, showThinking); else await jsonChat(req, showThinking);
+      }
+
+      async function streamChat(req, showThinking) {
+        if (state.controller) state.controller.abort();
+        state.controller = new AbortController();
+        const { signal } = state.controller;
+        const res = await fetch('/conversation/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'text/stream' }, body: JSON.stringify(req), signal });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        let assistantBuffer = '';
+        addMsg('assistant', '');
+        const lastBubble = list.lastElementChild.querySelector('.bubble');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buffer.indexOf('\n\n')) !== -1) {
+            const raw = buffer.slice(0, idx).trim();
+            buffer = buffer.slice(idx + 2);
+            if (!raw.startsWith('data:')) continue;
+            const jsonStr = raw.slice(5).trim();
+            if (!jsonStr) continue;
+            let evt;
+            try { evt = JSON.parse(jsonStr); } catch (e) { console.warn('bad json', jsonStr); continue; }
+            if (evt.type === 'content' && evt.content) {
+              assistantBuffer += evt.content;
+              lastBubble.textContent = assistantBuffer;
+            } else if (evt.type === 'error') {
+              lastBubble.textContent = '[流错误] ' + (evt.error || '未知错误');
+            } else if (evt.type === 'done') {
+              if (showThinking) {
+                const messages = await getHistory(100);
+                const sys = messages.filter(m => m.metadata && m.metadata.type === 'function_results');
+                if (sys.length) {
+                  el('thinkingPanel').style.display = 'block';
+                  el('thinking').textContent = JSON.stringify(sys.map(s => s.metadata.functionCalls), null, 2);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      async function jsonChat(req, showThinking) {
+        const res = await fetch('/conversation/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
+        const json = await res.json();
+        addMsg('assistant', json.message || '[无内容]');
+        if (showThinking) {
+          const messages = await getHistory(100);
+          const sys = messages.filter(m => m.metadata && m.metadata.type === 'function_results');
+          if (sys.length) {
+            el('thinkingPanel').style.display = 'block';
+            el('thinking').textContent = JSON.stringify(sys.map(s => s.metadata.functionCalls), null, 2);
+          }
+        }
+      }
+
+      el('btnNewSession').addEventListener('click', createSession);
+      el('btnReset').addEventListener('click', () => { list.innerHTML = ''; el('thinkingPanel').style.display = 'none'; el('thinking').textContent = ''; });
+      el('btnSend').addEventListener('click', send);
+      el('btnCancel').addEventListener('click', () => { if (state.controller) state.controller.abort(); });
+    </script>
+  </body>
+  </html>

@@ -140,6 +140,8 @@ export interface AIModelResponse {
   requestId?: string;
   /** 完成原因 */
   finishReason?: string;
+  /** 原生函数调用返回（可选，由各模型的工具调用结果提取） */
+  functionCalls?: Array<{ name: string; arguments: unknown }>;
 }
 
 /**
@@ -176,6 +178,8 @@ export interface AIModelRequest {
   userId?: string;
   /** 会话ID (可选) */
   sessionId?: string;
+  /** 工具/函数定义（提供给模型的原生 function-call 能力） */
+  toolDescriptions?: import('@core/function-call/descriptions').FunctionCallDescription[];
 }
 
 /**

@@ -25,6 +25,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
 import { AIModelService } from '../../ai/services/ai-model.service';
+import {
+  MODULE_TIP_SYSTEM_PROMPT,
+  buildModuleTip,
+  parseTipJSDoc,
+} from '../../../prompts/module-tip';
+import type { ModuleTipInput } from '../../../prompts/module-tip';
 
 @Injectable()
 export class TipGeneratorService {
@@ -106,14 +112,10 @@ export class TipGeneratorService {
     );
     if (modelId) {
       try {
-        const context = this.buildAIContextForDir(dir, fileInfos, opts);
-        const systemPrompt =
-          opts.systemPrompt ||
-          '你是资深的技术文档生成器。请严格输出以下三个部分：\n' +
-            '文件说明\n函数说明\n关键词索引（中文 / English Keyword Index）\n' +
-            '要求：仅引用当前模块目录下的文件路径（避免跨模块）；关键词包含文件名、类名与方法名；简明但覆盖核心职责。';
-        const userPrompt =
-          `目标目录: ${dir}\n以下为 AST 基础索引与上下文：\n\n` + context;
+        const tipInput = this.buildModuleTipInput(dir, fileInfos);
+        const context = buildModuleTip(tipInput, { includeAIPrompt: false });
+        const systemPrompt = opts.systemPrompt || MODULE_TIP_SYSTEM_PROMPT;
+        const userPrompt = context;
         this.logger.log(
           `[AI] generateModuleTip: invoking chat for dir=${dir} with modelId=${modelId}`,
         );
@@ -224,7 +226,8 @@ export class TipGeneratorService {
     const fileInfos: TipFileInfo[] = files.map((f: string) =>
       this.getAstFunctionsForFile(f),
     );
-    const context = this.buildAIContextForDir(dir, fileInfos, opts);
+    const tipInput = this.buildModuleTipInput(dir, fileInfos);
+    const context = buildModuleTip(tipInput, { includeAIPrompt: false });
 
     // 2) 选择模型
     let modelId = opts.aiModelId;
@@ -258,15 +261,8 @@ export class TipGeneratorService {
     }
 
     // 3) 构建提示
-    const systemPrompt =
-      opts.systemPrompt ||
-      '你是资深的技术文档生成器。请严格输出以下结构：\n' +
-        '1) 目录结构\n2) 函数清单\n3) 文件说明\n4) 函数说明\n5) 关键词索引（中文 / English Keyword Index）\n' +
-        '要求：\n- 仅引用当前模块目录下的文件路径（避免跨模块）\n- 中英文关键词均可，包含文件名、类名与方法名\n- 精炼、准确，可用于快速检索\n';
-    const userPrompt =
-      `目标目录: ${dir}\n` +
-      '以下为原始索引与上下文，请据此生成完整 Tip：\n\n' +
-      context;
+    const systemPrompt = opts.systemPrompt || MODULE_TIP_SYSTEM_PROMPT;
+    const userPrompt = context;
 
     // 4) 调用 AI 生成
     try {
@@ -332,6 +328,139 @@ export class TipGeneratorService {
       };
     }
   }
+
+  /**
+   * 将 AST 索引转换为统一的 ModuleTipInput，用于 buildModuleTip。
+   */
+  private buildModuleTipInput(
+    dir: string,
+    fileInfos: TipFileInfo[],
+  ): ModuleTipInput {
+    const moduleName = path.basename(dir);
+    const rel = (p: string) => this.relativePath(p);
+    const directoryTree = fileInfos
+      .map((f) => `- ${rel(f.filePath)}：${f.fileName}`)
+      .join('\n');
+    // 聚合模块级关键词（注释优先，其次文件名/函数名）
+    const moduleKeyCn: string[] = [];
+    const moduleKeyEnBase = Array.from(
+      new Set(
+        fileInfos.flatMap((fi) => [
+          fi.fileName.replace(/\.[^.]+$/, ''),
+          ...(fi.functions ?? []).map((fn) => fn.name),
+        ]),
+      ),
+    );
+
+    const files = fileInfos.map((fi) => {
+      // 读取源文件并解析 JSDoc 注释块
+      let sourceText = '';
+      try {
+        sourceText = fs.readFileSync(fi.filePath, 'utf-8');
+      } catch {
+        sourceText = '';
+      }
+      const blocks = sourceText.match(/\/\*\*[\s\S]*?\*\//g) || [];
+      const fileKeywordsCn: string[] = [];
+      const fileKeywordsEn: string[] = [];
+      let fileDescFromDoc = '';
+      const funcKwMap: Record<
+        string,
+        { cn: Set<string>; en: Set<string>; desc?: string }
+      > = {};
+
+      for (const b of blocks) {
+        const meta = parseTipJSDoc(b);
+        if (!meta.targetName) {
+          if (meta.keywords.cn.length) fileKeywordsCn.push(...meta.keywords.cn);
+          if (meta.keywords.en.length) fileKeywordsEn.push(...meta.keywords.en);
+          if (meta.desc) fileDescFromDoc = meta.desc;
+        } else {
+          const name = meta.targetName;
+          if (!funcKwMap[name])
+            funcKwMap[name] = { cn: new Set(), en: new Set() };
+          meta.keywords.cn.forEach((k) => funcKwMap[name].cn.add(k));
+          meta.keywords.en.forEach((k) => funcKwMap[name].en.add(k));
+          if (meta.desc) funcKwMap[name].desc = meta.desc;
+        }
+      }
+
+      const fKeywordsEn = Array.from(
+        new Set([
+          fi.fileName.replace(/\.[^.]+$/, ''),
+          ...(fi.keywords ?? []),
+          ...(fi.functions ?? []).map((fn) => fn.name),
+          ...fileKeywordsEn,
+        ]),
+      );
+      const fKeywordsCn = Array.from(new Set([...fileKeywordsCn]));
+
+      const functions = (fi.functions ?? [])
+        .filter((fn) => fn.kind !== 'method')
+        .map((fn) => ({
+          name: fn.name,
+          description: funcKwMap[fn.name]?.desc || fn.role,
+          keywords: {
+            cn: Array.from(
+              new Set([...(funcKwMap[fn.name]?.cn ?? new Set<string>())]),
+            ),
+            en: Array.from(
+              new Set([
+                fn.name,
+                fn.kind,
+                ...(fn.keywords ?? []),
+                ...(funcKwMap[fn.name]?.en ?? new Set<string>()),
+              ]),
+            ),
+          },
+        }));
+
+      const methods = (fi.functions ?? [])
+        .filter((fn) => fn.kind === 'method')
+        .map((fn) => ({
+          name: fn.name,
+          description: funcKwMap[fn.name]?.desc || fn.role,
+          keywords: {
+            cn: Array.from(
+              new Set([...(funcKwMap[fn.name]?.cn ?? new Set<string>())]),
+            ),
+            en: Array.from(
+              new Set([
+                fn.name,
+                fn.kind,
+                ...(fn.keywords ?? []),
+                ...(funcKwMap[fn.name]?.en ?? new Set<string>()),
+              ]),
+            ),
+          },
+        }));
+
+      // 汇总到模块级
+      moduleKeyCn.push(...fileKeywordsCn);
+
+      return {
+        path: rel(fi.filePath),
+        description: fi.description || fileDescFromDoc,
+        keywords: { cn: fKeywordsCn, en: fKeywordsEn },
+        functions,
+        methods,
+      };
+    });
+
+    const tipInput: ModuleTipInput = {
+      moduleName,
+      directoryTree,
+      keywords: {
+        cn: Array.from(new Set(moduleKeyCn)),
+        en: Array.from(new Set([...moduleKeyEnBase])),
+      },
+      files,
+      description: `自动生成的上下文，基于 AST 索引汇总（含 JSDoc 关键词），便于 AI 生成文件与函数说明及关键词索引。`,
+    };
+    return tipInput;
+  }
+
+  // JSDoc 解析已集中到 prompts 模块的 parseTipJSDoc 中
 
   // 为 baseDir 直接子目录分别生成 module.tip（确保每个模块都有独立的 tip，不混在一起）
   async generateTipsForModules(

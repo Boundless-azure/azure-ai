@@ -17,14 +17,6 @@ export class ChatSessionEntity extends BaseAuditedEntity {
   @Column({ name: 'user_id', length: 100, nullable: true })
   userId!: string;
 
-  @Column({ type: 'json' })
-  messages!: Array<{
-    role: 'system' | 'user' | 'assistant';
-    content: string;
-    timestamp: Date;
-    metadata?: Record<string, any>;
-  }>;
-
   @Column({ name: 'system_prompt', type: 'text', nullable: true })
   systemPrompt!: string;
 

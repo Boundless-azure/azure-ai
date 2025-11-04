@@ -4,6 +4,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
+  BeforeInsert,
 } from 'typeorm';
 import { v7 as uuidv7 } from 'uuid';
 
@@ -16,7 +17,8 @@ import { v7 as uuidv7 } from 'uuid';
  */
 export abstract class BaseAuditedEntity {
   // 应用侧生成 UUID v7，数据库不设置默认值，避免 MySQL 对 DEFAULT 函数的限制
-  @PrimaryColumn({ type: 'char', length: 36, default: uuidv7 })
+  // 注意：不使用装饰器 default，统一在 @BeforeInsert 中生成，确保 save() 后实体存在 id
+  @PrimaryColumn({ type: 'char', length: 36 })
   id!: string;
 
   @Column({ name: 'created_user', type: 'char', length: 36, nullable: true })
@@ -41,4 +43,12 @@ export abstract class BaseAuditedEntity {
   // TypeORM软删除支持（当使用 repository.softRemove/softDelete 时填充）
   @DeleteDateColumn({ name: 'deleted_at', nullable: true })
   deletedAt!: Date | null;
+
+  // 在插入前确保存在主键 id（使用 UUID v7 保留时序特性）
+  @BeforeInsert()
+  protected ensureId(): void {
+    if (!this.id) {
+      this.id = uuidv7();
+    }
+  }
 }

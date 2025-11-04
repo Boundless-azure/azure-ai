@@ -10,6 +10,8 @@ export interface ChatMessage {
   timestamp?: Date;
   /** 消息元数据 */
   metadata?: Record<string, any>;
+  /** 关键词分析结果（可选） */
+  keywords?: { zh: string[]; en: string[] };
 }
 
 /**
@@ -70,6 +72,8 @@ export interface ContextConfig {
   expirationHours?: number;
   /** 是否自动清理 */
   autoCleanup?: boolean;
+  /** 分析窗口大小（最近N条消息） */
+  analysisWindowSize?: number;
 }
 
 /**

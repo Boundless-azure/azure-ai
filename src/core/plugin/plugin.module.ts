@@ -1,9 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PluginEntity } from './entities/plugin.entity';
-import { PluginService } from './services/plugin.service';
 import { PluginKeywordsService } from './services/plugin.keywords.service';
-import { PluginController } from './controllers/plugin.controller';
 import { AICoreModule } from '../ai/ai-core.module';
 
 /**
@@ -19,8 +17,8 @@ import { AICoreModule } from '../ai/ai-core.module';
     TypeOrmModule.forFeature([PluginEntity]),
     AICoreModule.forFeature(),
   ],
-  providers: [PluginService, PluginKeywordsService],
-  controllers: [PluginController],
-  exports: [PluginService],
+  providers: [PluginKeywordsService],
+  // 已移除 PluginController 与 PluginService
+  exports: [],
 })
 export class PluginModule {}
