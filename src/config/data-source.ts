@@ -1,10 +1,6 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import type { DataSourceOptions } from 'typeorm';
-// 在 TypeORM 0.3.x 中，具体驱动的连接选项类型不从根导出，需要从 driver 路径导入
-import type { MysqlConnectionOptions } from 'typeorm/driver/mysql/MysqlConnectionOptions';
-import type { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions';
-import type { SqliteConnectionOptions } from 'typeorm/driver/sqlite/SqliteConnectionOptions';
 import * as dotenv from 'dotenv';
 import { loadDatabaseConfigFromEnv } from './database.config';
 import type { DatabaseConfig } from './types';
@@ -28,7 +24,7 @@ switch (db.type) {
       migrations: [__dirname + '/../migrations/**/*{.ts,.js}'],
       synchronize: db.synchronize ?? false,
       logging: db.logging ?? false,
-    } satisfies MysqlConnectionOptions;
+    } satisfies DataSourceOptions;
     options = mysqlOpts;
     break;
   }
@@ -44,7 +40,7 @@ switch (db.type) {
       migrations: [__dirname + '/../migrations/**/*{.ts,.js}'],
       synchronize: db.synchronize ?? false,
       logging: db.logging ?? false,
-    } satisfies PostgresConnectionOptions;
+    } satisfies DataSourceOptions;
     options = pgOpts;
     break;
   }
@@ -56,7 +52,7 @@ switch (db.type) {
       migrations: [__dirname + '/../migrations/**/*{.ts,.js}'],
       synchronize: db.synchronize ?? false,
       logging: db.logging ?? false,
-    } satisfies SqliteConnectionOptions;
+    } satisfies DataSourceOptions;
     options = sqliteOpts;
     break;
   }
@@ -73,7 +69,7 @@ switch (db.type) {
       migrations: [__dirname + '/../migrations/**/*{.ts,.js}'],
       synchronize: db.synchronize ?? false,
       logging: db.logging ?? false,
-    } satisfies MysqlConnectionOptions;
+    } satisfies DataSourceOptions;
     options = fallback;
   }
 }

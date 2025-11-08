@@ -7,22 +7,26 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere } from 'typeorm';
-import { ChatOpenAI } from '@langchain/openai';
-import { ChatAnthropic } from '@langchain/anthropic';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import {
-  BaseChatModel,
-  BaseChatModelCallOptions,
-} from '@langchain/core/language_models/chat_models';
+  ChatOpenAI,
+  ChatOpenAICompletionsCallOptions,
+  ChatOpenAIResponsesCallOptions,
+} from '@langchain/openai';
+import { ChatAnthropic, ChatAnthropicCallOptions } from '@langchain/anthropic';
+import {
+  ChatGoogleGenerativeAI,
+  GoogleGenerativeAIChatCallOptions,
+} from '@langchain/google-genai';
+// 移除具体调用参数类型，改为让编译器在调用处推断
 import {
   HumanMessage,
   SystemMessage,
   AIMessage,
+  BaseMessage,
+  AIMessageChunk,
 } from '@langchain/core/messages';
-import {
-  AIProvider,
+import type {
   AIModelType,
-  AIModelStatus,
   AIModelConfig,
   AIModelRequest,
   AIModelResponse,
@@ -31,8 +35,10 @@ import {
   ModelTokenUsageMeta,
   // ModelBindParams, // 移除未使用的类型
   ModelParameters,
+  AICoreModuleOptions,
 } from '../types';
-import type { FunctionCallDescription } from '@core/function-call/descriptions';
+import { AIProvider } from '../types';
+import { AIModelStatus } from '../types';
 import { AIModelEntity } from '../entities';
 import { ContextService } from './context.service';
 import {
@@ -42,8 +48,7 @@ import {
 // 避免 barrel 导致的类型不精确问题，直接从具体文件与类型定义导入
 import { loadAIConfigFromEnv } from '../../../config/ai.config';
 import type { AIConfig } from '../../../config/types';
-// 删除重复导入，保留上方综合导入块
-// 已删除: import { AIModelRequest, AIModelResponse, TokenUsage, ModelTokenUsageMeta, ModelBindParams } from '../types';
+import { createAgent } from 'langchain';
 
 /**
  * AI模型服务
@@ -52,7 +57,6 @@ import type { AIConfig } from '../../../config/types';
 @Injectable()
 export class AIModelService implements OnModuleInit {
   private readonly logger = new Logger(AIModelService.name);
-  private modelInstances = new Map<string, BaseChatModel>();
   // Ensure proxy is applied even if Nest lifecycle hooks are not triggered
   private static proxyConfigured = false;
 
@@ -61,12 +65,13 @@ export class AIModelService implements OnModuleInit {
     private readonly aiModelRepository: Repository<AIModelEntity>,
     @Inject(forwardRef(() => ContextService))
     private readonly contextService: ContextService,
+    @Inject('AI_CORE_OPTIONS')
+    private readonly aiCoreOptions: AICoreModuleOptions,
   ) {}
 
-  async onModuleInit() {
+  onModuleInit(): void {
     // Apply proxy configuration via lifecycle hook
     this.ensureProxyConfigured();
-    await this.initializeModels();
   }
 
   /**
@@ -82,49 +87,11 @@ export class AIModelService implements OnModuleInit {
   }
 
   /**
-   * 初始化所有启用的AI模型
-   */
-  private async initializeModels(): Promise<void> {
-    const models: AIModelEntity[] = await this.aiModelRepository.find({
-      where: { enabled: true, status: AIModelStatus.ACTIVE, isDelete: false },
-    });
-
-    let created = 0;
-    for (const model of models) {
-      // 跳过不受支持的提供商（例如已移除的 azure-openai），避免错误日志污染
-      const supportedProviders = new Set<AIProvider>([
-        AIProvider.OPENAI,
-        AIProvider.ANTHROPIC,
-        AIProvider.GOOGLE,
-        AIProvider.GEMINI,
-        AIProvider.DEEPSEEK,
-      ]);
-      if (!supportedProviders.has(model.provider)) {
-        this.logger.warn(
-          `Skip unsupported provider: ${String(model.provider)} (model ${model.id})`,
-        );
-        continue;
-      }
-      try {
-        this.createModelInstance(model);
-        created++;
-      } catch (error) {
-        this.logger.error(
-          `Failed to create model instance: ${model.id}`,
-          error,
-        );
-      }
-    }
-
-    this.logger.log(`Initialized ${created} AI models`);
-  }
-
-  /**
    * 创建AI模型实例
    */
-  private createModelInstance(config: AIModelEntity): BaseChatModel {
+  private createModelInstance(config: AIModelEntity) {
     try {
-      let model: BaseChatModel;
+      let model: ChatOpenAI | ChatAnthropic | ChatGoogleGenerativeAI;
       const aiConf: AIConfig = loadAIConfigFromEnv();
       const maxRetries = aiConf.client.maxRetries;
       // 代理已在 onModuleInit 通过 applyAIProxyFetchOverride 全局生效，无需在此重复设置
@@ -135,7 +102,6 @@ export class AIModelService implements OnModuleInit {
             modelName: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxTokens: config.defaultParams?.maxTokens || 4096,
-            maxRetries,
             ...(config.baseURL && {
               configuration: { baseURL: config.baseURL },
             }),
@@ -149,7 +115,6 @@ export class AIModelService implements OnModuleInit {
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
-              maxRetries,
               configuration: { baseURL },
             });
           }
@@ -174,7 +139,6 @@ export class AIModelService implements OnModuleInit {
             model: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxOutputTokens: config.defaultParams?.maxTokens || 4096,
-            maxRetries,
           });
           break;
 
@@ -184,7 +148,6 @@ export class AIModelService implements OnModuleInit {
             model: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxOutputTokens: config.defaultParams?.maxTokens || 4096,
-            maxRetries,
           });
           break;
 
@@ -193,13 +156,14 @@ export class AIModelService implements OnModuleInit {
             `Unsupported AI provider: ${String(config.provider)}`,
           );
       }
-
-      this.modelInstances.set(config.id, model);
       this.logger.log(
         `Created model instance: ${config.id} (${config.provider})`,
       );
 
-      return model;
+      const Agent = createAgent({
+        model: model,
+      });
+      return Agent;
     } catch (error) {
       this.logger.error(`Failed to create model instance: ${config.id}`, error);
       throw error;
@@ -220,32 +184,36 @@ export class AIModelService implements OnModuleInit {
 
       // 统一初始化调用参数（仅模型参数）
       const invocationOptions = this.buildInvocationOptions(model, request);
+      const response = await model.invoke(
+        {
+          messages,
+        },
+        {
+          ...invocationOptions,
+        },
+      );
 
-      const response = invocationOptions
-        ? await model.invoke(messages, invocationOptions)
-        : await model.invoke(messages);
       const responseTime = Date.now() - startTime;
 
       // 构建响应
       const contentStr =
-        typeof response.content === 'string'
-          ? response.content
-          : Array.isArray(response.content)
-            ? JSON.stringify(response.content)
-            : String(response.content);
+        typeof response.messages === 'string'
+          ? response.messages
+          : Array.isArray(response.messages)
+            ? JSON.stringify(response.messages)
+            : String(response.messages);
       const aiResponse: AIModelResponse = {
         content: contentStr,
         model: request.modelId,
         responseTime,
         requestId: this.generateRequestId(),
+        tokensUsed: undefined,
       };
 
-      // 不在此处提取函数调用结构
+      const responseTo = this.handleMessage(response.messages, 'assistant');
 
-      // 尝试获取token使用信息
-      const meta = response.response_metadata;
-      if (this.hasTokenUsage(meta) && meta.tokenUsage) {
-        aiResponse.tokensUsed = this.extractTokenUsage(meta.tokenUsage);
+      if (responseTo) {
+        aiResponse.tokensUsed = this.handleCountTokenToEntity(responseTo);
       }
 
       this.logger.log(
@@ -262,6 +230,55 @@ export class AIModelService implements OnModuleInit {
         error instanceof Error ? error.message : String(error);
       throw new Error(`AI model request failed: ${errorMessage}`);
     }
+  }
+  handleCountTokenToEntity(responseTo: AIMessage) {
+    // 尝试获取token使用信息
+    const meta = responseTo?.usage_metadata;
+    if (this.hasTokenUsage(meta) && meta.tokenUsage) {
+      return this.extractTokenUsage(meta.tokenUsage);
+    }
+    return undefined;
+  }
+  /**
+   * 根据传入的 role 返回「最后一个」匹配的消息，并且保持精确类型。
+   * - human => HumanMessage | undefined
+   * - system => SystemMessage | undefined
+   * - assistant(default) => AIMessage | undefined
+   */
+  // 重载签名：根据 role 精确化返回类型
+  handleMessage(
+    messages: BaseMessage[] | { model_request: { messages: BaseMessage[] } },
+    role: 'human',
+  ): HumanMessage | undefined;
+  handleMessage(
+    messages: BaseMessage[] | { model_request: { messages: BaseMessage[] } },
+    role: 'system',
+  ): SystemMessage | undefined;
+  handleMessage(
+    messages: BaseMessage[] | { model_request: { messages: BaseMessage[] } },
+    role?: 'assistant',
+  ): AIMessage | undefined;
+  handleMessage(
+    messages: BaseMessage[] | { model_request: { messages: BaseMessage[] } },
+    role: 'human' | 'system' | 'assistant' = 'assistant',
+  ) {
+    const msgs =
+      'model_request' in messages ? messages.model_request.messages : messages;
+
+    // 倒序查找，返回最后一个符合 role 的消息
+    for (let index = msgs.length - 1; index >= 0; index--) {
+      const msg = msgs[index];
+      if (role === 'human' && msg instanceof HumanMessage) {
+        return msg;
+      }
+      if (role === 'system' && msg instanceof SystemMessage) {
+        return msg;
+      }
+      if (role === 'assistant' && msg instanceof AIMessage) {
+        return msg;
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -354,30 +371,46 @@ export class AIModelService implements OnModuleInit {
       // 统一初始化调用参数（仅模型参数）
       const invocationOptions = this.buildInvocationOptions(model, request);
 
-      const stream = invocationOptions
-        ? await model.stream(messages, invocationOptions)
-        : await model.stream(messages);
-      let fullContent = '';
-
+      const stream = await model.stream(
+        { messages },
+        { ...invocationOptions, streamMode: ['values', 'messages'] },
+      );
+      let tokenCountContext;
+      type MoreChunk =
+        | ['values', { messages: AIMessage[] }]
+        | ['messages', AIMessageChunk[]];
       for await (const chunk of stream) {
-        const content =
-          typeof chunk.content === 'string'
-            ? chunk.content
-            : Array.isArray(chunk.content)
-              ? JSON.stringify(chunk.content)
-              : String(chunk.content);
-        fullContent += content;
-        yield content;
+        const chunkTo: MoreChunk = chunk;
+        const [streamMode, chunkData] = chunkTo;
+        if (streamMode == 'messages') {
+          const messageContent = chunkData[0]?.content || '';
+          if (typeof messageContent == 'string') {
+            yield messageContent;
+          }
+        }
+
+        if (streamMode == 'values') {
+          const lastChunkData = chunkData.messages.at(-1);
+          if (lastChunkData instanceof AIMessage) {
+            tokenCountContext = lastChunkData;
+          }
+        }
       }
 
       const responseTime = Date.now() - startTime;
 
       // 返回最终响应
       const aiResponse: AIModelResponse = {
-        content: fullContent,
+        content:
+          typeof tokenCountContext?.content == 'string'
+            ? tokenCountContext.content
+            : JSON.stringify(tokenCountContext?.content),
         model: request.modelId,
         responseTime,
         requestId: this.generateRequestId(),
+        tokensUsed: tokenCountContext
+          ? this.handleCountTokenToEntity(tokenCountContext)
+          : undefined,
       };
 
       // 不在此处提取或解析函数调用结构
@@ -391,40 +424,6 @@ export class AIModelService implements OnModuleInit {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       throw new Error(`AI model stream request failed: ${errorMessage}`);
-    }
-  }
-
-  /**
-   * 创建新的AI模型配置
-   */
-  async createModel(
-    config: Omit<AIModelConfig, 'id' | 'createdAt' | 'updatedAt'>,
-    userId?: string,
-    channelId?: string,
-  ): Promise<AIModelEntity> {
-    try {
-      const entity = this.aiModelRepository.create({
-        ...config,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        // 审计字段：创建者与更新者（如果有 userId）
-        createdUser: userId,
-        updateUser: userId,
-        channelId,
-      });
-
-      const saved = await this.aiModelRepository.save(entity);
-
-      // 如果模型启用，创建实例
-      if (saved.enabled && saved.status === AIModelStatus.ACTIVE) {
-        this.createModelInstance(saved);
-      }
-
-      this.logger.log(`Created AI model: ${saved.id}`);
-      return saved;
-    } catch (error) {
-      this.logger.error('Failed to create AI model', error);
-      throw error;
     }
   }
 
@@ -451,12 +450,6 @@ export class AIModelService implements OnModuleInit {
         channelId: channelId ?? existing.channelId,
       });
 
-      // 重新创建模型实例
-      this.modelInstances.delete(id);
-      if (updated.enabled && updated.status === AIModelStatus.ACTIVE) {
-        this.createModelInstance(updated);
-      }
-
       this.logger.log(`Updated AI model: ${id}`);
       return updated;
     } catch (error) {
@@ -477,7 +470,6 @@ export class AIModelService implements OnModuleInit {
       );
       await this.aiModelRepository.softDelete({ id });
 
-      this.modelInstances.delete(id);
       this.logger.log(`Soft deleted AI model: ${id}`);
     } catch (error) {
       this.logger.error(`Failed to delete AI model: ${id}`, error);
@@ -518,46 +510,23 @@ export class AIModelService implements OnModuleInit {
   }
 
   /**
-   * 测试AI模型连接
-   */
-  async testModel(id: string): Promise<boolean> {
-    try {
-      const model = await this.getModelInstance(id);
-      const testMessage = [new HumanMessage('Hello, this is a test message.')];
-
-      await model.invoke(testMessage);
-      this.logger.log(`Model test successful: ${id}`);
-      return true;
-    } catch (error) {
-      this.logger.error(`Model test failed: ${id}`, error);
-      return false;
-    }
-  }
-
-  /**
    * 获取模型实例
    */
-  private async getModelInstance(modelId: string): Promise<BaseChatModel> {
-    let model = this.modelInstances.get(modelId);
+  private async getModelInstance(modelId: string) {
+    const config = await this.aiModelRepository.findOne({
+      where: {
+        id: modelId,
+        enabled: true,
+        status: AIModelStatus.ACTIVE,
+        isDelete: false,
+      },
+    });
 
-    if (!model) {
-      const config = await this.aiModelRepository.findOne({
-        where: {
-          id: modelId,
-          enabled: true,
-          status: AIModelStatus.ACTIVE,
-          isDelete: false,
-        },
-      });
-
-      if (!config) {
-        throw new Error(`AI model not found or disabled: ${modelId}`);
-      }
-
-      model = this.createModelInstance(config);
+    if (!config) {
+      throw new Error(`AI model not found or disabled: ${modelId}`);
     }
 
-    return model;
+    return this.createModelInstance(config);
   }
 
   /**
@@ -582,34 +551,16 @@ export class AIModelService implements OnModuleInit {
    * 应用模型参数（构建调用参数，而非绑定模型）
    */
   private applyModelParams(
-    model: BaseChatModel,
-    params: Partial<ModelParameters>,
-  ): BaseChatModelCallOptions & {
-    maxOutputTokens?: number;
-    topP?: number;
-    maxTokens?: number;
-    temperature?: number;
-  } {
-    const options: BaseChatModelCallOptions & {
-      maxOutputTokens?: number;
-      topP?: number;
-      maxTokens?: number;
-      temperature?: number;
-    } = {};
-
-    if (params.temperature !== undefined) {
-      options.temperature = params.temperature;
-    }
-    if (params.topP !== undefined) {
-      options.topP = params.topP;
-    }
-    if (params.maxTokens !== undefined) {
-      if (model instanceof ChatGoogleGenerativeAI) {
-        options.maxOutputTokens = params.maxTokens;
-      } else {
-        options.maxTokens = params.maxTokens;
-      }
-    }
+    _model: unknown,
+    _params: Partial<ModelParameters>,
+  ): ChatOpenAICompletionsCallOptions &
+    ChatOpenAIResponsesCallOptions &
+    ChatAnthropicCallOptions &
+    GoogleGenerativeAIChatCallOptions {
+    const options: ChatOpenAICompletionsCallOptions &
+      ChatOpenAIResponsesCallOptions &
+      ChatAnthropicCallOptions &
+      GoogleGenerativeAIChatCallOptions = {};
 
     return options;
   }
@@ -620,9 +571,14 @@ export class AIModelService implements OnModuleInit {
    * - 不再在此处构建或传递工具/函数调用相关配置；如需启用原生工具绑定，请由上层自行决定并整合。
    */
   private buildInvocationOptions(
-    model: BaseChatModel,
+    model: unknown,
     request: AIModelRequest,
-  ): BaseChatModelCallOptions | undefined {
+  ):
+    | (ChatOpenAICompletionsCallOptions &
+        ChatOpenAIResponsesCallOptions &
+        ChatAnthropicCallOptions &
+        GoogleGenerativeAIChatCallOptions)
+    | undefined {
     const callOptions = request.params
       ? this.applyModelParams(model, request.params)
       : undefined;
@@ -663,63 +619,5 @@ export class AIModelService implements OnModuleInit {
    */
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-  /**
-   * 将通用的 FunctionCallDescription 转换为各提供商可用的“原生工具调用”配置。
-   * - OpenAI: tools = [{ type: 'function', function: { name, description, parameters } }]
-   * - Anthropic: tools = [{ name, description, input_schema }]
-   * - Gemini/GoogleGenAI: 暂不在此返回 tools（LangChain 当前缺少统一的配置入口）。
-   *
-   * 统一扩展点：如需为其它提供商启用原生工具绑定（例如 Gemini 的 bindTools），
-   * 请在此方法集中新增并维护对应的工具定义转换逻辑，保持返回结构一致，便于上层按需选择是否传入。
-   */
-  private buildProviderToolOptions(
-    model: BaseChatModel,
-    descs: FunctionCallDescription[],
-  ):
-    | {
-        tools: Array<
-          | {
-              type: 'function';
-              function: {
-                name: string;
-                description?: string;
-                parameters?: unknown;
-              };
-            }
-          | {
-              name: string;
-              description?: string;
-              input_schema?: unknown;
-            }
-        >;
-      }
-    | undefined {
-    try {
-      if (model instanceof ChatOpenAI) {
-        const tools = descs.map((d) => ({
-          type: 'function' as const,
-          function: {
-            name: d.name,
-            description: d.description,
-            parameters: d.parameters,
-          },
-        }));
-        return { tools };
-      }
-      if (model instanceof ChatAnthropic) {
-        const tools = descs.map((d) => ({
-          name: d.name,
-          description: d.description,
-          input_schema: d.parameters,
-        }));
-        return { tools };
-      }
-      // ChatGoogleGenerativeAI / Gemini 暂不在此直接注入工具（LangChain支持有限）
-      return undefined;
-    } catch (error) {
-      this.logger.warn('Failed to build provider tool options', error);
-      return undefined;
-    }
   }
 }

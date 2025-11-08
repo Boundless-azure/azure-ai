@@ -39,6 +39,7 @@ import {
     MessageKeywordsService,
   ],
   exports: [
+    'AI_CORE_OPTIONS',
     ContextService,
     AIModelService,
     MessageKeywordsService,

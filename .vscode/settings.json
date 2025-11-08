@@ -9,5 +9,11 @@
     "other": "on",
     "comments": "off",
     "strings": "on"
-  }
+  },
+  "eslint.useFlatConfig": true,
+  "eslint.experimental.useFlatConfig": true,
+  "eslint.validate": ["typescript", "javascript", "typescriptreact", "javascriptreact"],
+  "eslint.workingDirectories": [
+    { "directory": ".", "exclude": ["node_modules"] }
+  ]
 }

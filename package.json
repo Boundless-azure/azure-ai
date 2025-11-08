@@ -25,29 +25,30 @@
     "migration:revert": "npm run typeorm -- migration:revert"
   },
   "dependencies": {
-    "@langchain/anthropic": "^0.3.28",
+    "@langchain/anthropic": "^1.0.0",
     "@langchain/azure-openai": "^0.0.11",
-    "@langchain/google-genai": "^0.2.18",
-    "@langchain/openai": "^0.6.13",
+    "@langchain/core": "^1.0.3",
+    "@langchain/google-genai": "^1.0.0",
+    "@langchain/openai": "^1.0.0",
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.6",
     "@nestjs/platform-express": "^11.1.6",
     "@nestjs/typeorm": "^11.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.3",
+    "@typescript-eslint/parser": "^8.46.3",
     "dotenv": "^16.4.5",
     "ioredis": "^5.8.0",
-    "langchain": "^0.3.34",
+    "langchain": "^1.0.3",
+    "module-alias": "^2.2.3",
     "mysql2": "^3.15.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "sqlite3": "^5.1.7",
     "typeorm": "^0.3.27",
-    "undici": "^7.16.0",
-    "module-alias": "^2.2.3"
+    "undici": "^7.16.0"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.2.0",
-    "@eslint/js": "^9.18.0",
+    "@eslint/js": "^9.39.1",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
@@ -55,9 +56,9 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.7",
     "@types/supertest": "^6.0.2",
-    "eslint": "^9.18.0",
+    "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.0.1",
-    "eslint-plugin-prettier": "^5.2.2",
+    "eslint-plugin-prettier": "^5.5.4",
     "globals": "^16.0.0",
     "jest": "^30.2.0",
     "prettier": "^3.4.2",
@@ -66,9 +67,10 @@
     "ts-jest": "^29.4.4",
     "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
+    "tsc-alias": "^1.8.16",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0"
+    "typescript-eslint": "^8.46.3"
   },
   "jest": {
     "moduleFileExtensions": [

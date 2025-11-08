@@ -10,7 +10,7 @@ export function loadDatabaseConfigFromEnv(): DatabaseConfig {
   const database = process.env.DB_DATABASE || 'azure_ai_dev';
   const synchronize =
     ((process.env.DB_SYNC ?? process.env.DB_SYNCHRONIZE) || 'false') === 'true';
-  const logging = process.env.NODE_ENV === 'development';
+  const logging = false;
 
   return {
     type,

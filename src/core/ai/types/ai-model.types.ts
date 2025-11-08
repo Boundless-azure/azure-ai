@@ -178,8 +178,10 @@ export interface AIModelRequest {
   userId?: string;
   /** 会话ID (可选) */
   sessionId?: string;
-  /** 工具/函数定义（提供给模型的原生 function-call 能力） */
-  toolDescriptions?: import('@core/function-call/descriptions').FunctionCallDescription[];
+  /** 要开启的函数调用名称列表 */
+  openFunction?: string[];
+  /** 可用的函数调用工具描述（可选） */
+  toolDescriptions?: FunctionCallDescription[];
 }
 
 /**
@@ -193,3 +195,4 @@ export interface StreamResponse {
   /** 完整响应 (仅在done=true时提供) */
   response?: AIModelResponse;
 }
+import type { FunctionCallDescription } from '@core/function-call/descriptions';
