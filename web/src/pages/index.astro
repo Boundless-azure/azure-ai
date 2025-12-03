@@ -1,0 +1,8 @@
+---
+import Layout from '../layouts/Layout.astro';
+import AgentWorkspace from '../modules/agent/components/AgentWorkspace.vue';
+---
+
+<Layout>
+  <AgentWorkspace client:only="vue" />
+</Layout>

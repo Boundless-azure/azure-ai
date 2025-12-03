@@ -19,9 +19,12 @@ import type {
  * 会话服务：封装 AI 对话与流式输出，仅负责上下文写入与内容返回。
  * @service ConversationService
  * @category Conversation
- * @keywords Conversation, Chat, Stream, SSE, Session, History
- * 关键词: 对话, 聊天, 流式, SSE, 会话, 历史
- * @remarks 本服务不进行函数调用编排或关键词检索；后续可由上层 Agent 基于该服务的输入/输出进行扩展。
+ * @keywords-en Conversation, Chat, Streaming, SSE, Session, History, Context, Prompt, Assistant, User
+ * @keywords-zh 会话, 聊天, 流式, SSE, 会话管理, 历史记录, 上下文, 提示词, 助手, 用户
+ * @remarks
+ * - 不进行函数调用编排或关键词检索，仅负责输入/输出与上下文。
+ * - 后续可由上层 Agent 基于该服务的 I/O 扩展（检索、工具调用、工作流等）。
+ * @since 1.0
  */
 export class ConversationService {
   private readonly logger = new Logger(ConversationService.name);
@@ -33,16 +36,22 @@ export class ConversationService {
 
   /**
    * 处理标准对话请求：写入用户消息，调用 AI 模型，写入助手消息，并返回响应。
-   * @param request 对话请求体（包含 sessionId 可复用会话，未提供则自动创建；可指定 modelId）
-   * @returns 标准对话响应（包含内容、模型、tokensUsed，如果底层模型返回该数据）
-   * @keywords Chat, Reply, Simple
-   * 关键词: 对话, 回复, 简单
+   * @param request 对话请求体：
+   * - message: 必填，用户输入文本
+   * - sessionId: 可选，用于复用既有会话，未提供则自动创建
+   * - modelId: 可选，指定模型；未提供时自动选择默认启用模型
+   * - systemPrompt: 可选，为新会话写入系统提示
+   * @returns ChatResponse：
+   * - sessionId: 当前会话 ID
+   * - message: 助手输出的完整文本
+   * - model: 实际使用的模型标识
+   * - tokensUsed: 底层模型报告的 token 用量（若提供）
+   * @keywords-en Chat, Reply, Single-turn, Plain, Non-Function-Call
+   * @keywords-zh 对话, 回复, 单轮, 纯文本, 非函数调用
    * @remarks
    * - tokensUsed 由 AIModelService 提供，当前服务不持久化该字段。
    * - 若未传入 modelId，将选择第一个启用的模型作为默认。
-   * @example
-   * const res = await conversationService.chat({ message: '你好', sessionId });
-   * console.log(res.message);
+   * - 上下文包含系统消息与历史消息，来源于 ContextService。
    */
   async chat(request: ChatRequest): Promise<ChatResponse> {
     const sessionId =
@@ -79,15 +88,20 @@ export class ConversationService {
 
   /**
    * 处理流式对话请求：以 SSE 风格分片返回内容，结束时输出 type:'done'。
-   * @param request 对话请求体（可选 sessionId 与 modelId）
-   * @returns AsyncGenerator<StreamChunk>，content 表示内容分片，done 表示结束，error 表示错误
-   * @keywords Stream, SSE, Realtime
-   * 关键词: 流式, SSE, 实时
-   * @example
-   * for await (const chunk of conversationService.chatStream({ message: '你好' })) {
-   *   if (chunk.type === 'content') { // 处理分片 }
-   *   if (chunk.type === 'done') { // 完成 }
-   * }
+   * @param request 对话请求体：
+   * - message: 必填，用户输入文本
+   * - sessionId: 可选，复用既有会话，未提供则自动创建
+   * - modelId: 可选，指定模型；未提供时自动选择默认启用模型
+   * - systemPrompt: 可选，为新会话写入系统提示
+   * @returns AsyncGenerator<StreamChunk>：
+   * - { type: 'content', content, sessionId } 增量内容分片
+   * - { type: 'done', sessionId } 结束标记
+   * - { type: 'error', error } 错误信息
+   * @keywords-en Stream, SSE, Realtime, AsyncGenerator, Delta
+   * @keywords-zh 流式, SSE, 实时, 异步生成器, 增量
+   * @remarks
+   * - 服务会在流结束后将完整内容写入上下文并以 'assistant' 角色保存。
+   * - 底层 AI 请求带有 stream=true，适用于 Server-Sent Events 或前端流式渲染。
    */
   async *chatStream(request: ChatRequest): AsyncGenerator<StreamChunk> {
     try {
@@ -143,9 +157,10 @@ export class ConversationService {
   /**
    * 选择默认模型：在未显式传入 modelId 时，返回第一个启用的模型。
    * @returns 默认模型的 ID
-   * @keywords Model, Default
-   * 关键词: 模型, 默认
+   * @keywords-en Model, Default, Selection, Fallback
+   * @keywords-zh 模型, 默认, 选择, 回退
    * @throws 当没有启用的模型时抛出错误，提示先配置模型。
+   * @remarks 通过 AIModelService.getEnabledModels() 获取启用模型列表。
    */
   private async pickDefaultModelId(): Promise<string> {
     const enabled = await this.aiModelService.getEnabledModels();
@@ -159,10 +174,13 @@ export class ConversationService {
 
   /**
    * 创建新会话，并可写入系统提示。
-   * @param request 创建会话请求体（可选 systemPrompt）
-   * @returns 会话创建结果，包含 sessionId
-   * @keywords Session, Create
-   * 关键词: 会话, 创建
+   * @param request 创建会话请求体：
+   * - systemPrompt: 可选，为会话写入初始系统提示（role='system'）
+   * @returns CreateSessionResponse：
+   * - sessionId: 新创建的会话 ID
+   * - message: 创建结果提示
+   * @keywords-en Session, Create, Bootstrap, SystemPrompt
+   * @keywords-zh 会话, 创建, 初始化, 系统提示
    */
   async createSession(
     request: CreateSessionRequest,
@@ -181,10 +199,13 @@ export class ConversationService {
 
   /**
    * 获取会话历史消息（包含系统消息）。
-   * @param request 获取历史请求体（sessionId 必填）
-   * @returns 历史记录结果，包含消息列表（role、content、timestamp、metadata）
-   * @keywords Session, History
-   * 关键词: 会话, 历史
+   * @param request 获取历史请求体：
+   * - sessionId: 必填，需要查询的会话 ID
+   * @returns GetHistoryResponse：
+   * - sessionId: 会话 ID
+   * - messages: 格式化后的消息列表（role、content、timestamp、metadata）
+   * @keywords-en Session, History, Transcript, Context
+   * @keywords-zh 会话, 历史, 轨迹, 上下文
    */
   async getSessionHistory(
     request: GetHistoryRequest,
@@ -207,10 +228,12 @@ export class ConversationService {
 
   /**
    * 创建新会话的辅助方法：根据请求写入系统提示（如果提供）。
-   * @param request 对话请求体（可选 systemPrompt）
+   * @param request 对话请求体：
+   * - systemPrompt: 可选，为新会话写入系统提示
    * @returns 新的会话 ID
-   * @keywords Session, Bootstrap
-   * 关键词: 会话, 初始化
+   * @keywords-en Session, Bootstrap, Internal, Helper
+   * @keywords-zh 会话, 初始化, 内部, 辅助
+   * @remarks 内部方法，用于 chat/chatStream 在未提供 sessionId 时初始化会话。
    */
   private async createNewSession(request: ChatRequest): Promise<string> {
     const context = await this.contextService.createContext(
@@ -224,9 +247,10 @@ export class ConversationService {
   /**
    * 获取会话上下文消息列表（包含系统消息）。
    * @param sessionId 会话 ID
-   * @returns 消息数组（包含角色与内容）
-   * @keywords Context, Messages
-   * 关键词: 上下文, 消息
+   * @returns ChatMessage[]：格式化后的消息数组（包含角色与内容；可能包含 timestamp/metadata）
+   * @keywords-en Context, Messages, Retrieval
+   * @keywords-zh 上下文, 消息, 检索
+   * @remarks 调用 ContextService.getFormattedMessages(sessionId, includeSystem=true)。
    */
   private async getContextMessages(sessionId: string): Promise<ChatMessage[]> {
     return await this.contextService.getFormattedMessages(sessionId, true);

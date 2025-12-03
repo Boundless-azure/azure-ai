@@ -19,11 +19,10 @@ import type {
   PlanPhaseResult,
   GeneratePhaseResult,
 } from '../types/orchestrator';
-import type {
-  FunctionCallHandle,
-  FunctionCallServiceContract,
-} from '../types/service.types';
+import type { FunctionCallServiceContract } from '../types/service.types';
 import { PluginOrchestrateFunctionDescription } from '../descriptions/plugin/orchestrate';
+import { z } from 'zod';
+import { tool } from 'langchain';
 
 /**
  * @title 插件生成协同服务（Function Call 用）
@@ -57,27 +56,56 @@ export class PluginOrchestratorService implements FunctionCallServiceContract {
   /**
    * 提供标准化的函数句柄：plugin_orchestrate
    */
-  getHandle(): FunctionCallHandle {
-    return {
-      name: PluginOrchestrateFunctionDescription.name,
-      description: PluginOrchestrateFunctionDescription,
-      validate: (v: unknown): boolean => {
-        if (!isObject(v)) return false;
-        const input = v['input'];
-        if (!isObject(input)) return false;
-        const pluginName = input['pluginName'];
-        return typeof pluginName === 'string' && pluginName.length > 0;
+  getHandle() {
+    // 用 Zod 定义输入 schema，并通过 LangChain 的 tool() 进行 MCP 风格工具定义
+    // 拆分复杂 schema，使用 ZodType 进行类型收敛，避免 TS 实例化过深
+    const ConfigOptionSchema = z.object({
+      name: z.string().min(1),
+      type: z.string().optional(),
+      default: z.any().optional(),
+      desc: z.string().optional(),
+    });
+
+    const KeywordsSchema = z.object({
+      cn: z.array(z.string()).optional(),
+      en: z.array(z.string()).optional(),
+    });
+
+    const InputSchemaRaw = z.object({
+      pluginName: z.string().min(1),
+      title: z.string().optional(),
+      intent: z.string().optional(),
+      description: z.string().optional(),
+      features: z.array(z.string()).optional(),
+      hooks: z.array(z.string()).optional(),
+      desiredFiles: z.array(z.string()).optional(),
+      configOptions: z.array(ConfigOptionSchema).optional(),
+      jsdocBlocks: z.array(z.string()).optional(),
+      keywords: KeywordsSchema.optional(),
+    });
+
+    const InputSchema: z.ZodType<OrchestratorParams['input']> =
+      InputSchemaRaw as unknown as z.ZodType<OrchestratorParams['input']>;
+
+    const schemaRaw = z.object({
+      input: InputSchema,
+      // 以下参数由系统侧补齐或控制
+      phase: z.enum(['plan', 'generate']).optional(),
+      plan: z.any().optional(),
+      nextFile: z.string().optional(),
+      modelId: z.string().optional(),
+      temperature: z.number().optional(),
+    });
+
+    // 回调参数不显式标注类型，避免与复杂 schema 形成双向推断；在实现体内进行必要的类型断言
+    return tool(
+      async (input) => this.orchestrate(input as OrchestratorParams),
+      {
+        name: PluginOrchestrateFunctionDescription.name,
+        description: PluginOrchestrateFunctionDescription.description,
+        schema: schemaRaw,
       },
-      execute: async (args: unknown): Promise<unknown> => {
-        // 由系统侧负责补齐 phase/modelId/temperature/plan 等参数
-        if (!isOrchestratorParams(args)) {
-          throw new Error(
-            'plugin_orchestrate 需要系统补齐的参数：phase/modelId/temperature/(plan,nextFile) 等',
-          );
-        }
-        return this.orchestrate(args);
-      },
-    };
+    );
   }
 
   /** 计划阶段：仅返回标准 JSON 计划（不包含任何代码） */
@@ -242,32 +270,3 @@ function applyNextFileOverride(
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;
 }
-
-/**
- * 类型守卫：OrchestratorParams
- * 要求至少包含 phase 与 modelId；当 phase 为 'generate' 时要求存在 plan。
- */
-function isOrchestratorParams(v: unknown): v is OrchestratorParams {
-  if (!isObject(v)) return false;
-  const phase = v['phase'];
-  const modelId = v['modelId'];
-  const input = v['input'];
-  if (
-    (phase !== 'plan' && phase !== 'generate') ||
-    typeof modelId !== 'string'
-  ) {
-    return false;
-  }
-  if (!isObject(input)) return false;
-  if (phase === 'generate') {
-    const planVal = v['plan'];
-    return isObject(planVal);
-  }
-  return true;
-}
-
-/**
- * Function Call 描述迁移：
- * 该函数的工具描述已移动至 core/function-call/descriptions/plugin.orchestrate.ts。
- * 请从 'src/core/function-call/descriptions' 目录引入。
- */

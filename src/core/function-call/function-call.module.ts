@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
-import { AICoreModule } from '../ai/ai-core.module';
-import { PluginOrchestratorService } from './services/plugin.orchestrator.service';
-import { ContextFunctionService } from './services/context.function.service';
-import { MysqlReadonlyService } from './services/mysql.readonly.service';
+import { PluginOrchestratorService } from './services/plugin_orchestrate.function-service';
+import { ContextFunctionService } from './services/context_window_keyword.function-service';
+import { MysqlReadonlyService } from './services/db_mysql_select.function-service';
 
 /**
  * @title Function Call 专用模块
@@ -10,7 +9,7 @@ import { MysqlReadonlyService } from './services/mysql.readonly.service';
  * @desc 为主对话提供函数调用相关的服务与描述，集中管理、与业务模块解耦。
  */
 @Module({
-  imports: [AICoreModule.forFeature()],
+  imports: [],
   providers: [
     PluginOrchestratorService,
     ContextFunctionService,

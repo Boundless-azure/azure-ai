@@ -12,27 +12,5 @@ import type { FunctionCallDescription } from '../types';
 export const MysqlSelectFunctionDescription: FunctionCallDescription = {
   name: 'db_mysql_select',
   description:
-    '执行只读的 MySQL SELECT 查询；必须提供 limit 限制；支持 `?` 参数占位符与 params 绑定；仅返回 JSON 数组。',
-  parameters: {
-    type: 'object',
-    properties: {
-      sql: {
-        type: 'string',
-        description:
-          '只读 SELECT 语句；不允许包含 INSERT/UPDATE/DELETE/TRUNCATE/ALTER/DROP/CREATE。可使用 `?` 作为参数占位符。',
-      },
-      params: {
-        type: 'array',
-        description:
-          '参数数组（与 SQL 中的 `?` 占位符一一对应）。仅允许原始值（string/number/boolean/null）。',
-        items: {},
-      },
-      limit: {
-        type: 'number',
-        description:
-          '最大返回行数上限（必填）。系统侧可能强制设定最大值（如 200）。',
-      },
-    },
-    required: ['sql', 'limit'],
-  },
+    "执行只读的 MySQL SELECT 查询。使用步骤：先调用 db_mysql_schema_cache(get|refresh) 读取/刷新缓存以确定目标表与必要的 JOIN（依据外键与同义词）；无法唯一确定时先在对话中澄清并用 annotate 写入说明，再生成只读 SQL。所有动态值用 `?` + params 绑定，必须提供合理的 limit（系统可能二次封顶）。典型过滤：LIKE CONCAT('%', ?, '%')、=、BETWEEN ? AND ?。仅返回 JSON 数组。禁止写操作关键词。",
 };

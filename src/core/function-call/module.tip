@@ -9,9 +9,9 @@
 文件清单（File List）
 - core/function-call/function-call.module.ts
 - core/function-call/index.ts
-- core/function-call/services/context.function.service.ts
-- core/function-call/services/mysql.readonly.service.ts
-- core/function-call/services/plugin.orchestrator.service.ts
+- core/function-call/services/context_window_keyword.function-service.ts
+- core/function-call/services/db_mysql_select.function-service.ts
+- core/function-call/services/plugin_orchestrate.function-service.ts
 - core/function-call/descriptions/index.ts
 - core/function-call/descriptions/types.ts
 - core/function-call/descriptions/context/window.keyword.ts
@@ -22,19 +22,19 @@
  - core/function-call/types/service.types.ts（新建）：定义 FunctionCallHandle 与 FunctionCallServiceContract
 
 函数索引（Function Index）
-- ContextFunctionService（context.function.service.ts）
+- ContextFunctionService（context_window_keyword.function-service.ts）
   - method: getKeywordWindow(args, runtime?)
     - desc: 根据关键词获取滑动窗口上下文；支持按会话或用户范围检索；仅返回非系统消息（可选前置系统消息）。
     - params: { sessionId?: string; keywords: string[]; limit: number; includeSystem?: boolean; matchMode?: 'any' | 'all' }
     - returns: ChatMessage[]（JSON-only）
 
-- MysqlReadonlyService（mysql.readonly.service.ts）
+- MysqlReadonlyService（db_mysql_select.function-service.ts）
   - method: select({ sql, params?, limit })
     - desc: 只读 SELECT 查询；黑名单拦截写操作；限制最大返回行数；支持 `?` 参数绑定；对 params 类型进行收敛校验。
     - params: { sql: string; params?: (string|number|boolean|null)[]; limit: number }
     - returns: Record<string, unknown>[]（JSON-only）
 
-- PluginOrchestratorService（plugin.orchestrator.service.ts）
+- PluginOrchestratorService（plugin_orchestrate.function-service.ts）
   - method: orchestrate(params)
     - desc: 两阶段调用：plan（生成计划 JSON）与 generate（按计划生成单文件代码 JSON）。
     - params: OrchestratorParams（见 types/orchestrator.ts）
@@ -61,9 +61,9 @@
 关键词索引（中文 / English Keyword Index）
 core/function-call/function-call.module.ts
 core/function-call/index.ts
-core/function-call/services/context.function.service.ts
-core/function-call/services/mysql.readonly.service.ts
-core/function-call/services/plugin.orchestrator.service.ts
+core/function-call/services/context_window_keyword.function-service.ts
+core/function-call/services/db_mysql_select.function-service.ts
+core/function-call/services/plugin_orchestrate.function-service.ts
 core/function-call/descriptions/index.ts
 core/function-call/descriptions/types.ts
 core/function-call/descriptions/context/window.keyword.ts
@@ -74,9 +74,9 @@ core/function-call/types/index.ts
 
 快速检索映射（Keywords -> Files）
 - "FunctionCallModule" -> core/function-call/function-call.module.ts
-- "ContextFunctionService" -> core/function-call/services/context.function.service.ts
-- "MysqlReadonlyService" -> core/function-call/services/mysql.readonly.service.ts
-- "PluginOrchestratorService" -> core/function-call/services/plugin.orchestrator.service.ts
+ - "ContextFunctionService" -> core/function-call/services/context_window_keyword.function-service.ts
+ - "MysqlReadonlyService" -> core/function-call/services/db_mysql_select.function-service.ts
+ - "PluginOrchestratorService" -> core/function-call/services/plugin_orchestrate.function-service.ts
 - "function-call.descriptions" -> core/function-call/descriptions/index.ts
 - "db_mysql_select" -> core/function-call/descriptions/db/mysql-select.ts
 - "context_window_keyword" -> core/function-call/descriptions/context/window.keyword.ts

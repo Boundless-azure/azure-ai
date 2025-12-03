@@ -1,0 +1,1009 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Agent Workspace</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- FontAwesome -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+
+    <!-- Animate.css -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"
+    />
+
+    <!-- Marked & Highlight.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <link rel="stylesheet" href="css/main.css" />
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: '#000000',
+            },
+            boxShadow: {
+              glow: '0 0 20px -5px rgba(0, 0, 0, 0.1)',
+              'glow-lg': '0 0 30px -5px rgba(0, 0, 0, 0.15)',
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="bg-white text-gray-900 h-screen overflow-hidden font-sans">
+    <div id="app" class="flex h-full">
+      <!-- Expandable Sidebar Container -->
+      <div
+        :class="['bg-gray-50 border-r border-gray-200 flex transition-all duration-300 ease-in-out z-20 relative', isSidebarExpanded ? 'w-[300px]' : 'w-[72px]']"
+      >
+        <!-- Fixed Icon Column (Left) -->
+        <div
+          class="w-[72px] flex flex-col items-center py-6 gap-3 shrink-0 h-full bg-gray-50 relative z-30"
+        >
+          <!-- History Toggle Button -->
+          <button
+            @click="toggleSidebar('history')"
+            :class="['w-10 h-10 rounded-lg flex items-center justify-center transition-colors group relative', activeTab === 'history' ? 'bg-gray-200' : 'hover:bg-gray-200']"
+            title="History"
+          >
+            <i class="fa-solid fa-clock-rotate-left text-gray-600"></i>
+            <div
+              v-if="!isSidebarExpanded"
+              class="absolute left-14 bg-black text-white text-xs px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50"
+            >
+              History
+              <div
+                class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-black"
+              ></div>
+            </div>
+          </button>
+
+          <!-- New Chat Button -->
+          <button
+            @click="startNewChat"
+            class="w-10 h-10 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors group relative"
+            title="New Chat"
+          >
+            <i class="fa-solid fa-pen-to-square text-gray-600"></i>
+            <div
+              v-if="!isSidebarExpanded"
+              class="absolute left-14 bg-black text-white text-xs px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50"
+            >
+              New Chat
+              <div
+                class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-black"
+              ></div>
+            </div>
+          </button>
+
+          <!-- Divider -->
+          <div class="w-8 h-px bg-gray-200 my-1"></div>
+
+          <!-- Role Menu -->
+          <button
+            onclick="window.location.href='role.html'"
+            class="w-10 h-10 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors group relative"
+          >
+            <i class="fa-solid fa-masks-theater text-gray-600"></i>
+            <div
+              v-if="!isSidebarExpanded"
+              class="absolute left-14 bg-black text-white text-xs px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50"
+            >
+              Roles
+              <div
+                class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-black"
+              ></div>
+            </div>
+          </button>
+
+          <!-- User Menu -->
+          <button
+            onclick="window.location.href='user.html'"
+            class="w-10 h-10 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors group relative"
+          >
+            <i class="fa-solid fa-users text-gray-600"></i>
+            <div
+              v-if="!isSidebarExpanded"
+              class="absolute left-14 bg-black text-white text-xs px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50"
+            >
+              Users
+              <div
+                class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-black"
+              ></div>
+            </div>
+          </button>
+
+          <!-- Permission Menu -->
+          <button
+            onclick="window.location.href='permission.html'"
+            class="w-10 h-10 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors group relative"
+          >
+            <i class="fa-solid fa-shield-halved text-gray-600"></i>
+            <div
+              v-if="!isSidebarExpanded"
+              class="absolute left-14 bg-black text-white text-xs px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50"
+            >
+              Permissions
+              <div
+                class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-black"
+              ></div>
+            </div>
+          </button>
+
+          <!-- Memory Menu -->
+          <button
+            onclick="window.location.href='memory.html'"
+            class="w-10 h-10 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors group relative"
+          >
+            <i class="fa-solid fa-brain text-gray-600"></i>
+            <div
+              v-if="!isSidebarExpanded"
+              class="absolute left-14 bg-black text-white text-xs px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50"
+            >
+              Memory
+              <div
+                class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-black"
+              ></div>
+            </div>
+          </button>
+
+          <!-- Database Schema Menu -->
+          <button
+            onclick="window.location.href='schema.html'"
+            class="w-10 h-10 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors group relative"
+          >
+            <i class="fa-solid fa-database text-gray-600"></i>
+            <div
+              v-if="!isSidebarExpanded"
+              class="absolute left-14 bg-black text-white text-xs px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50"
+            >
+              DB Schema
+              <div
+                class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-black"
+              ></div>
+            </div>
+          </button>
+
+          <!-- Todo Menu -->
+          <button
+            onclick="window.location.href='todo.html'"
+            class="w-10 h-10 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors group relative"
+          >
+            <i class="fa-solid fa-list-check text-gray-600"></i>
+            <div
+              v-if="!isSidebarExpanded"
+              class="absolute left-14 bg-black text-white text-xs px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50"
+            >
+              Todos
+              <div
+                class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-black"
+              ></div>
+            </div>
+          </button>
+
+          <!-- Workflow Menu -->
+          <button
+            onclick="window.location.href='workflow.html'"
+            class="w-10 h-10 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors group relative"
+          >
+            <i class="fa-solid fa-diagram-project text-gray-600"></i>
+            <div
+              v-if="!isSidebarExpanded"
+              class="absolute left-14 bg-black text-white text-xs px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50"
+            >
+              Workflows
+              <div
+                class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-black"
+              ></div>
+            </div>
+          </button>
+
+          <div class="flex-1"></div>
+
+          <!-- Settings Button -->
+          <button
+            class="w-10 h-10 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors group relative"
+            title="Settings"
+          >
+            <i class="fa-solid fa-gear text-gray-600"></i>
+            <div
+              v-if="!isSidebarExpanded"
+              class="absolute left-14 bg-black text-white text-xs px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-lg z-50"
+            >
+              Settings
+              <div
+                class="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-black"
+              ></div>
+            </div>
+          </button>
+
+          <!-- Profile -->
+          <button
+            class="w-10 h-10 rounded-full overflow-hidden border border-gray-200 hover:ring-2 ring-black transition-all"
+          >
+            <img
+              src="https://ui-avatars.com/api/?name=User&background=random"
+              alt="User"
+            />
+          </button>
+        </div>
+
+        <!-- Expanded Content Panel (Right) -->
+        <div
+          class="flex-1 flex flex-col h-full overflow-hidden border-l border-gray-100 bg-gray-50 opacity-0 transition-opacity duration-200 delay-100"
+          :class="{'opacity-100': isSidebarExpanded}"
+        >
+          <div
+            class="p-4 font-semibold text-sm text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-white"
+          >
+            {{ activeTabName }}
+          </div>
+
+          <!-- Dynamic Content based on Active Tab -->
+          <div class="flex-1 overflow-y-auto p-2 space-y-1 bg-gray-50">
+            <!-- History List -->
+            <div v-if="activeTab === 'history'">
+              <div
+                v-for="(item, i) in historyItems"
+                :key="i"
+                @click="loadHistory(item)"
+                class="p-3 rounded-lg hover:bg-gray-200 cursor-pointer text-sm text-gray-700 truncate transition-colors bg-white shadow-sm mb-1"
+              >
+                <div class="font-medium">{{ item }}</div>
+                <div class="text-xs text-gray-400 mt-1">2 hours ago</div>
+              </div>
+            </div>
+
+            <!-- Role Menu Directory -->
+            <div v-else-if="activeTab === 'role'" class="space-y-1">
+              <div
+                class="px-3 py-2 text-xs font-semibold text-gray-400 uppercase"
+              >
+                Directory
+              </div>
+              <button
+                @click="currentModuleView = 'role-list'"
+                :class="['w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2', currentModuleView === 'role-list' ? 'bg-white shadow-sm text-black' : 'text-gray-600 hover:bg-gray-200']"
+              >
+                <i class="fa-solid fa-list text-xs w-4"></i> All Roles
+              </button>
+              <button
+                @click="currentModuleView = 'role-create'"
+                :class="['w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2', currentModuleView === 'role-create' ? 'bg-white shadow-sm text-black' : 'text-gray-600 hover:bg-gray-200']"
+              >
+                <i class="fa-solid fa-plus text-xs w-4"></i> Create Role
+              </button>
+              <button
+                @click="currentModuleView = 'role-assign'"
+                :class="['w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2', currentModuleView === 'role-assign' ? 'bg-white shadow-sm text-black' : 'text-gray-600 hover:bg-gray-200']"
+              >
+                <i class="fa-solid fa-user-tag text-xs w-4"></i> Assignments
+              </button>
+            </div>
+
+            <!-- User Menu Directory -->
+            <div v-else-if="activeTab === 'user'" class="space-y-1">
+              <div
+                class="px-3 py-2 text-xs font-semibold text-gray-400 uppercase"
+              >
+                Directory
+              </div>
+              <button
+                @click="currentModuleView = 'user-list'"
+                :class="['w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2', currentModuleView === 'user-list' ? 'bg-white shadow-sm text-black' : 'text-gray-600 hover:bg-gray-200']"
+              >
+                <i class="fa-solid fa-users text-xs w-4"></i> User List
+              </button>
+              <button
+                @click="currentModuleView = 'user-groups'"
+                :class="['w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2', currentModuleView === 'user-groups' ? 'bg-white shadow-sm text-black' : 'text-gray-600 hover:bg-gray-200']"
+              >
+                <i class="fa-solid fa-layer-group text-xs w-4"></i> Groups
+              </button>
+            </div>
+
+            <!-- Default Placeholder for other tabs -->
+            <div
+              v-else
+              class="flex flex-col items-center justify-center h-40 text-gray-400"
+            >
+              <i class="fa-solid fa-folder-open text-2xl mb-2"></i>
+              <span class="text-xs">Directory Empty</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content Area -->
+      <div
+        class="flex-1 flex flex-col relative max-w-full w-full h-full bg-white overflow-hidden"
+      >
+        <!-- CHAT VIEW -->
+        <div
+          v-if="activeTab === 'chat' || activeTab === 'history'"
+          class="flex flex-col h-full w-full max-w-5xl mx-auto"
+        >
+          <!-- Header -->
+          <header
+            class="h-14 border-b border-gray-100 flex items-center justify-between px-6 shrink-0"
+          >
+            <div
+              class="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-2 py-1 rounded-lg transition-colors"
+            >
+              <span class="font-semibold text-gray-800">Azure AI Agent</span>
+              <span
+                class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200"
+                >v1.0</span
+              >
+              <i class="fa-solid fa-chevron-down text-xs text-gray-400"></i>
+            </div>
+            <div class="flex gap-3 text-gray-500">
+              <button class="hover:text-black transition-colors">
+                <i class="fa-regular fa-star"></i>
+              </button>
+              <button class="hover:text-black transition-colors">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+              </button>
+            </div>
+          </header>
+
+          <!-- Messages Container -->
+          <div
+            id="chat-container"
+            class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 pb-32"
+          >
+            <div
+              v-if="messages.length === 0"
+              class="h-full flex flex-col items-center justify-center text-center opacity-50 animate__animated animate__fadeIn"
+            >
+              <div
+                class="w-16 h-16 bg-black rounded-full flex items-center justify-center mb-4 text-white text-2xl"
+              >
+                <i class="fa-solid fa-robot"></i>
+              </div>
+              <h2 class="text-xl font-semibold mb-2">
+                How can I help you today?
+              </h2>
+            </div>
+
+            <div
+              v-for="(msg, index) in messages"
+              :key="index"
+              class="group w-full max-w-3xl mx-auto animate__animated animate__fadeInUp animate__faster"
+            >
+              <!-- User Message -->
+              <div v-if="msg.role === 'user'" class="flex justify-end mb-2">
+                <div
+                  class="bg-gray-100 text-gray-800 px-5 py-3 rounded-3xl rounded-br-sm max-w-[85%] shadow-sm"
+                >
+                  <div class="whitespace-pre-wrap">{{ msg.content }}</div>
+                </div>
+              </div>
+
+              <!-- AI Message -->
+              <div v-else class="flex gap-4 items-start">
+                <div
+                  class="w-8 h-8 rounded-full bg-black flex items-center justify-center shrink-0 mt-1 text-white text-xs shadow-md"
+                >
+                  <i class="fa-solid fa-bolt"></i>
+                </div>
+
+                <div class="flex-1 min-w-0 space-y-2">
+                  <!-- Sender Name -->
+                  <div class="flex items-center justify-between">
+                    <span class="font-semibold text-sm text-gray-900"
+                      >AI Assistant</span
+                    >
+                    <div
+                      class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <button
+                        @click="copyToClipboard(msg.content)"
+                        class="text-gray-400 hover:text-black text-xs"
+                        title="Copy"
+                      >
+                        <i class="fa-regular fa-copy"></i>
+                      </button>
+                      <button
+                        class="text-gray-400 hover:text-black text-xs"
+                        title="Regenerate"
+                      >
+                        <i class="fa-solid fa-rotate-right"></i>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Deep Thinking Block -->
+                  <div
+                    v-if="msg.thinking"
+                    class="border-l-2 border-gray-300 pl-3 my-2"
+                  >
+                    <details
+                      class="group/thinking open:bg-gray-50 rounded-md transition-all duration-300"
+                    >
+                      <summary
+                        class="list-none cursor-pointer text-xs text-gray-500 font-medium hover:text-black flex items-center gap-2 py-1 select-none"
+                      >
+                        <i
+                          class="fa-solid fa-brain text-gray-400 group-open/thinking:text-purple-600 transition-colors"
+                        ></i>
+                        <span>Reasoning Process</span>
+                        <i
+                          class="fa-solid fa-chevron-down text-[10px] transition-transform group-open/thinking:rotate-180 ml-auto opacity-50"
+                        ></i>
+                      </summary>
+                      <div
+                        class="mt-2 text-sm text-gray-600 p-2 bg-gray-50 rounded whitespace-pre-wrap font-mono text-xs leading-relaxed border border-gray-100"
+                      >
+                        {{ msg.thinking }}
+                      </div>
+                    </details>
+                  </div>
+
+                  <!-- Tool Calls -->
+                  <div
+                    v-if="msg.toolCalls && msg.toolCalls.length > 0"
+                    class="space-y-2 my-2"
+                  >
+                    <div
+                      v-for="(tool, tIdx) in msg.toolCalls"
+                      :key="tIdx"
+                      class="border border-gray-200 rounded-lg overflow-hidden text-sm bg-white shadow-sm"
+                    >
+                      <div
+                        class="bg-gray-50 px-3 py-2 flex items-center justify-between border-b border-gray-100"
+                      >
+                        <div
+                          class="flex items-center gap-2 font-mono text-xs text-gray-700"
+                        >
+                          <i class="fa-solid fa-terminal text-gray-400"></i>
+                          <span class="font-bold text-blue-600"
+                            >{{ tool.name }}</span
+                          >
+                          <span class="text-gray-400">({{ tool.status }})</span>
+                        </div>
+                        <i
+                          v-if="tool.status === 'completed'"
+                          class="fa-solid fa-check text-green-500 text-xs"
+                        ></i>
+                        <i
+                          v-else-if="tool.status === 'running'"
+                          class="fa-solid fa-circle-notch fa-spin text-blue-500 text-xs"
+                        ></i>
+                      </div>
+                      <div
+                        class="p-3 font-mono text-xs bg-slate-900 text-green-400 overflow-x-auto"
+                      >
+                        <div class="opacity-70 mb-1">
+                          > {{ JSON.stringify(tool.args) }}
+                        </div>
+                        <div v-if="tool.result">{{ tool.result }}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Main Content (Markdown) -->
+                  <div
+                    class="markdown-body text-gray-800 text-sm leading-relaxed"
+                    v-html="renderMarkdown(msg.content)"
+                  ></div>
+
+                  <!-- Human Intervention Slot -->
+                  <div
+                    v-if="msg.interventionRequired"
+                    class="mt-4 border border-orange-200 bg-orange-50 rounded-lg p-4 animate__animated animate__pulse"
+                  >
+                    <div class="flex items-start gap-3">
+                      <div
+                        class="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center shrink-0"
+                      >
+                        <i class="fa-solid fa-hand text-sm"></i>
+                      </div>
+                      <div class="flex-1">
+                        <h4 class="font-semibold text-gray-900 text-sm mb-1">
+                          Approval Required
+                        </h4>
+                        <p class="text-xs text-gray-600 mb-3">
+                          {{ msg.interventionRequired.description }}
+                        </p>
+                        <div class="flex gap-2">
+                          <button
+                            @click="handleIntervention(index, 'approve')"
+                            class="px-3 py-1.5 bg-black text-white text-xs rounded hover:bg-gray-800 transition-colors font-medium"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            @click="handleIntervention(index, 'reject')"
+                            class="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 text-xs rounded hover:bg-gray-50 transition-colors font-medium"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Loading/Typing Indicator -->
+            <div
+              v-if="isProcessing"
+              class="flex gap-4 items-start max-w-3xl mx-auto animate__animated animate__fadeIn"
+            >
+              <div
+                class="w-8 h-8 rounded-full bg-black flex items-center justify-center shrink-0 mt-1 text-white text-xs"
+              >
+                <i class="fa-solid fa-bolt"></i>
+              </div>
+              <div
+                class="bg-gray-100 rounded-3xl rounded-tl-sm px-4 py-3 flex items-center gap-1"
+              >
+                <div
+                  class="thinking-dot w-2 h-2 bg-gray-400 rounded-full"
+                ></div>
+                <div
+                  class="thinking-dot w-2 h-2 bg-gray-400 rounded-full"
+                ></div>
+                <div
+                  class="thinking-dot w-2 h-2 bg-gray-400 rounded-full"
+                ></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Input Area -->
+          <div
+            class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-white via-white to-transparent pt-10 pb-6 px-4"
+          >
+            <div class="max-w-3xl mx-auto relative">
+              <div
+                class="bg-gray-100 rounded-3xl border border-transparent focus-within:border-gray-300 focus-within:bg-white focus-within:ring-1 focus-within:ring-gray-300 focus-within:shadow-glow-lg transition-all shadow-sm"
+              >
+                <!-- Textarea -->
+                <textarea
+                  v-model="userInput"
+                  @keydown.enter.exact.prevent="sendMessage"
+                  placeholder="Message Azure AI..."
+                  class="w-full bg-transparent border-none focus:ring-0 resize-none py-3.5 pl-4 pr-12 max-h-[200px] overflow-y-auto text-sm"
+                  rows="1"
+                  ref="textarea"
+                  @input="adjustHeight"
+                ></textarea>
+
+                <!-- Action Buttons -->
+                <div class="flex justify-between items-center px-2 pb-2">
+                  <div class="flex gap-1">
+                    <button
+                      class="w-8 h-8 rounded-full hover:bg-gray-200 text-gray-500 flex items-center justify-center transition-colors"
+                      title="Add Attachment"
+                    >
+                      <i class="fa-solid fa-paperclip text-sm"></i>
+                    </button>
+                    <button
+                      class="w-8 h-8 rounded-full hover:bg-gray-200 text-gray-500 flex items-center justify-center transition-colors"
+                      title="Deep Search"
+                    >
+                      <i class="fa-solid fa-globe text-sm"></i>
+                    </button>
+                  </div>
+                  <div class="flex gap-2">
+                    <!-- Voice Input -->
+                    <button
+                      @click="toggleVoice"
+                      :class="isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-black text-white'"
+                      class="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+                      title="Voice Input"
+                    >
+                      <i
+                        class="fa-solid"
+                        :class="isRecording ? 'fa-microphone-slash' : 'fa-microphone'"
+                      ></i>
+                    </button>
+                    <!-- Send -->
+                    <button
+                      @click="sendMessage"
+                      :disabled="!userInput.trim()"
+                      class="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-opacity"
+                      title="Send Message"
+                    >
+                      <i class="fa-solid fa-arrow-up"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="text-center mt-2">
+                <p class="text-[10px] text-gray-400">
+                  AI can make mistakes. Check important info.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- MODULE CONTENT VIEWS -->
+        <div v-else class="flex-1 flex flex-col h-full p-8 overflow-y-auto">
+          <!-- Header for Module -->
+          <div
+            class="mb-6 pb-4 border-b border-gray-100 flex justify-between items-center"
+          >
+            <div>
+              <h1 class="text-2xl font-bold text-gray-900">
+                {{ activeTabName }}
+              </h1>
+              <p class="text-sm text-gray-500 mt-1">
+                Manage your {{ activeTabName.toLowerCase() }} here.
+              </p>
+            </div>
+            <button
+              class="px-4 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800"
+            >
+              <i class="fa-solid fa-plus mr-2"></i> Create New
+            </button>
+          </div>
+
+          <!-- Module Content Area -->
+          <div
+            class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 min-h-[400px]"
+          >
+            <!-- Dynamic Content based on currentModuleView -->
+            <div v-if="activeTab === 'role'">
+              <div v-if="currentModuleView === 'role-list'" class="space-y-4">
+                <h3 class="font-semibold text-lg mb-4">Role List</h3>
+                <table class="w-full text-sm text-left">
+                  <thead class="text-xs text-gray-500 uppercase bg-gray-50">
+                    <tr>
+                      <th class="px-4 py-3">Role Name</th>
+                      <th class="px-4 py-3">Permissions</th>
+                      <th class="px-4 py-3">Users</th>
+                      <th class="px-4 py-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="border-b border-gray-50 hover:bg-gray-50">
+                      <td class="px-4 py-3 font-medium">Administrator</td>
+                      <td class="px-4 py-3">All Access</td>
+                      <td class="px-4 py-3">3</td>
+                      <td class="px-4 py-3">
+                        <span
+                          class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded"
+                          >Active</span
+                        >
+                      </td>
+                    </tr>
+                    <tr class="border-b border-gray-50 hover:bg-gray-50">
+                      <td class="px-4 py-3 font-medium">Editor</td>
+                      <td class="px-4 py-3">Content Management</td>
+                      <td class="px-4 py-3">12</td>
+                      <td class="px-4 py-3">
+                        <span
+                          class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded"
+                          >Active</span
+                        >
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div
+                v-else
+                class="flex items-center justify-center h-64 text-gray-400"
+              >
+                <div class="text-center">
+                  <i class="fa-solid fa-hammer text-3xl mb-3"></i>
+                  <p>Work in progress: {{ currentModuleView }}</p>
+                </div>
+              </div>
+            </div>
+
+            <div v-else-if="activeTab === 'user'">
+              <div
+                v-if="currentModuleView === 'user-list'"
+                class="grid grid-cols-1 md:grid-cols-3 gap-4"
+              >
+                <div
+                  v-for="i in 6"
+                  :key="i"
+                  class="p-4 border border-gray-100 rounded-lg flex items-center gap-3 hover:shadow-md transition-shadow"
+                >
+                  <div
+                    class="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-bold"
+                  >
+                    U{{i}}
+                  </div>
+                  <div>
+                    <div class="font-medium">User {{i}}</div>
+                    <div class="text-xs text-gray-400">
+                      user{{i}}@example.com
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-else
+                class="flex items-center justify-center h-64 text-gray-400"
+              >
+                <div class="text-center">
+                  <i class="fa-solid fa-hammer text-3xl mb-3"></i>
+                  <p>Work in progress: {{ currentModuleView }}</p>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-else
+              class="flex items-center justify-center h-64 text-gray-400"
+            >
+              <div class="text-center">
+                <i class="fa-solid fa-layer-group text-3xl mb-3"></i>
+                <p>Select an item from the directory to view details.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const { createApp, ref, computed, nextTick, onMounted } = Vue;
+
+      createApp({
+        setup() {
+          const messages = ref([]);
+          const userInput = ref('');
+          const isProcessing = ref(false);
+          const isRecording = ref(false);
+          const textarea = ref(null);
+
+          // Sidebar State
+          const activeTab = ref('chat');
+          const isSidebarExpanded = ref(false);
+
+          // Module State
+          const currentModuleView = ref('default');
+
+          // Computed Property for Tab Name Display
+          const activeTabName = computed(() => {
+            const names = {
+              history: 'Chat History',
+              role: 'Role Management',
+              user: 'User Directory',
+              permission: 'Access Control',
+              memory: 'Agent Memory',
+              schema: 'Database Schema',
+              todo: 'Tasks & Todos',
+              workflow: 'Workflow Builder',
+            };
+            return names[activeTab.value] || 'Menu';
+          });
+
+          const historyItems = ref([
+            'Server Load Analysis',
+            'Python Script Debugging',
+            'React Component Refactor',
+            'Docker Container Setup',
+            'Azure Functions Deployment',
+            'SQL Query Optimization',
+            'Marketing Copy Generation',
+            'Travel Itinerary Planning',
+          ]);
+
+          // Initialize with some demo data
+          onMounted(() => {
+            addDemoMessage();
+          });
+
+          const toggleSidebar = (tab) => {
+            if (activeTab.value === tab) {
+              // Toggle expansion if clicking same tab
+              isSidebarExpanded.value = !isSidebarExpanded.value;
+            } else {
+              // Switch tab and ensure expanded
+              activeTab.value = tab;
+              isSidebarExpanded.value = true;
+              // Set default view for module
+              if (tab === 'role') currentModuleView.value = 'role-list';
+              if (tab === 'user') currentModuleView.value = 'user-list';
+            }
+          };
+
+          const loadHistory = (item) => {
+            activeTab.value = 'chat'; // Switch back to chat view but keep sidebar behavior?
+            // Or maybe history implies staying in chat view?
+            // Let's assume clicking history loads it into the main chat area
+            resetChat();
+            messages.value.push({
+              role: 'assistant',
+              content: `Loaded chat history: **${item}**`,
+            });
+          };
+
+          const startNewChat = () => {
+            activeTab.value = 'chat';
+            isSidebarExpanded.value = false; // Collapse sidebar for chat focus
+            resetChat();
+          };
+
+          const addDemoMessage = () => {
+            messages.value.push({
+              role: 'user',
+              content:
+                'Can you analyze the current server load and check if we need to scale up?',
+            });
+
+            setTimeout(() => {
+              messages.value.push({
+                role: 'assistant',
+                thinking:
+                  '1. User asks for server load analysis.\n2. I need to check the system metrics tool.\n3. Then compare against thresholds.',
+                toolCalls: [
+                  {
+                    name: 'get_server_metrics',
+                    status: 'completed',
+                    args: { region: 'us-east-1' },
+                    result: 'CPU: 85%, Memory: 60%',
+                  },
+                  {
+                    name: 'check_scaling_policy',
+                    status: 'running',
+                    args: { metric: 'cpu' },
+                    result: '',
+                  },
+                ],
+                content:
+                  'I am checking the server metrics for you. \n\nIt seems **CPU usage is high (85%)**.',
+                interventionRequired: {
+                  description:
+                    'Auto-scaling requires approval because cost impact > $50/day.',
+                },
+              });
+              scrollToBottom();
+            }, 800);
+          };
+
+          const adjustHeight = () => {
+            const el = textarea.value;
+            el.style.height = 'auto';
+            el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+          };
+
+          const sendMessage = async () => {
+            if (!userInput.value.trim() || isProcessing.value) return;
+
+            const text = userInput.value;
+            userInput.value = '';
+            adjustHeight();
+
+            messages.value.push({ role: 'user', content: text });
+            scrollToBottom();
+            isProcessing.value = true;
+
+            // Simulate AI delay
+            setTimeout(() => {
+              isProcessing.value = false;
+              messages.value.push({
+                role: 'assistant',
+                thinking:
+                  'Parsing user intent...\nIdentified request for general knowledge.',
+                content:
+                  'This is a simulated response. I can render **markdown**, lists, and code blocks.\n\n```javascript\nconsole.log("Hello World");\n```',
+                toolCalls: [],
+              });
+              scrollToBottom();
+            }, 1500);
+          };
+
+          const scrollToBottom = async () => {
+            await nextTick();
+            const container = document.getElementById('chat-container');
+            container.scrollTop = container.scrollHeight;
+          };
+
+          const renderMarkdown = (text) => {
+            // Configure highlight.js
+            marked.setOptions({
+              highlight: function (code, lang) {
+                const language = highlight.getLanguage(lang)
+                  ? lang
+                  : 'plaintext';
+                return highlight.highlight(code, { language }).value;
+              },
+            });
+            return marked.parse(text);
+          };
+
+          const copyToClipboard = (text) => {
+            navigator.clipboard.writeText(text).then(() => {
+              // Could add a toast notification here
+              console.log('Copied to clipboard');
+            });
+          };
+
+          const toggleVoice = () => {
+            if (
+              !('webkitSpeechRecognition' in window) &&
+              !('SpeechRecognition' in window)
+            ) {
+              alert('Speech recognition not supported in this browser.');
+              return;
+            }
+
+            isRecording.value = !isRecording.value;
+            if (isRecording.value) {
+              // Mock recording visual
+              userInput.value = 'Listening...';
+            } else {
+              userInput.value = '';
+            }
+          };
+
+          const handleIntervention = (msgIndex, action) => {
+            const msg = messages.value[msgIndex];
+            msg.interventionRequired = null; // Remove the card
+
+            messages.value.push({
+              role: 'assistant',
+              content: `User **${action}ed** the action. Proceeding...`,
+              toolCalls: [
+                {
+                  name: 'execute_scaling',
+                  status: 'completed',
+                  args: { approved: action === 'approve' },
+                  result:
+                    action === 'approve'
+                      ? 'Scaling initiated'
+                      : 'Scaling aborted',
+                },
+              ],
+            });
+            scrollToBottom();
+          };
+
+          const resetChat = () => {
+            messages.value = [];
+          };
+
+          return {
+            messages,
+            userInput,
+            isProcessing,
+            isRecording,
+            textarea,
+            activeTab,
+            activeTabName,
+            isSidebarExpanded,
+            historyItems,
+            toggleSidebar,
+            startNewChat,
+            adjustHeight,
+            sendMessage,
+            renderMarkdown,
+            copyToClipboard,
+            toggleVoice,
+            handleIntervention,
+            resetChat,
+          };
+        },
+      }).mount('#app');
+    </script>
+  </body>
+</html>

@@ -3,3 +3,4 @@
  * @desc 统一导出所有与本地 MySQL 数据库读取相关的函数调用描述。
  */
 export * from './mysql-select';
+export * from './mysql-schema-cache';

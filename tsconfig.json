@@ -19,6 +19,9 @@
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
 
+    "exactOptionalPropertyTypes": false,
+    "strictFunctionTypes": false,
+
     /* 额外优化 */
     "isolatedModules": true,
     "declaration": true,

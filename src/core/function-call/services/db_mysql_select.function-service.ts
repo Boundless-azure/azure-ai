@@ -1,10 +1,9 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import type {
-  FunctionCallHandle,
-  FunctionCallServiceContract,
-} from '../types/service.types';
+import type { FunctionCallServiceContract } from '../types/service.types';
 import { MysqlSelectFunctionDescription } from '../descriptions/db/mysql-select';
+import { z } from 'zod';
+import { tool } from 'langchain';
 
 /**
  * @title MySQL 只读查询服务
@@ -116,37 +115,36 @@ export class MysqlReadonlyService implements FunctionCallServiceContract {
   /**
    * 提供标准化的函数句柄：mysql_select
    */
-  getHandle(): FunctionCallHandle {
-    return {
-      name: MysqlSelectFunctionDescription.name,
-      description: MysqlSelectFunctionDescription,
-      validate: (v: unknown): boolean => {
-        if (!v || typeof v !== 'object') return false;
-        const o = v as { sql?: unknown; params?: unknown; limit?: unknown };
-        const sqlOk = typeof o.sql === 'string' && o.sql.trim().length > 0;
-        const limitOk = Number.isFinite(Number(o.limit));
-        const paramsOk =
-          o.params === undefined ||
-          (Array.isArray(o.params) &&
-            o.params.every(
-              (p) =>
-                p === null ||
-                typeof p === 'string' ||
-                typeof p === 'number' ||
-                typeof p === 'boolean',
-            ));
-        return sqlOk && limitOk && paramsOk;
-      },
-      execute: async (args: unknown): Promise<unknown> => {
-        return this.select(
-          args as {
-            sql: string;
-            params?: (string | number | boolean | null)[];
-            limit: number;
-          },
-        );
-      },
+  getHandle() {
+    // 1. 提取复杂类型为常量
+    const ParamValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+
+    // 2. 使用简化的 schema 定义
+    const schema = z.object({
+      sql: z.string(),
+      params: z.array(ParamValue).optional(),
+      limit: z.number(),
+    });
+
+    // 3. 显式定义输入类型
+    type Input = {
+      sql: string;
+      params?: Array<string | number | boolean | null>;
+      limit: number;
     };
+
+    // 4. 使用 as Tool 断言
+    return tool(
+      async (input: Input) => {
+        const result = await this.select(input);
+        return typeof result === 'string' ? result : JSON.stringify(result);
+      },
+      {
+        name: MysqlSelectFunctionDescription.name,
+        description: MysqlSelectFunctionDescription.description,
+        schema: schema as any, // 避免深度类型推断
+      },
+    );
   }
 }
 

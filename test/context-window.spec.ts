@@ -1,5 +1,7 @@
+import 'dotenv/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import type { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ContextService } from '../src/core/ai/services/context.service';
 import { MessageKeywordsService } from '../src/core/ai/services/message.keywords.service';
 import { AIModelService } from '../src/core/ai/services/ai-model.service';
@@ -9,27 +11,44 @@ import {
   PromptTemplateEntity,
   AIModelEntity,
 } from '../src/core/ai/entities';
+import {
+  loadDatabaseConfigFromEnv,
+  createTypeOrmOptions,
+} from '../src/config/database.config';
 
 describe('ContextService window and AIModelService.chatWithContext', () => {
   let module: TestingModule;
   let contextService: ContextService;
   let aiModelService: AIModelService;
 
+  // 增加超时时间，避免数据库连接与实体同步耗时或慢查询导致的钩子/用例超时
+  jest.setTimeout(90000);
+
   beforeAll(async () => {
     module = await Test.createTestingModule({
       imports: [
-        TypeOrmModule.forRoot({
-          type: 'sqlite',
-          database: ':memory:',
-          dropSchema: true,
-          entities: [
-            ChatSessionEntity,
-            ChatMessageEntity,
-            PromptTemplateEntity,
-            AIModelEntity,
-          ],
-          synchronize: true,
-        }),
+        // 使用开发数据库运行单元测试，并开启 synchronize 以确保测试所需表存在
+        TypeOrmModule.forRoot(
+          (() => {
+            const db = loadDatabaseConfigFromEnv();
+            const baseOpts: TypeOrmModuleOptions = createTypeOrmOptions({
+              ...db,
+              synchronize: true,
+            });
+            // 覆盖实体范围，避免通过通配符包含不需要的实体
+            const finalOpts: TypeOrmModuleOptions = {
+              ...baseOpts,
+              entities: [
+                ChatSessionEntity,
+                ChatMessageEntity,
+                PromptTemplateEntity,
+                AIModelEntity,
+              ],
+              synchronize: true,
+            };
+            return finalOpts;
+          })(),
+        ),
         TypeOrmModule.forFeature([
           ChatSessionEntity,
           ChatMessageEntity,

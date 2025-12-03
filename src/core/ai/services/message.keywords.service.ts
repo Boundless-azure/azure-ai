@@ -87,6 +87,7 @@ export class MessageKeywordsService {
    */
   private safeParseKeywords(content: string): MessageKeywords {
     try {
+      console.log('内容', content);
       const obj = JSON.parse(content) as unknown;
       const zh = this.getArrayField(obj, 'zh');
       const en = this.getArrayField(obj, 'en');

@@ -4,9 +4,9 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "moduleNameMapper": {
-    "^@/(.*)$": "<rootDir>/src/$1",
-    "^@core/(.*)$": "<rootDir>/src/core/$1",
-    "^@plugin/(.*)$": "<rootDir>/plugins/$1"
+    "^@/(.*)$": "<rootDir>/../src/$1",
+    "^@core/(.*)$": "<rootDir>/../src/core/$1",
+    "^@plugin/(.*)$": "<rootDir>/../plugins/$1"
   },
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"

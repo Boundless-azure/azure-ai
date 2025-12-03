@@ -49,6 +49,7 @@ import {
 import { loadAIConfigFromEnv } from '../../../config/ai.config';
 import type { AIConfig } from '../../../config/types';
 import { createAgent } from 'langchain';
+import { ModuleRef } from '@nestjs/core';
 
 /**
  * AI模型服务
@@ -67,6 +68,7 @@ export class AIModelService implements OnModuleInit {
     private readonly contextService: ContextService,
     @Inject('AI_CORE_OPTIONS')
     private readonly aiCoreOptions: AICoreModuleOptions,
+    private moduleRef: ModuleRef,
   ) {}
 
   onModuleInit(): void {
@@ -89,7 +91,7 @@ export class AIModelService implements OnModuleInit {
   /**
    * 创建AI模型实例
    */
-  private createModelInstance(config: AIModelEntity) {
+  private createModelInstance(config: AIModelEntity, request: AIModelRequest) {
     try {
       let model: ChatOpenAI | ChatAnthropic | ChatGoogleGenerativeAI;
       const aiConf: AIConfig = loadAIConfigFromEnv();
@@ -159,9 +161,11 @@ export class AIModelService implements OnModuleInit {
       this.logger.log(
         `Created model instance: ${config.id} (${config.provider})`,
       );
-
+      request.openFunction = request.openFunction ?? '*';
+      const openFunction = this.getOpenFunction(request);
       const Agent = createAgent({
         model: model,
+        tools: openFunction,
       });
       return Agent;
     } catch (error) {
@@ -179,7 +183,7 @@ export class AIModelService implements OnModuleInit {
     try {
       // Ensure proxy is applied in case lifecycle hook didn't run
       this.ensureProxyConfigured();
-      const model = await this.getModelInstance(request.modelId);
+      const model = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
       // 统一初始化调用参数（仅模型参数）
@@ -365,7 +369,7 @@ export class AIModelService implements OnModuleInit {
     try {
       // Ensure proxy is applied in case lifecycle hook didn't run
       this.ensureProxyConfigured();
-      const model = await this.getModelInstance(request.modelId);
+      const model = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
       // 统一初始化调用参数（仅模型参数）
@@ -512,10 +516,10 @@ export class AIModelService implements OnModuleInit {
   /**
    * 获取模型实例
    */
-  private async getModelInstance(modelId: string) {
+  private async getModelInstance(request: AIModelRequest) {
     const config = await this.aiModelRepository.findOne({
       where: {
-        id: modelId,
+        id: request.modelId,
         enabled: true,
         status: AIModelStatus.ACTIVE,
         isDelete: false,
@@ -523,10 +527,10 @@ export class AIModelService implements OnModuleInit {
     });
 
     if (!config) {
-      throw new Error(`AI model not found or disabled: ${modelId}`);
+      throw new Error(`AI model not found or disabled: ${request.modelId}`);
     }
 
-    return this.createModelInstance(config);
+    return this.createModelInstance(config, request);
   }
 
   /**
@@ -581,8 +585,21 @@ export class AIModelService implements OnModuleInit {
     | undefined {
     const callOptions = request.params
       ? this.applyModelParams(model, request.params)
-      : undefined;
+      : {};
     return callOptions;
+  }
+
+  private getOpenFunction(request: AIModelRequest) {
+    const moduleIncludeFunction = this.aiCoreOptions.includeFunctionServices;
+    const openSource = request.openFunction;
+    const openSourceFunction = moduleIncludeFunction?.filter(
+      (item) => openSource?.includes(item.name) || openSource == '*',
+    );
+    if (!openSourceFunction) return [];
+
+    return openSourceFunction.map((item) => {
+      return this.moduleRef.get(item, { strict: false }).getHandle();
+    });
   }
 
   /**

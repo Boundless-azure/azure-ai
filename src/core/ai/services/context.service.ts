@@ -21,14 +21,13 @@ import { MessageKeywordsService } from './message.keywords.service';
 
 /**
  * 上下文服务
- * 负责管理对话上下文、处理 prompt 模板和消息历史，支持内存缓存和数据库持久化。
+ * 负责管理对话上下文、处理 prompt 模板和消息历史，以数据库为唯一事实来源（无内存缓存）。
  *
  * @keywords context-service, session-management, keyword-extraction, keyword-filtering,
  * sliding-window, prompt-template, analytics, cleanup, non-system-window, system-message
  */
 @Injectable()
 export class ContextService {
-  private contexts = new Map<string, ChatContext>();
   private defaultConfig: ContextConfig = {
     maxMessages: 100,
     maxContextLength: 10000,
@@ -139,30 +138,18 @@ export class ContextService {
       });
     }
 
-    this.contexts.set(sid, context);
     return context;
   }
 
   /**
-   * 获取对话上下文（优先从内存缓存，否则从数据库加载）
+   * 获取对话上下文（直接从数据库加载）
    *
    * @param sessionId 会话唯一标识
    * @returns ChatContext | undefined 若不存在返回 undefined
-   * @keywords context, cache, lazy-load, persistence
+   * @keywords context, persistence, database-only
    */
   async getContext(sessionId: string): Promise<ChatContext | undefined> {
-    // 先从内存缓存获取
-    let context = this.contexts.get(sessionId);
-
-    if (!context) {
-      // 从数据库加载
-      context = await this.loadContextFromDatabase(sessionId);
-      if (context) {
-        this.contexts.set(sessionId, context);
-      }
-    }
-
-    return context;
+    return this.loadContextFromDatabase(sessionId);
   }
 
   /**
@@ -187,10 +174,6 @@ export class ContextService {
       ...message,
       timestamp: now,
     };
-
-    // 先更新内存上下文（仅作为缓存，不作为持久化的来源）
-    context.messages.push(chatMessage);
-    context.updatedAt = now;
 
     // 持久化单条消息
     const saved = await this.chatMessageRepository.save(
@@ -390,12 +373,10 @@ export class ContextService {
    * 删除对话上下文（软删除会话和相关消息）
    *
    * @param sessionId 会话唯一标识
-   * @returns boolean 是否从内存缓存中移除成功
+   * @returns boolean 是否删除成功（软删除）
    * @keywords delete-session, soft-delete, cascade
    */
   async deleteContext(sessionId: string): Promise<boolean> {
-    const deleted = this.contexts.delete(sessionId);
-
     // 软删除：先标记 is_delete，再执行软删除（deleted_at）
     await this.chatSessionRepository.update(
       { sessionId },
@@ -415,8 +396,12 @@ export class ContextService {
       .softDelete()
       .where('session_id = :sid', { sid: sessionId })
       .execute();
-
-    return deleted;
+    // 返回是否至少有会话或消息被软删除
+    const sessionExists = await this.chatSessionRepository.findOne({
+      where: { sessionId },
+      withDeleted: true,
+    });
+    return !!sessionExists;
   }
 
   /**
@@ -538,13 +523,16 @@ export class ContextService {
   }
 
   /**
-   * 获取所有活跃的会话 ID（来自内存缓存）
+   * 获取所有活跃的会话 ID（来自数据库）
    *
    * @returns string[] 会话 id 数组
-   * @keywords active-sessions, cache
+   * @keywords active-sessions, database
    */
-  getActiveSessions(): string[] {
-    return Array.from(this.contexts.keys());
+  async getActiveSessions(): Promise<string[]> {
+    const sessions = await this.chatSessionRepository.find({
+      where: { active: true, isDelete: false },
+    });
+    return sessions.map((s) => s.sessionId);
   }
 
   /**
@@ -700,23 +688,12 @@ export class ContextService {
    * 清理过期的上下文（软删除超过指定小时的会话与消息）
    *
    * @param maxAgeHours 过期时长（小时），默认 24
-   * @returns number 清理数量（缓存 + 会话 + 消息）
+   * @returns number 清理数量（会话 + 消息）
    * @keywords cleanup, expiration, soft-delete
    */
   async cleanupExpiredContexts(maxAgeHours = 24): Promise<number> {
     const now = new Date();
     const maxAge = maxAgeHours * 60 * 60 * 1000;
-    let cleanedCount = 0;
-
-    // 清理内存缓存
-    for (const [sessionId, context] of this.contexts.entries()) {
-      const age = now.getTime() - context.updatedAt.getTime();
-      if (age > maxAge) {
-        this.contexts.delete(sessionId);
-        cleanedCount++;
-      }
-    }
-
     // 清理数据库（软删除 + 标记 is_delete）
     const cutoffDate = new Date(now.getTime() - maxAge);
     await this.chatSessionRepository
@@ -726,7 +703,7 @@ export class ContextService {
       .where('updated_at < :cutoffDate', { cutoffDate })
       .execute();
 
-    const result = await this.chatSessionRepository
+    const sessionDeleteRes = await this.chatSessionRepository
       .createQueryBuilder()
       .softDelete()
       .where('updated_at < :cutoffDate', { cutoffDate })
@@ -739,13 +716,15 @@ export class ContextService {
       .set({ isDelete: true })
       .where('updated_at < :cutoffDate', { cutoffDate })
       .execute();
-    const msgResult = await this.chatMessageRepository
+    const msgDeleteRes = await this.chatMessageRepository
       .createQueryBuilder()
       .softDelete()
       .where('updated_at < :cutoffDate', { cutoffDate })
       .execute();
 
-    return cleanedCount + (result.affected || 0) + (msgResult.affected || 0);
+    const sessionAffected = Number(sessionDeleteRes.affected ?? 0);
+    const msgAffected = Number(msgDeleteRes.affected ?? 0);
+    return sessionAffected + msgAffected;
   }
 
   /**

@@ -1,12 +1,10 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ContextService } from '../../ai/services/context.service';
 import type { ChatMessage } from '../../ai/types';
-import type {
-  FunctionCallHandle,
-  FunctionCallServiceContract,
-  FunctionCallRuntimeContext,
-} from '../types/service.types';
+import type { FunctionCallServiceContract } from '../types/service.types';
 import { ContextWindowKeywordFunctionDescription } from '../descriptions/context/window.keyword';
+import { z } from 'zod';
+import { tool } from 'langchain';
 
 /**
  * @title Context Function Service
@@ -84,51 +82,41 @@ export class ContextFunctionService implements FunctionCallServiceContract {
   /**
    * 提供标准化的函数句柄：context_window_keyword
    */
-  getHandle(): FunctionCallHandle {
-    return {
-      name: ContextWindowKeywordFunctionDescription.name,
-      description: ContextWindowKeywordFunctionDescription,
-      validate: (v: unknown): boolean => {
-        if (!v || typeof v !== 'object') return false;
-        const o = v as {
-          sessionId?: unknown;
-          keywords?: unknown;
-          limit?: unknown;
-          includeSystem?: unknown;
-          matchMode?: unknown;
-        };
-        const keywordsOk =
-          Array.isArray(o.keywords) &&
-          o.keywords.every((k) => typeof k === 'string' && k.length > 0);
-        const limitOk = Number.isFinite(Number(o.limit)) && Number(o.limit) > 0;
-        const includeSystemOk =
-          o.includeSystem === undefined || typeof o.includeSystem === 'boolean';
-        const matchModeOk =
-          o.matchMode === undefined ||
-          o.matchMode === 'any' ||
-          o.matchMode === 'all';
-        const sessionIdOk =
-          o.sessionId === undefined || typeof o.sessionId === 'string';
-        return (
-          keywordsOk && limitOk && includeSystemOk && matchModeOk && sessionIdOk
-        );
+  getHandle() {
+    const schema: any = z.object({
+      sessionId: z.string().optional(),
+      keywords: z.array(z.string().min(1)).min(1, 'keywords 不能为空'),
+      limit: z.number().positive('limit 必须为正数'),
+      includeSystem: z.boolean().optional(),
+      matchMode: z.enum(['any', 'all']).optional(),
+    });
+
+    return tool(
+      async ({
+        sessionId,
+        keywords,
+        limit,
+        includeSystem,
+        matchMode,
+      }: {
+        sessionId?: string;
+        keywords: string[];
+        limit: number;
+        includeSystem?: boolean;
+        matchMode?: 'any' | 'all';
+      }) =>
+        this.getKeywordWindow({
+          sessionId,
+          keywords,
+          limit,
+          includeSystem,
+          matchMode,
+        }),
+      {
+        name: ContextWindowKeywordFunctionDescription.name,
+        description: ContextWindowKeywordFunctionDescription.description,
+        schema,
       },
-      execute: async (
-        args: unknown,
-        ctx?: FunctionCallRuntimeContext,
-      ): Promise<unknown> => {
-        const a = args as {
-          sessionId?: string;
-          keywords: string[];
-          limit: number;
-          includeSystem?: boolean;
-          matchMode?: 'any' | 'all';
-        };
-        return this.getKeywordWindow(
-          a,
-          ctx?.userId ? { userId: ctx.userId } : undefined,
-        );
-      },
-    };
+    );
   }
 }
