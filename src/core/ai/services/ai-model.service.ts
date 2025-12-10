@@ -166,6 +166,7 @@ export class AIModelService implements OnModuleInit {
       const Agent = createAgent({
         model: model,
         tools: openFunction,
+        checkpointer: request.checkpointer,
       });
       return Agent;
     } catch (error) {
@@ -183,29 +184,36 @@ export class AIModelService implements OnModuleInit {
     try {
       // Ensure proxy is applied in case lifecycle hook didn't run
       this.ensureProxyConfigured();
-      const model = await this.getModelInstance(request);
+      const agent = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
-      // 统一初始化调用参数（仅模型参数）
-      const invocationOptions = this.buildInvocationOptions(model, request);
-      const response = await model.invoke(
+      const invocationOptions = this.buildInvocationOptions(agent, request);
+      const response = await agent.invoke(
         {
           messages,
         },
-        {
-          ...invocationOptions,
-        },
+        invocationOptions,
       );
 
       const responseTime = Date.now() - startTime;
 
       // 构建响应
-      const contentStr =
-        typeof response.messages === 'string'
-          ? response.messages
-          : Array.isArray(response.messages)
-            ? JSON.stringify(response.messages)
-            : String(response.messages);
+      let contentStr: string = '';
+      const respAny = response as Record<string, unknown>;
+      const directContent = respAny['content'];
+      if (typeof directContent === 'string') {
+        contentStr = directContent;
+      } else if ('messages' in respAny) {
+        const msgs = respAny['messages'];
+        if (Array.isArray(msgs)) {
+          const aiMsg = this.handleMessage(msgs, 'assistant');
+          contentStr = typeof aiMsg?.content === 'string' ? aiMsg.content : '';
+        } else if (typeof msgs === 'string') {
+          contentStr = msgs;
+        } else {
+          contentStr = '';
+        }
+      }
       const aiResponse: AIModelResponse = {
         content: contentStr,
         model: request.modelId,
@@ -214,7 +222,13 @@ export class AIModelService implements OnModuleInit {
         tokensUsed: undefined,
       };
 
-      const responseTo = this.handleMessage(response.messages, 'assistant');
+      const responseTo =
+        'messages' in (response as Record<string, unknown>)
+          ? this.handleMessage(
+              (response as { messages: BaseMessage[] }).messages,
+              'assistant',
+            )
+          : undefined;
 
       if (responseTo) {
         aiResponse.tokensUsed = this.handleCountTokenToEntity(responseTo);
@@ -363,41 +377,112 @@ export class AIModelService implements OnModuleInit {
    */
   async *chatStream(
     request: AIModelRequest,
-  ): AsyncGenerator<string, AIModelResponse> {
+  ): AsyncGenerator<import('../types').ModelSseEvent, AIModelResponse> {
     const startTime = Date.now();
 
     try {
       // Ensure proxy is applied in case lifecycle hook didn't run
       this.ensureProxyConfigured();
-      const model = await this.getModelInstance(request);
+      const agent = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
-      // 统一初始化调用参数（仅模型参数）
-      const invocationOptions = this.buildInvocationOptions(model, request);
-
-      const stream = await model.stream(
+      const recursionLimit = 16;
+      const invocationOptions = this.buildInvocationOptions(agent, request);
+      const stream = agent.streamEvents(
         { messages },
-        { ...invocationOptions, streamMode: ['values', 'messages'] },
+        { recursionLimit, ...(invocationOptions ?? {}) },
       );
-      let tokenCountContext;
-      type MoreChunk =
-        | ['values', { messages: AIMessage[] }]
-        | ['messages', AIMessageChunk[]];
-      for await (const chunk of stream) {
-        const chunkTo: MoreChunk = chunk;
-        const [streamMode, chunkData] = chunkTo;
-        if (streamMode == 'messages') {
-          const messageContent = chunkData[0]?.content || '';
-          if (typeof messageContent == 'string') {
-            yield messageContent;
+      const runIdToToolId = new Map<string, string>();
+      let finalOutput: unknown = null;
+      for await (const event of stream) {
+        const data = event.data as {
+          chunk?: AIMessageChunk;
+          input?: any;
+          output?: any;
+        };
+        const evtName = event.event;
+        const runId = event.run_id;
+        switch (evtName) {
+          case 'on_chat_model_stream': {
+            const chunk = data?.chunk;
+            if (!chunk) break;
+            const addKw = chunk.additional_kwargs;
+            const reasoning = addKw?.['reasoning_content'];
+            if (typeof reasoning === 'string' && reasoning.length > 0) {
+              yield { type: 'reasoning', data: { text: reasoning } };
+              break;
+            }
+            if (typeof chunk.content === 'string') {
+              const tags = (event as unknown as { tags?: string[] }).tags;
+              if (Array.isArray(tags) && tags.includes('subagent')) break;
+              yield { type: 'token', data: { text: chunk.content } };
+              break;
+            }
+            const tChunks = (
+              chunk as unknown as {
+                tool_call_chunks?: Array<{
+                  id?: string;
+                  name?: string;
+                  args?: unknown;
+                  index?: number;
+                }>;
+              }
+            ).tool_call_chunks;
+            if (Array.isArray(tChunks) && tChunks.length > 0) {
+              for (const tc of tChunks) {
+                if (tc.id) {
+                  if (typeof runId === 'string') {
+                    runIdToToolId.set(tc.id, runId);
+                  }
+                  yield {
+                    type: 'tool_start',
+                    data: {
+                      name: tc.name ?? '',
+                      input: data?.input,
+                      id: runId,
+                    },
+                  };
+                  break;
+                }
+                yield {
+                  type: 'tool_chunk',
+                  data: {
+                    id: runId,
+                    name: tc.name,
+                    args: tc.args,
+                    index: tc.index,
+                  },
+                };
+              }
+            }
+            break;
           }
-        }
-
-        if (streamMode == 'values') {
-          const lastChunkData = chunkData.messages.at(-1);
-          if (lastChunkData instanceof AIMessage) {
-            tokenCountContext = lastChunkData;
+          case 'on_tool_end': {
+            const outAny = data?.output;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            const toolId = outAny?.tool_call_id;
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            const rid = toolId ? runIdToToolId.get(toolId) : undefined;
+            yield {
+              type: 'tool_end',
+              data: {
+                name: (event as unknown as { name?: string }).name,
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+                output: outAny?.content,
+                id: rid,
+              },
+            };
+            break;
           }
+          case 'on_chain_end': {
+            const name = (event as unknown as { name?: string }).name;
+            if (name === 'AgentExecutor' || !name) {
+              finalOutput = data?.output;
+            }
+            break;
+          }
+          default:
+            break;
         }
       }
 
@@ -406,15 +491,13 @@ export class AIModelService implements OnModuleInit {
       // 返回最终响应
       const aiResponse: AIModelResponse = {
         content:
-          typeof tokenCountContext?.content == 'string'
-            ? tokenCountContext.content
-            : JSON.stringify(tokenCountContext?.content),
+          typeof (finalOutput as { content?: unknown })?.content === 'string'
+            ? ((finalOutput as { content?: unknown }).content as string)
+            : JSON.stringify(finalOutput ?? ''),
         model: request.modelId,
         responseTime,
         requestId: this.generateRequestId(),
-        tokensUsed: tokenCountContext
-          ? this.handleCountTokenToEntity(tokenCountContext)
-          : undefined,
+        tokensUsed: undefined,
       };
 
       // 不在此处提取或解析函数调用结构
@@ -586,7 +669,10 @@ export class AIModelService implements OnModuleInit {
     const callOptions = request.params
       ? this.applyModelParams(model, request.params)
       : {};
-    return callOptions;
+    const cfg = request.sessionId
+      ? { configurable: { thread_id: request.sessionId } }
+      : {};
+    return { ...callOptions, ...cfg };
   }
 
   private getOpenFunction(request: AIModelRequest) {

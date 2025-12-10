@@ -180,6 +180,8 @@ export interface AIModelRequest {
   sessionId?: string;
   /** 要开启的函数调用名称列表 */
   openFunction?: string[] | string;
+  /** LangGraph 检查点保存器 (可选) */
+  checkpointer?: import('@langchain/langgraph-checkpoint').BaseCheckpointSaver;
 }
 
 /**
@@ -193,3 +195,17 @@ export interface StreamResponse {
   /** 完整响应 (仅在done=true时提供) */
   response?: AIModelResponse;
 }
+
+/**
+ * 模型流式事件（用于 SSE 数据载荷）
+ */
+export type ModelSseEvent =
+  | { type: 'token'; data: { text: string } }
+  | { type: 'reasoning'; data: { text: string } }
+  | { type: 'tool_start'; data: { name: string; input?: unknown; id?: string } }
+  | {
+      type: 'tool_chunk';
+      data: { id?: string; name?: string; args?: unknown; index?: number };
+    }
+  | { type: 'tool_end'; data: { name?: string; output?: unknown; id?: string } }
+  | { type: 'error'; error: string };

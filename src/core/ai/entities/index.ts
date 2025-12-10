@@ -4,3 +4,4 @@ export * from './prompt-template.entity';
 export * from './chat-session.entity';
 export * from './base.entity';
 export * from './chat-message.entity';
+export * from './round-summary.entity';

@@ -307,15 +307,22 @@ export class ContextService {
         timestamp: r.createdAt,
         metadata: r.metadata ?? undefined,
       }));
-    if (includeSystem && session.systemPrompt) {
-      return [
-        {
-          role: 'system',
-          content: session.systemPrompt,
-          timestamp: session.createdAt,
-        },
-        ...msgs,
-      ];
+    if (includeSystem) {
+      const latestSystem = await this.chatMessageRepository.findOne({
+        where: { sessionId, role: 'system', isDelete: false },
+        order: { createdAt: 'DESC' },
+      });
+      const sysContent = latestSystem?.content ?? session.systemPrompt;
+      if (sysContent) {
+        return [
+          {
+            role: 'system',
+            content: sysContent,
+            timestamp: latestSystem?.createdAt ?? session.createdAt,
+          },
+          ...msgs,
+        ];
+      }
     }
     return msgs;
   }
@@ -334,6 +341,55 @@ export class ContextService {
   ): Promise<ChatMessage[]> {
     const n = this.defaultConfig.analysisWindowSize ?? 5;
     return this.getRecentMessages(sessionId, n, includeSystem);
+  }
+
+  async getRoundWindowMessages(
+    sessionId: string,
+    count?: number,
+    includeSystem = true,
+  ): Promise<ChatMessage[]> {
+    const session = await this.chatSessionRepository.findOne({
+      where: { sessionId, active: true, isDelete: false },
+    });
+    if (!session) {
+      throw new Error(`Context not found for session: ${sessionId}`);
+    }
+    const n = typeof count === 'number' && count > 0 ? count : 19;
+    const messages = await this.getRecentMessages(sessionId, n * 4, false);
+    const filteredAll = messages.filter((m) => {
+      let ch: string | undefined = undefined;
+      const meta = m.metadata;
+      if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+        const v = (meta as Record<string, unknown>)['channel'];
+        if (typeof v === 'string') ch = v;
+      }
+      if (!ch) return true;
+      const lc = ch.toLowerCase();
+      return !(
+        lc === 'tool' ||
+        lc === 'tools' ||
+        lc.startsWith('tool_') ||
+        lc.includes('function')
+      );
+    });
+    const filtered = filteredAll.slice(-n);
+    if (!includeSystem) return filtered;
+    const latestSystem = await this.chatMessageRepository.findOne({
+      where: { sessionId, role: 'system', isDelete: false },
+      order: { createdAt: 'DESC' },
+    });
+    const sysContent = latestSystem?.content ?? session.systemPrompt;
+    if (sysContent) {
+      return [
+        {
+          role: 'system',
+          content: sysContent,
+          timestamp: latestSystem?.createdAt ?? session.createdAt,
+        },
+        ...filtered,
+      ];
+    }
+    return filtered;
   }
 
   /**

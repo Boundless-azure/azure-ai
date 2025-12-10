@@ -1,10 +1,16 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AICoreModule } from '@core/ai';
 import { FunctionCallModule } from '@core/function-call/function-call.module';
 import { ConversationController } from './controllers/conversation.controller';
 import { ConversationService } from './services/conversation.service';
+import { ConversationSegmentService } from './services/segment.service';
+import { SegmentController } from './controllers/segment.controller';
+import { ChatSegmentEntity } from './entities/chat-segment.entity';
+import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
 // 改为按服务类控制启用的函数调用
 import { MysqlReadonlyService } from '@core/function-call';
+import { LangGraphCheckpointModule } from '@core/langgraph/checkpoint/checkpoint.module';
 /**
  * @title 外部对话模块
  * @desc 提供完整的 AI 对话接口：
@@ -22,9 +28,11 @@ import { MysqlReadonlyService } from '@core/function-call';
       includeFunctionServices: [MysqlReadonlyService],
     }), // 导入 AI 核心模块
     FunctionCallModule, // 导入 function-call 模块
+    TypeOrmModule.forFeature([ChatSegmentEntity, ChatMessageEntity]),
+    LangGraphCheckpointModule.forRoot(),
   ],
-  controllers: [ConversationController],
-  providers: [ConversationService],
-  exports: [ConversationService],
+  controllers: [ConversationController, SegmentController],
+  providers: [ConversationService, ConversationSegmentService],
+  exports: [ConversationService, ConversationSegmentService],
 })
 export class ConversationModule {}

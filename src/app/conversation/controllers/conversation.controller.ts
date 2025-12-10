@@ -4,19 +4,22 @@ import {
   Get,
   Body,
   Query,
-  Res,
-  Headers,
   Logger,
   Param,
+  Sse,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Observable } from 'rxjs';
+import { from, map } from 'rxjs';
 import { ConversationService } from '../services/conversation.service';
+import { AIModelService } from '@core/ai';
+import { TypeOrmCheckpointSaver } from '@core/langgraph/checkpoint/services/typeorm-checkpoint.saver';
 import type {
   ChatRequest,
   CreateSessionRequest,
   GetHistoryRequest,
   CreateSessionResponse,
   GetHistoryResponse,
+  ConversationSseEvent,
 } from '@/app/conversation/types/conversation.types';
 
 /**
@@ -35,7 +38,11 @@ import type {
 export class ConversationController {
   private readonly logger = new Logger(ConversationController.name);
 
-  constructor(private readonly conversationService: ConversationService) {}
+  constructor(
+    private readonly conversationService: ConversationService,
+    private readonly aiModelService: AIModelService,
+    private readonly _checkpointer: TypeOrmCheckpointSaver,
+  ) {}
 
   /**
    * AI 对话接口（支持流式与非流式返回）。
@@ -50,54 +57,17 @@ export class ConversationController {
    * 关键词: 对话, 流式, SSE
    */
   @Post('chat')
-  async chat(
-    @Body() request: ChatRequest,
-    @Headers('accept') acceptHeader: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    try {
-      // 检查是否请求流式响应
-      const isStreaming =
-        (acceptHeader?.includes('text/stream') ?? false) ||
-        Boolean((request as { stream?: boolean })?.stream);
+  async chat(@Body() request: ChatRequest) {
+    const svc: ConversationService = this.conversationService;
+    return await svc.chat(request);
+  }
 
-      // 明确标注会话服务类型，避免类型解析异常导致的“unsafe member access”
-      const svc: ConversationService = this.conversationService;
-
-      if (isStreaming) {
-        // 流式响应
-        res.setHeader('Content-Type', 'text/stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-
-        try {
-          // 该属性访问在某些 ESLint 类型服务环境下会被误判为 "error typed value"
-          for await (const chunk of svc.chatStream(request)) {
-            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-          }
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          res.write(
-            `data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`,
-          );
-        } finally {
-          res.end();
-        }
-      } else {
-        // 非流式响应
-        const response = await svc.chat(request);
-        res.json(response);
-      }
-    } catch (error) {
-      this.logger.error('Chat error:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: errorMessage });
-      }
-    }
+  @Sse('chat/stream')
+  sseChat(
+    @Query() request: ChatRequest,
+  ): Observable<{ data: ConversationSseEvent }> {
+    const svc: ConversationService = this.conversationService;
+    return from(svc.chatStream(request)).pipe(map((ev) => ({ data: ev })));
   }
 
   /**

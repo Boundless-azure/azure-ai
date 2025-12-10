@@ -1,0 +1,27 @@
+# 模块：LangGraph Checkpoint（TypeORM Saver）
+
+中文/English 关键词
+- LangGraph / langgraph
+- 检查点 / checkpoint
+- 保存器 / saver
+- TypeORM / typeorm
+- 写入 / writes
+- 摘要 / summary
+- 轮次 / rounds
+
+文件索引（Keywords -> Files）
+- typeorm-checkpoint.saver -> core/langgraph/checkpoint/services/typeorm-checkpoint.saver.ts
+- lg-checkpoint.entity -> core/langgraph/checkpoint/entities/lg-checkpoint.entity.ts
+- lg-write.entity -> core/langgraph/checkpoint/entities/lg-write.entity.ts
+- checkpoint.module -> core/langgraph/checkpoint/checkpoint.module.ts
+- round-summary.entity -> core/ai/entities/round-summary.entity.ts
+
+函数/类检索映射（Keywords -> Symbol）
+- TypeOrmCheckpointSaver -> core/langgraph/checkpoint/services/typeorm-checkpoint.saver.ts
+- LGCheckpointEntity -> core/langgraph/checkpoint/entities/lg-checkpoint.entity.ts
+- LGWriteEntity -> core/langgraph/checkpoint/entities/lg-write.entity.ts
+- RoundSummaryEntity -> core/ai/entities/round-summary.entity.ts
+
+模块功能描述
+- 提供自定义 BaseCheckpointSaver 的 TypeORM 实现，兼容 LangGraph v1 的持久化接口：put/getTuple/list/putWrites/deleteThread；采用 JSON+base64 存储 Typed 序列化值，支持 MySQL/Postgres/SQLite。
+- 额外集成：在 putWrites 中将 channel 为“消息”的写入持久化到 chat_session_messages；并按配置的轮次（默认20）调用 AI 生成会话总结，写入 summary_table，且每次总结包含上一阶段的历史总结。

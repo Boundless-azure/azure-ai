@@ -1,16 +1,17 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import {
   AIModelService,
   ContextService,
   ChatMessage,
   AIModelRequest,
 } from '@core/ai';
+import { TypeOrmCheckpointSaver } from '@core/langgraph/checkpoint/services/typeorm-checkpoint.saver';
 import type {
   ChatRequest,
   CreateSessionRequest,
   GetHistoryRequest,
   ChatResponse,
-  StreamChunk,
+  ConversationSseEvent,
   CreateSessionResponse,
   GetHistoryResponse,
 } from '@/app/conversation/types/conversation.types';
@@ -32,6 +33,9 @@ export class ConversationService {
   constructor(
     private readonly aiModelService: AIModelService,
     private readonly contextService: ContextService,
+    private readonly checkpointer: TypeOrmCheckpointSaver,
+    @Inject('CHECKPOINT_OPTIONS')
+    private readonly ckptOptions: { summaryInterval?: number },
   ) {}
 
   /**
@@ -54,17 +58,19 @@ export class ConversationService {
    * - 上下文包含系统消息与历史消息，来源于 ContextService。
    */
   async chat(request: ChatRequest): Promise<ChatResponse> {
-    const sessionId =
-      request.sessionId || (await this.createNewSession(request));
+    const sessionId = request.sessionId || this.createNewSession(request);
 
-    await this.contextService.addMessage(sessionId, {
-      role: 'user',
-      content: request.message,
-    });
+    const messages: ChatMessage[] = [];
+    if (!request.sessionId && request.systemPrompt) {
+      messages.push({ role: 'system', content: request.systemPrompt });
+    }
+    messages.push({ role: 'user', content: request.message });
 
     const aiRequest: AIModelRequest = {
       modelId: request.modelId || (await this.pickDefaultModelId()),
-      messages: [...(await this.getContextMessages(sessionId))],
+      messages,
+      sessionId,
+      checkpointer: this.checkpointer,
       params: {
         temperature: 0.7,
         maxTokens: 2000,
@@ -72,11 +78,6 @@ export class ConversationService {
     };
 
     const response = await this.aiModelService.chat(aiRequest);
-
-    await this.contextService.addMessage(sessionId, {
-      role: 'assistant',
-      content: response.content,
-    });
 
     return {
       sessionId,
@@ -103,19 +104,22 @@ export class ConversationService {
    * - 服务会在流结束后将完整内容写入上下文并以 'assistant' 角色保存。
    * - 底层 AI 请求带有 stream=true，适用于 Server-Sent Events 或前端流式渲染。
    */
-  async *chatStream(request: ChatRequest): AsyncGenerator<StreamChunk> {
+  async *chatStream(
+    request: ChatRequest,
+  ): AsyncGenerator<ConversationSseEvent> {
     try {
-      const sessionId =
-        request.sessionId || (await this.createNewSession(request));
-
-      await this.contextService.addMessage(sessionId, {
-        role: 'user',
-        content: request.message,
-      });
+      const sessionId = request.sessionId || this.createNewSession(request);
+      const messages: ChatMessage[] = [];
+      if (!request.sessionId && request.systemPrompt) {
+        messages.push({ role: 'system', content: request.systemPrompt });
+      }
+      messages.push({ role: 'user', content: request.message });
 
       const aiRequest: AIModelRequest = {
         modelId: request.modelId || (await this.pickDefaultModelId()),
-        messages: [...(await this.getContextMessages(sessionId))],
+        messages,
+        sessionId,
+        checkpointer: this.checkpointer,
         params: {
           temperature: 0.7,
           maxTokens: 2000,
@@ -123,28 +127,24 @@ export class ConversationService {
         },
       };
 
-      let fullContent = '';
-
       const streamGenerator = this.aiModelService.chatStream(aiRequest);
 
-      for await (const chunk of streamGenerator) {
-        fullContent += chunk;
-        yield {
-          type: 'content',
-          content: chunk,
-          sessionId,
-        };
+      for await (const ev of streamGenerator) {
+        if (ev.type === 'token') {
+          const text = ev.data.text;
+          yield { type: 'token', data: { text }, sessionId };
+        } else if (ev.type === 'reasoning') {
+          yield { type: 'reasoning', data: ev.data, sessionId };
+        } else if (ev.type === 'tool_start') {
+          yield { type: 'tool_start', data: ev.data, sessionId };
+        } else if (ev.type === 'tool_chunk') {
+          yield { type: 'tool_chunk', data: ev.data, sessionId };
+        } else if (ev.type === 'tool_end') {
+          yield { type: 'tool_end', data: ev.data, sessionId };
+        }
       }
 
-      await this.contextService.addMessage(sessionId, {
-        role: 'assistant',
-        content: fullContent,
-      });
-
-      yield {
-        type: 'done',
-        sessionId,
-      };
+      yield { type: 'done', sessionId };
     } catch (error) {
       this.logger.error('Stream chat error:', error);
       yield {
@@ -190,7 +190,6 @@ export class ConversationService {
       request.systemPrompt,
       'system',
     );
-
     return {
       sessionId: context.sessionId,
       message: 'Session created successfully',
@@ -235,13 +234,8 @@ export class ConversationService {
    * @keywords-zh 会话, 初始化, 内部, 辅助
    * @remarks 内部方法，用于 chat/chatStream 在未提供 sessionId 时初始化会话。
    */
-  private async createNewSession(request: ChatRequest): Promise<string> {
-    const context = await this.contextService.createContext(
-      undefined,
-      request.systemPrompt,
-      'system',
-    );
-    return context.sessionId;
+  private createNewSession(_request: ChatRequest): string {
+    return `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
   /**
@@ -253,6 +247,14 @@ export class ConversationService {
    * @remarks 调用 ContextService.getFormattedMessages(sessionId, includeSystem=true)。
    */
   private async getContextMessages(sessionId: string): Promise<ChatMessage[]> {
-    return await this.contextService.getFormattedMessages(sessionId, true);
+    const windowCount = Math.max(
+      1,
+      (this.ckptOptions?.summaryInterval ?? 20) - 1,
+    );
+    return await this.contextService.getRoundWindowMessages(
+      sessionId,
+      windowCount,
+      true,
+    );
   }
 }

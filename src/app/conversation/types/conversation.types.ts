@@ -112,6 +112,30 @@ export interface StreamChunk {
   error?: string;
 }
 
+/**
+ * SSE 事件载荷（对话层）
+ */
+export type ConversationSseEvent =
+  | { type: 'token'; data: { text: string }; sessionId?: string }
+  | { type: 'reasoning'; data: { text: string }; sessionId?: string }
+  | {
+      type: 'tool_start';
+      data: { name: string; input?: unknown; id?: string };
+      sessionId?: string;
+    }
+  | {
+      type: 'tool_chunk';
+      data: { id?: string; name?: string; args?: unknown; index?: number };
+      sessionId?: string;
+    }
+  | {
+      type: 'tool_end';
+      data: { name?: string; output?: unknown; id?: string };
+      sessionId?: string;
+    }
+  | { type: 'done'; sessionId?: string }
+  | { type: 'error'; error: string; sessionId?: string };
+
 /** 创建会话响应 */
 export interface CreateSessionResponse {
   sessionId: string;
