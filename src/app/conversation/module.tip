@@ -4,7 +4,17 @@
 - 提供标准与流式（SSE 风格）AI 对话接口：
   - POST /conversation/chat（支持流式，返回 data: <json>\n\n 分片）
   - POST /conversation/sessions（创建新会话）
-  - GET  /conversation/sessions/:sessionId/history（会话历史）
+ - GET  /conversation/sessions/:sessionId/history（会话历史）
+ - GET  /conversation/checkpoints/:threadId（检查点列表）
+  - GET  /conversation/checkpoints/:threadId/:checkpointId（检查点详情/历史片段）
+  - 对话组接口：
+    - GET  /conversation/groups（支持按 date 或 dayGroupId 筛选）
+    - GET  /conversation/groups/:groupId（组详情）
+    - POST /conversation/groups（创建组，入参：date 或 dayGroupId）
+    - PUT  /conversation/groups/:groupId（更新标题/active/chatClientId）
+    - DELETE /conversation/groups/:groupId（软删除）
+    - GET  /conversation/groups/:groupId/summaries（根据组ID获取阶段性总结）
+    - GET  /conversation/groups/:groupId/history（根据组ID获取最近窗口历史，支持 includeSystem/limit）
 
 文件结构
 - controllers/conversation.controller.ts：对外 REST 接口（标准/流式）
@@ -37,6 +47,44 @@
 - 前端读取：
   - fetch + ReadableStream 逐块解析（POST 接口）
   - 或新增 GET 接口并使用 EventSource（SSE 标准方案）
+
+WebSocket 接口定义
+- 连接：`ws://<host>/conversation/ws`
+- 客户端入参事件：`chat_start`
+  - 载荷：ChatRequestDto（message、date、chatClientId 必填；可选 sessionId/modelId/systemPrompt/stream）
+- 服务端统一出参事件：`conversation_event`
+  - 事件类型（ConversationSseEvent）：
+    - `token`：`{ text }`
+    - `reasoning`：`{ text }`
+    - `tool_start`：`{ name, input?, id? }`
+    - `tool_chunk`：`{ id?, name?, args?, index? }`
+    - `tool_end`：`{ name?, output?, id? }`
+    - `session_group`：`{ sessionGroupId, date, chatClientId }`
+    - `session_group_title`：`{ sessionGroupId, title }`
+    - `done`：无 data（仅附带 sessionId）
+    - `error`：`{ error }`
+- 使用建议：
+  - 首次收到 `session_group` 后，可在侧边栏渲染会话组卡片；随后等待 `session_group_title` 更新标题。
+  - 逐条处理 `token` 进行增量渲染；`done` 表示本轮结束。
+
+Checkpoint 历史接口
+ - GET `/conversation/checkpoints/:threadId`
+  - 入参：`threadId`（等同于对话组ID `conversationGroupId`）；`limit?`（默认50）
+  - 出参：`{ threadId, items: [{ checkpointId, ts, metadata? }] }`
+- GET `/conversation/checkpoints/:threadId/:checkpointId`
+  - 入参：`threadId`（对话组ID）、`checkpointId`
+  - 出参：
+    - `checkpoint`：`{ id, ts }`
+    - `metadata?`：记录的附加元信息
+    - `writes`：`[{ taskId, channel, value }]`（原始写入）
+    - `history`：从 writes 推导的片段 `[{ role, content, channel? }]`
+  - 说明：`history` 为便于前端直读的片段集合；完整上下文可调用 `/conversation/sessions/:sessionId/history`。
+
+Summary 接口
+- GET `/conversation/groups/:groupId/summaries`
+  - 入参：`groupId`（对话组ID）；`limit?`（默认100）
+  - 出参：`{ groupId, items: [{ sessionId, roundNumber, summaryContent, createdAt }] }`
+  - 说明：聚合该分组下所有会话的阶段性摘要（默认每 20 轮一条），倒序返回；前端可用于时间线或概览面板。
 
 注释规范
 - 源码中对外接口/类型/守卫函数均使用 JSDoc 描述用途与关键校验点

@@ -151,8 +151,20 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const today = new Date();
-const selectedDate = ref(new Date());
-const displayDate = ref(new Date());
+
+// Initialize from props.currentDate to ensure persistence state is reflected
+const initDate = () => {
+  if (props.currentDate) {
+    const parts = props.currentDate.split('-');
+    if (parts.length === 3) {
+      return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    }
+  }
+  return new Date();
+};
+
+const selectedDate = ref(initDate());
+const displayDate = ref(new Date(selectedDate.value));
 
 const isFutureDate = computed(() => {
   const selected = new Date(selectedDate.value);
@@ -264,7 +276,11 @@ const formatDate = (date: Date) => {
 };
 
 const confirmDate = () => {
-  emit('confirm', selectedDate.value.toISOString().split('T')[0]);
+  const d = selectedDate.value;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  emit('confirm', `${year}-${month}-${day}`);
 };
 </script>
 

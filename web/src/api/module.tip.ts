@@ -12,10 +12,18 @@ export const moduleDescription = {
       en: 'Agent API',
       file: 'agent.ts',
       functions: {
-        'getHistory': 'getHistory',
-        'getWorkflow': 'getWorkflow',
-        'sendMessage': 'sendMessage'
-      }
-    }
-  }
+        getGroupHistory: 'getGroupHistory',
+        sendMessage: 'sendMessage',
+        getGroupList: 'getGroupList',
+        getGroupDetail: 'getGroupDetail',
+        createGroup: 'createGroup',
+        updateGroup: 'updateGroup',
+        deleteGroup: 'deleteGroup',
+        getGroupSummaries: 'getGroupSummaries',
+        listCheckpoints: 'listCheckpoints',
+        getCheckpointDetail: 'getCheckpointDetail',
+        getWorkflow: 'getWorkflow',
+      },
+    },
+  },
 };

@@ -6,13 +6,19 @@
  */
 
 import { agentService } from './services/agent.service';
+import { agentController } from './controller/agent.controller';
 import { moduleTip } from './description/module.tip';
 
 export const AgentModule = {
   name: 'AgentModule',
   service: agentService,
+  controller: agentController,
   tip: moduleTip,
 };
 
 export * from './types/agent.types';
 export * from './services/agent.service';
+export * from './controller/agent.controller';
+export * from './enums/agent.enums';
+export * from './entities/agent.entity';
+export * from './cache/agent.cache';

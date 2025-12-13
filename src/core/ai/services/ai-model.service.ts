@@ -113,7 +113,7 @@ export class AIModelService implements OnModuleInit {
           {
             const baseURL = config.baseURL || 'https://api.deepseek.com';
             model = new ChatOpenAI({
-              openAIApiKey: config.apiKey,
+              apiKey: config.apiKey,
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
@@ -187,7 +187,10 @@ export class AIModelService implements OnModuleInit {
       const agent = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
-      const invocationOptions = this.buildInvocationOptions(agent, request);
+      const invocationOptions = await this.buildInvocationOptions(
+        agent,
+        request,
+      );
       const response = await agent.invoke(
         {
           messages,
@@ -387,10 +390,18 @@ export class AIModelService implements OnModuleInit {
       const messages = this.convertToLangChainMessages(request.messages);
 
       const recursionLimit = 16;
-      const invocationOptions = this.buildInvocationOptions(agent, request);
+      const invocationOptions = await this.buildInvocationOptions(
+        agent,
+        request,
+      );
       const stream = agent.streamEvents(
-        { messages },
-        { recursionLimit, ...(invocationOptions ?? {}) },
+        {
+          messages,
+        },
+        {
+          recursionLimit,
+          ...(invocationOptions ?? {}),
+        },
       );
       const runIdToToolId = new Map<string, string>();
       let finalOutput: unknown = null;
@@ -623,11 +634,11 @@ export class AIModelService implements OnModuleInit {
     return messages.map((msg) => {
       switch (msg.role) {
         case 'system':
-          return new SystemMessage(msg.content);
+          return new SystemMessage({ content: msg.content });
         case 'user':
-          return new HumanMessage(msg.content);
+          return new HumanMessage({ content: msg.content });
         case 'assistant':
-          return new AIMessage(msg.content);
+          return new AIMessage({ content: msg.content });
         default:
           throw new Error('Unknown message role');
       }
@@ -657,21 +668,27 @@ export class AIModelService implements OnModuleInit {
    * - 根据提供的 request.params 应用模型调用参数（temperature/topP/maxTokens 等）。
    * - 不再在此处构建或传递工具/函数调用相关配置；如需启用原生工具绑定，请由上层自行决定并整合。
    */
-  private buildInvocationOptions(
+  private async buildInvocationOptions(
     model: unknown,
     request: AIModelRequest,
-  ):
+  ): Promise<
     | (ChatOpenAICompletionsCallOptions &
         ChatOpenAIResponsesCallOptions &
         ChatAnthropicCallOptions &
         GoogleGenerativeAIChatCallOptions)
-    | undefined {
+    | undefined
+  > {
     const callOptions = request.params
       ? this.applyModelParams(model, request.params)
       : {};
-    const cfg = request.sessionId
-      ? { configurable: { thread_id: request.sessionId } }
-      : {};
+    let threadId: string | undefined = request.conversationGroupId;
+    if (!threadId && request.sessionId) {
+      const gid = await this.contextService.getConversationGroupIdForSession(
+        request.sessionId,
+      );
+      threadId = gid ?? request.sessionId;
+    }
+    const cfg = threadId ? { configurable: { thread_id: threadId } } : {};
     return { ...callOptions, ...cfg };
   }
 

@@ -25,4 +25,12 @@ export class ChatSessionEntity extends BaseAuditedEntity {
 
   @Column({ default: true })
   active!: boolean;
+
+  @Column({
+    name: 'conversation_group_id',
+    type: 'char',
+    length: 36,
+    nullable: true,
+  })
+  conversationGroupId!: string | null;
 }

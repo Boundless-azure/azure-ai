@@ -11,7 +11,6 @@ import {
   type ChannelVersions,
   getCheckpointId,
 } from '@langchain/langgraph-checkpoint';
-import type { SerializerProtocol } from '@langchain/langgraph-checkpoint';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { LGCheckpointEntity } from '../entities/lg-checkpoint.entity';
 import { LGWriteEntity } from '../entities/lg-write.entity';
@@ -50,9 +49,8 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
     private readonly contextService: ContextService,
     @Inject('CHECKPOINT_OPTIONS')
     private readonly options: CheckpointSaverOptions = {},
-    serde?: SerializerProtocol,
   ) {
-    super(serde);
+    super();
   }
 
   async getTuple(
@@ -60,7 +58,10 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
   ): ReturnType<BaseCheckpointSaver['getTuple']> {
     const threadId = String(config.configurable?.thread_id ?? '');
     if (!threadId) return undefined;
-    const ns = String(config.configurable?.checkpoint_ns ?? 'default');
+    const rawNs = (config.configurable as { checkpoint_ns?: unknown })
+      ?.checkpoint_ns;
+    const ns =
+      typeof rawNs === 'string' && rawNs.trim().length > 0 ? rawNs : 'default';
     const targetId = config.configurable?.checkpoint_id
       ? String(config.configurable.checkpoint_id)
       : undefined;
@@ -85,6 +86,7 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
       },
       order: { idx: 'ASC' },
     });
+
     const pendingWrites = writes.map(
       (w) =>
         [w.taskId, w.channel, this.decodeValue(w.valueType, w.valueB64)] as [
@@ -114,7 +116,10 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
   ): AsyncGenerator<CheckpointTuple> {
     const threadId = String(config.configurable?.thread_id ?? '');
     if (!threadId) return;
-    const ns = String(config.configurable?.checkpoint_ns ?? 'default');
+    const rawNs = (config.configurable as { checkpoint_ns?: unknown })
+      ?.checkpoint_ns;
+    const ns =
+      typeof rawNs === 'string' && rawNs.trim().length > 0 ? rawNs : 'default';
     const limit =
       options && typeof (options as { limit?: number }).limit === 'number'
         ? (options as { limit?: number }).limit!
@@ -156,7 +161,10 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
   ): Promise<RunnableConfig> {
     const threadId = String(config.configurable?.thread_id ?? '');
     if (!threadId) throw new Error('thread_id is required');
-    const ns = String(config.configurable?.checkpoint_ns ?? 'default');
+    const rawNs = (config.configurable as { checkpoint_ns?: unknown })
+      ?.checkpoint_ns;
+    const ns =
+      typeof rawNs === 'string' && rawNs.trim().length > 0 ? rawNs : 'default';
 
     const serialized = this.serializeCheckpoint(checkpoint);
 
@@ -191,7 +199,10 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
   ): Promise<void> {
     const threadId = String(config.configurable?.thread_id ?? '');
     if (!threadId) throw new Error('thread_id is required');
-    const ns = String(config.configurable?.checkpoint_ns ?? 'default');
+    const rawNs = (config.configurable as { checkpoint_ns?: unknown })
+      ?.checkpoint_ns;
+    const ns =
+      typeof rawNs === 'string' && rawNs.trim().length > 0 ? rawNs : 'default';
     const checkpointId = String(config.configurable?.checkpoint_id ?? '');
     if (!checkpointId)
       throw new Error('checkpoint_id is required for putWrites');

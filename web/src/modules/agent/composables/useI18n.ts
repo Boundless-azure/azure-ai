@@ -59,6 +59,7 @@ const translations = {
     chat: {
       agentName: 'Assistant Agent',
       processing: 'Processing Request...',
+      activeWorkflows: 'Processing {count} workflows',
       inputPlaceholder: 'Ask anything...',
       workflowStatus: 'Workflow Status',
       attachFile: 'Attach file',
@@ -82,6 +83,21 @@ const translations = {
       pluginActivity: 'Plugin Activity',
       futureIsComing: 'The future is coming',
       exploreFuture: 'Explore the unknown possibilities ahead.',
+    },
+    monitor: {
+      title: 'Workflow Monitor',
+      subtitle: 'Real-time visualization of agent execution flows',
+    },
+    session: {
+      switchGroup: 'Switch Conversation Group',
+      noGroups: 'No conversation groups found.',
+      selectGroupHint: 'Select a conversation group to view details',
+      summary: 'Conversation Summary',
+      noSummaries: 'No summaries available for this conversation.',
+    },
+    common: {
+      cancel: 'Cancel',
+      confirm: 'Confirm',
     },
   },
   cn: {
@@ -133,6 +149,7 @@ const translations = {
     chat: {
       agentName: '智能助理',
       processing: '正在处理请求...',
+      activeWorkflows: '正在处理 {count} 条工作流',
       inputPlaceholder: '输入您的问题...',
       workflowStatus: '工作流状态',
       attachFile: '上传文件',
@@ -156,13 +173,28 @@ const translations = {
       futureIsComing: '未来将至',
       exploreFuture: '探索前方的未知可能',
     },
+    monitor: {
+      title: '工作流监控',
+      subtitle: '实时可视化查看Agent执行流状态',
+    },
+    session: {
+      switchGroup: '切换会话组',
+      noGroups: '暂无会话组',
+      selectGroupHint: '选择一个会话组以查看详情',
+      summary: '对话摘要',
+      noSummaries: '该对话暂无摘要',
+    },
+    common: {
+      cancel: '取消',
+      confirm: '确认',
+    },
   },
 };
 
 export function useI18n() {
-  const t = (key: string) => {
+  const t = (key: string, params?: Record<string, string | number>) => {
     const keys = key.split('.');
-    let value: Record<string, any> = translations[currentLocale.value];
+    let value: Record<string, any> | string = translations[currentLocale.value];
     for (const k of keys) {
       if (value && typeof value === 'object' && k in value) {
         value = value[k];
@@ -170,7 +202,17 @@ export function useI18n() {
         return key;
       }
     }
-    return value as unknown as string;
+
+    let result = value as unknown as string;
+    if (params) {
+      Object.keys(params).forEach((paramKey) => {
+        result = result.replace(
+          new RegExp(`{${paramKey}}`, 'g'),
+          String(params[paramKey]),
+        );
+      });
+    }
+    return result;
   };
 
   const setLocale = (locale: 'en' | 'cn') => {

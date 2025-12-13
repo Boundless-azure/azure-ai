@@ -1,5 +1,6 @@
 <template>
   <div class="flex h-screen w-full bg-white overflow-hidden relative">
+    <ToastContainer />
     <!-- Left Area -->
     <!-- Mobile: Full Width, hidden if showing right panel -->
     <!-- Tablet: 1/3 Width -->
@@ -94,10 +95,18 @@
  * @keywords-en agent-workspace, dynamic-layout, sidebar-toggle, mobile-responsive
  */
 import { ref, computed, watch } from 'vue';
+import { createPinia, setActivePinia } from 'pinia';
+import piniaPluginPersistedstate from 'pinia-plugin-persistedstate';
 import Sidebar from './Sidebar.vue';
 import ChatPanel from './ChatPanel.vue';
 import MorePanel from './MorePanel.vue';
 import RightPanel from './RightPanel.vue';
+import ToastContainer from './ToastContainer.vue';
+
+// Initialize Pinia
+const pinia = createPinia();
+pinia.use(piniaPluginPersistedstate);
+setActivePinia(pinia);
 
 const activeView = ref('chat');
 

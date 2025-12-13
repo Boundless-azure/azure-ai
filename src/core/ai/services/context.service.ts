@@ -16,6 +16,8 @@ import {
   ChatSessionEntity,
   PromptTemplateEntity,
   ChatMessageEntity,
+  ChatDayGroupEntity,
+  ChatConversationGroupEntity,
 } from '../entities';
 import { MessageKeywordsService } from './message.keywords.service';
 
@@ -47,6 +49,10 @@ export class ContextService {
     private readonly chatMessageRepository: Repository<ChatMessageEntity>,
     @InjectRepository(PromptTemplateEntity)
     private readonly promptTemplateRepository: Repository<PromptTemplateEntity>,
+    @InjectRepository(ChatDayGroupEntity)
+    private readonly dayGroupRepository: Repository<ChatDayGroupEntity>,
+    @InjectRepository(ChatConversationGroupEntity)
+    private readonly conversationGroupRepository: Repository<ChatConversationGroupEntity>,
     private readonly messageKeywordsService: MessageKeywordsService,
   ) {
     // 在服务构造时优先合并模块传入的上下文配置
@@ -1383,6 +1389,82 @@ export class ContextService {
     }
 
     await this.chatSessionRepository.save(entity);
+  }
+
+  async ensureDayGroup(
+    date: string,
+    userId?: string,
+  ): Promise<ChatDayGroupEntity> {
+    const existing = await this.dayGroupRepository.findOne({
+      where: { date, isDelete: false },
+    });
+    if (existing) return existing;
+    const entity = this.dayGroupRepository.create({
+      date,
+      title: null,
+      createdUser: userId,
+      updateUser: userId,
+      isDelete: false,
+    });
+    return await this.dayGroupRepository.save(entity);
+  }
+
+  async createConversationGroup(
+    dayGroupId: string,
+    chatClientId?: string,
+    userId?: string,
+    channelId?: string,
+  ): Promise<ChatConversationGroupEntity> {
+    const entity = this.conversationGroupRepository.create({
+      dayGroupId,
+      chatClientId: chatClientId ?? null,
+      title: null,
+      active: true,
+      createdUser: userId,
+      updateUser: userId,
+      channelId,
+      isDelete: false,
+    });
+    return await this.conversationGroupRepository.save(entity);
+  }
+
+  async updateConversationGroupTitle(
+    conversationGroupId: string,
+    title: string,
+  ): Promise<void> {
+    await this.conversationGroupRepository.update(
+      { id: conversationGroupId },
+      { title },
+    );
+  }
+
+  async linkSessionToGroup(
+    sessionId: string,
+    conversationGroupId: string,
+  ): Promise<void> {
+    const existing = await this.chatSessionRepository.findOne({
+      where: { sessionId },
+    });
+    if (!existing) throw new Error(`Session not found: ${sessionId}`);
+    await this.chatSessionRepository.update(
+      { id: existing.id },
+      { conversationGroupId },
+    );
+  }
+
+  /**
+   * @title 获取会话对应的对话组ID
+   * @description 通过会话唯一键查询其绑定的对话组ID；若未绑定则返回 null。
+   * @keywords-cn 会话, 对话组ID, 查询
+   * @keywords-en session, conversation-group-id, lookup
+   */
+  async getConversationGroupIdForSession(
+    sessionId: string,
+  ): Promise<string | null> {
+    const s = await this.chatSessionRepository.findOne({
+      where: { sessionId, isDelete: false },
+    });
+    return s?.conversationGroupId ?? null;
   }
 
   /**

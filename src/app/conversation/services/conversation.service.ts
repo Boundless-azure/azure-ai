@@ -58,18 +58,38 @@ export class ConversationService {
    * - 上下文包含系统消息与历史消息，来源于 ContextService。
    */
   async chat(request: ChatRequest): Promise<ChatResponse> {
-    const sessionId = request.sessionId || this.createNewSession(request);
+    const sessionId = await this.ensureSessionId(request);
 
-    const messages: ChatMessage[] = [];
-    if (!request.sessionId && request.systemPrompt) {
-      messages.push({ role: 'system', content: request.systemPrompt });
+    let conversationGroupId: string | undefined;
+    if (request.sessionId) {
+      conversationGroupId =
+        (await this.contextService.getConversationGroupIdForSession(
+          sessionId,
+        )) ?? undefined;
+      // 若传入了 sessionId，则视为已有分组；不再创建新分组
+    } else {
+      const dayGroup = await this.contextService.ensureDayGroup(
+        request.date,
+        'system',
+      );
+      const convGroup = await this.contextService.createConversationGroup(
+        dayGroup.id,
+        request.chatClientId,
+        'system',
+      );
+      await this.contextService.linkSessionToGroup(sessionId, convGroup.id);
+      conversationGroupId = convGroup.id;
     }
-    messages.push({ role: 'user', content: request.message });
+
+    const messages: ChatMessage[] = [
+      { role: 'user', content: request.message },
+    ];
 
     const aiRequest: AIModelRequest = {
       modelId: request.modelId || (await this.pickDefaultModelId()),
       messages,
       sessionId,
+      conversationGroupId,
       checkpointer: this.checkpointer,
       params: {
         temperature: 0.7,
@@ -108,22 +128,59 @@ export class ConversationService {
     request: ChatRequest,
   ): AsyncGenerator<ConversationSseEvent> {
     try {
-      const sessionId = request.sessionId || this.createNewSession(request);
-      const messages: ChatMessage[] = [];
-      if (!request.sessionId && request.systemPrompt) {
-        messages.push({ role: 'system', content: request.systemPrompt });
+      let sessionId: string;
+      let conversationGroupId: string | undefined;
+      if (request.sessionId) {
+        // 复用已有会话与其绑定的组；不新建分组
+        sessionId = request.sessionId;
+        conversationGroupId =
+          (await this.contextService.getConversationGroupIdForSession(
+            sessionId,
+          )) ?? undefined;
+      } else {
+        const dayGroup = await this.contextService.ensureDayGroup(
+          request.date,
+          'system',
+        );
+        const convGroup = await this.contextService.createConversationGroup(
+          dayGroup.id,
+          request.chatClientId,
+          'system',
+        );
+        const ctx = await this.contextService.createContext(
+          undefined,
+          request.systemPrompt,
+          'system',
+        );
+        sessionId = ctx.sessionId;
+        await this.contextService.linkSessionToGroup(sessionId, convGroup.id);
+        conversationGroupId = convGroup.id;
+
+        // 仅在新建组时广播 session_group 事件（老会话不重复广播）
+        yield {
+          type: 'session_group',
+          data: {
+            sessionGroupId: convGroup.id,
+            date: request.date,
+            chatClientId: request.chatClientId,
+          },
+          sessionId,
+        };
       }
-      messages.push({ role: 'user', content: request.message });
+
+      const messages: ChatMessage[] = [
+        { role: 'user', content: request.message },
+      ];
 
       const aiRequest: AIModelRequest = {
         modelId: request.modelId || (await this.pickDefaultModelId()),
         messages,
         sessionId,
+        conversationGroupId,
         checkpointer: this.checkpointer,
         params: {
           temperature: 0.7,
           maxTokens: 2000,
-          stream: true,
         },
       };
 
@@ -234,8 +291,17 @@ export class ConversationService {
    * @keywords-zh 会话, 初始化, 内部, 辅助
    * @remarks 内部方法，用于 chat/chatStream 在未提供 sessionId 时初始化会话。
    */
-  private createNewSession(_request: ChatRequest): string {
-    return `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  private async ensureSessionId(request: ChatRequest): Promise<string> {
+    if (request.sessionId) {
+      // 如果复用既有会话，沿用其已有的组，不强行覆盖
+      return request.sessionId;
+    }
+    const context = await this.contextService.createContext(
+      undefined,
+      request.systemPrompt,
+      'system',
+    );
+    return context.sessionId;
   }
 
   /**

@@ -178,6 +178,8 @@ export interface AIModelRequest {
   userId?: string;
   /** 会话ID (可选) */
   sessionId?: string;
+  /** 对话组ID (可选) */
+  conversationGroupId?: string;
   /** 要开启的函数调用名称列表 */
   openFunction?: string[] | string;
   /** LangGraph 检查点保存器 (可选) */

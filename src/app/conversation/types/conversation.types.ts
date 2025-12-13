@@ -10,6 +10,7 @@
  * 关键词: 对话, 流式, SSE, 函数调用, 编排器, MySQL, 关键词窗口
  */
 
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import type { AIModelResponse } from '@core/ai';
 import type { OrchestratorParams } from '@core/function-call';
 import type { FunctionCallDescription } from '@core/function-call/descriptions';
@@ -74,6 +75,44 @@ export interface ChatRequest {
   modelId?: string;
   systemPrompt?: string;
   stream?: boolean;
+  date: string;
+  chatClientId: string;
+}
+
+/**
+ * @title ChatRequest DTO
+ * @description 用于对外 HTTP / WebSocket 对话请求体的运行时校验。
+ * @keywords-cn 对话请求, DTO, 校验, WebSocket, HTTP
+ * @keywords-en chat-request, dto, validation, websocket, http
+ */
+export class ChatRequestDto implements ChatRequest {
+  @IsString()
+  @IsNotEmpty()
+  message!: string;
+
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
+
+  @IsOptional()
+  @IsString()
+  modelId?: string;
+
+  @IsOptional()
+  @IsString()
+  systemPrompt?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  stream?: boolean;
+
+  @IsString()
+  @IsNotEmpty()
+  date!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  chatClientId!: string;
 }
 
 /** 创建会话请求 */
@@ -131,6 +170,16 @@ export type ConversationSseEvent =
   | {
       type: 'tool_end';
       data: { name?: string; output?: unknown; id?: string };
+      sessionId?: string;
+    }
+  | {
+      type: 'session_group';
+      data: { sessionGroupId: string; date: string; chatClientId: string };
+      sessionId?: string;
+    }
+  | {
+      type: 'session_group_title';
+      data: { sessionGroupId: string; title: string };
       sessionId?: string;
     }
   | { type: 'done'; sessionId?: string }
