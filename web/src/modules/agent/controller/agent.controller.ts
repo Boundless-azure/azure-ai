@@ -6,7 +6,12 @@
  */
 
 import { agentService } from '../services/agent.service';
-import type { ChatMessage, WorkflowStep, QuickItem, GroupListItem } from '../types/agent.types';
+import type {
+  ChatMessage,
+  WorkflowStep,
+  QuickItem,
+  GroupListItem,
+} from '../types/agent.types';
 
 export class AgentController {
   /**

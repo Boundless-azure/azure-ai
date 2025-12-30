@@ -25,5 +25,17 @@ export const moduleDescription = {
         getWorkflow: 'getWorkflow',
       },
     },
+    'todo-api': {
+      cn: '待办API',
+      en: 'Todo API',
+      file: 'todo.ts',
+      functions: {
+        list: 'list',
+        get: 'get',
+        create: 'create',
+        update: 'update',
+        delete: 'delete',
+      },
+    },
   },
 };

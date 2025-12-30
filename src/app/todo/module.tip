@@ -1,0 +1,57 @@
+模块名称：app/todo（待办事项模块）
+
+概述
+- 管理待办事项（发起人、待办名、关联插件、内容说明、action、接收人、状态、回执结果）。
+- 提供基础的增删改查接口；支持按状态、接收人与插件过滤。
+
+文件清单（File List）
+- app/todo/entities/todo.entity.ts
+- app/todo/enums/todo.enums.ts
+- app/todo/types/todo.types.ts
+- app/todo/services/todo.service.ts
+- app/todo/controllers/todo.controller.ts
+- app/todo/todo.module.ts
+
+函数清单（Function Index）
+- TodoService
+  - list(query)
+  - get(id)
+  - create(dto)
+  - update(id, dto)
+  - delete(id)
+- TodoController
+  - GET /todo
+  - GET /todo/:id
+  - POST /todo
+  - PUT /todo/:id
+  - DELETE /todo/:id
+
+关键词索引（中文 / English Keyword Index）
+待办事项实体 -> app/todo/entities/todo.entity.ts
+待办状态枚举 -> app/todo/enums/todo.enums.ts
+待办请求类型 -> app/todo/types/todo.types.ts
+待办服务 -> app/todo/services/todo.service.ts
+待办控制器 -> app/todo/controllers/todo.controller.ts
+待办模块 -> app/todo/todo.module.ts
+
+快速检索映射（Keywords -> Files）
+- "TodoEntity" -> app/todo/entities/todo.entity.ts
+- "TodoStatus" -> app/todo/enums/todo.enums.ts
+- "CreateTodoDto" -> app/todo/types/todo.types.ts
+- "UpdateTodoDto" -> app/todo/types/todo.types.ts
+- "QueryTodoDto" -> app/todo/types/todo.types.ts
+- "TodoService" -> app/todo/services/todo.service.ts
+- "TodoController" -> app/todo/controllers/todo.controller.ts
+- "TodoModule" -> app/todo/todo.module.ts
+
+关键词到文件函数哈希映射（Keywords -> Function Hash）
+- TodoService.list -> 91a3f2c1
+- TodoService.create -> f21c9bd0
+- TodoService.update -> 31d4aa92
+- TodoService.delete -> 0f7e915c
+- TodoController.create -> 7e3c112a
+- TodoController.update -> 1c9a77b3
+
+模块功能描述（Description）
+本模块提供待办事项的实体与 REST 接口，支持创建、查询、更新状态与结果回执，并提供过滤能力以便前端快速构建列表视图。
+

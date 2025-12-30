@@ -105,9 +105,17 @@ export class HttpClient {
   }
 }
 
-export const http = new HttpClient(
-  import.meta.env?.PUBLIC_API_BASE_URL || '/api',
-);
+const resolvedBase = (() => {
+  const envBase = import.meta.env?.PUBLIC_API_BASE_URL as string | undefined;
+  if (envBase && envBase.startsWith('/')) return envBase;
+  if (envBase && envBase.startsWith('http')) {
+    const isLocal = /localhost|127\.0\.0\.1/.test(envBase);
+    return isLocal ? '/api' : envBase;
+  }
+  return '/api';
+})();
+
+export const http = new HttpClient(resolvedBase);
 
 // Example Interceptor: Add token
 http.addRequestInterceptor((config) => {

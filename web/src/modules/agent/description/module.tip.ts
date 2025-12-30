@@ -67,5 +67,7 @@ export const moduleTip = {
     getSessionGroups: 'hash_getSessionGroups_006',
     listCheckpoints: 'hash_listCheckpoints_007',
     getCheckpointDetail: 'hash_getCheckpointDetail_008',
+    createGroup: 'hash_createGroup_010',
+    deleteGroup: 'hash_deleteGroup_009',
   },
 };

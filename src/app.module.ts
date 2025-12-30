@@ -9,7 +9,10 @@ import { TipModule } from './core/tip/tip.module';
 import { RedisModule } from './redis/redis.module';
 import { PluginModule } from './core/plugin/plugin.module';
 import { PromptModule } from './core/prompt/prompt.module';
+import { HookBusModule } from './core/hookbus/hookbus.module';
 import { ConversationModule } from '@/app/conversation/conversation.module';
+import { AgentModule } from '@/app/agent/agent.module';
+import { TodoModule } from '@/app/todo/todo.module';
 // 直接从具体配置文件导入，避免 Barrel 导出解析异常
 import {
   loadDatabaseConfigFromEnv,
@@ -70,9 +73,15 @@ import type { DatabaseConfig } from './config/types';
       // rootDir: join(process.cwd(), 'src', 'core'),
     }),
     PromptModule.forRoot({ isGlobal: true }),
+    HookBusModule.forRoot({
+      bufferSize: loadHookBusConfigFromEnv().bufferSize,
+      debug: loadHookBusConfigFromEnv().debug,
+    }),
     RedisModule,
     PluginModule,
     ConversationModule,
+    AgentModule,
+    TodoModule,
   ],
   controllers: [AppController],
   providers: [AppService],

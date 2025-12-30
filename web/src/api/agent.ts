@@ -17,6 +17,9 @@ import type {
   UpdateGroupRequest,
   SummariesByGroupResponse,
   GroupHistoryResponse,
+  CheckpointListResponse,
+  Agent,
+  UpdateAgentRequest,
 } from '../modules/agent/types/agent.types';
 
 export const agentApi = {
@@ -97,7 +100,29 @@ export const agentApi = {
    * @param limit Limit
    */
   listCheckpoints: (threadId: string, limit: number = 50) =>
-    http.get<Checkpoint[]>(`/conversation/checkpoints/${threadId}`, { limit }),
+    http.get<CheckpointListResponse>(`/conversation/checkpoints/${threadId}`, {
+      limit,
+    }),
+
+  /**
+   * Get Agents
+   */
+  getAgents: () => http.get<Agent[]>('/agent'),
+
+  /**
+   * Update Agent
+   * @param id Agent ID
+   * @param data Update data
+   */
+  updateAgent: (id: string, data: UpdateAgentRequest) =>
+    http.put<Agent>(`/agent/${id}`, data),
+
+  /**
+   * Delete Agent
+   * @param id Agent ID
+   */
+  deleteAgent: (id: string) =>
+    http.delete<{ success: boolean }>(`/agent/${id}`),
 
   /**
    * Get Checkpoint Detail

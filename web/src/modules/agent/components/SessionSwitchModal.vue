@@ -56,11 +56,18 @@
                 v-for="group in groups"
                 :key="group.id"
                 @click="selectGroup(group)"
-                class="w-full text-left px-4 py-4 border-b border-gray-100 hover:bg-gray-50 transition-all group relative"
+                class="w-full text-left px-4 py-4 border-b border-gray-100 hover:bg-gray-50 transition-all group relative pr-12"
                 :class="{
                   'bg-blue-50/50': selectedGroupId === group.id,
                 }"
               >
+                <button
+                  @click="deleteGroup(group, $event)"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100 z-10"
+                  :title="t('common.delete')"
+                >
+                  <i class="fa-solid fa-trash"></i>
+                </button>
                 <div
                   v-if="selectedGroupId === group.id"
                   class="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"
@@ -104,7 +111,9 @@
               <div
                 class="p-4 border-b border-gray-200 bg-white flex justify-between items-center shadow-sm"
               >
-                <h4 class="font-bold text-gray-800">{{ t('session.summary') }}</h4>
+                <h4 class="font-bold text-gray-800">
+                  {{ t('session.summary') }}
+                </h4>
                 <button
                   @click="confirmSwitch"
                   class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center"
@@ -125,7 +134,9 @@
                   v-else-if="summaries.length === 0"
                   class="text-center py-12 text-gray-400 bg-white rounded-xl border border-gray-100 p-8"
                 >
-                  <i class="fa-solid fa-align-left text-3xl mb-3 opacity-50"></i>
+                  <i
+                    class="fa-solid fa-align-left text-3xl mb-3 opacity-50"
+                  ></i>
                   <p>{{ t('session.noSummaries') }}</p>
                 </div>
                 <div v-else class="space-y-4">
@@ -137,7 +148,9 @@
                     <div
                       class="flex items-center text-xs text-gray-500 mb-2 pb-2 border-b border-gray-100"
                     >
-                      <span class="bg-blue-50 text-blue-600 px-2 py-0.5 rounded mr-2 font-medium">
+                      <span
+                        class="bg-blue-50 text-blue-600 px-2 py-0.5 rounded mr-2 font-medium"
+                      >
                         Round {{ item.roundNumber }}
                       </span>
                       <span>{{ formatDate(item.createdAt) }}</span>
@@ -168,6 +181,7 @@
 import { ref, watch, onMounted } from 'vue';
 import { useI18n } from '../composables/useI18n';
 import { agentService } from '../services/agent.service';
+import { useAgentStore } from '../store/agent.store';
 import type { GroupListItem, SummaryItem } from '../types/agent.types';
 
 const props = defineProps<{
@@ -181,6 +195,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const store = useAgentStore();
 const loadingGroups = ref(false);
 const loadingSummaries = ref(false);
 const groups = ref<GroupListItem[]>([]);
@@ -190,7 +205,11 @@ const selectedGroupId = ref<string>('');
 const formatDate = (dateStr: string) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return (
+    date.toLocaleDateString() +
+    ' ' +
+    date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  );
 };
 
 const loadGroups = async () => {
@@ -198,8 +217,11 @@ const loadGroups = async () => {
   try {
     groups.value = await agentService.getGroupList();
     // Select the first group or current group by default
-    if (props.currentGroupId && groups.value.some(g => g.id === props.currentGroupId)) {
-      selectGroup(groups.value.find(g => g.id === props.currentGroupId)!);
+    if (
+      props.currentGroupId &&
+      groups.value.some((g) => g.id === props.currentGroupId)
+    ) {
+      selectGroup(groups.value.find((g) => g.id === props.currentGroupId)!);
     }
   } catch (error) {
     console.error('Failed to load groups:', error);
@@ -210,11 +232,11 @@ const loadGroups = async () => {
 
 const selectGroup = async (group: GroupListItem) => {
   if (selectedGroupId.value === group.id) return;
-  
+
   selectedGroupId.value = group.id;
   loadingSummaries.value = true;
   summaries.value = []; // Clear previous summaries
-  
+
   try {
     const response = await agentService.getGroupSummaries(group.id);
     summaries.value = response.items;
@@ -225,6 +247,27 @@ const selectGroup = async (group: GroupListItem) => {
   }
 };
 
+const deleteGroup = async (group: GroupListItem, event: Event) => {
+  event.stopPropagation();
+  if (!confirm(t('common.confirmDelete'))) return;
+
+  try {
+    await agentService.deleteGroup(group.id);
+    groups.value = groups.value.filter((g) => g.id !== group.id);
+
+    if (selectedGroupId.value === group.id) {
+      selectedGroupId.value = '';
+      summaries.value = [];
+    }
+
+    if (store.currentSessionId === group.id) {
+      store.setCurrentSession(undefined, '');
+    }
+  } catch (error) {
+    console.error('Failed to delete group:', error);
+  }
+};
+
 const confirmSwitch = () => {
   if (!selectedGroupId.value) return;
   const group = groups.value.find((g) => g.id === selectedGroupId.value);
@@ -232,7 +275,7 @@ const confirmSwitch = () => {
     // Extract YYYY-MM-DD from createdAt
     const dateObj = new Date(group.createdAt);
     const dateStr = dateObj.toISOString().split('T')[0];
-    
+
     emit('select', {
       id: group.id,
       title: group.title || 'Untitled',

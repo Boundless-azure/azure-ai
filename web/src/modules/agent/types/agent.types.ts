@@ -78,6 +78,17 @@ export interface Checkpoint {
   [key: string]: unknown;
 }
 
+export interface CheckpointListItem {
+  checkpointId: string;
+  ts: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CheckpointListResponse {
+  threadId: string;
+  items: CheckpointListItem[];
+}
+
 // --- Group API Types ---
 
 export interface GroupListItem {
@@ -141,4 +152,29 @@ export interface GroupHistoryItem {
 export interface GroupHistoryResponse {
   groupId: string;
   items: GroupHistoryItem[];
+}
+
+export interface Agent {
+  id: string;
+  nickname: string;
+  purpose: string;
+  vector_id?: string;
+  code_path?: string;
+  is_ai_generated: boolean;
+  nodes: any;
+  conversation_group_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdateAgentRequest {
+  nickname?: string;
+  purpose?: string;
+}
+
+export interface ActiveWorkflowCard {
+  id: string;
+  name: string;
+  node: string;
+  status: WorkflowGraphStatus;
 }

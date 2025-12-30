@@ -43,9 +43,15 @@
 
           <!-- Subtitle Row (Workflow Status) -->
           <div class="mt-1">
-            <span class="text-xs text-blue-600 flex items-center">
+            <span
+              v-if="activeWorkflows.length > 0"
+              class="text-xs text-blue-600 flex items-center"
+            >
               <i class="fa-solid fa-circle-notch fa-spin mr-1 text-[10px]"></i>
               {{ t('chat.activeWorkflows', { count: activeWorkflows.length }) }}
+            </span>
+            <span v-else class="text-xs text-gray-400">
+              {{ t('chat.noActiveWorkflows') }}
             </span>
           </div>
         </div>
@@ -62,10 +68,7 @@
           <div
             class="grid grid-cols-[auto_1fr_auto] gap-x-3 gap-y-3 items-center"
           >
-            <template
-              v-for="wf in activeWorkflows.slice(0, 3)"
-              :key="wf.id"
-            >
+            <template v-for="wf in activeWorkflows.slice(0, 3)" :key="wf.id">
               <!-- Status Icon -->
               <div
                 class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] border"
@@ -110,10 +113,14 @@
               <div
                 class="text-[10px] font-medium px-1.5 py-0.5 rounded"
                 :class="{
-                  'bg-blue-100 text-blue-700': wf.status === WorkflowGraphStatus.Running,
-                  'bg-gray-100 text-gray-600': wf.status === WorkflowGraphStatus.Pending,
-                  'bg-green-100 text-green-700': wf.status === WorkflowGraphStatus.Completed,
-                  'bg-red-100 text-red-700': wf.status === WorkflowGraphStatus.Error,
+                  'bg-blue-100 text-blue-700':
+                    wf.status === WorkflowGraphStatus.Running,
+                  'bg-gray-100 text-gray-600':
+                    wf.status === WorkflowGraphStatus.Pending,
+                  'bg-green-100 text-green-700':
+                    wf.status === WorkflowGraphStatus.Completed,
+                  'bg-red-100 text-red-700':
+                    wf.status === WorkflowGraphStatus.Error,
                 }"
               >
                 {{ wf.status }}
@@ -200,7 +207,9 @@
             <!-- Sender Info -->
             <div
               class="flex items-center gap-2 mb-1.5 px-1 opacity-80 select-none"
-              :class="msg.role === ChatRole.User ? 'flex-row-reverse' : 'flex-row'"
+              :class="
+                msg.role === ChatRole.User ? 'flex-row-reverse' : 'flex-row'
+              "
             >
               <div
                 class="w-5 h-5 rounded-full flex items-center justify-center text-[10px]"
@@ -250,7 +259,8 @@
                           tool.status === ToolCallStatus.Calling,
                         'bg-green-100 text-green-600':
                           tool.status === ToolCallStatus.Completed,
-                        'bg-red-100 text-red-600': tool.status === ToolCallStatus.Failed,
+                        'bg-red-100 text-red-600':
+                          tool.status === ToolCallStatus.Failed,
                       }"
                     >
                       {{ tool.status }}
@@ -472,6 +482,7 @@ import type {
   ChatMessage,
   WorkflowStep,
   ToolCall,
+  ActiveWorkflowCard,
 } from '../types/agent.types';
 import { useI18n } from '../composables/useI18n';
 import DatePickerModal from './DatePickerModal.vue';
@@ -512,12 +523,7 @@ const renderMarkdown = (content: string) => {
 };
 
 const steps = ref<WorkflowStep[]>([]);
-const activeWorkflows = ref([
-  { id: '1', name: '工作流A', node: '执行节点', status: WorkflowGraphStatus.Running },
-  { id: '2', name: '工作流B', node: '执行节点', status: WorkflowGraphStatus.Running },
-  { id: '3', name: '工作流C', node: '执行节点', status: WorkflowGraphStatus.Pending },
-  { id: '4', name: '工作流D', node: '执行节点', status: WorkflowGraphStatus.Pending },
-]);
+const activeWorkflows = ref<ActiveWorkflowCard[]>([]);
 const history = ref<Record<string, ChatMessage[]>>({});
 const inputMessage = ref('');
 const isProcessing = ref(false);
@@ -531,7 +537,12 @@ const showWorkflowMonitor = ref(false);
 const showSessionSwitchModal = ref(false);
 
 const store = useAgentStore();
-const { selectedDate: currentDateStr, chatClientId, currentSessionId, currentSessionTitle } = storeToRefs(store);
+const {
+  selectedDate: currentDateStr,
+  chatClientId,
+  currentSessionId,
+  currentSessionTitle,
+} = storeToRefs(store);
 
 // File attachment state
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -550,13 +561,22 @@ const currentMessages = computed(() => {
 
 const loadData = async () => {
   steps.value = await agentService.getWorkflowSteps();
-  
+  try {
+    activeWorkflows.value = await agentService.getActiveWorkflows(
+      currentDateStr.value,
+    );
+  } catch (error) {
+    // keep empty on failure
+  }
+
   if (currentSessionId.value) {
     isLoadingHistory.value = true;
     try {
-      const messages = await agentService.getGroupHistory(currentSessionId.value);
+      const messages = await agentService.getGroupHistory(
+        currentSessionId.value,
+      );
       history.value = {
-        [currentDateStr.value]: messages
+        [currentDateStr.value]: messages,
       };
       nextTick(() => {
         scrollToBottom();
@@ -571,35 +591,61 @@ const loadData = async () => {
   }
 };
 
-const createNewSessionGroup = () => {
-  store.setCurrentSession(undefined, '');
-  isTitleLoading.value = false;
-  // Clear current view for fresh start feeling, though history is preserved by date key
-  // We might want to clear the specific date's history in memory if we want a blank slate
-  // But typically users might want to see old messages.
-  // For "New Chat", usually it means clearing the context.
-  // Since history is keyed by date, and we are not changing date, maybe we should just append?
-  // But the requirement implies a "New" conversation.
-  // Let's just reset the sessionId.
+const refreshActiveWorkflows = async () => {
+  try {
+    activeWorkflows.value = await agentService.getActiveWorkflows(
+      currentDateStr.value,
+    );
+  } catch (error) {
+    // ignore
+  }
+};
+
+const createNewSessionGroup = async () => {
+  // Reset current context
+  isProcessing.value = false;
+  currentAssistantMessageId.value = null;
+  history.value = {};
+  inputMessage.value = '';
+  attachedFiles.value = [];
+
+  // Create new group and set current session
+  try {
+    isTitleLoading.value = true;
+    const resp = await agentService.createGroup({
+      date: currentDateStr.value,
+      chatClientId: chatClientId.value,
+      title: null,
+    });
+    store.setCurrentSession(resp.id, '');
+  } catch (error) {
+    console.error('Failed to create new session group:', error);
+    store.setCurrentSession(undefined, '');
+    isTitleLoading.value = false;
+  }
 };
 
 const openSessionSwitchModal = () => {
   showSessionSwitchModal.value = true;
 };
 
-const handleSessionSwitch = async (group: { id: string; title: string; date: string }) => {
+const handleSessionSwitch = async (group: {
+  id: string;
+  title: string;
+  date: string;
+}) => {
   store.setCurrentSession(group.id, group.title);
   isTitleLoading.value = false;
   if (group.date !== currentDateStr.value) {
     store.setSelectedDate(group.date);
   }
-  
+
   isLoadingHistory.value = true;
   try {
     const messages = await agentService.getGroupHistory(group.id);
     history.value = {
       ...history.value,
-      [group.date]: messages
+      [group.date]: messages,
     };
     nextTick(() => {
       scrollToBottom();
@@ -806,6 +852,7 @@ const sendMessage = async () => {
         currentSessionId.value = sessionId;
       }
       isProcessing.value = false;
+      refreshActiveWorkflows();
       scrollToBottom();
     },
     onError: (error, sessionId) => {
@@ -813,7 +860,7 @@ const sendMessage = async () => {
         currentSessionId.value = sessionId;
       }
       isProcessing.value = false;
-      
+
       const uiStore = useUIStore();
       uiStore.showToast(`Chat Error: ${error}`, 'error');
 
@@ -832,6 +879,7 @@ const sendMessage = async () => {
     onSessionGroup: (data, sessionId) => {
       if (data.sessionGroupId) {
         currentSessionId.value = data.sessionGroupId;
+        refreshActiveWorkflows();
       }
     },
     onSessionGroupTitle: (data, sessionId) => {
@@ -864,6 +912,7 @@ const handleDateConfirm = (date: string) => {
   currentDateStr.value = date;
   showDatePicker.value = false;
   scrollToBottom();
+  refreshActiveWorkflows();
 };
 
 // File Attachment Logic

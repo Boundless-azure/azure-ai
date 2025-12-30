@@ -30,8 +30,12 @@ export const useAgentStore = defineStore('agent', () => {
         chatClientId: string;
         currentSessionId?: string;
         currentSessionTitle?: string;
+        lastVisitedDate?: string;
       };
-      if (parsed.selectedDate) {
+      const today = getLocalDateString();
+      if (parsed.lastVisitedDate && parsed.lastVisitedDate !== today) {
+        selectedDate.value = today;
+      } else if (parsed.selectedDate) {
         selectedDate.value = parsed.selectedDate;
       }
       if (parsed.chatClientId) {
@@ -56,22 +60,26 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   // 2. Watch for changes and save to localStorage
-  watch([selectedDate, chatClientId, currentSessionId, currentSessionTitle], () => {
-    try {
-      // Use simpler format or mimic plugin structure
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          selectedDate: selectedDate.value,
-          chatClientId: chatClientId.value,
-          currentSessionId: currentSessionId.value,
-          currentSessionTitle: currentSessionTitle.value,
-        }),
-      );
-    } catch (e) {
-      console.warn('Failed to save agent state', e);
-    }
-  });
+  watch(
+    [selectedDate, chatClientId, currentSessionId, currentSessionTitle],
+    () => {
+      try {
+        // Use simpler format or mimic plugin structure
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            selectedDate: selectedDate.value,
+            chatClientId: chatClientId.value,
+            currentSessionId: currentSessionId.value,
+            currentSessionTitle: currentSessionTitle.value,
+            lastVisitedDate: getLocalDateString(),
+          }),
+        );
+      } catch (e) {
+        console.warn('Failed to save agent state', e);
+      }
+    },
+  );
 
   // Actions
   function setSelectedDate(date: string) {

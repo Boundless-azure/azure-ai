@@ -1,0 +1,55 @@
+模块名称：core/hookbus（HookBus 模块）
+
+概述
+- 提供本地队列的 Hook 总线，支持注册/筛选/调用与中间件链，并提供状态缓存。
+- 每个进程维护独立的 Hook 队列，不进行跨进程分发；慢钩子并行执行，不阻塞其他钩子。
+
+文件清单（File List）
+- core/hookbus/enums/hook.enums.ts
+- core/hookbus/types/hook.types.ts
+- core/hookbus/services/hook.registry.service.ts
+- core/hookbus/services/hook.invoker.service.ts
+- core/hookbus/services/hook.bus.service.ts
+- core/hookbus/hookbus.module.ts
+- core/hookbus/cache/hook.cache.ts
+
+函数清单（Function Index）
+- HookRegistryService.register(name, handler, metadata)
+- HookRegistryService.get(name)
+- HookInvokerService.invoke(ctx, regs)
+- HookInvokerService.use(mw)
+- HookBusService.register(name, handler, metadata)
+- HookBusService.emit(event)
+- HookBusService.emitAwait(event)
+- HookBusService.select(name, filter)
+- HookCacheService.recordStatus(hook, status)
+- HookCacheService.getStatus(hook)
+
+关键词索引（中文 / English Keyword Index）
+Hook枚举 -> core/hookbus/enums/hook.enums.ts
+Hook类型定义 -> core/hookbus/types/hook.types.ts
+Hook注册服务 -> core/hookbus/services/hook.registry.service.ts
+Hook调用器 -> core/hookbus/services/hook.invoker.service.ts
+Hook总线服务 -> core/hookbus/services/hook.bus.service.ts
+HookBus模块 -> core/hookbus/hookbus.module.ts
+Hook缓存服务 -> core/hookbus/cache/hook.cache.ts
+
+快速检索映射（Keywords -> Files）
+- "hook.bus.service" / "HookBusService" -> src/core/hookbus/services/hook.bus.service.ts
+- "hook.invoker.service" / "HookInvokerService" -> src/core/hookbus/services/hook.invoker.service.ts
+- "hook.registry.service" / "HookRegistryService" -> src/core/hookbus/services/hook.registry.service.ts
+- "hook.types" / "Hook Types" -> src/core/hookbus/types/hook.types.ts
+- "hook.enums" / "Hook Enums" -> src/core/hookbus/enums/hook.enums.ts
+- "hook.cache" / "Hook Cache" -> src/core/hookbus/cache/hook.cache.ts
+
+关键词到文件函数哈希映射（Keywords -> Function Hash）
+- HookBusService.emit -> hb_emit_01
+- HookBusService.emitAwait -> hb_emitAwait_02
+- HookBusService.select -> hb_select_03
+- HookInvokerService.invoke -> hb_invoke_04
+- HookRegistryService.register -> hb_register_05
+- HookCacheService.recordStatus -> hb_cacheRecord_06
+- HookCacheService.getStatus -> hb_cacheGet_07
+
+模块功能描述（Description）
+HookBus 模块是系统的事件编排核心，支持同名 Hook 的多插件实现与条件筛选、中间件跟踪与安全治理；采用本地队列模式（多进程独立），不做跨进程分发。处理器并行执行以避免慢钩子阻塞；不依赖数据库表，提供状态缓存与本地等待式发布（emitAwait）。

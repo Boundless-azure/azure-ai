@@ -5,7 +5,12 @@
  * @keywords-en agent-service, chat-history, workflow-management
  */
 
-import { WorkflowStepStatus, QuickItemType, ChatRole } from '../enums/agent.enums';
+import {
+  WorkflowStepStatus,
+  QuickItemType,
+  ChatRole,
+  WorkflowGraphStatus,
+} from '../enums/agent.enums';
 import type {
   ChatMessage,
   WorkflowStep,
@@ -14,6 +19,12 @@ import type {
   GroupListItem,
   SummariesByGroupResponse,
   GroupHistoryResponse,
+  CreateGroupRequest,
+  CreateGroupResponse,
+  Agent,
+  UpdateAgentRequest,
+  CheckpointListResponse,
+  ActiveWorkflowCard,
 } from '../types/agent.types';
 import type { BaseResponse } from '../../../utils/types';
 import { useUIStore } from '../store/ui.store';
@@ -64,6 +75,30 @@ export class AgentService {
       description: 'Service for managing AI agent interactions and state.',
       parameters: {},
     };
+  }
+
+  /**
+   * Get Agents
+   */
+  public async getAgents(): Promise<Agent[]> {
+    return this.handleRequest<Agent[]>(agentApi.getAgents());
+  }
+
+  /**
+   * Update Agent
+   */
+  public async updateAgent(
+    id: string,
+    data: UpdateAgentRequest,
+  ): Promise<Agent> {
+    return this.handleRequest<Agent>(agentApi.updateAgent(id, data));
+  }
+
+  /**
+   * Delete Agent
+   */
+  public async deleteAgent(id: string): Promise<{ success: boolean }> {
+    return this.handleRequest<{ success: boolean }>(agentApi.deleteAgent(id));
   }
 
   /**
@@ -154,6 +189,28 @@ export class AgentService {
   }
 
   /**
+   * Create Group
+   * @description Creates a new conversation group.
+   * @keywords-cn 创建对话组
+   * @keywords-en create-group
+   */
+  public async createGroup(
+    data: CreateGroupRequest,
+  ): Promise<CreateGroupResponse> {
+    return this.handleRequest<CreateGroupResponse>(agentApi.createGroup(data));
+  }
+
+  /**
+   * Delete Group
+   * @description Deletes a conversation group.
+   * @keywords-cn 删除对话组
+   * @keywords-en delete-group
+   */
+  public async deleteGroup(groupId: string): Promise<void> {
+    await this.handleRequest(agentApi.deleteGroup(groupId));
+  }
+
+  /**
    * Get Group List
    * @description Retrieves list of conversation groups.
    * @keywords-cn 获取对话组列表
@@ -187,7 +244,7 @@ export class AgentService {
    * @keywords-en list-checkpoints
    */
   public async listCheckpoints(threadId: string, limit = 50) {
-    return this.handleRequest<Checkpoint[]>(
+    return this.handleRequest<CheckpointListResponse>(
       agentApi.listCheckpoints(threadId, limit),
     );
   }
@@ -202,6 +259,48 @@ export class AgentService {
     return this.handleRequest<Checkpoint>(
       agentApi.getCheckpointDetail(threadId, checkpointId),
     );
+  }
+
+  /**
+   * Get Active Workflows
+   * @description Lists active conversation groups for a date and maps last checkpoint to card info.
+   * @keywords-cn 获取进行中的工作流, 活跃分组, 检查点映射
+   * @keywords-en get-active-workflows, active-groups, checkpoint-mapping
+   */
+  public async getActiveWorkflows(date: string): Promise<ActiveWorkflowCard[]> {
+    const groups = await this.handleRequest<GroupListItem[]>(
+      agentApi.getGroupList({ date }),
+    );
+    const now = Date.now();
+    const thresholdMs = 90 * 1000; // 90 seconds window to consider "running"
+    const candidates = await Promise.all(
+      groups.map(async (g) => {
+        let latestTs: number | null = null;
+        try {
+          const cps = await this.handleRequest<CheckpointListResponse>(
+            agentApi.listCheckpoints(g.id, 1),
+          );
+          const latest = cps.items?.[0];
+          if (latest?.ts) {
+            latestTs = new Date(latest.ts).getTime();
+          }
+        } catch (_) {
+          latestTs = null;
+        }
+        const isRecent = latestTs !== null && now - latestTs <= thresholdMs;
+        const status =
+          isRecent && g.active
+            ? WorkflowGraphStatus.Running
+            : WorkflowGraphStatus.Completed;
+        return {
+          id: g.id,
+          name: g.title ?? g.dayGroupId,
+          node: latestTs ? new Date(latestTs).toLocaleString() : '—',
+          status,
+        } as ActiveWorkflowCard;
+      }),
+    );
+    return candidates.filter((c) => c.status === WorkflowGraphStatus.Running);
   }
 }
 
