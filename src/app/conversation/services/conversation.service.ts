@@ -1,4 +1,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { AgentExecutionEntity } from '@/app/agent/entities/agent-execution.entity';
 import {
   AIModelService,
   ContextService,
@@ -36,6 +39,8 @@ export class ConversationService {
     private readonly checkpointer: TypeOrmCheckpointSaver,
     @Inject('CHECKPOINT_OPTIONS')
     private readonly ckptOptions: { summaryInterval?: number },
+    @InjectRepository(AgentExecutionEntity)
+    private readonly agentExecRepo: Repository<AgentExecutionEntity>,
   ) {}
 
   /**
@@ -66,10 +71,43 @@ export class ConversationService {
         (await this.contextService.getConversationGroupIdForSession(
           sessionId,
         )) ?? undefined;
-      // 若传入了 sessionId，则视为已有分组；不再创建新分组
+      if (!conversationGroupId) {
+        const normalizedDate = this.normalizeDate(request.date);
+        const dayGroup = await this.contextService.ensureDayGroup(
+          normalizedDate,
+          'system',
+        );
+        const convGroup = await this.contextService.createConversationGroup(
+          dayGroup.id,
+          request.chatClientId,
+          'system',
+        );
+        await this.contextService.linkSessionToGroup(sessionId, convGroup.id);
+        conversationGroupId = convGroup.id;
+        try {
+          const modelId = request.modelId || (await this.pickDefaultModelId());
+          const title = await this.computeGroupTitle(
+            request.message,
+            sessionId,
+            conversationGroupId,
+            modelId,
+          );
+          if (title) {
+            await this.contextService.updateConversationGroupTitle(
+              conversationGroupId,
+              title,
+            );
+          }
+        } catch (_e) {
+          this.logger.warn(
+            'Compute group title (non-stream, existing session) failed',
+          );
+        }
+      }
     } else {
+      const normalizedDate = this.normalizeDate(request.date);
       const dayGroup = await this.contextService.ensureDayGroup(
-        request.date,
+        normalizedDate,
         'system',
       );
       const convGroup = await this.contextService.createConversationGroup(
@@ -79,6 +117,24 @@ export class ConversationService {
       );
       await this.contextService.linkSessionToGroup(sessionId, convGroup.id);
       conversationGroupId = convGroup.id;
+      // 非流式调用也补充计算并保存组标题，保证列表同步
+      try {
+        const modelId = request.modelId || (await this.pickDefaultModelId());
+        const title = await this.computeGroupTitle(
+          request.message,
+          sessionId,
+          conversationGroupId,
+          modelId,
+        );
+        if (title) {
+          await this.contextService.updateConversationGroupTitle(
+            conversationGroupId,
+            title,
+          );
+        }
+      } catch (_e) {
+        this.logger.warn('Compute group title (non-stream) failed');
+      }
     }
 
     const messages: ChatMessage[] = [
@@ -90,7 +146,9 @@ export class ConversationService {
       messages,
       sessionId,
       conversationGroupId,
-      checkpointer: this.checkpointer,
+      checkpointer: (await this.shouldUseCheckpointer(sessionId))
+        ? this.checkpointer
+        : undefined,
       params: {
         temperature: 0.7,
         maxTokens: 2000,
@@ -131,15 +189,71 @@ export class ConversationService {
       let sessionId: string;
       let conversationGroupId: string | undefined;
       if (request.sessionId) {
-        // 复用已有会话与其绑定的组；不新建分组
-        sessionId = request.sessionId;
+        const ctx = await this.contextService.createContext(
+          request.sessionId,
+          request.systemPrompt,
+          'system',
+        );
+        sessionId = ctx.sessionId;
         conversationGroupId =
           (await this.contextService.getConversationGroupIdForSession(
             sessionId,
           )) ?? undefined;
+        if (!conversationGroupId) {
+          const normalizedDate = this.normalizeDate(request.date);
+          const dayGroup = await this.contextService.ensureDayGroup(
+            normalizedDate,
+            'system',
+          );
+          const convGroup = await this.contextService.createConversationGroup(
+            dayGroup.id,
+            request.chatClientId,
+            'system',
+          );
+          await this.contextService.linkSessionToGroup(sessionId, convGroup.id);
+          conversationGroupId = convGroup.id;
+
+          // 广播 session_group 与计算标题
+          yield {
+            type: 'session_group',
+            data: {
+              sessionGroupId: convGroup.id,
+              date: normalizedDate,
+              chatClientId: request.chatClientId,
+            },
+            sessionId,
+          };
+
+          try {
+            const modelId =
+              request.modelId || (await this.pickDefaultModelId());
+            const title = await this.computeGroupTitle(
+              request.message,
+              sessionId,
+              convGroup.id,
+              modelId,
+            );
+            if (title) {
+              await this.contextService.updateConversationGroupTitle(
+                convGroup.id,
+                title,
+              );
+              yield {
+                type: 'session_group_title',
+                data: { sessionGroupId: convGroup.id, title },
+                sessionId,
+              };
+            }
+          } catch (_e) {
+            this.logger.warn(
+              'Compute group title (stream, existing session) failed',
+            );
+          }
+        }
       } else {
+        const normalizedDate = this.normalizeDate(request.date);
         const dayGroup = await this.contextService.ensureDayGroup(
-          request.date,
+          normalizedDate,
           'system',
         );
         const convGroup = await this.contextService.createConversationGroup(
@@ -161,11 +275,35 @@ export class ConversationService {
           type: 'session_group',
           data: {
             sessionGroupId: convGroup.id,
-            date: request.date,
+            date: normalizedDate,
             chatClientId: request.chatClientId,
           },
           sessionId,
         };
+
+        // 计算并保存组标题，同时向前端推送 session_group_title 事件
+        try {
+          const modelId = request.modelId || (await this.pickDefaultModelId());
+          const title = await this.computeGroupTitle(
+            request.message,
+            sessionId,
+            convGroup.id,
+            modelId,
+          );
+          if (title) {
+            await this.contextService.updateConversationGroupTitle(
+              convGroup.id,
+              title,
+            );
+            yield {
+              type: 'session_group_title',
+              data: { sessionGroupId: convGroup.id, title },
+              sessionId,
+            };
+          }
+        } catch (_e) {
+          this.logger.warn('Compute group title (stream) failed');
+        }
       }
 
       const messages: ChatMessage[] = [
@@ -177,7 +315,9 @@ export class ConversationService {
         messages,
         sessionId,
         conversationGroupId,
-        checkpointer: this.checkpointer,
+        checkpointer: (await this.shouldUseCheckpointer(sessionId))
+          ? this.checkpointer
+          : undefined,
         params: {
           temperature: 0.7,
           maxTokens: 2000,
@@ -227,6 +367,56 @@ export class ConversationService {
       );
     }
     return enabled[0].id;
+  }
+
+  private async shouldUseCheckpointer(sessionId: string): Promise<boolean> {
+    try {
+      const row = await this.agentExecRepo.findOne({
+        where: { contextMessageId: sessionId, isDelete: false },
+      });
+      return !!row;
+    } catch {
+      return false;
+    }
+  }
+
+  private normalizeDate(input?: string): string {
+    const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    if (typeof input === 'string' && input.trim().length > 0) {
+      // 直接匹配 YYYY-MM-DD
+      const m = input.trim().match(/^\d{4}-\d{2}-\d{2}$/);
+      if (m) return input.trim();
+      const d = new Date(input);
+      if (!isNaN(d.getTime())) return fmt(d);
+    }
+    return fmt(new Date());
+  }
+
+  private async computeGroupTitle(
+    message: string,
+    sessionId: string,
+    sessionGroupId: string,
+    modelId: string,
+  ): Promise<string> {
+    const messages: ChatMessage[] = [
+      {
+        role: 'user',
+        content:
+          '请为当前对话生成一个简短、准确的标题（不超过32字），用于列表展示。仅返回标题本身，不要多余说明。',
+      },
+      { role: 'user', content: message },
+    ];
+    const aiReq: AIModelRequest = {
+      modelId,
+      messages,
+      sessionId,
+      conversationGroupId: sessionGroupId,
+      params: { temperature: 0.2, maxTokens: 64, stream: false },
+    };
+    const resp = await this.aiModelService.chat(aiReq);
+    return (resp.content || '').trim().slice(0, 32);
   }
 
   /**
@@ -293,8 +483,12 @@ export class ConversationService {
    */
   private async ensureSessionId(request: ChatRequest): Promise<string> {
     if (request.sessionId) {
-      // 如果复用既有会话，沿用其已有的组，不强行覆盖
-      return request.sessionId;
+      const ctx = await this.contextService.createContext(
+        request.sessionId,
+        request.systemPrompt,
+        'system',
+      );
+      return ctx.sessionId;
     }
     const context = await this.contextService.createContext(
       undefined,

@@ -1,0 +1,33 @@
+模块名称：mongo（MongoDB 基础模块）
+
+概述
+- 提供 MongoDB 连接（MongoClient）与数据库实例（Db）的全局注入；按环境开关启用。
+- 供上层模块（plugin/agent/function-call）在迁移期间选择性使用 Mongo 存储。
+
+文件清单（File List）
+- mongo/mongo.module.ts
+- mongo/services/mongo.client.ts
+- mongo/types/mongo.types.ts
+
+函数清单（Function Index）
+- MongoClientService
+  - method: connect
+  - method: getDb
+
+关键词索引（中文 / English Keyword Index）
+Mongo模块 -> mongo/mongo.module.ts
+Mongo客户端 -> mongo/services/mongo.client.ts
+Mongo类型 -> mongo/types/mongo.types.ts
+
+快速检索映射（Keywords -> Files）
+- "MongoModule" -> src/mongo/mongo.module.ts
+- "MongoClientService" -> src/mongo/services/mongo.client.ts
+- "MongoModuleOptions" -> src/mongo/types/mongo.types.ts
+
+关键词到文件函数哈希映射（Keywords -> Function Hash）
+- MongoClientService.connect -> mongo_client_connect_01
+- MongoClientService.getDb -> mongo_client_getdb_02
+
+模块功能描述（Description）
+Mongo 模块为项目提供基础的 MongoDB 能力：按环境开启（enabled），通过 URI 与数据库名建立连接，并将 Db 实例以 MONGO_DB 注入，供业务服务选择性地路由到 Mongo 存储实现。
+

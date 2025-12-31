@@ -167,6 +167,7 @@ export class AIModelService implements OnModuleInit {
         model: model,
         tools: openFunction,
         checkpointer: request.checkpointer,
+        systemPrompt: request.systemPrompt,
       });
       return Agent;
     } catch (error) {

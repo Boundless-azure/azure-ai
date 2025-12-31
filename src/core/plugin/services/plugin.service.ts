@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as fs from 'fs';
@@ -9,6 +9,8 @@ import { createHash } from 'crypto';
 import { pathToFileURL } from 'url';
 import { PluginEntity } from '../entities/plugin.entity';
 import { PluginKeywordsService } from './plugin.keywords.service';
+import type { Db, Collection } from 'mongodb';
+import type { PluginDoc } from '../../../mongo/types/mongo.types';
 import { PluginConfig, validatePluginConfig } from '../types';
 
 @Injectable()
@@ -24,6 +26,7 @@ export class PluginService {
     @InjectRepository(PluginEntity)
     private readonly repo: Repository<PluginEntity>,
     private readonly keywords: PluginKeywordsService,
+    @Optional() @Inject('MONGO_DB') private readonly mongoDb?: Db,
   ) {}
 
   /**
@@ -31,6 +34,16 @@ export class PluginService {
    * @returns 插件实体数组（按 updatedAt 倒序）
    */
   async list(): Promise<PluginEntity[]> {
+    if (this.useMongo()) {
+      const col = this.pluginCollection();
+      if (!col) return [];
+      const docs = await col
+        .find({ isDelete: { $ne: true } })
+        .sort({ updatedAt: -1 })
+        .limit(500)
+        .toArray();
+      return docs.map((d) => this.toEntity(d));
+    }
     return this.repo.find({ order: { updatedAt: 'DESC' } });
   }
 
@@ -40,6 +53,15 @@ export class PluginService {
    * @returns 找到则返回实体，否则返回 null
    */
   async get(id: string): Promise<PluginEntity | null> {
+    if (this.useMongo()) {
+      const col = this.pluginCollection();
+      if (!col) return null;
+      const doc = await col.findOne({ _id: id } as unknown as Record<
+        string,
+        unknown
+      >);
+      return doc ? this.toEntity(doc) : null;
+    }
     return this.repo.findOne({ where: { id } });
   }
 
@@ -48,6 +70,14 @@ export class PluginService {
    * @param id 插件主键
    */
   async delete(id: string): Promise<void> {
+    if (this.useMongo()) {
+      const col = this.pluginCollection();
+      if (!col) return;
+      await col.updateOne({ _id: id } as unknown as Record<string, unknown>, {
+        $set: { isDelete: true, updatedAt: new Date() },
+      });
+      return;
+    }
     await this.repo.delete({ id });
   }
 
@@ -59,7 +89,34 @@ export class PluginService {
     validatePluginConfig(conf);
     const kw = await this.keywords.generateKeywords(conf);
 
-    // Upsert by name+version
+    if (this.useMongo()) {
+      const col = this.pluginCollection();
+      if (!col) throw new Error('MongoDB not available');
+      const now = new Date();
+      const doc: PluginDoc = {
+        name: conf.name,
+        version: conf.version,
+        description: conf.description,
+        hooks: conf.hooks,
+        keywordsZh: kw.zh.join(', '),
+        keywordsEn: kw.en.join(', '),
+        pluginDir,
+        registered: true,
+        updatedAt: now,
+        createdAt: now,
+        isDelete: false,
+      };
+      await col.updateOne(
+        { name: doc.name, version: doc.version },
+        { $set: doc },
+        { upsert: true },
+      );
+      const saved = await col.findOne({ name: doc.name, version: doc.version });
+      if (!saved) throw new Error('Plugin upsert failed');
+      this.logger.log(`Registered plugin: ${conf.name}@${conf.version}`);
+      return this.toEntity(saved);
+    }
+
     const existing = await this.repo.findOne({
       where: { name: conf.name, version: conf.version },
     });
@@ -81,7 +138,6 @@ export class PluginService {
       this.logger.log(`Updated plugin: ${conf.name}@${conf.version}`);
       return saved;
     } else {
-      // 新增插件：使用 insert 让数据库通过 DEFAULT(UUID()) 生成主键
       const instance = Object.assign(new PluginEntity(), entityData);
       await this.repo.insert(instance);
       const created = await this.repo.findOne({
@@ -103,6 +159,23 @@ export class PluginService {
     id: string,
     updates: Partial<PluginEntity>,
   ): Promise<PluginEntity> {
+    if (this.useMongo()) {
+      const col = this.pluginCollection();
+      if (!col) throw new Error('MongoDB not available');
+      const patch: Record<string, unknown> = {
+        ...updates,
+        updatedAt: new Date(),
+      };
+      await col.updateOne({ _id: id } as unknown as Record<string, unknown>, {
+        $set: patch,
+      });
+      const saved = await col.findOne({ _id: id } as unknown as Record<
+        string,
+        unknown
+      >);
+      if (!saved) throw new Error('Plugin update failed');
+      return this.toEntity(saved);
+    }
     const existing = await this.get(id);
     if (!existing) throw new Error(`Plugin not found: ${id}`);
     const saved = await this.repo.save({
@@ -174,6 +247,35 @@ export class PluginService {
     }
     validatePluginConfig(confUnknown);
     return confUnknown;
+  }
+
+  private useMongo(): boolean {
+    return (process.env.MONGO_ENABLED ?? 'false') === 'true' && !!this.mongoDb;
+  }
+
+  private pluginCollection(): Collection<PluginDoc> | undefined {
+    if (!this.mongoDb) return undefined;
+    return this.mongoDb.collection<PluginDoc>('plugins');
+  }
+
+  private toEntity(doc: PluginDoc): PluginEntity {
+    const e = new PluginEntity();
+    (e as unknown as { id?: string }).id =
+      doc._id ?? `${doc.name}:${doc.version}`;
+    e.name = doc.name;
+    e.version = doc.version;
+    e.description = doc.description;
+    e.hooks = JSON.stringify(doc.hooks);
+    e.keywordsZh = doc.keywordsZh ?? null;
+    e.keywordsEn = doc.keywordsEn ?? null;
+    e.pluginDir = doc.pluginDir;
+    e.registered = doc.registered;
+    (e as unknown as { createdAt?: Date }).createdAt =
+      doc.createdAt ?? new Date();
+    (e as unknown as { updatedAt?: Date }).updatedAt =
+      doc.updatedAt ?? new Date();
+    (e as unknown as { isDelete?: boolean }).isDelete = doc.isDelete ?? false;
+    return e;
   }
 }
 

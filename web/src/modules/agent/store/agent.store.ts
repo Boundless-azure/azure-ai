@@ -26,14 +26,14 @@ export const useAgentStore = defineStore('agent', () => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as {
-        selectedDate: string;
-        chatClientId: string;
+        selectedDate?: string;
+        chatClientId?: string;
         currentSessionId?: string;
         currentSessionTitle?: string;
         lastVisitedDate?: string;
       };
       const today = getLocalDateString();
-      if (parsed.lastVisitedDate && parsed.lastVisitedDate !== today) {
+      if (!parsed.lastVisitedDate || parsed.lastVisitedDate !== today) {
         selectedDate.value = today;
       } else if (parsed.selectedDate) {
         selectedDate.value = parsed.selectedDate;

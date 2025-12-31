@@ -6,3 +6,6 @@ export * from './types';
 export * from './plugin';
 export * from './context';
 export * from './db';
+export * from './webmcp/get';
+export * from './webmcp/op';
+export * from './intent/agent-trigger';

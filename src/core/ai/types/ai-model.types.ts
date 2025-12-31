@@ -174,6 +174,8 @@ export interface AIModelRequest {
     /** 停止词 */
     stop?: string[];
   };
+  /** 系统提示（可选） */
+  systemPrompt?: string;
   /** 用户ID (可选) */
   userId?: string;
   /** 会话ID (可选) */

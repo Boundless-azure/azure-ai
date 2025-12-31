@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AICoreModule } from '@core/ai';
+import { IntentAgentTriggerFunctionService } from '@core/function-call';
 import { FunctionCallModule } from '@core/function-call/function-call.module';
 import { ConversationController } from './controllers/conversation.controller';
 import { ConversationService } from './services/conversation.service';
@@ -14,6 +15,7 @@ import { LGCheckpointEntity } from '@core/langgraph/checkpoint/entities/lg-check
 import { LGWriteEntity } from '@core/langgraph/checkpoint/entities/lg-write.entity';
 import { LangGraphCheckpointModule } from '@core/langgraph/checkpoint/checkpoint.module';
 import { ConversationGateway } from './controllers/conversation.gateway';
+import { AgentExecutionEntity } from '@/app/agent/entities/agent-execution.entity';
 /**
  * @title 外部对话模块
  * @desc 提供完整的 AI 对话接口：
@@ -28,7 +30,7 @@ import { ConversationGateway } from './controllers/conversation.gateway';
       // 仅启用指定的 Function-Call 服务；可根据需要增减：
       // 例如启用插件编排器/上下文窗口/MySQL只读查询：
       // includeFunctionServices: [PluginOrchestratorService, ContextFunctionService, MysqlReadonlyService],
-      includeFunctionServices: [],
+      includeFunctionServices: [IntentAgentTriggerFunctionService],
     }), // 导入 AI 核心模块
     FunctionCallModule, // 导入 function-call 模块
     TypeOrmModule.forFeature([
@@ -39,6 +41,7 @@ import { ConversationGateway } from './controllers/conversation.gateway';
       ChatConversationGroupEntity,
       LGCheckpointEntity,
       LGWriteEntity,
+      AgentExecutionEntity,
     ]),
     LangGraphCheckpointModule.forRoot(),
   ],

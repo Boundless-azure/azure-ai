@@ -13,11 +13,14 @@ import { HookBusModule } from './core/hookbus/hookbus.module';
 import { ConversationModule } from '@/app/conversation/conversation.module';
 import { AgentModule } from '@/app/agent/agent.module';
 import { TodoModule } from '@/app/todo/todo.module';
+import { WebMcpModule } from '@/app/webmcp/webmcp.module';
 // 直接从具体配置文件导入，避免 Barrel 导出解析异常
 import {
   loadDatabaseConfigFromEnv,
   createTypeOrmOptions,
 } from './config/database.config';
+import { loadMongoConfigFromEnv } from './config/mongo.config';
+import { MongoModule } from './mongo/mongo.module';
 import { loadAIConfigFromEnv } from './config/ai.config';
 import { loadLoggingConfigFromEnv } from './config/logging.config';
 import { loadHookBusConfigFromEnv } from './config/hookbus.config';
@@ -35,6 +38,7 @@ import type { DatabaseConfig } from './config/types';
         () => ({ appLogging: loadLoggingConfigFromEnv() }),
         () => ({ appHookBus: loadHookBusConfigFromEnv() }),
         () => ({ appRedis: loadRedisConfigFromEnv() }),
+        () => ({ appMongo: loadMongoConfigFromEnv() }),
       ],
     }),
     TypeOrmModule.forRootAsync({
@@ -78,7 +82,9 @@ import type { DatabaseConfig } from './config/types';
       debug: loadHookBusConfigFromEnv().debug,
     }),
     RedisModule,
+    MongoModule.forRoot({}),
     PluginModule,
+    WebMcpModule,
     ConversationModule,
     AgentModule,
     TodoModule,

@@ -15,12 +15,6 @@ import type {
   ConversationSseEvent,
 } from '../types/conversation.types';
 import { ChatRequestDto } from '../types/conversation.types';
-import {
-  AIModelService,
-  ContextService,
-  type ChatMessage,
-  type AIModelRequest,
-} from '@core/ai';
 import { appValidationPipeOptions } from '@/core/common/pipes/validation.options';
 
 /**
@@ -39,11 +33,7 @@ export class ConversationGateway
   @WebSocketServer()
   private server!: Server;
 
-  constructor(
-    private readonly conversationService: ConversationService,
-    private readonly aiModelService: AIModelService,
-    private readonly contextService: ContextService,
-  ) {}
+  constructor(private readonly conversationService: ConversationService) {}
 
   /**
    * 处理单个连接的消息路由：
@@ -73,9 +63,6 @@ export class ConversationGateway
     for await (const ev of gen) {
       if (!this.isConversationEvent(ev)) continue;
       this.safeEmit(client, ev);
-      if (ev.type === 'session_group') {
-        void this.computeAndUpdateGroupTitle(client, req, ev);
-      }
     }
   }
 
@@ -94,52 +81,6 @@ export class ConversationGateway
         t === 'done' ||
         t === 'error')
     );
-  }
-
-  private async computeAndUpdateGroupTitle(
-    client: Socket,
-    req: ChatRequest,
-    ev: Extract<ConversationSseEvent, { type: 'session_group' }>,
-  ): Promise<void> {
-    try {
-      const sessionId = ev.sessionId;
-      const { sessionGroupId } = ev.data;
-      const enabled = await this.aiModelService.getEnabledModels();
-      const modelId = req.modelId ?? enabled[0]?.id ?? '';
-      if (!modelId) return;
-
-      const messages: ChatMessage[] = [
-        {
-          role: 'user',
-          content:
-            '请为当前对话生成一个简短、准确的标题（不超过32字），用于列表展示。仅返回标题本身，不要多余说明。',
-        },
-        { role: 'user', content: req.message },
-      ];
-
-      const aiReq: AIModelRequest = {
-        modelId,
-        messages,
-        sessionId,
-        conversationGroupId: sessionGroupId,
-        params: { temperature: 0.2, maxTokens: 64, stream: false },
-      };
-      const resp = await this.aiModelService.chat(aiReq);
-      const title = (resp.content || '').trim().slice(0, 32);
-
-      await this.contextService.updateConversationGroupTitle(
-        sessionGroupId,
-        title,
-      );
-
-      client.emit('conversation_event', {
-        type: 'session_group_title',
-        data: { sessionGroupId, title },
-        sessionId,
-      });
-    } catch (err) {
-      this.logger.error('Group title compute error', err as any);
-    }
   }
 
   private safeEmit(client: Socket, ev: ConversationSseEvent) {

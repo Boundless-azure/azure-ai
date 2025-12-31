@@ -27,13 +27,13 @@ export class AgentEntity extends BaseAuditedEntity {
   @Column({ name: 'purpose', type: 'text', nullable: true })
   purpose!: string | null;
 
-  /** 关联向量（JSON 存储，兼容多数据库） */
-  @Column({ name: 'embedding', type: 'json', nullable: true })
-  embedding!: number[] | Record<string, unknown> | null;
+  /** 关联向量（pgvector） */
+  @Column({ name: 'embedding', type: 'vector', nullable: true })
+  embedding!: string | null;
 
-  /** 可选：外部向量存储引用（如索引/ID） */
-  @Column({ name: 'vector_ref', type: 'varchar', length: 200, nullable: true })
-  vectorRef!: string | null;
+  /** 关键词数组（JSON 存储，做为回退匹配机制） */
+  @Column({ name: 'keywords', type: 'json', nullable: true })
+  keywords!: string[] | null;
 
   /** 节点图定义（JSON），包含各节点与其空间位置 */
   @Column({ name: 'nodes', type: 'json', nullable: true })
