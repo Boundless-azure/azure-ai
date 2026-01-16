@@ -1,4 +1,5 @@
 import { IsOptional, IsString, Length, IsObject } from 'class-validator';
+import { IsArray } from 'class-validator';
 
 /**
  * @title Agent 更新请求
@@ -26,10 +27,6 @@ export class QueryAgentDto {
   @IsOptional()
   @IsString()
   q?: string;
-
-  @IsOptional()
-  @IsString()
-  conversationGroupId?: string;
 }
 
 /**
@@ -67,4 +64,17 @@ export class QueryExecutionDto {
   @IsOptional()
   @IsString()
   contextMessageId?: string;
+}
+
+/**
+ * @title 更新Agent向量请求
+ * @description 可选传入 ID 列表；若未提供则全量更新。
+ * @keywords-cn 向量更新请求, ID列表, 全量更新
+ * @keywords-en embeddings-update-request, id-list, full-update
+ */
+export class UpdateEmbeddingsDto {
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  ids?: string[];
 }

@@ -16,6 +16,7 @@ export const useAgentStore = defineStore('agent', () => {
   const chatClientId = ref<string>('');
   const currentSessionId = ref<string | undefined>(undefined);
   const currentSessionTitle = ref<string>('');
+  const threadReadAt = ref<Record<string, string>>({});
 
   // Manual Persistence Implementation
   // Ensures state is restored correctly regardless of plugin initialization timing
@@ -31,6 +32,7 @@ export const useAgentStore = defineStore('agent', () => {
         currentSessionId?: string;
         currentSessionTitle?: string;
         lastVisitedDate?: string;
+        threadReadAt?: Record<string, string>;
       };
       const today = getLocalDateString();
       if (!parsed.lastVisitedDate || parsed.lastVisitedDate !== today) {
@@ -47,6 +49,9 @@ export const useAgentStore = defineStore('agent', () => {
       if (parsed.currentSessionTitle) {
         currentSessionTitle.value = parsed.currentSessionTitle;
       }
+      if (parsed.threadReadAt && typeof parsed.threadReadAt === 'object') {
+        threadReadAt.value = parsed.threadReadAt;
+      }
     }
   } catch (e) {
     console.warn('Failed to restore agent state', e);
@@ -61,7 +66,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // 2. Watch for changes and save to localStorage
   watch(
-    [selectedDate, chatClientId, currentSessionId, currentSessionTitle],
+    [selectedDate, chatClientId, currentSessionId, currentSessionTitle, threadReadAt],
     () => {
       try {
         // Use simpler format or mimic plugin structure
@@ -73,6 +78,7 @@ export const useAgentStore = defineStore('agent', () => {
             currentSessionId: currentSessionId.value,
             currentSessionTitle: currentSessionTitle.value,
             lastVisitedDate: getLocalDateString(),
+            threadReadAt: threadReadAt.value,
           }),
         );
       } catch (e) {
@@ -91,12 +97,20 @@ export const useAgentStore = defineStore('agent', () => {
     currentSessionTitle.value = title;
   }
 
+  function markThreadRead(id: string, at?: string) {
+    if (!id) return;
+    const ts = at || new Date().toISOString();
+    threadReadAt.value = { ...threadReadAt.value, [id]: ts };
+  }
+
   return {
     selectedDate,
     chatClientId,
     currentSessionId,
     currentSessionTitle,
+    threadReadAt,
     setSelectedDate,
     setCurrentSession,
+    markThreadRead,
   };
 });

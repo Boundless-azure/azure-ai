@@ -75,7 +75,10 @@ export interface ChatRequest {
   modelId?: string;
   systemPrompt?: string;
   stream?: boolean;
-  date: string;
+  /** 可选：线程类型（不再按日期分组） */
+  threadType?: 'assistant' | 'system' | 'todo' | 'group' | 'dm';
+  /** 兼容历史参数：日期（YYYY-MM-DD），将被内部默认为当前日期 */
+  date?: string;
   chatClientId: string;
 }
 
@@ -106,13 +109,49 @@ export class ChatRequestDto implements ChatRequest {
   @IsBoolean()
   stream?: boolean;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  date!: string;
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  threadType?: 'assistant' | 'system' | 'todo' | 'group' | 'dm';
 
   @IsString()
   @IsNotEmpty()
   chatClientId!: string;
+}
+
+/**
+ * @title ThreadChatStart DTO
+ * @description WebSocket 线程对话启动请求体；服务端将根据 threadId 复用或创建并绑定会话。
+ * @keywords-cn 线程对话, WebSocket, 启动, DTO
+ * @keywords-en thread-chat, websocket, start, dto
+ */
+export class ThreadChatStartDto {
+  @IsString()
+  @IsNotEmpty()
+  threadId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  message!: string;
+
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
+
+  @IsOptional()
+  @IsString()
+  modelId?: string;
+
+  @IsOptional()
+  @IsString()
+  systemPrompt?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  stream?: boolean;
 }
 
 /** 创建会话请求 */

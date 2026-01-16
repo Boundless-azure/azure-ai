@@ -512,7 +512,29 @@ export class AIModelService implements OnModuleInit {
         tokensUsed: undefined,
       };
 
-      // 不在此处提取或解析函数调用结构
+      if (finalOutput && typeof finalOutput === 'object') {
+        const maybeMessages = (finalOutput as Record<string, unknown>)[
+          'messages'
+        ];
+        if (Array.isArray(maybeMessages)) {
+          const responseTo = this.handleMessage(
+            maybeMessages as BaseMessage[],
+            'assistant',
+          );
+          if (responseTo) {
+            aiResponse.tokensUsed = this.handleCountTokenToEntity(responseTo);
+          }
+        } else {
+          const usageMeta = (finalOutput as Record<string, unknown>)[
+            'usage_metadata'
+          ];
+          if (this.hasTokenUsage(usageMeta) && usageMeta.tokenUsage) {
+            aiResponse.tokensUsed = this.extractTokenUsage(
+              usageMeta.tokenUsage,
+            );
+          }
+        }
+      }
 
       return aiResponse;
     } catch (error) {
@@ -651,7 +673,7 @@ export class AIModelService implements OnModuleInit {
    */
   private applyModelParams(
     _model: unknown,
-    _params: Partial<ModelParameters>,
+    _params: Partial<ModelParameters> & { stop?: string[] },
   ): ChatOpenAICompletionsCallOptions &
     ChatOpenAIResponsesCallOptions &
     ChatAnthropicCallOptions &
@@ -660,6 +682,21 @@ export class AIModelService implements OnModuleInit {
       ChatOpenAIResponsesCallOptions &
       ChatAnthropicCallOptions &
       GoogleGenerativeAIChatCallOptions = {};
+
+    if (typeof _params.temperature === 'number') {
+      (options as { temperature?: number }).temperature = _params.temperature;
+    }
+    if (typeof _params.topP === 'number') {
+      (options as { topP?: number }).topP = _params.topP;
+    }
+    if (typeof _params.maxTokens === 'number') {
+      (options as { maxTokens?: number }).maxTokens = _params.maxTokens;
+      (options as { maxOutputTokens?: number }).maxOutputTokens =
+        _params.maxTokens;
+    }
+    if (Array.isArray(_params.stop) && _params.stop.length > 0) {
+      (options as { stop?: string[] }).stop = _params.stop;
+    }
 
     return options;
   }
@@ -680,7 +717,10 @@ export class AIModelService implements OnModuleInit {
     | undefined
   > {
     const callOptions = request.params
-      ? this.applyModelParams(model, request.params)
+      ? this.applyModelParams(
+          model,
+          request.params as Partial<ModelParameters> & { stop?: string[] },
+        )
       : {};
     let threadId: string | undefined = request.conversationGroupId;
     if (!threadId && request.sessionId) {

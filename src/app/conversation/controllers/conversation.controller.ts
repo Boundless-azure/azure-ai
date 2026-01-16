@@ -22,6 +22,7 @@ import type {
 } from '@/app/conversation/types/conversation.types';
 import { ChatRequestDto } from '@/app/conversation/types/conversation.types';
 import type { RunnableConfig } from '@langchain/core/runnables';
+import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 
 /**
  * 外部对话控制器
@@ -58,12 +59,14 @@ export class ConversationController {
    * 关键词: 对话, 流式, SSE
    */
   @Post('chat')
+  @CheckAbility('read', 'thread')
   async chat(@Body() request: ChatRequestDto) {
     const svc: ConversationService = this.conversationService;
     return await svc.chat(request);
   }
 
   @Sse('chat/stream')
+  @CheckAbility('read', 'thread')
   sseChat(
     @Query() request: ChatRequestDto,
   ): Observable<{ data: ConversationSseEvent }> {
@@ -81,6 +84,7 @@ export class ConversationController {
    * 关键词: 会话, 创建
    */
   @Post('sessions')
+  @CheckAbility('read', 'thread')
   async createSession(
     @Body() request: CreateSessionRequest,
   ): Promise<CreateSessionResponse> {
@@ -100,6 +104,7 @@ export class ConversationController {
    * 关键词: 会话, 历史
    */
   @Get('sessions/:sessionId/history')
+  @CheckAbility('read', 'thread')
   async getSessionHistory(
     @Param('sessionId') sessionId: string,
     @Query('limit') limit?: string,
@@ -130,6 +135,7 @@ export class ConversationController {
    * @returns 检查点简要信息列表：checkpointId/ts/metadata
    */
   @Get('checkpoints/:threadId')
+  @CheckAbility('read', 'thread')
   async listCheckpoints(
     @Param('threadId') threadId: string,
     @Query('limit') limit?: string,
@@ -169,6 +175,7 @@ export class ConversationController {
    * @returns 检查点详情：checkpoint/metadata/writes/history
    */
   @Get('checkpoints/:threadId/:checkpointId')
+  @CheckAbility('read', 'thread')
   async getCheckpointDetail(
     @Param('threadId') threadId: string,
     @Param('checkpointId') checkpointId: string,

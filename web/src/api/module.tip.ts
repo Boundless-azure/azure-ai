@@ -37,5 +37,13 @@ export const moduleDescription = {
         delete: 'delete',
       },
     },
+    'identity-api': {
+      cn: '身份API',
+      en: 'Identity API',
+      file: 'agent.ts',
+      functions: {
+        listPrincipals: 'listPrincipals',
+      },
+    },
   },
 };

@@ -5,7 +5,10 @@ import { IntentAgentTriggerFunctionService } from '@core/function-call';
 import { FunctionCallModule } from '@core/function-call/function-call.module';
 import { ConversationController } from './controllers/conversation.controller';
 import { ConversationService } from './services/conversation.service';
-import { ConversationGroupController } from './controllers/conversation-group.controller';
+import {
+  ConversationGroupController,
+  ConversationThreadController,
+} from './controllers/conversation-group.controller';
 import { ChatDayGroupEntity } from '@core/ai/entities/chat-day-group.entity';
 import { ChatConversationGroupEntity } from '@core/ai/entities/chat-conversation-group.entity';
 import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
@@ -16,6 +19,9 @@ import { LGWriteEntity } from '@core/langgraph/checkpoint/entities/lg-write.enti
 import { LangGraphCheckpointModule } from '@core/langgraph/checkpoint/checkpoint.module';
 import { ConversationGateway } from './controllers/conversation.gateway';
 import { AgentExecutionEntity } from '@/app/agent/entities/agent-execution.entity';
+import { PluginEntity } from '@core/plugin/entities/plugin.entity';
+import { MembershipEntity } from '@/app/identity/entities/membership.entity';
+import { IdentityModule } from '@/app/identity/identity.module';
 /**
  * @title 外部对话模块
  * @desc 提供完整的 AI 对话接口：
@@ -42,10 +48,17 @@ import { AgentExecutionEntity } from '@/app/agent/entities/agent-execution.entit
       LGCheckpointEntity,
       LGWriteEntity,
       AgentExecutionEntity,
+      PluginEntity,
+      MembershipEntity,
     ]),
     LangGraphCheckpointModule.forRoot(),
+    IdentityModule,
   ],
-  controllers: [ConversationController, ConversationGroupController],
+  controllers: [
+    ConversationController,
+    ConversationGroupController,
+    ConversationThreadController,
+  ],
   providers: [ConversationService, ConversationGateway],
   exports: [ConversationService],
 })

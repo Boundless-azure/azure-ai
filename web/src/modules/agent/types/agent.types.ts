@@ -32,6 +32,17 @@ export interface ChatMessage {
   tool_calls?: ToolCall[];
 }
 
+/**
+ * @title Chat Attachment
+ * @description Attachment for chat messages (images currently supported).
+ * @keywords-cn 聊天附件, 图片
+ * @keywords-en chat-attachment, image
+ */
+export interface Attachment {
+  file: File;
+  preview: string;
+}
+
 export interface WorkflowStep {
   id: string;
   title: string;
@@ -101,6 +112,49 @@ export interface GroupListItem {
   updatedAt: string;
 }
 
+export interface ThreadListItem {
+  id: string;
+  title: string | null;
+  chatClientId: string | null;
+  threadType: 'assistant' | 'system' | 'todo' | 'group' | 'dm';
+  isPinned: boolean;
+  isAiInvolved: boolean;
+  workflowStatus?: 'running' | 'idle' | 'error' | 'completed';
+  lastMessage?: string;
+  members?: string[]; // Array of avatar URLs or names/initials
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Participant {
+  id: string;
+  name?: string;
+}
+
+/**
+ * @title Identity Principal (Contact)
+ * @description 统一主体（通讯录项）基本信息。
+ * @keywords-cn 主体, 通讯录
+ * @keywords-en principal, contact
+ */
+export interface IdentityPrincipalItem {
+  id: string;
+  displayName: string;
+  principalType:
+    | 'user_enterprise'
+    | 'user_consumer'
+    | 'official_account'
+    | 'agent'
+    | 'system';
+  avatarUrl?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  tenantId?: string | null;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface GroupDetailResponse {
   id: string;
   dayGroupId: string;
@@ -130,16 +184,28 @@ export interface UpdateGroupRequest {
   chatClientId?: string | null;
 }
 
-export interface SummaryItem {
-  sessionId: string;
-  roundNumber: number;
-  summaryContent: string;
-  createdAt: string;
+export interface DailyTodo {
+  id: number | string;
+  title: string;
+  completed?: boolean;
+}
+
+export interface DailyPluginUsage {
+  id: number | string;
+  name: string;
+  icon: string;
+  count: number;
+}
+
+export interface DailyReportContent {
+  summary: string;
+  todos: DailyTodo[];
+  plugins: DailyPluginUsage[];
 }
 
 export interface SummariesByGroupResponse {
   groupId: string;
-  items: SummaryItem[];
+  report: DailyReportContent;
 }
 
 export interface GroupHistoryItem {
@@ -162,9 +228,8 @@ export interface Agent {
   code_path?: string;
   is_ai_generated: boolean;
   nodes: any;
-  conversation_group_id?: string;
-  created_at: string;
-  updated_at: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UpdateAgentRequest {

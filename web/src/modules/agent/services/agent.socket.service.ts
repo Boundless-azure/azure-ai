@@ -10,8 +10,23 @@ import { useUIStore } from '../store/ui.store';
 
 export interface ChatStartPayload {
   message: string;
-  date: string; // YYYY-MM-DD
   chatClientId: string;
+  sessionId?: string;
+  modelId?: string;
+  systemPrompt?: string;
+  stream?: boolean;
+  threadType?: 'assistant' | 'system' | 'todo' | 'group' | 'dm';
+}
+
+/**
+ * @title ThreadChatStartPayload
+ * @description 线程对话启动载荷；由服务端根据 threadId 复用/创建并绑定会话。
+ * @keywords-cn 线程对话, 启动载荷, WebSocket
+ * @keywords-en thread-chat, start-payload, websocket
+ */
+export interface ThreadChatStartPayload {
+  threadId: string;
+  message: string;
   sessionId?: string;
   modelId?: string;
   systemPrompt?: string;
@@ -139,6 +154,46 @@ export class AgentSocketService {
 
     socket.on('conversation_event', handler);
     socket.emit('chat_start', payload);
+  }
+
+  /**
+   * @title 启动线程内流式对话
+   * @description 发送 thread_chat_start 事件并消费服务端返回的统一会话事件。
+   * @keywords-cn 线程对话, WebSocket, 流式
+   * @keywords-en thread-conversation, websocket, streaming
+   */
+  public startThreadChat(
+    payload: ThreadChatStartPayload,
+    callbacks: AgentStreamCallbacks,
+  ): void {
+    const socket = this.ensureSocket();
+
+    const handler = (ev: ConversationEvent) => {
+      if (ev.type === 'token') {
+        callbacks.onToken?.(ev.data.text, ev.sessionId);
+      } else if (ev.type === 'reasoning') {
+        callbacks.onReasoning?.(ev.data.text, ev.sessionId);
+      } else if (ev.type === 'tool_start') {
+        callbacks.onToolStart?.(ev.data, ev.sessionId);
+      } else if (ev.type === 'tool_chunk') {
+        callbacks.onToolChunk?.(ev.data, ev.sessionId);
+      } else if (ev.type === 'tool_end') {
+        callbacks.onToolEnd?.(ev.data, ev.sessionId);
+      } else if (ev.type === 'session_group') {
+        callbacks.onSessionGroup?.(ev.data, ev.sessionId);
+      } else if (ev.type === 'session_group_title') {
+        callbacks.onSessionGroupTitle?.(ev.data, ev.sessionId);
+      } else if (ev.type === 'done') {
+        callbacks.onDone?.(ev.sessionId);
+        socket.off('conversation_event', handler);
+      } else if (ev.type === 'error') {
+        callbacks.onError?.(ev.error, ev.sessionId);
+        socket.off('conversation_event', handler);
+      }
+    };
+
+    socket.on('conversation_event', handler);
+    socket.emit('thread_chat_start', payload);
   }
 
   public disconnect(): void {

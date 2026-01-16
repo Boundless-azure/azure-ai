@@ -1414,6 +1414,8 @@ export class ContextService {
     chatClientId?: string,
     userId?: string,
     channelId?: string,
+    threadType?: 'assistant' | 'system' | 'todo' | 'group' | 'dm',
+    isAiInvolved?: boolean,
   ): Promise<ChatConversationGroupEntity> {
     const entity = this.conversationGroupRepository.create({
       dayGroupId,
@@ -1423,6 +1425,10 @@ export class ContextService {
       createdUser: userId,
       updateUser: userId,
       channelId,
+      threadType: threadType ?? 'group',
+      isPinned: threadType === 'assistant' ? true : false,
+      isAiInvolved: isAiInvolved ?? (threadType === 'assistant' ? true : false),
+      participants: null,
       isDelete: false,
     });
     return await this.conversationGroupRepository.save(entity);

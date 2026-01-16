@@ -15,6 +15,8 @@
     - DELETE /conversation/groups/:groupId（软删除）
     - GET  /conversation/groups/:groupId/summaries（根据组ID获取阶段性总结）
     - GET  /conversation/groups/:groupId/history（根据组ID获取最近窗口历史，支持 includeSystem/limit）
+  - 线程消息接口：
+    - POST /conversation/threads/:threadId/messages（在线程内发送用户消息，自动复用或创建会话并绑定到该组）
 
 文件结构
 - controllers/conversation.controller.ts：对外 REST 接口（标准/流式）
@@ -52,6 +54,8 @@ WebSocket 接口定义
 - 连接：`ws://<host>/conversation/ws`
 - 客户端入参事件：`chat_start`
   - 载荷：ChatRequestDto（message、date、chatClientId 必填；可选 sessionId/modelId/systemPrompt/stream）
+ - 客户端入参事件：`thread_chat_start`
+  - 载荷：ThreadChatStartDto（threadId、message 必填；可选 sessionId/modelId/systemPrompt/stream；chatClientId 由服务端按线程组派生）
 - 服务端统一出参事件：`conversation_event`
   - 事件类型（ConversationSseEvent）：
     - `token`：`{ text }`

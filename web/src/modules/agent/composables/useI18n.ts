@@ -17,7 +17,9 @@ const translations = {
       analytics: 'Analytics',
       settings: 'Settings',
       users: 'User Management',
+      orgs: 'Organization Management',
       roles: 'Role Management',
+      perms: 'Permission Management',
       resources: 'Resource Library',
       database: 'Database Management',
       plugins: 'Plugin Management',
@@ -58,6 +60,10 @@ const translations = {
     },
     chat: {
       agentName: 'Assistant Agent',
+      assistantTitle: 'Azure AI Assistant',
+      workflowAssistant: 'Workflow Assistant',
+      systemNotification: 'System Notification',
+      todoNotification: 'Todo Notification',
       processing: 'Processing Request...',
       activeWorkflows: 'Processing {count} workflows',
       noActiveWorkflows: 'No active workflows',
@@ -69,9 +75,17 @@ const translations = {
       footerDisclaimer:
         'AI can make mistakes. Please check important information.',
       emptyState: 'Start a conversation with the AI Assistant.',
+      emptyThreads: 'No conversations',
+      statusRunning: 'Running',
+      statusError: 'Error',
+      noMessages: 'No messages',
+      errorOccurred: 'Error occurred',
     },
     tabs: {
       dashboard: 'Dashboard',
+      chat: 'Chat History',
+      contacts: 'Contacts',
+      daily: 'Daily Report',
     },
     todo: {
       title: 'Todo List',
@@ -139,6 +153,25 @@ const translations = {
       search: 'Search Agents...',
       aiGenerated: 'Yes',
       manual: 'No',
+      updateAllEmbeddings: 'Update All Embeddings',
+      updateSelectedEmbeddings: 'Update Selected Embeddings',
+    },
+    contacts: {
+      newFriends: 'New Friends',
+      groupChats: 'Group Chats',
+      tags: 'Tags',
+      officialAccounts: 'Official Accounts',
+      allContacts: 'All Contacts',
+      profile: 'Profile',
+      sendMessage: 'Send Message',
+      search: 'Search contacts',
+      memberManagement: 'Member Management',
+      addMember: 'Add Member',
+      removeMember: 'Remove',
+      inputMemberPlaceholder: 'Enter member name',
+      empty: 'No contacts or groups',
+      emptyGroup: 'No members',
+      aiAgents: 'AI Agents',
     },
     common: {
       cancel: 'Cancel',
@@ -156,7 +189,9 @@ const translations = {
       analytics: '数据分析',
       settings: '设置',
       users: '用户管理',
+      orgs: '组织管理',
       roles: '角色管理',
+      perms: '权限管理',
       resources: '资源库管理',
       database: '数据库管理',
       plugins: '插件管理',
@@ -195,6 +230,10 @@ const translations = {
     },
     chat: {
       agentName: '智能助理',
+      assistantTitle: 'Azure AI 助手',
+      workflowAssistant: '工作流助手',
+      systemNotification: '系统通知',
+      todoNotification: '待办通知',
       processing: '正在处理请求...',
       activeWorkflows: '正在处理 {count} 条工作流',
       noActiveWorkflows: '暂时无工作流处理',
@@ -205,9 +244,17 @@ const translations = {
       stopRecording: '停止录音',
       footerDisclaimer: 'AI 模型可能会产生错误，请核对重要信息。',
       emptyState: '开启您与 AI 智能助理的对话之旅。',
+      emptyThreads: '暂无会话',
+      statusRunning: '执行中',
+      statusError: '异常',
+      noMessages: '暂无消息',
+      errorOccurred: '执行出错',
     },
     tabs: {
       dashboard: '仪表盘',
+      chat: '聊天记录',
+      contacts: '通讯录',
+      daily: '日报',
     },
     todo: {
       title: '待办事项',
@@ -275,6 +322,25 @@ const translations = {
       search: '搜索Agent...',
       aiGenerated: '是',
       manual: '否',
+      updateAllEmbeddings: '更新全部向量',
+      updateSelectedEmbeddings: '更新选中向量',
+    },
+    contacts: {
+      newFriends: '新的朋友',
+      groupChats: '群聊',
+      tags: '标签',
+      officialAccounts: '公众号',
+      allContacts: '全部联系人',
+      profile: '详细资料',
+      sendMessage: '发消息',
+      search: '搜索联系人',
+      memberManagement: '成员管理',
+      addMember: '添加成员',
+      removeMember: '移除',
+      inputMemberPlaceholder: '输入成员名称',
+      empty: '暂无联系人或群组',
+      emptyGroup: '暂无成员',
+      aiAgents: 'AI Agent 组',
     },
     common: {
       cancel: '取消',
@@ -311,10 +377,12 @@ export function useI18n() {
 
   const setLocale = (locale: 'en' | 'cn') => {
     currentLocale.value = locale;
+    localStorage.setItem('locale', locale);
   };
 
   const toggleLocale = () => {
     currentLocale.value = currentLocale.value === 'en' ? 'cn' : 'en';
+    localStorage.setItem('locale', currentLocale.value);
   };
 
   return {

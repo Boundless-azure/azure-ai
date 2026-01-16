@@ -36,7 +36,7 @@
  * @keywords-en more-menu, secondary-menu, panel
  */
 import { useI18n } from '../composables/useI18n';
-import { computed, defineEmits } from 'vue';
+import { computed } from 'vue';
 
 const { t } = useI18n();
 

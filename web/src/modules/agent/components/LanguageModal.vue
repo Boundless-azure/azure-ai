@@ -55,7 +55,7 @@
  * @keywords-cn 语言选择, 弹窗, 国际化
  * @keywords-en language-selection, modal, i18n
  */
-import { ref, defineProps, defineEmits } from 'vue';
+import { ref } from 'vue';
 import { useI18n } from '../composables/useI18n';
 
 const props = defineProps<{

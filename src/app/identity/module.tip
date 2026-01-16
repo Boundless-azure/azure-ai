@@ -1,0 +1,64 @@
+模块名称：app/identity（统一身份与权限模块）
+
+概述
+- 提供统一主体（Principal）、组织（Organization）、成员关系（Membership）、角色（Role）与角色权限（RolePermission）的持久化与接口。
+- 提供 AbilityService（CASL 兼容设计）用于 can/cannot 能力判断。
+
+文件清单（File List）
+- app/identity/entities/principal.entity.ts
+- app/identity/entities/organization.entity.ts
+- app/identity/entities/membership.entity.ts
+- app/identity/entities/role.entity.ts
+- app/identity/entities/role-permission.entity.ts
+- app/identity/services/principal.service.ts
+- app/identity/services/organization.service.ts
+- app/identity/services/role.service.ts
+- app/identity/services/ability.service.ts
+- app/identity/controllers/principal.controller.ts
+- app/identity/controllers/organization.controller.ts
+- app/identity/controllers/role.controller.ts
+- app/identity/controllers/membership.controller.ts
+- app/identity/enums/principal.enums.ts
+- app/identity/types/identity.types.ts
+- app/identity/identity.module.ts
+
+函数清单（Function Index）
+- PrincipalService
+  - list(query)
+  - create(dto)
+  - update(id, dto)
+  - delete(id)
+- OrganizationService
+  - list(query)
+  - create(dto)
+  - update(id, dto)
+  - delete(id)
+- RoleService
+  - list()
+  - create(dto)
+  - update(id, dto)
+  - delete(id)
+  - listPermissions(roleId)
+  - upsertPermissions(roleId, dto)
+- AbilityService
+  - buildForRoles(roleIds)
+  - buildForPrincipal(principalId)
+  - getHandle()
+
+关键词索引（中文 / English Keyword Index）
+统一主体 -> app/identity/entities/principal.entity.ts
+组织租户 -> app/identity/entities/organization.entity.ts
+成员关系 -> app/identity/entities/membership.entity.ts
+角色定义 -> app/identity/entities/role.entity.ts
+角色权限 -> app/identity/entities/role-permission.entity.ts
+能力服务 -> app/identity/services/ability.service.ts
+
+关键词到文件函数哈希映射（Keywords -> Function Hash）
+- PrincipalService.list -> id_psi_list_001
+- OrganizationService.list -> id_org_list_002
+- RoleService.upsertPermissions -> id_role_upsert_perm_003
+- AbilityService.buildForRoles -> id_ability_build_004
+ - AbilityService.buildForPrincipal -> id_ability_build_005
+
+模块功能描述（Description）
+本模块统一了 B2B 与 B2C 的身份与权限模型：所有交互主体均为 Principal，通过 principalType 区分企业用户/消费者/官方账号/Agent/系统。组织与成员关系管理采用 RBAC（Role + RolePermission），结合资源级 ACL（由业务模块维护）进行权限决策。AbilityService 提供 can/cannot 能力检查，并可后续替换为 CASL 原生实现。

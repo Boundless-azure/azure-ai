@@ -108,12 +108,21 @@ export class AgentService {
    * @keywords-en get-group-history
    */
   public async getGroupHistory(groupId: string): Promise<ChatMessage[]> {
+    const principalId = this.getCurrentPrincipalId();
     const response = await this.handleRequest<GroupHistoryResponse>(
-      agentApi.getGroupHistory(groupId),
+      agentApi.getGroupHistory(groupId, 100, true, principalId),
     );
+    const roleMap: Record<
+      GroupHistoryResponse['items'][number]['role'],
+      ChatRole
+    > = {
+      user: ChatRole.User,
+      assistant: ChatRole.Assistant,
+      system: ChatRole.System,
+    };
     return response.items.map((item, index) => ({
       id: `${response.groupId}-${index}-${Date.now()}`,
-      role: item.role as ChatRole,
+      role: roleMap[item.role],
       content: item.content,
       timestamp: new Date(item.timestamp).getTime(),
       tool_calls: [],
@@ -130,9 +139,101 @@ export class AgentService {
     content: string,
     sessionId?: string,
   ): Promise<ChatMessage> {
-    return this.handleRequest<ChatMessage>(
-      agentApi.sendMessage(content, sessionId),
-    );
+    const res = await this.handleRequest<{
+      sessionId: string;
+      message: string;
+      model: string;
+      tokensUsed?: { prompt: number; completion: number; total: number };
+    }>(agentApi.sendMessage(content, sessionId));
+    const now = Date.now();
+    return {
+      id: `${res.sessionId}-${now}`,
+      role: ChatRole.Assistant,
+      content: res.message,
+      timestamp: now,
+      tool_calls: [],
+    };
+  }
+
+  /**
+   * Send Thread Message
+   * @description Sends a message to a specific conversation thread.
+   * @keywords-cn 线程发送消息
+   * @keywords-en send-thread-message
+   */
+  public async sendThreadMessage(
+    threadId: string,
+    content: string,
+    sessionId?: string,
+  ): Promise<ChatMessage> {
+    const principalId = this.getCurrentPrincipalId();
+    const res = await this.handleRequest<{
+      sessionId: string;
+      message: string;
+      model: string;
+      tokensUsed?: { prompt: number; completion: number; total: number };
+    }>(agentApi.postThreadMessage(threadId, content, sessionId, principalId));
+    const now = Date.now();
+    return {
+      id: `${res.sessionId}-${now}`,
+      role: ChatRole.Assistant,
+      content: res.message,
+      timestamp: now,
+      tool_calls: [],
+    };
+  }
+
+  /**
+   * List Threads
+   * @description Retrieves conversation threads with filters.
+   * @keywords-cn 获取线程列表, 微信式
+   * @keywords-en list-threads, chat-style
+   */
+  public async getThreadList(params?: {
+    type?: 'assistant' | 'system' | 'todo' | 'group' | 'dm';
+    ai?: boolean;
+    pinned?: boolean;
+    q?: string;
+  }): Promise<import('../types/agent.types').ThreadListItem[]> {
+    const principalId = this.getCurrentPrincipalId();
+    const merged = principalId ? { ...(params || {}), principalId } : params;
+    return this.handleRequest(agentApi.listThreads(merged));
+  }
+
+  /**
+   * Create Thread
+   * @description Creates a new conversation thread.
+   * @keywords-cn 创建线程
+   * @keywords-en create-thread
+   */
+  public async createThread(data: {
+    title?: string | null;
+    chatClientId?: string | null;
+    threadType?: 'assistant' | 'system' | 'todo' | 'group' | 'dm';
+    isPinned?: boolean;
+    isAiInvolved?: boolean;
+  }): Promise<{ id: string }> {
+    return this.handleRequest(agentApi.createThread(data));
+  }
+
+  /**
+   * Update Thread
+   * @description Updates an existing conversation thread.
+   * @keywords-cn 更新线程
+   * @keywords-en update-thread
+   */
+  public async updateThread(
+    threadId: string,
+    data: {
+      title?: string | null;
+      isPinned?: boolean;
+      isAiInvolved?: boolean;
+      threadType?: 'assistant' | 'system' | 'todo' | 'group' | 'dm';
+      active?: boolean;
+      participants?: Array<{ id: string; name?: string }> | string[];
+    },
+  ): Promise<{ success: true }> {
+    return this.handleRequest(agentApi.updateThread(threadId, data));
   }
 
   /**
@@ -301,6 +402,93 @@ export class AgentService {
       }),
     );
     return candidates.filter((c) => c.status === WorkflowGraphStatus.Running);
+  }
+
+  /**
+   * @title 更新Agent向量
+   * @description 调用后端接口，根据传入ID列表或全量更新embedding。
+   * @keywords-cn 向量更新, 全量, 选择
+   * @keywords-en embeddings-update, all, selected
+   */
+  public async updateEmbeddings(ids?: string[]): Promise<{ updated: number }> {
+    const ui = useUIStore();
+    try {
+      const res = await agentApi.updateEmbeddings(ids);
+      const data = this.isBaseResponse(res) ? res.data : res;
+      const updated = (data as { updated: number }).updated ?? 0;
+      ui.showToast(`Embeddings updated: ${updated}`, 'success');
+      return { updated };
+    } catch (error: any) {
+      const msg =
+        error instanceof Error ? error.message : 'Update embeddings failed';
+      ui.showToast(msg, 'error');
+      throw error;
+    }
+  }
+
+  /**
+   * List Contacts (Principals)
+   * @description 获取统一主体作为通讯录项，并映射为 ThreadListItem（dm）。
+   * @keywords-cn 通讯录, 主体, 私聊
+   * @keywords-en contacts, principal, dm
+   */
+  public async getContacts(params?: {
+    q?: string;
+    type?:
+      | 'user_enterprise'
+      | 'user_consumer'
+      | 'official_account'
+      | 'agent'
+      | 'system';
+    tenantId?: string;
+  }): Promise<import('../types/agent.types').ThreadListItem[]> {
+    const list = await this.handleRequest<
+      import('../types/agent.types').IdentityPrincipalItem[]
+    >(agentApi.listPrincipals(params));
+    const nowIso = new Date().toISOString();
+    return list.map((p) => ({
+      id: `contact:${p.id}`,
+      title: p.displayName,
+      chatClientId: null,
+      threadType: 'dm',
+      isPinned: false,
+      isAiInvolved: false,
+      members: undefined,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    }));
+  }
+
+  /**
+   * Start DM Thread for Principal
+   * @description 为联系人创建私聊线程并设置参与者。
+   * @keywords-cn 创建私聊, 参与者
+   * @keywords-en create-dm, participants
+   */
+  public async startDmForPrincipal(principal: {
+    id: string;
+    displayName: string;
+  }): Promise<{ id: string }> {
+    const created = await this.handleRequest<{ id: string }>(
+      agentApi.createThread({ threadType: 'dm', isAiInvolved: false }),
+    );
+    await this.handleRequest(
+      agentApi.updateThread(created.id, {
+        participants: [{ id: principal.id, name: principal.displayName }],
+      }),
+    );
+    return created;
+  }
+
+  /** Read current principal id from local storage for permission-aware queries */
+  private getCurrentPrincipalId(): string | undefined {
+    try {
+      const raw = localStorage.getItem('identity.currentPrincipalId');
+      const id = (raw || '').trim();
+      return id || undefined;
+    } catch {
+      return undefined;
+    }
   }
 }
 

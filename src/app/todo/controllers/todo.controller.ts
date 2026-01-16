@@ -15,6 +15,7 @@ import {
   QueryTodoDto,
   UpdateTodoDto,
 } from '../types/todo.types';
+import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 
 /**
  * @title 待办事项控制器
@@ -27,21 +28,25 @@ export class TodoController {
   constructor(private readonly service: TodoService) {}
 
   @Get()
+  @CheckAbility('read', 'todo')
   async list(@Query() query: QueryTodoDto): Promise<TodoEntity[]> {
     return await this.service.list(query);
   }
 
   @Get(':id')
+  @CheckAbility('read', 'todo')
   async get(@Param('id') id: string): Promise<TodoEntity | null> {
     return await this.service.get(id);
   }
 
   @Post()
+  @CheckAbility('create', 'todo')
   async create(@Body() dto: CreateTodoDto): Promise<TodoEntity> {
     return await this.service.create(dto);
   }
 
   @Put(':id')
+  @CheckAbility('update', 'todo')
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateTodoDto,
@@ -50,6 +55,7 @@ export class TodoController {
   }
 
   @Delete(':id')
+  @CheckAbility('delete', 'todo')
   async delete(@Param('id') id: string): Promise<{ ok: boolean }> {
     await this.service.delete(id);
     return { ok: true };

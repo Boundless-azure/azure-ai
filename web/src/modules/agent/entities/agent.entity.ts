@@ -5,7 +5,7 @@
  * @keywords-en agent-entities
  */
 
-import { ChatRole, ToolCallStatus } from '../enums/agent.enums';
+import { ChatRole } from '../enums/agent.enums';
 import type { ChatMessage, ToolCall } from '../types/agent.types';
 
 export class ChatMessageEntity implements ChatMessage {

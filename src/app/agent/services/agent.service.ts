@@ -1,10 +1,13 @@
 import { Injectable, Inject, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like } from 'typeorm';
+import { Repository, Like, In } from 'typeorm';
 import { AgentEntity } from '../entities/agent.entity';
 import type { QueryAgentDto, UpdateAgentDto } from '../types/agent.types';
 import type { Db, Collection } from 'mongodb';
 import type { AgentDoc } from '@/mongo/types/mongo.types';
+import { AIModelService } from '@core/ai/services/ai-model.service';
+import { AIProvider } from '@core/ai/types';
+import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 
 /**
  * @title Agent 服务
@@ -18,6 +21,7 @@ export class AgentService {
     @InjectRepository(AgentEntity)
     private readonly repo: Repository<AgentEntity>,
     @Optional() @Inject('MONGO_DB') private readonly mongoDb?: Db,
+    private readonly aiModelService?: AIModelService,
   ) {}
 
   async list(query: QueryAgentDto): Promise<AgentEntity[]> {
@@ -25,8 +29,6 @@ export class AgentService {
       const col = this.agentCollection();
       if (!col) return [];
       const filter: Record<string, unknown> = { isDelete: { $ne: true } };
-      if (query.conversationGroupId)
-        filter['conversationGroupId'] = query.conversationGroupId;
       let cursor = col.find(filter).sort({ createdAt: -1 }).limit(500);
       if (query.q && query.q.trim()) {
         const q = query.q.trim();
@@ -46,8 +48,6 @@ export class AgentService {
       return docs.map((d) => this.toEntity(d));
     }
     const where: Record<string, unknown> = {};
-    if (query.conversationGroupId)
-      where['conversationGroupId'] = query.conversationGroupId;
     if (query.q && query.q.trim()) {
       const q = `%${query.q.trim()}%`;
       return await this.repo.find({
@@ -69,13 +69,138 @@ export class AgentService {
     if (this.useMongo()) {
       const col = this.agentCollection();
       if (!col) return null;
-      const doc = await col.findOne({ _id: id } as unknown as Record<
-        string,
-        unknown
-      >);
+      const doc = await col.findOne({ _id: id });
       return doc ? this.toEntity(doc) : null;
     }
     return await this.repo.findOne({ where: { id, isDelete: false } });
+  }
+
+  /**
+   * @title 更新Agent向量
+   * @description 使用 Gemini 生成向量并写入 embedding 列；支持全量或指定ID列表，自动调整维度以匹配列。
+   * @keywords-cn 向量更新, 批量, GeminiEmbeddings
+   * @keywords-en embeddings-update, batch, gemini-embeddings
+   */
+  async updateEmbeddings(ids?: string[]): Promise<{
+    updated: number;
+    errors: Array<{ id: string; error: string }>;
+  }> {
+    const list =
+      ids && ids.length
+        ? await this.repo.find({
+            where: { id: In(ids), isDelete: false, active: true },
+          })
+        : await this.repo.find({ where: { isDelete: false, active: true } });
+
+    const apiKey = await this.pickGeminiKey();
+    if (!apiKey) {
+      return {
+        updated: 0,
+        errors: [{ id: 'ALL', error: 'No Gemini API key available' }],
+      };
+    }
+
+    const emb = new GoogleGenerativeAIEmbeddings({
+      apiKey,
+      model: 'text-embedding-004',
+    });
+    const columnDim = 1536;
+    let updated = 0;
+    const errors: Array<{ id: string; error: string }> = [];
+
+    for (const a of list) {
+      try {
+        const text = this.composeText(a);
+        const vec = await emb.embedQuery(text);
+        const adjusted = this.adjustVector(vec, columnDim);
+        const literal = `[${adjusted.map((v) => (Number.isFinite(v) ? Number(v) : 0)).join(',')}]`;
+        const isPg = await this.isPostgresDb();
+        if (isPg) {
+          await this.repo.manager.query(
+            `UPDATE agents SET embedding = CAST($2 AS vector) WHERE id = $1`,
+            [a.id, literal],
+          );
+        } else {
+          await this.repo.update({ id: a.id }, { embedding: literal });
+        }
+        updated += 1;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        errors.push({ id: a.id, error: msg });
+      }
+    }
+
+    return { updated, errors };
+  }
+
+  private composeText(a: AgentEntity): string {
+    const parts: string[] = [];
+    if (a.nickname) parts.push(a.nickname);
+    if (a.purpose) parts.push(a.purpose);
+    if (a.codeDir) parts.push(a.codeDir);
+    const kws = Array.isArray(
+      (a as unknown as { keywords?: string[] }).keywords,
+    )
+      ? ((a as unknown as { keywords?: string[] }).keywords as string[])
+      : [];
+    if (kws.length) parts.push(kws.join(', '));
+    return parts.join(' | ').toLowerCase();
+  }
+
+  private async pickOpenAIKey(): Promise<string | undefined> {
+    if (!this.aiModelService) return undefined;
+    const models = await this.aiModelService.getEnabledModels();
+    for (const m of models) {
+      if (
+        m.provider === AIProvider.OPENAI &&
+        typeof m.apiKey === 'string' &&
+        m.apiKey
+      ) {
+        return m.apiKey;
+      }
+    }
+    return undefined;
+  }
+
+  private async pickGeminiKey(): Promise<string | undefined> {
+    if (!this.aiModelService) return undefined;
+    const models = await this.aiModelService.getEnabledModels();
+    for (const m of models) {
+      if (
+        m.provider === AIProvider.GEMINI &&
+        typeof m.apiKey === 'string' &&
+        m.apiKey
+      ) {
+        return m.apiKey;
+      }
+    }
+    return undefined;
+  }
+
+  private adjustVector(v: number[], dim: number): number[] {
+    if (Array.isArray(v)) {
+      if (v.length === dim) return v;
+      if (v.length > dim) return v.slice(0, dim);
+      const pad = new Array(dim - v.length).fill(0);
+      return v.concat(pad);
+    }
+    return new Array<number>(dim).fill(0);
+  }
+
+  private async isPostgresDb(): Promise<boolean> {
+    try {
+      const res: unknown = await this.repo.manager.query('SELECT version()');
+      const first = Array.isArray(res) && res.length > 0 ? res[0] : undefined;
+      const txt =
+        first && this.isRecord(first) ? String(Object.values(first)[0]) : '';
+      return txt.toLowerCase().includes('postgres');
+    } catch {
+      return false;
+    }
+  }
+
+  private isRecord(v: unknown): v is Record<string, unknown> {
+    return typeof v === 'object' && v !== null;
   }
 
   async update(id: string, dto: UpdateAgentDto): Promise<AgentEntity> {
@@ -85,13 +210,8 @@ export class AgentService {
       const patch: Record<string, unknown> = { updatedAt: new Date() };
       patch['nickname'] = dto.nickname;
       if (typeof dto.purpose === 'string') patch['purpose'] = dto.purpose;
-      await col.updateOne({ _id: id } as unknown as Record<string, unknown>, {
-        $set: patch,
-      });
-      const saved = await col.findOne({ _id: id } as unknown as Record<
-        string,
-        unknown
-      >);
+      await col.updateOne({ _id: id }, { $set: patch });
+      const saved = await col.findOne({ _id: id });
       if (!saved) throw new Error('Agent update failed');
       return this.toEntity(saved);
     }
@@ -106,9 +226,10 @@ export class AgentService {
     if (this.useMongo()) {
       const col = this.agentCollection();
       if (!col) return;
-      await col.updateOne({ _id: id } as unknown as Record<string, unknown>, {
-        $set: { isDelete: true, updatedAt: new Date() },
-      });
+      await col.updateOne(
+        { _id: id },
+        { $set: { isDelete: true, updatedAt: new Date() } },
+      );
       return;
     }
     const exist = await this.get(id);
@@ -127,7 +248,7 @@ export class AgentService {
 
   private toEntity(doc: AgentDoc): AgentEntity {
     const e = new AgentEntity();
-    (e as unknown as { id?: string }).id = doc._id ?? '';
+    e.id = doc._id ?? '';
     e.codeDir = doc.codeDir;
     e.nickname = doc.nickname;
     e.isAiGenerated = doc.isAiGenerated;
@@ -142,20 +263,12 @@ export class AgentService {
     } else {
       e.embedding = null;
     }
-    e.keywords = Array.isArray(
-      (doc as unknown as { keywords?: string[] | null }).keywords,
-    )
-      ? ((doc as unknown as { keywords?: string[] | null })
-          .keywords as string[])
-      : null;
+    e.keywords = Array.isArray(doc.keywords) ? doc.keywords : null;
     e.nodes = doc.nodes;
-    e.conversationGroupId = doc.conversationGroupId;
     e.active = doc.active;
-    (e as unknown as { createdAt?: Date }).createdAt =
-      doc.createdAt ?? new Date();
-    (e as unknown as { updatedAt?: Date }).updatedAt =
-      doc.updatedAt ?? new Date();
-    (e as unknown as { isDelete?: boolean }).isDelete = doc.isDelete ?? false;
+    e.createdAt = doc.createdAt ?? new Date();
+    e.updatedAt = doc.updatedAt ?? new Date();
+    e.isDelete = doc.isDelete ?? false;
     return e;
   }
 }

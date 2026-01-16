@@ -4,6 +4,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 
 /**
@@ -14,6 +15,7 @@ import {
  */
 @Catch()
 export class HttpWsExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpWsExceptionFilter.name);
   catch(exception: unknown, host: ArgumentsHost): void {
     const type = host.getType();
     if (type === 'ws') {
@@ -35,10 +37,21 @@ export class HttpWsExceptionFilter implements ExceptionFilter {
       const res = exception.getResponse();
       const payload =
         typeof res === 'string' ? { statusCode: status, message: res } : res;
+      this.logger.warn(
+        typeof res === 'string'
+          ? `HTTP ${status} ${request?.url ?? ''} ${res}`
+          : `HTTP ${status} ${request?.url ?? ''}`,
+      );
       response.status(status).json(payload as unknown);
       return;
     }
-
+    const url = request?.url ?? '';
+    if (exception && typeof exception === 'object') {
+      const err = exception as { message?: string; stack?: string };
+      this.logger.error(`HTTP 500 ${url} ${err.message ?? ''}`, err.stack);
+    } else {
+      this.logger.error(`HTTP 500 ${url}`);
+    }
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       message: 'Internal server error',
@@ -94,6 +107,13 @@ export class HttpWsExceptionFilter implements ExceptionFilter {
       message = anyErr.message ?? 'WebSocket error';
     } else {
       message = 'WebSocket error';
+    }
+
+    if (statusCode !== undefined) {
+      this.logger.warn(`WS ${statusCode} ${message}`);
+    } else {
+      const err = exception as { stack?: string };
+      this.logger.error(`WS error ${message}`, err?.stack);
     }
 
     const payload: Record<string, unknown> = {

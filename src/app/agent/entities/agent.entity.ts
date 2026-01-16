@@ -9,7 +9,6 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
  */
 @Entity('agents')
 @Index(['codeDir'])
-@Index(['conversationGroupId'])
 export class AgentEntity extends BaseAuditedEntity {
   /** 代码指向目录 */
   @Column({ name: 'code_dir', type: 'varchar', length: 255 })
@@ -38,15 +37,6 @@ export class AgentEntity extends BaseAuditedEntity {
   /** 节点图定义（JSON），包含各节点与其空间位置 */
   @Column({ name: 'nodes', type: 'json', nullable: true })
   nodes!: Record<string, unknown> | null;
-
-  /** 关联的对话组（该 Agent 是在哪个对话组中产生的） */
-  @Column({
-    name: 'conversation_group_id',
-    type: 'char',
-    length: 36,
-    nullable: true,
-  })
-  conversationGroupId!: string | null;
 
   /** 是否启用 */
   @Column({ name: 'active', type: 'boolean', default: true })

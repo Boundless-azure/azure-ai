@@ -52,10 +52,12 @@
             </div>
 
             <div v-else class="flex flex-col">
-              <button
+              <div
                 v-for="group in groups"
                 :key="group.id"
                 @click="selectGroup(group)"
+                role="button"
+                tabindex="0"
                 class="w-full text-left px-4 py-4 border-b border-gray-100 hover:bg-gray-50 transition-all group relative pr-12"
                 :class="{
                   'bg-blue-50/50': selectedGroupId === group.id,
@@ -90,7 +92,7 @@
                     <i class="fa-solid fa-circle text-[8px] mr-1"></i>Active
                   </div>
                 </div>
-              </button>
+              </div>
             </div>
           </div>
 
@@ -182,7 +184,7 @@ import { ref, watch, onMounted } from 'vue';
 import { useI18n } from '../composables/useI18n';
 import { agentService } from '../services/agent.service';
 import { useAgentStore } from '../store/agent.store';
-import type { GroupListItem, SummaryItem } from '../types/agent.types';
+import type { GroupListItem } from '../types/agent.types';
 
 const props = defineProps<{
   visible: boolean;
@@ -199,7 +201,13 @@ const store = useAgentStore();
 const loadingGroups = ref(false);
 const loadingSummaries = ref(false);
 const groups = ref<GroupListItem[]>([]);
-const summaries = ref<SummaryItem[]>([]);
+type SummaryViewItem = {
+  id: string;
+  roundNumber: number;
+  summaryContent: string;
+  createdAt: string;
+};
+const summaries = ref<SummaryViewItem[]>([]);
 const selectedGroupId = ref<string>('');
 
 const formatDate = (dateStr: string) => {
@@ -239,7 +247,22 @@ const selectGroup = async (group: GroupListItem) => {
 
   try {
     const response = await agentService.getGroupSummaries(group.id);
-    summaries.value = response.items;
+    const createdAt = group.updatedAt || new Date().toISOString();
+    summaries.value = (response.report?.todos ?? []).map((todo) => ({
+      id: String(todo.id),
+      roundNumber: 1,
+      summaryContent: todo.title,
+      createdAt,
+    }));
+    // 如果有总体摘要，作为首项显示
+    if (response.report?.summary) {
+      summaries.value.unshift({
+        id: 'summary',
+        roundNumber: 0,
+        summaryContent: response.report.summary,
+        createdAt,
+      });
+    }
   } catch (error) {
     console.error('Failed to load summaries:', error);
   } finally {

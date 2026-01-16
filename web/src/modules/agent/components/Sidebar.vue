@@ -135,7 +135,7 @@
  * @keywords-cn 侧边栏, 响应式导航, 国际化, 白色主题
  * @keywords-en sidebar, responsive-navigation, i18n, white-theme
  */
-import { ref, defineProps, defineEmits, onMounted, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import { useI18n } from '../composables/useI18n';
 import LanguageModal from './LanguageModal.vue';
 
@@ -153,7 +153,9 @@ const showLanguageModal = ref(false);
 
 const menuItems = [
   { id: 'users', icon: 'users' },
-  { id: 'roles', icon: 'user-shield' },
+  { id: 'orgs', icon: 'building' },
+  { id: 'roles', icon: 'user-tag' },
+  { id: 'perms', icon: 'shield-halved' },
   { id: 'resources', icon: 'folder-open' },
   { id: 'database', icon: 'database' },
   { id: 'plugins', icon: 'plug' },

@@ -10,6 +10,7 @@ import {
 import { AgentExecutionService } from '../services/execution.service';
 import { AgentExecutionEntity } from '../entities/agent-execution.entity';
 import { QueryExecutionDto, UpdateExecutionDto } from '../types/agent.types';
+import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 
 /**
  * @title 执行Agent 控制器
@@ -22,6 +23,7 @@ export class AgentExecutionController {
   constructor(private readonly service: AgentExecutionService) {}
 
   @Get()
+  @CheckAbility('read', 'agent_execution')
   async list(
     @Query() query: QueryExecutionDto,
   ): Promise<AgentExecutionEntity[]> {
@@ -29,11 +31,13 @@ export class AgentExecutionController {
   }
 
   @Get(':id')
+  @CheckAbility('read', 'agent_execution')
   async get(@Param('id') id: string): Promise<AgentExecutionEntity | null> {
     return await this.service.get(id);
   }
 
   @Put(':id')
+  @CheckAbility('update', 'agent_execution')
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateExecutionDto,
@@ -42,6 +46,7 @@ export class AgentExecutionController {
   }
 
   @Delete(':id')
+  @CheckAbility('delete', 'agent_execution')
   async delete(@Param('id') id: string): Promise<{ ok: boolean }> {
     await this.service.delete(id);
     return { ok: true };

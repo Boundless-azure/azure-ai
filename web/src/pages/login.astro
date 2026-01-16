@@ -1,0 +1,8 @@
+---
+import Layout from '../layouts/Layout.astro';
+import LoginVue from '../modules/auth/components/Login.vue';
+---
+
+<Layout>
+  <LoginVue client:only="vue" />
+</Layout>

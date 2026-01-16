@@ -1,0 +1,37 @@
+模块名称：core/auth（认证模块）
+
+概述
+- 提供基于 JWT 的登录与鉴权（Passport）。
+- 提供 JwtAuthGuard 与 CurrentPrincipal 装饰器，配合 AbilityGuard 进行权限校验。
+
+文件清单（File List）
+- core/auth/auth.module.ts
+- core/auth/controllers/auth.controller.ts
+- core/auth/services/auth.service.ts
+- core/auth/strategies/jwt.strategy.ts
+- core/auth/guards/jwt-auth.guard.ts
+- core/auth/decorators/current-principal.decorator.ts
+- core/auth/types/auth.types.ts
+
+函数清单（Function Index）
+- AuthService
+  - login(dto)
+- JwtStrategy
+  - validate(payload)
+
+关键词索引（中文 / English Keyword Index）
+认证模块 -> core/auth/auth.module.ts
+登录接口 -> core/auth/controllers/auth.controller.ts
+认证服务 -> core/auth/services/auth.service.ts
+JWT策略 -> core/auth/strategies/jwt.strategy.ts
+JWT守卫 -> core/auth/guards/jwt-auth.guard.ts
+当前主体 -> core/auth/decorators/current-principal.decorator.ts
+登录类型 -> core/auth/types/auth.types.ts
+
+关键词到文件函数哈希映射（Keywords -> Function Hash）
+- AuthService.login -> auth_login_001
+- JwtStrategy.validate -> auth_jwt_validate_002
+
+模块功能描述（Description）
+认证模块通过 Passport + JWT 提供登录与鉴权：/auth/login 返回令牌；后续请求在 Authorization: Bearer 中携带令牌，由 JwtAuthGuard 校验并注入 req.user。该模块为后端各控制器提供统一鉴权基础，与 Identity 的 AbilityGuard 结合实现细粒度权限控制。
+

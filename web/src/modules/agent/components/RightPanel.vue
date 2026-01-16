@@ -292,6 +292,43 @@
       <!-- Todo Tab -->
       <TodoList v-else-if="currentTab === 'todos'" />
 
+      <!-- Identity Tabs -->
+      <div
+        v-else-if="['users', 'orgs', 'roles', 'perms'].includes(currentTab)"
+        class="h-full overflow-y-auto p-8 bg-gray-50/50"
+      >
+        <!-- Header for context (Optional, matching IdentityManager style if needed) -->
+        <div class="mb-6">
+          <h2 class="text-2xl font-bold text-gray-900">
+            {{
+              currentTab === 'users'
+                ? '用户管理'
+                : currentTab === 'orgs'
+                  ? '组织管理'
+                  : currentTab === 'roles'
+                    ? '角色管理'
+                    : '权限管理'
+            }}
+          </h2>
+          <p class="text-sm text-gray-500 mt-1">
+            {{
+              currentTab === 'users'
+                ? '管理系统用户、账号及基本信息'
+                : currentTab === 'orgs'
+                  ? '管理组织架构、部门及成员关系'
+                  : currentTab === 'roles'
+                    ? '定义角色及分配权限策略'
+                    : '浏览及配置系统权限规则'
+            }}
+          </p>
+        </div>
+
+        <UserManagement v-if="currentTab === 'users'" />
+        <OrganizationManagement v-else-if="currentTab === 'orgs'" />
+        <RoleManagement v-else-if="currentTab === 'roles'" />
+        <PermissionManagement v-else-if="currentTab === 'perms'" />
+      </div>
+
       <!-- Other Views (Dynamic) -->
       <div v-else class="h-full flex flex-col">
         <div class="flex items-center justify-between mb-6">
@@ -341,6 +378,10 @@ import type { QuickItem } from '../types/agent.types';
 import { useI18n } from '../composables/useI18n';
 import AgentList from './AgentList.vue';
 import TodoList from '../../todo/components/TodoList.vue';
+import UserManagement from '../../identity/components/UserManagement.vue';
+import OrganizationManagement from '../../identity/components/OrganizationManagement.vue';
+import RoleManagement from '../../identity/components/RoleManagement.vue';
+import PermissionManagement from '../../identity/components/PermissionManagement.vue';
 
 const props = defineProps<{
   activeView: string;

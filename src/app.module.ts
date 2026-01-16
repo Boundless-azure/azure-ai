@@ -14,6 +14,11 @@ import { ConversationModule } from '@/app/conversation/conversation.module';
 import { AgentModule } from '@/app/agent/agent.module';
 import { TodoModule } from '@/app/todo/todo.module';
 import { WebMcpModule } from '@/app/webmcp/webmcp.module';
+import { IdentityModule } from '@/app/identity/identity.module';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtAuthGuard } from '@/core/auth/guards/jwt-auth.guard';
+import { AbilityGuard } from '@/app/identity/guards/ability.guard';
+import { AuthModule } from '@/core/auth/auth.module';
 // 直接从具体配置文件导入，避免 Barrel 导出解析异常
 import {
   loadDatabaseConfigFromEnv,
@@ -85,11 +90,17 @@ import type { DatabaseConfig } from './config/types';
     MongoModule.forRoot({}),
     PluginModule,
     WebMcpModule,
+    AuthModule,
+    IdentityModule,
     ConversationModule,
     AgentModule,
     TodoModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: AbilityGuard },
+  ],
 })
 export class AppModule {}
