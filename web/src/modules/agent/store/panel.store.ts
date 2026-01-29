@@ -19,6 +19,7 @@ export const usePanelStore = defineStore('agent_panel', () => {
   const searchQuery = ref<string>('');
   const contactSearchQuery = ref<string>('');
   const expandedCategories = ref<string[]>(['contacts']);
+  const sessionRefreshTrigger = ref<number>(0);
 
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -34,7 +35,11 @@ export const usePanelStore = defineStore('agent_panel', () => {
       if (parsed.mode === 'home' || parsed.mode === 'chat') {
         mode.value = parsed.mode;
       }
-      if (parsed.activeTab === 'chat' || parsed.activeTab === 'contacts' || parsed.activeTab === 'daily') {
+      if (
+        parsed.activeTab === 'chat' ||
+        parsed.activeTab === 'contacts' ||
+        parsed.activeTab === 'daily'
+      ) {
         activeTab.value = parsed.activeTab;
       }
       if (typeof parsed.onlyAi === 'boolean') {
@@ -47,38 +52,71 @@ export const usePanelStore = defineStore('agent_panel', () => {
         contactSearchQuery.value = parsed.contactSearchQuery;
       }
       if (Array.isArray(parsed.expandedCategories)) {
-        expandedCategories.value = parsed.expandedCategories.filter((x) => typeof x === 'string');
+        expandedCategories.value = parsed.expandedCategories.filter(
+          (x) => typeof x === 'string',
+        );
       }
     }
-  } catch {}
+  } catch {
+    // Ignore storage errors
+  }
 
-  watch([mode, activeTab, onlyAi, searchQuery, contactSearchQuery, expandedCategories], () => {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          mode: mode.value,
-          activeTab: activeTab.value,
-          onlyAi: onlyAi.value,
-          searchQuery: searchQuery.value,
-          contactSearchQuery: contactSearchQuery.value,
-          expandedCategories: expandedCategories.value,
-        }),
-      );
-    } catch {}
-  }, { deep: true });
+  watch(
+    [
+      mode,
+      activeTab,
+      onlyAi,
+      searchQuery,
+      contactSearchQuery,
+      expandedCategories,
+    ],
+    () => {
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            mode: mode.value,
+            activeTab: activeTab.value,
+            onlyAi: onlyAi.value,
+            searchQuery: searchQuery.value,
+            contactSearchQuery: contactSearchQuery.value,
+            expandedCategories: expandedCategories.value,
+          }),
+        );
+      } catch {
+        // Ignore storage errors
+      }
+    },
+    { deep: true },
+  );
 
-  const setMode = (m: PanelMode) => { mode.value = m; };
-  const setActiveTab = (t: PanelTab) => { activeTab.value = t; };
-  const setOnlyAi = (v: boolean) => { onlyAi.value = v; };
-  const setSearchQuery = (q: string) => { searchQuery.value = q; };
-  const setContactSearchQuery = (q: string) => { contactSearchQuery.value = q; };
+  const setMode = (m: PanelMode) => {
+    mode.value = m;
+  };
+  const setActiveTab = (t: PanelTab) => {
+    activeTab.value = t;
+  };
+  const setOnlyAi = (v: boolean) => {
+    onlyAi.value = v;
+  };
+  const setSearchQuery = (q: string) => {
+    searchQuery.value = q;
+  };
+  const setContactSearchQuery = (q: string) => {
+    contactSearchQuery.value = q;
+  };
   const toggleCategory = (id: string) => {
     if (expandedCategories.value.includes(id)) {
-      expandedCategories.value = expandedCategories.value.filter((c) => c !== id);
+      expandedCategories.value = expandedCategories.value.filter(
+        (c) => c !== id,
+      );
     } else {
       expandedCategories.value.push(id);
     }
+  };
+
+  const triggerSessionRefresh = () => {
+    sessionRefreshTrigger.value = Date.now();
   };
 
   return {
@@ -88,12 +126,13 @@ export const usePanelStore = defineStore('agent_panel', () => {
     searchQuery,
     contactSearchQuery,
     expandedCategories,
+    sessionRefreshTrigger,
     setMode,
     setActiveTab,
     setOnlyAi,
     setSearchQuery,
     setContactSearchQuery,
     toggleCategory,
+    triggerSessionRefresh,
   };
 });
-

@@ -199,7 +199,7 @@
  */
 
 import { ref, watch, onMounted, computed } from 'vue';
-import { identityService } from '../services/identity.service';
+import { useRoles } from '../hooks/useRoles';
 import type { RoleItem } from '../types/identity.types';
 import { useUIStore } from '../../agent/store/ui.store';
 
@@ -230,10 +230,12 @@ const currentResource = computed(() =>
     : null,
 );
 
+const { list, listPermissions, upsertPermissions } = useRoles();
+
 onMounted(async () => {
   if (!props.roleId) {
     try {
-      roles.value = await identityService.listRoles();
+      roles.value = await list();
     } catch (e) {
       console.error(e);
     }
@@ -260,9 +262,7 @@ async function loadPermissions() {
   currentResourceIndex.value = -1;
 
   try {
-    const perms = await identityService.listRolePermissions(
-      selectedRoleId.value,
-    );
+    const perms = await listPermissions(selectedRoleId.value);
 
     // Group by Subject
     const grouped = new Map<string, ActionItem[]>();
@@ -356,9 +356,7 @@ async function save() {
 
   try {
     loading.value = true;
-    await identityService.upsertRolePermissions(selectedRoleId.value, {
-      items: payloadItems,
-    });
+    await upsertPermissions(selectedRoleId.value, { items: payloadItems });
     ui.showToast('权限配置已保存', 'success');
   } catch (e) {
     console.error(e);

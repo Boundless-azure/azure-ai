@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { RolePermissionEntity } from '../entities/role-permission.entity';
 import { MembershipEntity } from '../entities/membership.entity';
-import { MembershipRole } from '../enums/principal.enums';
+import { RoleEntity } from '../entities/role.entity';
 
 /**
  * @title Ability Service (CASL兼容设计)
@@ -18,6 +18,8 @@ export class AbilityService {
     private readonly permRepo: Repository<RolePermissionEntity>,
     @InjectRepository(MembershipEntity)
     private readonly membershipRepo: Repository<MembershipEntity>,
+    @InjectRepository(RoleEntity)
+    private readonly roleRepo: Repository<RoleEntity>,
   ) {}
 
   /**
@@ -107,12 +109,21 @@ export class AbilityService {
       conditions?: Record<string, unknown>;
     }>;
   }> {
+    const isNonEmptyString = (val: unknown): val is string =>
+      typeof val === 'string' && val.trim().length > 0;
+
     const memberships = await this.membershipRepo.find({
       where: { principalId, isDelete: false },
     });
-    const isAdminLike = memberships.some(
-      (m) => m.role === MembershipRole.Owner || m.role === MembershipRole.Admin,
-    );
+    const roleIds: string[] = [];
+    for (const m of memberships) {
+      const id = m.roleId;
+      if (isNonEmptyString(id)) roleIds.push(id);
+    }
+    const roles = roleIds.length
+      ? await this.roleRepo.find({ where: { id: In(roleIds) } })
+      : [];
+    const isAdminLike = roles.some((r) => r.code === 'admin' || r.builtin);
 
     const baseRules: Array<{
       subject: string;
@@ -121,8 +132,7 @@ export class AbilityService {
     }> = [];
 
     if (isAdminLike) {
-      baseRules.push({ subject: 'thread', action: 'read' });
-      baseRules.push({ subject: 'thread', action: 'manage' });
+      baseRules.push({ subject: '*', action: '*' });
     } else {
       baseRules.push({
         subject: 'thread',
@@ -131,12 +141,18 @@ export class AbilityService {
       });
     }
 
+    // Merge role-based permissions
+    const roleRules = roleIds.length
+      ? (await this.buildForRoles(roleIds)).rules
+      : [];
+    const combinedRules = [...roleRules, ...baseRules];
+
     const can = (
       action: string,
       subject: string,
       ctx?: Record<string, unknown>,
     ) => {
-      return baseRules.some((r) => {
+      return combinedRules.some((r) => {
         const actionMatch =
           r.action === action || r.action === 'manage' || r.action === '*';
         const subjectMatch = r.subject === subject || r.subject === '*';
@@ -161,7 +177,7 @@ export class AbilityService {
       ctx?: Record<string, unknown>,
     ) => !can(action, subject, ctx);
 
-    return { can, cannot, rules: baseRules };
+    return { can, cannot, rules: combinedRules };
   }
 
   /**

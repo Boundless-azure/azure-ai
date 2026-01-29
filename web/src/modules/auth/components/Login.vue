@@ -49,7 +49,7 @@
         ></div>
       </div>
       <!-- Column 3 -->
-      <div class="flex-1 flex flex-col gap-6 -mt-10 opacity-30 hidden md:flex">
+      <div class="flex-1 flex flex-col gap-6 -mt-10 opacity-30 md:flex">
         <div
           class="h-56 bg-gray-200 rounded-2xl bg-cover bg-center transition-all duration-700"
           style="
@@ -70,7 +70,7 @@
         ></div>
       </div>
       <!-- Column 4 -->
-      <div class="flex-1 flex flex-col gap-6 -mt-32 opacity-20 hidden lg:flex">
+      <div class="flex-1 flex flex-col gap-6 -mt-32 opacity-20 lg:flex">
         <div
           class="h-96 bg-gray-200 rounded-2xl bg-cover bg-center transition-all duration-700"
           style="
@@ -142,12 +142,13 @@
             </label>
             <div class="relative">
               <input
-                v-model="form.account"
+                :value="form.account"
                 type="text"
                 required
                 autocomplete="username"
                 class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-400 focus:border-black focus:ring-1 focus:ring-black focus:outline-none transition-all duration-300"
                 :placeholder="t.accountPlaceholder"
+                @input="handleAccountInput"
               />
             </div>
           </div>
@@ -167,12 +168,13 @@
             </label>
             <div class="relative">
               <input
-                v-model="form.password"
+                :value="form.password"
                 :type="showPassword ? 'text' : 'password'"
                 required
                 autocomplete="current-password"
                 class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3.5 text-base text-gray-900 placeholder-gray-400 focus:border-black focus:ring-1 focus:ring-black focus:outline-none transition-all duration-300 pr-10"
                 :placeholder="t.passwordPlaceholder"
+                @input="handlePasswordInput"
               />
               <button
                 type="button"
@@ -308,6 +310,20 @@ const form = reactive({
   password: '',
 });
 
+function handleAccountInput(event: Event) {
+  const target = event.target;
+  if (target instanceof HTMLInputElement) {
+    form.account = target.value;
+  }
+}
+
+function handlePasswordInput(event: Event) {
+  const target = event.target;
+  if (target instanceof HTMLInputElement) {
+    form.password = target.value;
+  }
+}
+
 async function handleLogin() {
   if (!form.account || !form.password) return;
 
@@ -332,8 +348,13 @@ async function handleLogin() {
     // Trigger exit animation
     isExiting.value = true;
 
+    try {
+      localStorage.removeItem('agent');
+      localStorage.removeItem('agent_panel');
+    } catch {}
+
     setTimeout(() => {
-      window.location.href = '/';
+      window.location.replace('/');
     }, 800);
   } catch (e: any) {
     console.error(e);

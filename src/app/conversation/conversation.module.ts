@@ -5,61 +5,64 @@ import { IntentAgentTriggerFunctionService } from '@core/function-call';
 import { FunctionCallModule } from '@core/function-call/function-call.module';
 import { ConversationController } from './controllers/conversation.controller';
 import { ConversationService } from './services/conversation.service';
-import {
-  ConversationGroupController,
-  ConversationThreadController,
-} from './controllers/conversation-group.controller';
-import { ChatDayGroupEntity } from '@core/ai/entities/chat-day-group.entity';
-import { ChatConversationGroupEntity } from '@core/ai/entities/chat-conversation-group.entity';
+import { ImController } from './controllers/im.controller';
+import { ImGateway } from './controllers/im.gateway';
+import { ImSessionService } from './services/im-session.service';
+import { ImMessageService } from './services/im-message.service';
 import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
 import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
-import { RoundSummaryEntity } from '@core/ai/entities/round-summary.entity';
+import { ChatSessionMemberEntity } from '@core/ai/entities/chat-session-member.entity';
 import { LGCheckpointEntity } from '@core/langgraph/checkpoint/entities/lg-checkpoint.entity';
 import { LGWriteEntity } from '@core/langgraph/checkpoint/entities/lg-write.entity';
 import { LangGraphCheckpointModule } from '@core/langgraph/checkpoint/checkpoint.module';
-import { ConversationGateway } from './controllers/conversation.gateway';
 import { AgentExecutionEntity } from '@/app/agent/entities/agent-execution.entity';
+import { AgentEntity } from '@/app/agent/entities/agent.entity';
 import { PluginEntity } from '@core/plugin/entities/plugin.entity';
 import { MembershipEntity } from '@/app/identity/entities/membership.entity';
+import { PrincipalEntity } from '@/app/identity/entities/principal.entity';
 import { IdentityModule } from '@/app/identity/identity.module';
+import { AuthModule } from '@/core/auth/auth.module';
+
 /**
- * @title 外部对话模块
- * @desc 提供完整的 AI 对话接口：
- * 1) 集成 core/ai 的 AIModelService 和 ContextService
- * 2) 支持流式和非流式对话
- * 3) 自动管理对话上下文和历史记录
- * 4) 集成现有的 function-call 能力（插件生成、数据库查询、上下文检索）
+ * @title 对话模块
+ * @description 提供 IM 消息和 AI 对话能力：
+ * 1) IM 会话管理（私聊/群聊/频道）
+ * 2) IM 消息发送与历史
+ * 3) @agent 提及和私聊 Agent 触发 AI 响应
+ * 4) AI 流式对话与检查点管理
+ * @keywords-cn 对话, IM, 会话, 消息, AI
+ * @keywords-en conversation, im, session, message, ai
  */
 @Module({
   imports: [
     AICoreModule.forRoot({
-      // 仅启用指定的 Function-Call 服务；可根据需要增减：
-      // 例如启用插件编排器/上下文窗口/MySQL只读查询：
-      // includeFunctionServices: [PluginOrchestratorService, ContextFunctionService, MysqlReadonlyService],
       includeFunctionServices: [IntentAgentTriggerFunctionService],
-    }), // 导入 AI 核心模块
-    FunctionCallModule, // 导入 function-call 模块
+    }),
+    FunctionCallModule,
     TypeOrmModule.forFeature([
       ChatMessageEntity,
       ChatSessionEntity,
-      RoundSummaryEntity,
-      ChatDayGroupEntity,
-      ChatConversationGroupEntity,
+      ChatSessionMemberEntity,
+      ChatSessionMemberEntity,
       LGCheckpointEntity,
       LGWriteEntity,
       AgentExecutionEntity,
+      AgentEntity,
       PluginEntity,
       MembershipEntity,
+      PrincipalEntity,
     ]),
     LangGraphCheckpointModule.forRoot(),
     IdentityModule,
+    AuthModule,
   ],
-  controllers: [
-    ConversationController,
-    ConversationGroupController,
-    ConversationThreadController,
+  controllers: [ConversationController, ImController],
+  providers: [
+    ConversationService,
+    ImGateway,
+    ImSessionService,
+    ImMessageService,
   ],
-  providers: [ConversationService, ConversationGateway],
-  exports: [ConversationService],
+  exports: [ConversationService, ImSessionService, ImMessageService],
 })
 export class ConversationModule {}

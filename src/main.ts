@@ -5,6 +5,8 @@ import { join } from 'path';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpWsExceptionFilter } from './core/common/filters/http-ws-exception.filter';
 
+declare const module: any;
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   // 静态资源目录：/static，访问路径为 /static/**
@@ -24,5 +26,13 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpWsExceptionFilter());
 
   await app.listen(process.env.PORT ?? 3000);
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  if (module.hot) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    module.hot.accept();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    module.hot.dispose(() => app.close());
+  }
 }
 void bootstrap();

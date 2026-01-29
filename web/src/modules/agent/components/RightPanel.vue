@@ -8,6 +8,7 @@
         v-for="tab in tabs"
         :key="tab.id"
         class="group relative flex items-center min-w-[120px] max-w-[200px]"
+        @contextmenu.prevent="handleContextMenu($event, tab.id)"
       >
         <button
           @click="currentTab = tab.id"
@@ -19,7 +20,9 @@
           "
         >
           <span class="truncate mr-2">{{
-            tab.id === 'dashboard' ? t('tabs.dashboard') : tab.label
+            tab.id === 'dashboard'
+              ? t('tabs.dashboard')
+              : (tabRegistry[tab.id]?.name ?? tab.label)
           }}</span>
 
           <!-- Close Icon (Not for Dashboard) -->
@@ -283,22 +286,12 @@
         </div>
       </div>
 
-      <!-- Agent Management Tab -->
-      <AgentList
-        v-else-if="currentTab === 'agents'"
-        class="max-w-7xl mx-auto h-full"
-      />
-
-      <!-- Todo Tab -->
-      <TodoList v-else-if="currentTab === 'todos'" />
-
-      <!-- Identity Tabs -->
-      <div
-        v-else-if="['users', 'orgs', 'roles', 'perms'].includes(currentTab)"
-        class="h-full overflow-y-auto p-8 bg-gray-50/50"
-      >
-        <!-- Header for context (Optional, matching IdentityManager style if needed) -->
-        <div class="mb-6">
+      <!-- 非 Dashboard：动态组件加载 -->
+      <div v-else class="h-full overflow-y-auto p-8 bg-gray-50/50">
+        <div
+          v-if="['users', 'orgs', 'roles', 'perms'].includes(currentTab)"
+          class="mb-6"
+        >
           <h2 class="text-2xl font-bold text-gray-900">
             {{
               currentTab === 'users'
@@ -323,30 +316,17 @@
           </p>
         </div>
 
-        <UserManagement v-if="currentTab === 'users'" />
-        <OrganizationManagement v-else-if="currentTab === 'orgs'" />
-        <RoleManagement v-else-if="currentTab === 'roles'" />
-        <PermissionManagement v-else-if="currentTab === 'perms'" />
-      </div>
-
-      <!-- Other Views (Dynamic) -->
-      <div v-else class="h-full flex flex-col">
-        <div class="flex items-center justify-between mb-6">
-          <h2 class="text-2xl font-bold text-gray-900 capitalize">
-            {{ currentTab }} Overview
-          </h2>
-          <div class="flex space-x-2">
-            <button class="p-2 text-gray-400 hover:text-gray-600">
-              <i class="fa-solid fa-filter"></i>
-            </button>
-            <button class="p-2 text-gray-400 hover:text-gray-600">
-              <i class="fa-solid fa-sort"></i>
-            </button>
-          </div>
-        </div>
+        <component
+          :is="currentAsyncComponent"
+          v-if="currentAsyncComponent"
+          v-bind="currentTabProps"
+          @close="closeTab(currentTab)"
+          class="max-w-7xl mx-auto h-full"
+        />
 
         <div
-          class="flex-1 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-400 bg-gray-50"
+          v-else
+          class="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl"
         >
           <div
             class="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm"
@@ -362,6 +342,41 @@
         </div>
       </div>
     </div>
+
+    <!-- Context Menu -->
+    <Teleport to="body">
+      <div
+        v-if="showContextMenu"
+        class="fixed z-[9999] bg-white rounded-lg shadow-xl border border-gray-100 py-1 w-40 overflow-hidden"
+        :style="{ top: `${contextMenuPos.y}px`, left: `${contextMenuPos.x}px` }"
+        @click.stop
+      >
+        <div
+          class="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-700 flex items-center"
+          @click="closeTabsLeft"
+          :class="{ 'opacity-50 cursor-not-allowed': isLeftDisabled }"
+        >
+          <i class="fa-solid fa-arrow-left mr-2 text-gray-400"></i>
+          {{ t('tabs.closeLeft') }}
+        </div>
+        <div
+          class="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-700 flex items-center"
+          @click="closeTabsRight"
+          :class="{ 'opacity-50 cursor-not-allowed': isRightDisabled }"
+        >
+          <i class="fa-solid fa-arrow-right mr-2 text-gray-400"></i>
+          {{ t('tabs.closeRight') }}
+        </div>
+        <div class="h-[1px] bg-gray-100 my-1"></div>
+        <div
+          class="px-4 py-2 hover:bg-red-50 cursor-pointer text-sm text-red-600 flex items-center"
+          @click="closeAllTabs"
+        >
+          <i class="fa-solid fa-times-circle mr-2 text-red-500"></i>
+          {{ t('tabs.closeAll') }}
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -372,56 +387,87 @@
  * @keywords-cn 右侧面板, 仪表盘, 国际化, 专业界面
  * @keywords-en right-panel, dashboard, i18n, professional-ui
  */
-import { ref, computed, onMounted, watch } from 'vue';
-import { agentService } from '../services/agent.service';
+import {
+  ref,
+  computed,
+  onMounted,
+  watch,
+  defineAsyncComponent,
+  onUnmounted,
+} from 'vue';
+import { storeToRefs } from 'pinia';
+import { tabRegistry } from '../config/tab.registry';
 import type { QuickItem } from '../types/agent.types';
 import { useI18n } from '../composables/useI18n';
-import AgentList from './AgentList.vue';
-import TodoList from '../../todo/components/TodoList.vue';
-import UserManagement from '../../identity/components/UserManagement.vue';
-import OrganizationManagement from '../../identity/components/OrganizationManagement.vue';
-import RoleManagement from '../../identity/components/RoleManagement.vue';
-import PermissionManagement from '../../identity/components/PermissionManagement.vue';
+import { useAgentQuickItems } from '../hooks/useAgentQuickItems';
+import { useRightPanelStore } from '../store/right-panel.store';
 
 const props = defineProps<{
   activeView: string;
 }>();
 
 const { t } = useI18n();
-const currentTab = ref('dashboard');
-const tabs = ref([{ id: 'dashboard', label: 'Dashboard' }]);
-const TABS_STORAGE_KEY = 'agent_tabs_state';
+const rightPanelStore = useRightPanelStore();
+const {
+  currentTabId: currentTab,
+  tabs,
+  currentTabProps,
+} = storeToRefs(rightPanelStore);
+const {
+  openTab,
+  closeTab: storeCloseTab,
+  closeAllTabs: storeCloseAllTabs,
+} = rightPanelStore;
+
+// Tab 注册表：配置集中在 config/tab.registry.ts
+
+const asyncComponents = new Map<
+  string,
+  ReturnType<typeof defineAsyncComponent>
+>();
+function ensureComponent(tabId: string) {
+  if (tabId === 'dashboard') return;
+  if (!asyncComponents.has(tabId)) {
+    let reg = tabRegistry[tabId];
+    if (!reg && tabId.startsWith('chat-detail-')) {
+      reg = tabRegistry['chat-detail'];
+    }
+    if (reg) {
+      asyncComponents.set(
+        tabId,
+        defineAsyncComponent({
+          loader: reg.loader,
+          delay: 200,
+          timeout: 20000,
+        }),
+      );
+    }
+  }
+}
+
+const currentAsyncComponent = computed(() => {
+  ensureComponent(currentTab.value);
+  return asyncComponents.get(currentTab.value) ?? null;
+});
 
 // Watch for sidebar changes to update tabs
 watch(
   () => props.activeView,
   (newView) => {
     if (newView !== 'chat' && newView !== 'more') {
-      // If tab doesn't exist, add it
-      if (!tabs.value.find((t) => t.id === newView)) {
-        tabs.value.push({
-          id: newView,
-          label: newView.charAt(0).toUpperCase() + newView.slice(1),
-        });
-      }
-      currentTab.value = newView;
+      const label =
+        tabRegistry[newView]?.name ??
+        newView.charAt(0).toUpperCase() + newView.slice(1);
+      openTab(newView, label);
     }
   },
 );
 
 const closeTab = (tabId: string) => {
-  const index = tabs.value.findIndex((t) => t.id === tabId);
-  if (index !== -1) {
-    tabs.value.splice(index, 1);
-    // If closed active tab, switch to previous or dashboard
-    if (currentTab.value === tabId) {
-      const newIndex = Math.max(0, index - 1);
-      currentTab.value = tabs.value[newIndex].id;
-    }
-  }
+  storeCloseTab(tabId);
 };
 
-const quickItems = ref<QuickItem[]>([]);
+const { items: quickItems } = useAgentQuickItems();
 
 const stats = [
   {
@@ -455,24 +501,7 @@ const stats = [
 ];
 
 onMounted(() => {
-  try {
-    const saved = localStorage.getItem(TABS_STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved) as {
-        tabs: { id: string; label: string }[];
-        currentTab: string;
-      };
-      if (
-        Array.isArray(parsed.tabs) &&
-        parsed.tabs.length > 0 &&
-        typeof parsed.currentTab === 'string'
-      ) {
-        tabs.value = parsed.tabs;
-        currentTab.value = parsed.currentTab;
-      }
-    }
-  } catch {}
-  quickItems.value = agentService.getQuickItems();
+  // Store handles loading state
 });
 
 const resourceItems = computed(() =>
@@ -506,25 +535,90 @@ const pluginNotifications = [
   },
 ];
 
-watch(
-  tabs,
-  (val) => {
-    try {
-      localStorage.setItem(
-        TABS_STORAGE_KEY,
-        JSON.stringify({ tabs: val, currentTab: currentTab.value }),
-      );
-    } catch {}
-  },
-  { deep: true },
-);
+// Context Menu Logic
+const showContextMenu = ref(false);
+const contextMenuPos = ref({ x: 0, y: 0 });
+const contextMenuTabId = ref('');
 
-watch(currentTab, (val) => {
-  try {
-    localStorage.setItem(
-      TABS_STORAGE_KEY,
-      JSON.stringify({ tabs: tabs.value, currentTab: val }),
-    );
-  } catch {}
+const isLeftDisabled = computed(() => {
+  const index = tabs.value.findIndex((t) => t.id === contextMenuTabId.value);
+  // Disabled if first tab or only dashboard is to the left
+  return index <= 1 && tabs.value[0].id === 'dashboard';
+});
+
+const isRightDisabled = computed(() => {
+  const index = tabs.value.findIndex((t) => t.id === contextMenuTabId.value);
+  return index === tabs.value.length - 1;
+});
+
+const handleContextMenu = (e: MouseEvent, tabId: string) => {
+  e.preventDefault();
+  contextMenuTabId.value = tabId;
+  contextMenuPos.value = { x: e.clientX, y: e.clientY };
+  showContextMenu.value = true;
+};
+
+const closeContextMenu = () => {
+  showContextMenu.value = false;
+};
+
+// Close all tabs to the left of target (excluding dashboard)
+const closeTabsLeft = () => {
+  if (isLeftDisabled.value) {
+    closeContextMenu();
+    return;
+  }
+
+  const targetIndex = tabs.value.findIndex(
+    (t) => t.id === contextMenuTabId.value,
+  );
+  if (targetIndex === -1) return;
+
+  // Filter: Keep dashboard + Keep tabs at or after targetIndex
+  tabs.value = tabs.value.filter((t, index) => {
+    return t.id === 'dashboard' || index >= targetIndex;
+  });
+
+  // If current tab was closed, switch to context menu target
+  if (!tabs.value.find((t) => t.id === currentTab.value)) {
+    currentTab.value = contextMenuTabId.value;
+  }
+  closeContextMenu();
+};
+
+// Close all tabs to the right of target
+const closeTabsRight = () => {
+  if (isRightDisabled.value) {
+    closeContextMenu();
+    return;
+  }
+
+  const targetIndex = tabs.value.findIndex(
+    (t) => t.id === contextMenuTabId.value,
+  );
+  if (targetIndex === -1) return;
+
+  // Filter: Keep tabs at or before targetIndex
+  tabs.value = tabs.value.filter((t, index) => index <= targetIndex);
+
+  // If current tab was closed (shouldn't happen logic-wise if we click on a tab to close right, but safe to check)
+  if (!tabs.value.find((t) => t.id === currentTab.value)) {
+    currentTab.value = contextMenuTabId.value;
+  }
+  closeContextMenu();
+};
+
+const closeAllTabs = () => {
+  storeCloseAllTabs();
+  closeContextMenu();
+};
+
+// Global click listener to close menu
+onMounted(() => {
+  document.addEventListener('click', closeContextMenu);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeContextMenu);
 });
 </script>

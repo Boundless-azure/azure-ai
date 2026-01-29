@@ -9,6 +9,8 @@ import { z } from 'zod';
 import { tool } from 'langchain';
 import type { Db } from 'mongodb';
 
+import { MongoFindFunctionDescription } from '../descriptions/db/mongo-find';
+
 /**
  * @title Mongo 只读查询服务
  * @description 提供只读的集合 find 查询；限制最大返回行数与 filter 合法性。
@@ -46,9 +48,8 @@ export class MongoReadonlyService implements FunctionCallServiceContract {
           },
         ),
       {
-        name: 'db_mongo_find',
-        description:
-          '在指定集合上执行只读的 find 查询；允许基础 filter/projection/sort/limit 参数；仅返回 JSON 数组。禁止写操作。',
+        name: MongoFindFunctionDescription.name,
+        description: MongoFindFunctionDescription.description,
         schema: schemaRaw,
       },
     );

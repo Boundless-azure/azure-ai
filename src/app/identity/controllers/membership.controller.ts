@@ -10,6 +10,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MembershipEntity } from '../entities/membership.entity';
+import { RoleEntity } from '../entities/role.entity';
 import { CheckAbility } from '../decorators/check-ability.decorator';
 
 /**
@@ -23,6 +24,8 @@ export class MembershipController {
   constructor(
     @InjectRepository(MembershipEntity)
     private readonly repo: Repository<MembershipEntity>,
+    @InjectRepository(RoleEntity)
+    private readonly roleRepo: Repository<RoleEntity>,
   ) {}
 
   @Get()
@@ -34,22 +37,53 @@ export class MembershipController {
     const where: Record<string, unknown> = { isDelete: false };
     if (organizationId) where['organizationId'] = organizationId;
     if (principalId) where['principalId'] = principalId;
-    return await this.repo.find({ where, order: { createdAt: 'DESC' } });
+    const items = await this.repo.find({ where, order: { createdAt: 'DESC' } });
+    const ids = Array.from(
+      new Set(
+        items
+          .map((m) => m.roleId)
+          .filter((id): id is string => typeof id === 'string' && !!id),
+      ),
+    );
+    const roles = ids.length
+      ? await this.roleRepo.find({ where: { id: ids as any } })
+      : [];
+    const map = new Map<string, string>();
+    for (const r of roles) map.set(r.id, r.code);
+    return items.map((m) => ({
+      ...m,
+      role: map.get(m.roleId || '') || 'guest',
+    }));
   }
 
   @Post()
   @CheckAbility('create', 'membership')
   async add(
-    @Body() dto: { organizationId: string; principalId: string; role: string },
+    @Body()
+    dto: {
+      organizationId: string;
+      principalId: string;
+      roleId?: string;
+      role?: string;
+    },
   ) {
+    let roleId: string | null = dto.roleId ?? null;
+    if (!roleId && dto.role) {
+      const code = dto.role === 'owner' ? 'admin' : dto.role;
+      const role = await this.roleRepo.findOne({
+        where: { code, isDelete: false },
+      });
+      roleId = role ? role.id : null;
+    }
     const entity = this.repo.create({
       organizationId: dto.organizationId,
       principalId: dto.principalId,
-      role: dto.role as any,
+      roleId,
       active: true,
       isDelete: false,
     });
-    return await this.repo.save(entity);
+    const saved = await this.repo.save(entity);
+    return saved;
   }
 
   @Delete(':id')

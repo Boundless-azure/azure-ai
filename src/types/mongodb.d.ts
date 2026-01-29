@@ -13,6 +13,7 @@ declare module 'mongodb' {
   export interface Collection<T = unknown> {
     find(filter?: Record<string, unknown>): FindCursor<T>;
     findOne(filter: Record<string, unknown>): Promise<T | null>;
+    insertOne(doc: T): Promise<unknown>;
     updateOne(
       filter: Record<string, unknown>,
       update: Record<string, unknown>,

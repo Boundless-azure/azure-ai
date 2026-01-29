@@ -10,6 +10,7 @@
 - app/identity/entities/membership.entity.ts
 - app/identity/entities/role.entity.ts
 - app/identity/entities/role-permission.entity.ts
+- app/identity/entities/user.entity.ts
 - app/identity/services/principal.service.ts
 - app/identity/services/organization.service.ts
 - app/identity/services/role.service.ts
@@ -18,6 +19,8 @@
 - app/identity/controllers/organization.controller.ts
 - app/identity/controllers/role.controller.ts
 - app/identity/controllers/membership.controller.ts
+- app/identity/controllers/membership.controller.ts
+- app/identity/controllers/users.controller.ts
 - app/identity/enums/principal.enums.ts
 - app/identity/types/identity.types.ts
 - app/identity/identity.module.ts
@@ -25,9 +28,13 @@
 函数清单（Function Index）
 - PrincipalService
   - list(query)
+  - listUsers(query)
   - create(dto)
+  - createUser(dto)
   - update(id, dto)
+  - updateUser(id, dto)
   - delete(id)
+  - deleteUser(id)
 - OrganizationService
   - list(query)
   - create(dto)
@@ -55,6 +62,10 @@
 
 关键词到文件函数哈希映射（Keywords -> Function Hash）
 - PrincipalService.list -> id_psi_list_001
+- PrincipalService.listUsers -> id_psi_list_users_006
+- PrincipalService.createUser -> id_psi_create_user_007
+- PrincipalService.updateUser -> id_psi_update_user_008
+- PrincipalService.deleteUser -> id_psi_delete_user_009
 - OrganizationService.list -> id_org_list_002
 - RoleService.upsertPermissions -> id_role_upsert_perm_003
 - AbilityService.buildForRoles -> id_ability_build_004

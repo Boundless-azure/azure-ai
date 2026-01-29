@@ -30,6 +30,10 @@ export class AgentEntity extends BaseAuditedEntity {
   @Column({ name: 'embedding', type: 'vector', nullable: true })
   embedding!: string | null;
 
+  /** 关联的主体 ID */
+  @Column({ name: 'principal_id', type: 'char', length: 36, nullable: true })
+  principalId!: string | null;
+
   /** 关键词数组（JSON 存储，做为回退匹配机制） */
   @Column({ name: 'keywords', type: 'json', nullable: true })
   keywords!: string[] | null;

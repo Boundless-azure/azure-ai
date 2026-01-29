@@ -4,6 +4,7 @@ export * from './prompt-template.entity';
 export * from './chat-session.entity';
 export * from './base.entity';
 export * from './chat-message.entity';
-export * from './round-summary.entity';
 export * from './chat-day-group.entity';
 export * from './chat-conversation-group.entity';
+export * from './chat-session-member.entity';
+export * from './chat-session-smart.entity';

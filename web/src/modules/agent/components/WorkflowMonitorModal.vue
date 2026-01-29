@@ -177,6 +177,7 @@ import { useI18n } from '../composables/useI18n';
 import type {
   WorkflowGraph,
   GroupListItem,
+  ThreadListItem,
   CheckpointListItem,
 } from '../types/agent.types';
 import {
@@ -186,7 +187,7 @@ import {
   WorkflowNodeType,
 } from '../enums/agent.enums';
 import WorkflowDiagram from './WorkflowDiagram.vue';
-import { agentService } from '../services/agent.service';
+import { agentApi } from '../../../api/agent';
 
 const props = defineProps<{
   visible: boolean;
@@ -286,17 +287,28 @@ const buildGraph = (
 
 const loadWorkflows = async () => {
   try {
-    const groups = await agentService.getGroupList({
-      date: selectedDate.value,
-    });
+    const threadsRes = await agentApi.listThreads({ type: 'group' });
+    const threads: ThreadListItem[] = threadsRes.data;
+    const groups: GroupListItem[] = threads.map((t) => ({
+      id: t.id,
+      dayGroupId: t.id,
+      title: t.title,
+      chatClientId: t.chatClientId,
+      active: true,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      latestMessage: t.lastMessage
+        ? { role: 'assistant', content: t.lastMessage, timestamp: t.updatedAt }
+        : undefined,
+      threadType: t.threadType,
+      isPinned: t.isPinned,
+      isAiInvolved: t.isAiInvolved,
+      participants: t.members,
+    }));
     const result: WorkflowGraph[] = [];
     for (const g of groups) {
-      const cps = await agentService.listCheckpoints(g.id, 20);
-      const items = Array.isArray(
-        (cps as { items?: CheckpointListItem[] }).items,
-      )
-        ? (cps as { items: CheckpointListItem[] }).items
-        : [];
+      const cpsRes = await agentApi.listCheckpoints(g.id, 20);
+      const items = Array.isArray(cpsRes.data.items) ? cpsRes.data.items : [];
       const graph = buildGraph(g, items);
       result.push(graph);
     }

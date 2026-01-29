@@ -86,7 +86,10 @@
                 </div>
                 <div class="flex justify-between items-center mt-1">
                   <div class="text-xs text-gray-500 truncate max-w-[70%]">
-                    ID: {{ group.id.substring(0, 8) }}...
+                    {{
+                      group.latestMessage?.content ||
+                      'ID: ' + group.id.substring(0, 8) + '...'
+                    }}
                   </div>
                   <div v-if="group.active" class="text-xs text-green-600">
                     <i class="fa-solid fa-circle text-[8px] mr-1"></i>Active
@@ -182,7 +185,7 @@
  */
 import { ref, watch, onMounted } from 'vue';
 import { useI18n } from '../composables/useI18n';
-import { agentService } from '../services/agent.service';
+import { useAgentGroups } from '../hooks/useAgentGroups';
 import { useAgentStore } from '../store/agent.store';
 import type { GroupListItem } from '../types/agent.types';
 
@@ -200,7 +203,13 @@ const { t } = useI18n();
 const store = useAgentStore();
 const loadingGroups = ref(false);
 const loadingSummaries = ref(false);
-const groups = ref<GroupListItem[]>([]);
+const {
+  loading,
+  groups,
+  list: listGroups,
+  remove: removeGroup,
+  summaries: getSummaries,
+} = useAgentGroups();
 type SummaryViewItem = {
   id: string;
   roundNumber: number;
@@ -223,8 +232,7 @@ const formatDate = (dateStr: string) => {
 const loadGroups = async () => {
   loadingGroups.value = true;
   try {
-    groups.value = await agentService.getGroupList();
-    // Select the first group or current group by default
+    await listGroups();
     if (
       props.currentGroupId &&
       groups.value.some((g) => g.id === props.currentGroupId)
@@ -246,23 +254,13 @@ const selectGroup = async (group: GroupListItem) => {
   summaries.value = []; // Clear previous summaries
 
   try {
-    const response = await agentService.getGroupSummaries(group.id);
-    const createdAt = group.updatedAt || new Date().toISOString();
-    summaries.value = (response.report?.todos ?? []).map((todo) => ({
-      id: String(todo.id),
-      roundNumber: 1,
-      summaryContent: todo.title,
-      createdAt,
-    }));
-    // 如果有总体摘要，作为首项显示
-    if (response.report?.summary) {
-      summaries.value.unshift({
-        id: 'summary',
-        roundNumber: 0,
-        summaryContent: response.report.summary,
-        createdAt,
-      });
-    }
+  const response = await getSummaries(group.id);
+  summaries.value = response.items.map((item) => ({
+    id: item.sessionId,
+    roundNumber: item.roundNumber,
+    summaryContent: item.summaryContent,
+    createdAt: item.createdAt,
+  }));
   } catch (error) {
     console.error('Failed to load summaries:', error);
   } finally {
@@ -275,7 +273,7 @@ const deleteGroup = async (group: GroupListItem, event: Event) => {
   if (!confirm(t('common.confirmDelete'))) return;
 
   try {
-    await agentService.deleteGroup(group.id);
+    await removeGroup(group.id);
     groups.value = groups.value.filter((g) => g.id !== group.id);
 
     if (selectedGroupId.value === group.id) {

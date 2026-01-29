@@ -277,17 +277,12 @@
  */
 
 import { ref, computed, onMounted, reactive } from 'vue';
-import { identityService } from '../services/identity.service';
+import { usePermissionDefinitions } from '../hooks/usePermissionDefinitions';
 import { useUIStore } from '../../agent/store/ui.store';
-
-interface PermissionDefinition {
-  id: string;
-  subject: string;
-  action: string;
-  description?: string;
-}
+import type { PermissionDefinitionItem as PermissionDefinition } from '../types/identity.types';
 
 const ui = useUIStore();
+const { list, create, remove } = usePermissionDefinitions();
 const definitions = ref<PermissionDefinition[]>([]);
 const searchSubject = ref('');
 const currentSubject = ref<string>('');
@@ -321,7 +316,7 @@ onMounted(() => {
 
 async function loadData() {
   try {
-    definitions.value = await identityService.listPermissionDefinitions();
+    definitions.value = await list();
     // If currentSubject is invalid (deleted), reset it
     if (
       currentSubject.value &&
@@ -354,7 +349,7 @@ async function submitNewResource() {
     return;
   }
   try {
-    await identityService.createPermissionDefinition({
+    await create({
       subject: newResourceForm.subject,
       action: newResourceForm.action,
       description: 'Initial action',
@@ -381,7 +376,7 @@ async function submitNewAction() {
     return;
   }
   try {
-    await identityService.createPermissionDefinition({
+    await create({
       subject: currentSubject.value,
       action: newActionForm.action,
       description: newActionForm.description,
@@ -397,7 +392,7 @@ async function submitNewAction() {
 async function handleDeleteDefinition(def: PermissionDefinition) {
   if (!confirm(`确认删除权限点 ${def.subject}:${def.action} 吗？`)) return;
   try {
-    await identityService.deletePermissionDefinition(def.id);
+    await remove(def.id);
     await loadData();
     ui.showToast('删除成功', 'success');
   } catch (e) {
@@ -415,7 +410,7 @@ async function handleDeleteSubject(subject: string) {
   try {
     // Delete one by one or batch if API supported. Here one by one.
     for (const def of toDelete) {
-      await identityService.deletePermissionDefinition(def.id);
+      await remove(def.id);
     }
     await loadData();
     if (currentSubject.value === subject) {

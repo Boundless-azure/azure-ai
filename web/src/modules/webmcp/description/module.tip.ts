@@ -1,62 +1,28 @@
 /**
  * @title WebMCP Module Tip (Web)
- * @description Description and keyword mapping for WebMCP web SDK.
+ * @description 前端 WebMCP 模块的关键词映射与函数哈希对照。
+ * @keywords-cn 模块描述, 关键词映射, 哈希对照
+ * @keywords-en module-description, keyword-mapping, hash-map
  */
 
-export const moduleDescription = {
-  name: 'webmcp',
-  description:
-    'Web SDK for WebMCP page declaration, socket handshake, and operation dispatch.',
+export const moduleTip = {
+  description: 'WebMCP 前端模块提供页面声明、Socket 握手与操作分发的能力。',
   keywords: {
-    types: {
-      cn: '类型',
-      en: 'Types',
-      file: 'types/webmcp.types.ts',
-      functions: {},
+    cn: {
+      类型: 'src/modules/webmcp/types/webmcp.types.ts',
+      组合函数: 'src/modules/webmcp/hooks/useWebMCP.ts',
+      常量: 'src/modules/webmcp/constants/webmcp.constants.ts',
     },
-    registry: {
-      cn: '注册表',
-      en: 'Registry',
-      file: 'services/webmcp.registry.service.ts',
-      functions: {
-        registerPage: 'registerPage',
-        execute: 'execute',
-        on: 'on',
-      },
-    },
-    client: {
-      cn: '客户端',
-      en: 'Client',
-      file: 'services/webmcp.client.service.ts',
-      functions: {
-        connect: 'connect',
-        registerCurrentPage: 'registerCurrentPage',
-      },
-    },
-    controller: {
-      cn: '控制器',
-      en: 'Controller',
-      file: 'controller/webmcp.controller.ts',
-      functions: {
-        createWebMcpController: 'createWebMcpController',
-      },
-    },
-    sdk: {
-      cn: 'SDK',
-      en: 'SDK',
-      file: 'sdk.ts',
-      functions: {
-        createWebMcpSDK: 'createWebMcpSDK',
-      },
+    en: {
+      types: 'src/modules/webmcp/types/webmcp.types.ts',
+      hooks: 'src/modules/webmcp/hooks/useWebMCP.ts',
+      constants: 'src/modules/webmcp/constants/webmcp.constants.ts',
     },
   },
   hashMap: {
-    registerPage: 'hash_registerPage_001',
-    execute: 'hash_execute_002',
-    on: 'hash_on_003',
-    connect: 'hash_connect_004',
-    registerCurrentPage: 'hash_registerCurrent_005',
-    createWebMcpController: 'hash_createController_006',
-    createWebMcpSDK: 'hash_createSdk_007',
+    declarePage: 'hash_hook_declarePage_001',
+    connect: 'hash_hook_connect_002',
+    registerCurrentPage: 'hash_hook_registerCurrentPage_003',
+    useWebMCP: 'hash_hook_use_webmcp_004',
   },
 };

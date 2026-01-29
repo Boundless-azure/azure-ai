@@ -7,6 +7,12 @@ import type { DatabaseConfig } from './types';
 
 dotenv.config({ path: '.env' });
 
+/**
+ * @title TypeORM 数据源配置
+ * @description 配置并导出 TypeORM 数据源实例，用于 CLI 和应用连接
+ * @keywords-cn 数据源, TypeORM, 实例, CLI
+ * @keywords-en data-source, typeorm, instance, cli
+ */
 const db: DatabaseConfig = loadDatabaseConfigFromEnv();
 
 let options: DataSourceOptions;

@@ -203,7 +203,8 @@
  */
 
 import { ref, onMounted, reactive } from 'vue';
-import { identityService } from '../services/identity.service';
+import { useOrganizations } from '../hooks/useOrganizations';
+import { useMemberships } from '../hooks/useMemberships';
 import type { OrganizationItem, MembershipItem } from '../types/identity.types';
 
 const organizations = ref<OrganizationItem[]>([]);
@@ -228,15 +229,16 @@ const members = ref<MembershipItem[]>([]);
 const newMemberId = ref('');
 const newMemberRole = ref('member');
 
+const { list: listOrgs, create: createOrg, update: updateOrg, remove: removeOrg } = useOrganizations();
+const { list: listMembers, add: addMemberApi, remove: removeMemberApi } = useMemberships();
+
 onMounted(() => {
   fetchData();
 });
 
 async function fetchData() {
   try {
-    const all = await identityService.listOrganizations({
-      q: query.q,
-    });
+    const all = await listOrgs({ q: query.q });
     total.value = all.length;
     const start = (page.value - 1) * limit.value;
     organizations.value = all.slice(start, start + limit.value);
@@ -277,15 +279,9 @@ function closeModal() {
 async function handleSubmit() {
   try {
     if (isEdit.value) {
-      await identityService.updateOrganization(form.id, {
-        name: form.name,
-        code: form.code || null,
-      });
+      await updateOrg(form.id, { name: form.name, code: form.code || null });
     } else {
-      await identityService.createOrganization({
-        name: form.name,
-        code: form.code || null,
-      });
+      await createOrg({ name: form.name, code: form.code || null });
     }
     closeModal();
     fetchData();
@@ -297,7 +293,7 @@ async function handleSubmit() {
 async function handleDelete(org: OrganizationItem) {
   if (!confirm(`确认删除组织 "${org.name}" 吗？`)) return;
   try {
-    await identityService.deleteOrganization(org.id);
+    await removeOrg(org.id);
     fetchData();
   } catch (e) {
     console.error(e);
@@ -312,7 +308,7 @@ async function openMembersModal(org: OrganizationItem) {
 
 async function fetchMembers(orgId: string) {
   try {
-    members.value = await identityService.listMemberships({ organizationId: orgId });
+    members.value = await listMembers({ organizationId: orgId });
   } catch (e) {
     console.error(e);
   }
@@ -327,7 +323,7 @@ function closeMembersModal() {
 async function addMember() {
   if (!currentOrg.value || !newMemberId.value) return;
   try {
-    await identityService.addMembership({
+    await addMemberApi({
       organizationId: currentOrg.value.id,
       principalId: newMemberId.value,
       role: newMemberRole.value,
@@ -342,7 +338,7 @@ async function addMember() {
 async function removeMember(id: string) {
   if (!confirm('确认移除该成员吗？')) return;
   try {
-    await identityService.removeMembership(id);
+    await removeMemberApi(id);
     if (currentOrg.value) {
       fetchMembers(currentOrg.value.id);
     }

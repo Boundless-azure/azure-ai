@@ -1,14 +1,15 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import AgentWorkspace from '../modules/agent/components/AgentWorkspace.vue';
+import { Agentation } from 'agentation';
 ---
 
 <Layout>
+  <script is:inline slot="head">
+    if (!localStorage.getItem('token')) {
+      window.location.href = '/login';
+    }
+  </script>
   <AgentWorkspace client:only="vue" />
+  <Agentation client:only="react" />
 </Layout>
-
-<script>
-  if (!localStorage.getItem('token')) {
-    window.location.href = '/login';
-  }
-</script>

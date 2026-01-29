@@ -1,42 +1,160 @@
 <template>
-  <div class="bg-white rounded-2xl border border-gray-200 shadow-sm relative">
-    <!-- Attachments Preview -->
-    <div v-if="attachments.length" class="px-3 pt-3 grid grid-cols-3 gap-2">
-      <div v-for="(item, idx) in attachments" :key="idx" class="relative group">
-        <img
-          :src="item.preview"
-          class="w-full h-24 object-cover rounded-md border border-gray-200"
-        />
-        <button
-          class="absolute top-1 right-1 bg-white/90 text-gray-700 rounded-full w-6 h-6 flex items-center justify-center shadow hover:bg-white"
-          @click="removeAttachment(idx)"
-          title="移除"
+  <div
+    class="relative transition-all duration-300 ease-in-out shadow-sm border border-gray-200"
+    :class="[
+      isRecording
+        ? 'bg-white border-gray-200 rounded-full h-14 px-2 shadow-lg border'
+        : 'bg-white rounded-2xl min-h-[48px] hover:shadow-md border-gray-200 border',
+    ]"
+  >
+    <!-- Normal Input Content -->
+    <div
+      class="transition-all duration-300 origin-center"
+      :class="[
+        isRecording
+          ? 'opacity-0 scale-95 pointer-events-none absolute inset-0 overflow-hidden'
+          : 'opacity-100 scale-100 relative',
+      ]"
+    >
+      <!-- Attachments Preview -->
+      <div v-if="attachments.length" class="px-3 pt-3 grid grid-cols-3 gap-2">
+        <div
+          v-for="(item, idx) in attachments"
+          :key="idx"
+          class="relative group"
         >
-          <i class="fa-solid fa-xmark text-xs"></i>
+          <img
+            :src="item.preview"
+            class="w-full h-24 object-cover rounded-md border border-gray-200"
+          />
+          <button
+            class="absolute top-1 right-1 bg-white/90 text-gray-700 rounded-full w-6 h-6 flex items-center justify-center shadow hover:bg-white"
+            @click="removeAttachment(idx)"
+            title="移除"
+          >
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Editor -->
+      <div class="relative w-full">
+        <div
+          v-if="!text && !isComposing"
+          class="absolute top-3 left-4 text-gray-400 pointer-events-none select-none text-sm"
+        >
+          {{ placeholder }}
+        </div>
+        <div
+          ref="editorRef"
+          contenteditable="true"
+          @keydown="onKeydown"
+          @input="onInput"
+          @paste="handlePaste"
+          @compositionstart="onCompositionStart"
+          @compositionend="onCompositionEnd"
+          class="w-full bg-transparent border-none outline-none px-4 py-3 text-gray-700 text-sm leading-6 max-h-32 overflow-y-auto whitespace-pre-wrap break-words min-h-[48px]"
+        ></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center justify-between px-2 pb-2">
+        <div class="flex items-center space-x-1">
+          <button
+            class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 transition-colors relative"
+            @click="triggerFileInput"
+            :title="t('chat.attachFile')"
+            :disabled="disabled"
+          >
+            <i class="fa-solid fa-paperclip"></i>
+            <input
+              type="file"
+              ref="fileInput"
+              class="hidden"
+              accept="image/*"
+              multiple
+              @change="handleFileSelect"
+            />
+          </button>
+
+          <!-- Emoji Button -->
+          <button
+            class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 transition-colors"
+            @click="toggleEmojiPicker"
+            title="表情"
+            :disabled="disabled"
+          >
+            <i class="fa-regular fa-face-smile"></i>
+          </button>
+
+          <!-- Voice Input -->
+          <button
+            class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 transition-colors"
+            @click="startRecording"
+            :title="t('chat.voiceInput')"
+            :disabled="disabled"
+          >
+            <i class="fa-solid fa-microphone"></i>
+          </button>
+        </div>
+
+        <button
+          @click="send"
+          :disabled="disabled || (!text.trim() && attachments.length === 0)"
+          class="w-8 h-8 flex items-center justify-center rounded-full bg-black text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-800 transition-all transform hover:scale-105 shadow-md"
+        >
+          <i class="fa-solid fa-arrow-up"></i>
         </button>
       </div>
     </div>
 
-    <!-- Editor -->
-    <div class="relative w-full">
-      <div
-        v-if="!text && !isComposing"
-        class="absolute top-3 left-4 text-gray-400 pointer-events-none select-none text-sm"
-      >
-        {{ placeholder }}
+    <!-- Recording UI -->
+    <div
+      v-if="isRecording"
+      class="absolute inset-0 flex items-center px-4 w-full h-full animate-fade-in text-gray-900"
+    >
+      <div class="flex-1 flex items-center space-x-3 overflow-hidden">
+        <!-- Recording Indicator (Minimalist Black Pulse) -->
+        <div
+          class="w-2.5 h-2.5 rounded-full bg-black animate-pulse shadow-sm flex-shrink-0"
+        ></div>
+        <span
+          class="text-sm font-mono font-medium flex-shrink-0 tracking-wider"
+        >
+          {{ recordingDuration }}
+        </span>
+        <!-- Minimalist Waveform -->
+        <div class="flex items-center space-x-0.5 h-6 flex-1 ml-4 opacity-80">
+          <div
+            v-for="i in 40"
+            :key="i"
+            class="w-0.5 bg-black rounded-full transition-all duration-300"
+            :style="{ height: Math.max(15, Math.random() * 100) + '%' }"
+          ></div>
+        </div>
       </div>
+
       <div
-        ref="editorRef"
-        contenteditable="true"
-        @keydown="onKeydown"
-        @input="onInput"
-        @paste="handlePaste"
-        @compositionstart="onCompositionStart"
-        @compositionend="onCompositionEnd"
-        class="w-full bg-transparent border-none outline-none px-4 py-3 text-gray-700 text-sm leading-6 max-h-32 overflow-y-auto whitespace-pre-wrap break-words min-h-[48px]"
-      ></div>
+        class="flex items-center space-x-3 ml-3 border-l border-gray-200 pl-3 flex-shrink-0"
+      >
+        <button
+          @click="cancelRecording"
+          class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          title="取消"
+        >
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+        <button
+          @click="sendVoice"
+          class="w-8 h-8 flex items-center justify-center rounded-full bg-black text-white hover:bg-gray-800 transition-colors shadow-md transform active:scale-95"
+          title="发送"
+        >
+          <i class="fa-solid fa-arrow-up"></i>
+        </button>
+      </div>
     </div>
 
+    <!-- Modals (Mention List & Emoji Picker) -->
     <div
       v-if="showMentionList"
       class="absolute bottom-full left-0 mb-2 ml-2 z-50"
@@ -75,72 +193,28 @@
       </div>
     </div>
 
-    <!-- Actions -->
-    <div class="flex items-center justify-between px-2 pb-2">
-      <div class="flex items-center space-x-1">
-        <button
-          class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 transition-colors relative"
-          @click="triggerFileInput"
-          :title="t('chat.attachFile')"
-          :disabled="disabled"
-        >
-          <i class="fa-solid fa-paperclip"></i>
-          <input
-            type="file"
-            ref="fileInput"
-            class="hidden"
-            accept="image/*"
-            multiple
-            @change="handleFileSelect"
-          />
-        </button>
-
-        <!-- Voice Input -->
-        <button
-          class="h-8 px-3 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 transition-all duration-300"
-          :class="{
-            'bg-red-50 text-red-500 hover:bg-red-100 w-auto': isRecording,
-            'w-8': !isRecording,
-          }"
-          @click="toggleRecording"
-          :title="isRecording ? t('chat.stopRecording') : t('chat.voiceInput')"
-          :disabled="disabled"
-        >
-          <div v-if="isRecording" class="flex items-center space-x-2">
-            <div class="flex items-center space-x-0.5 h-4">
-              <div
-                class="w-1 bg-red-500 rounded-full animate-voice-wave"
-                style="animation-delay: 0ms; height: 40%"
-              ></div>
-              <div
-                class="w-1 bg-red-500 rounded-full animate-voice-wave"
-                style="animation-delay: 100ms; height: 100%"
-              ></div>
-              <div
-                class="w-1 bg-red-500 rounded-full animate-voice-wave"
-                style="animation-delay: 200ms; height: 60%"
-              ></div>
-              <div
-                class="w-1 bg-red-500 rounded-full animate-voice-wave"
-                style="animation-delay: 300ms; height: 80%"
-              ></div>
-              <div
-                class="w-1 bg-red-500 rounded-full animate-voice-wave"
-                style="animation-delay: 100ms; height: 40%"
-              ></div>
-            </div>
-          </div>
-          <i v-else class="fa-solid fa-microphone"></i>
-        </button>
-      </div>
-
-      <button
-        @click="send"
-        :disabled="disabled || (!text.trim() && attachments.length === 0)"
-        class="w-8 h-8 flex items-center justify-center rounded-full bg-black text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-800 transition-all transform hover:scale-105 shadow-md"
+    <div
+      v-if="showEmojiPicker"
+      class="absolute bottom-full left-0 mb-2 ml-2 z-50 animate-fade-in-up"
+    >
+      <div
+        class="bg-white border border-gray-200 rounded-xl shadow-xl w-72 p-2"
       >
-        <i class="fa-solid fa-arrow-up"></i>
-      </button>
+        <div
+          class="grid grid-cols-8 gap-1 max-h-48 overflow-y-auto custom-scrollbar"
+        >
+          <button
+            v-for="emoji in emojiList"
+            :key="emoji"
+            @click="insertEmoji(emoji)"
+            class="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded text-lg transition-colors"
+          >
+            {{ emoji }}
+          </button>
+        </div>
+      </div>
+      <!-- Backdrop to close -->
+      <div class="fixed inset-0 z-[-1]" @click="showEmojiPicker = false"></div>
     </div>
   </div>
 </template>
@@ -178,6 +252,244 @@ const activeMentionIndex = ref(0);
 const mentionQuery = ref('');
 const savedRange = ref<Range | null>(null);
 const isComposing = ref(false);
+
+const showEmojiPicker = ref(false);
+const recordingDuration = ref('00:00');
+let recordingTimer: any = null;
+let recordingSeconds = 0;
+
+const emojiList = [
+  '😀',
+  '😁',
+  '😂',
+  '🤣',
+  '😃',
+  '😄',
+  '😅',
+  '😆',
+  '😉',
+  '😊',
+  '😋',
+  '😎',
+  '😍',
+  '😘',
+  '🥰',
+  '😗',
+  '😙',
+  '😚',
+  '🙂',
+  '🤗',
+  '🤩',
+  '🤔',
+  '🤨',
+  '😐',
+  '😑',
+  '😶',
+  '🙄',
+  '😏',
+  '😣',
+  '😥',
+  '😮',
+  '🤐',
+  '😯',
+  '😪',
+  '😫',
+  '😴',
+  '😌',
+  '😛',
+  '😜',
+  '😝',
+  '🤤',
+  '😒',
+  '😓',
+  '😔',
+  '😕',
+  '🙃',
+  '🤑',
+  '😲',
+  '☹️',
+  '🙁',
+  '😖',
+  '😞',
+  '😤',
+  '😢',
+  '😭',
+  '😦',
+  '😧',
+  '😨',
+  '😩',
+  '🤯',
+  '😬',
+  '😰',
+  '😱',
+  '🥵',
+  '🥶',
+  '😳',
+  '🤪',
+  '😵',
+  '😡',
+  '😠',
+  '🤬',
+  '😷',
+  '🤒',
+  '🤕',
+  '🤢',
+  '🤮',
+  '😇',
+  '🤠',
+  '🤡',
+  '🥳',
+  '🥴',
+  '🥺',
+  '🤥',
+  '🤫',
+  '🤭',
+  '🧐',
+  '🤓',
+  '😈',
+  '👿',
+  '👹',
+  '👺',
+  '💀',
+  '👻',
+  '👽',
+  '🤖',
+  '💩',
+  '👍',
+  '👎',
+  '👌',
+  '✌️',
+  '🤞',
+  '🤟',
+  '🤘',
+  '🤙',
+  '👈',
+  '👉',
+  '👆',
+  '🖕',
+  '👇',
+  '☝️',
+  '🤝',
+  '🙏',
+  '💪',
+  '🧠',
+  '🫀',
+  '🫁',
+  '🦷',
+  '🦴',
+  '👀',
+  '👁️',
+  '👅',
+  '👄',
+  '👶',
+  '🧒',
+  '👦',
+  '👧',
+  '🧑',
+  '👱',
+  '👨',
+  '🧔',
+  '👨‍🦰',
+  '👨‍🦱',
+  '👨‍🦳',
+  '👨‍🦲',
+  '👩',
+  '👩‍🦰',
+  '🧑‍🦰',
+  '👩‍🦱',
+  '🧑‍🦱',
+  '👩‍🦳',
+  '🧑‍🦳',
+  '👩‍🦲',
+  '🧑‍🦲',
+  '👱‍♀️',
+  '👱‍♂️',
+  '🧓',
+  '👴',
+  '👵',
+  '🙍',
+  '🙍‍♂️',
+  '🙍‍♀️',
+  '🙎',
+  '🙎‍♂️',
+  '🙎‍♀️',
+  '🙅',
+  '🙅‍♂️',
+  '🙅‍♀️',
+  '🙆',
+  '🙆‍♂️',
+  '🙆‍♀️',
+  '💁',
+  '💁‍♂️',
+  '💁‍♀️',
+  '🙋',
+  '🙋‍♂️',
+  '🙋‍♀️',
+  '🧏',
+  '🧏‍♂️',
+  '🧏‍♀️',
+  '🙇',
+  '🙇‍♂️',
+  '🙇‍♀️',
+  '🤦',
+  '🤦‍♂️',
+  '🤦‍♀️',
+  '🤷',
+  '🤷‍♂️',
+  '🤷‍♀️',
+];
+
+const startRecording = () => {
+  isRecording.value = true;
+  recordingSeconds = 0;
+  recordingDuration.value = '00:00';
+  if (recordingTimer) clearInterval(recordingTimer);
+  recordingTimer = setInterval(() => {
+    recordingSeconds++;
+    const m = Math.floor(recordingSeconds / 60)
+      .toString()
+      .padStart(2, '0');
+    const s = (recordingSeconds % 60).toString().padStart(2, '0');
+    recordingDuration.value = `${m}:${s}`;
+  }, 1000);
+};
+
+const cancelRecording = () => {
+  isRecording.value = false;
+  if (recordingTimer) clearInterval(recordingTimer);
+};
+
+const sendVoice = () => {
+  isRecording.value = false;
+  if (recordingTimer) clearInterval(recordingTimer);
+  // Send mock voice message
+  emit('send', {
+    text: `[语音消息 ${recordingDuration.value}]`,
+    attachments: [],
+  });
+};
+
+const toggleEmojiPicker = () => {
+  showEmojiPicker.value = !showEmojiPicker.value;
+};
+
+const insertEmoji = (emoji: string) => {
+  if (editorRef.value) {
+    editorRef.value.innerText += emoji;
+    text.value = editorRef.value.innerText;
+
+    // Move cursor to end
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.selectNodeContents(editorRef.value);
+    range.collapse(false);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    editorRef.value.focus();
+  }
+  showEmojiPicker.value = false;
+};
 
 const filteredMentions = computed(() => {
   const q = mentionQuery.value.toLowerCase();
@@ -343,8 +655,8 @@ const handlePaste = (event: ClipboardEvent) => {
 const triggerFileInput = () => fileInput.value?.click();
 
 const handleFileSelect = (event: Event) => {
-  const input = event.target as HTMLInputElement;
-  if (input.files) {
+  const input = event.target;
+  if (input instanceof HTMLInputElement && input.files) {
     Array.from(input.files).forEach((file) => {
       if (file.type.startsWith('image/')) {
         const reader = new FileReader();
@@ -356,7 +668,9 @@ const handleFileSelect = (event: Event) => {
       }
     });
   }
-  input.value = '';
+  if (input instanceof HTMLInputElement) {
+    input.value = '';
+  }
 };
 
 const removeAttachment = (index: number) => {

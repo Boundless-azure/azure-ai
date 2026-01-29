@@ -231,12 +231,13 @@
  */
 import { ref, computed, onMounted } from 'vue';
 import { useI18n } from '../composables/useI18n';
-import { agentService } from '../services/agent.service';
 import type { Agent, UpdateAgentRequest } from '../types/agent.types';
+import { useAgents } from '../hooks/useAgents';
+import { useUIStore } from '../store/ui.store';
 
-const { t } = useI18n();
-const agents = ref<Agent[]>([]);
-const loading = ref(false);
+const { t, currentLocale } = useI18n();
+const ui = useUIStore();
+const { agents, loading, list, update, remove, updateEmbeddings } = useAgents();
 const searchQuery = ref('');
 const showModal = ref(false);
 const currentAgent = ref<Agent | null>(null);
@@ -265,13 +266,26 @@ const toggleSelected = (id: string) => {
 };
 
 const fetchAgents = async () => {
-  loading.value = true;
   try {
-    agents.value = await agentService.getAgents();
+    await list();
   } catch (error) {
     console.error('Failed to fetch agents:', error);
-  } finally {
-    loading.value = false;
+    const msg = error instanceof Error ? error.message : '';
+    if (/HTTP Error: 403/.test(msg)) {
+      ui.showToast(
+        currentLocale.value === 'en' ? 'Permission denied' : '权限不足',
+        'warning',
+        4000,
+      );
+    } else {
+      ui.showToast(
+        currentLocale.value === 'en'
+          ? 'Failed to load agents'
+          : 'Agent列表加载失败',
+        'error',
+        4000,
+      );
+    }
   }
 };
 
@@ -287,7 +301,7 @@ const openEditModal = (agent: Agent) => {
 const handleSave = async () => {
   if (!currentAgent.value) return;
   try {
-    await agentService.updateAgent(currentAgent.value.id, editForm.value);
+    await update(currentAgent.value.id, editForm.value);
     await fetchAgents();
     showModal.value = false;
   } catch (error) {
@@ -298,7 +312,7 @@ const handleSave = async () => {
 const confirmDelete = async (agent: Agent) => {
   if (confirm(t('agent.deleteConfirm'))) {
     try {
-      await agentService.deleteAgent(agent.id);
+      await remove(agent.id);
       await fetchAgents();
     } catch (error) {
       console.error('Failed to delete agent:', error);
@@ -335,7 +349,7 @@ const formatDate = (val: string | number | Date | null | undefined) => {
 const updateAllEmbeddings = async () => {
   isUpdating.value = true;
   try {
-    await agentService.updateEmbeddings();
+    await updateEmbeddings();
     await fetchAgents();
     selectedIds.value = new Set();
   } catch (e) {
@@ -350,7 +364,7 @@ const updateSelectedEmbeddings = async () => {
   try {
     const ids = Array.from(selectedIds.value);
     if (ids.length === 0) return;
-    await agentService.updateEmbeddings(ids);
+    await updateEmbeddings(ids);
     await fetchAgents();
     selectedIds.value = new Set();
   } catch (e) {

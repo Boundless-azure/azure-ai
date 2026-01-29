@@ -250,7 +250,7 @@
  */
 
 import { ref, onMounted, reactive, computed } from 'vue';
-import { identityService } from '../services/identity.service';
+import { useRoles } from '../hooks/useRoles';
 import type { RoleItem } from '../types/identity.types';
 import PermissionManagement from './PermissionManagement.vue';
 
@@ -284,13 +284,15 @@ function handleSearch() {
   // Client side filtering is automatic
 }
 
+const { list, create, update, remove } = useRoles();
+
 onMounted(() => {
   fetchData();
 });
 
 async function fetchData() {
   try {
-    roles.value = await identityService.listRoles();
+    roles.value = await list();
   } catch (e) {
     console.error(e);
   }
@@ -320,16 +322,9 @@ function closeModal() {
 async function handleSubmit() {
   try {
     if (isEdit.value) {
-      await identityService.updateRole(form.id, {
-        name: form.name,
-        description: form.description || null,
-      });
+      await update(form.id, { name: form.name, description: form.description || null });
     } else {
-      await identityService.createRole({
-        name: form.name,
-        code: form.code,
-        description: form.description || null,
-      });
+      await create({ name: form.name, code: form.code, description: form.description || null });
     }
     closeModal();
     fetchData();
@@ -342,7 +337,7 @@ async function handleDelete(role: RoleItem) {
   if (role.builtin) return;
   if (!confirm(`确认删除角色 "${role.name}" 吗？`)) return;
   try {
-    await identityService.deleteRole(role.id);
+    await remove(role.id);
     fetchData();
   } catch (e) {
     console.error(e);

@@ -53,7 +53,7 @@
               <div class="flex items-center space-x-2">
                 <button class="px-2 py-1 border rounded text-xs" @click="markRead(item)">{{ t('todo.actions.markRead') }}</button>
                 <button class="px-2 py-1 border rounded text-xs" @click="markDone(item)">{{ t('todo.actions.markDone') }}</button>
-                <button class="px-2 py-1 border rounded text-xs text-red-600" @click="remove(item)">{{ t('common.delete') }}</button>
+                <button class="px-2 py-1 border rounded text-xs text-red-600" @click="removeItem(item)">{{ t('common.delete') }}</button>
               </div>
             </td>
           </tr>
@@ -66,12 +66,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useI18n } from '../../agent/composables/useI18n';
-import { todoService } from '../services/todo.service';
 import type { TodoItem } from '../types/todo.types';
+import { useTodos } from '../hooks/useTodos';
 
 const { t } = useI18n();
-const items = ref<TodoItem[]>([]);
-const loading = ref(false);
+const { loading, items, list, update, remove } = useTodos();
 const status = ref('');
 
 const stringify = (obj: unknown) => {
@@ -90,29 +89,23 @@ const statusClass = (s: string) => {
 };
 
 const refresh = async () => {
-  loading.value = true;
-  try {
-    items.value = await todoService.list(status.value ? { status: status.value } : undefined);
-  } finally {
-    loading.value = false;
-  }
+  await list(status.value ? { status: status.value } : undefined);
 };
 
 const markRead = async (item: TodoItem) => {
-  await todoService.update(item.id, { status: 'read' });
+  await update(item.id, { status: 'read' });
   await refresh();
 };
 
 const markDone = async (item: TodoItem) => {
-  await todoService.update(item.id, { status: 'completed' });
+  await update(item.id, { status: 'completed' });
   await refresh();
 };
 
-const remove = async (item: TodoItem) => {
-  await todoService.delete(item.id);
+const removeItem = async (item: TodoItem) => {
+  await remove(item.id);
   await refresh();
 };
 
 onMounted(refresh);
 </script>
-

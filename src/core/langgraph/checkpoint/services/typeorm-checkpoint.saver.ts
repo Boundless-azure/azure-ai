@@ -14,19 +14,10 @@ import {
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { LGCheckpointEntity } from '../entities/lg-checkpoint.entity';
 import { LGWriteEntity } from '../entities/lg-write.entity';
-import { AIModelService, ContextService } from '@core/ai';
-import { RoundSummaryEntity } from '@core/ai/entities/round-summary.entity';
+import { ContextService } from '@core/ai';
 import type { ChatMessage } from '@core/ai/types';
-import type { SummaryModelHandle } from '../checkpoint.module';
 
-interface CheckpointSaverOptions {
-  summary?: boolean;
-  summaryInterval?: number;
-  insertSummaryAsSystemMessage?: boolean;
-  summaryModel?:
-    | SummaryModelHandle
-    | ((messages: ChatMessage[]) => Promise<string>);
-}
+type CheckpointSaverOptions = Record<string, never>;
 
 /**
  * @title TypeORM Checkpoint Saver
@@ -41,10 +32,6 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
     private readonly cpRepo: Repository<LGCheckpointEntity>,
     @InjectRepository(LGWriteEntity)
     private readonly writeRepo: Repository<LGWriteEntity>,
-    @InjectRepository(RoundSummaryEntity)
-    private readonly summaryRepo: Repository<RoundSummaryEntity>,
-    @Inject(forwardRef(() => AIModelService))
-    private readonly aiModelService: AIModelService,
     @Inject(forwardRef(() => ContextService))
     private readonly contextService: ContextService,
     @Inject('CHECKPOINT_OPTIONS')
@@ -227,9 +214,6 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
       if (msg) {
         await this.ensureContext(threadId);
         await this.contextService.addMessage(threadId, msg);
-        if (msg.role === 'assistant') {
-          await this.maybeSummarize(threadId);
-        }
       }
     }
   }
@@ -387,87 +371,6 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
       >;
     }
     return null;
-  }
-
-  private async maybeSummarize(sessionId: string): Promise<void> {
-    const enabled = this.options.summary ?? true;
-    if (!enabled) return;
-    const interval = Math.max(1, this.options.summaryInterval ?? 20);
-    const stats = await this.contextService.getContextStats(sessionId);
-    const rounds = stats.assistantMessages;
-    if (rounds <= 0 || rounds % interval !== 0) return;
-
-    const prev = await this.summaryRepo.findOne({
-      where: { sessionId, isDelete: false },
-      order: { roundNumber: 'DESC' },
-    });
-
-    const windowMessages = await this.contextService.getRoundWindowMessages(
-      sessionId,
-      Math.max(1, interval - 1),
-      true,
-    );
-
-    const sysPrefix = [
-      '你是对话记录的总结助手，输出上一阶段轮次的中文摘要，保留关键事实、意图变化与结论。',
-      '摘要需简洁分点，避免重复与冗长，无需加入无关寒暄。',
-      prev ? `上一阶段历史总结：\n${prev.summaryContent}` : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    const messages: ChatMessage[] = [
-      { role: 'system', content: sysPrefix },
-      ...windowMessages.filter((m) => m.role !== 'system'),
-    ];
-
-    const summaryText = await this.generateSummaryText(messages, sessionId);
-
-    const entity = this.summaryRepo.create({
-      sessionId,
-      roundNumber: rounds,
-      summaryContent: summaryText,
-      isDelete: false,
-    });
-    await this.summaryRepo.save(entity);
-
-    if (this.options.insertSummaryAsSystemMessage ?? true) {
-      await this.ensureContext(sessionId);
-      await this.contextService.addMessage(sessionId, {
-        role: 'system',
-        content: summaryText,
-        metadata: { summary: true, round: rounds },
-      });
-    }
-  }
-
-  private async pickDefaultModelId(): Promise<string> {
-    const enabled = await this.aiModelService.getEnabledModels();
-    if (!enabled.length) {
-      throw new Error('No enabled AI models for checkpoint summarization');
-    }
-    return enabled[0].id;
-  }
-
-  private async generateSummaryText(
-    messages: ChatMessage[],
-    sessionId: string,
-  ): Promise<string> {
-    const m = this.options.summaryModel;
-    if (typeof m === 'function') {
-      return await m(messages);
-    }
-    if (m && typeof m.chat === 'function') {
-      return await m.chat(messages);
-    }
-    const modelId = await this.pickDefaultModelId();
-    const resp = await this.aiModelService.chat({
-      modelId,
-      messages,
-      sessionId,
-      params: { temperature: 0.2, maxTokens: 800 },
-    });
-    return resp.content;
   }
 
   private async ensureContext(sessionId: string): Promise<void> {

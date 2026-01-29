@@ -2,6 +2,14 @@ import { ref } from 'vue';
 
 const currentLocale = ref<'en' | 'cn'>('cn');
 
+// Initialize locale from localStorage if available
+if (typeof localStorage !== 'undefined') {
+  const savedLocale = localStorage.getItem('locale') as 'en' | 'cn' | null;
+  if (savedLocale && ['en', 'cn'].includes(savedLocale)) {
+    currentLocale.value = savedLocale;
+  }
+}
+
 export const supportedLocales = [
   { code: 'en', label: 'English', icon: 'flag-usa' },
   { code: 'cn', label: '中文 (简体)', icon: 'flag' },
@@ -80,12 +88,17 @@ const translations = {
       statusError: 'Error',
       noMessages: 'No messages',
       errorOccurred: 'Error occurred',
+      pin: 'Pin',
+      unpin: 'Unpin',
     },
     tabs: {
       dashboard: 'Dashboard',
       chat: 'Chat History',
       contacts: 'Contacts',
       daily: 'Daily Report',
+      closeLeft: 'Close Left',
+      closeRight: 'Close Right',
+      closeAll: 'Close All',
     },
     todo: {
       title: 'Todo List',
@@ -249,12 +262,17 @@ const translations = {
       statusError: '异常',
       noMessages: '暂无消息',
       errorOccurred: '执行出错',
+      pin: '置顶',
+      unpin: '取消置顶',
     },
     tabs: {
       dashboard: '仪表盘',
       chat: '聊天记录',
       contacts: '通讯录',
       daily: '日报',
+      closeLeft: '关闭左侧',
+      closeRight: '关闭右侧',
+      closeAll: '全部关闭',
     },
     todo: {
       title: '待办事项',

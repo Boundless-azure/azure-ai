@@ -9,8 +9,8 @@ import {
   PromptTemplateEntity,
   ChatSessionEntity,
   ChatMessageEntity,
-  ChatDayGroupEntity,
-  ChatConversationGroupEntity,
+  ChatSessionMemberEntity,
+  ChatSessionSmartEntity,
 } from './entities';
 import {
   AICoreModuleAsyncOptions,
@@ -29,8 +29,8 @@ import {
       PromptTemplateEntity,
       ChatSessionEntity,
       ChatMessageEntity,
-      ChatDayGroupEntity,
-      ChatConversationGroupEntity,
+      ChatSessionMemberEntity,
+      ChatSessionSmartEntity,
     ]),
   ],
   providers: [

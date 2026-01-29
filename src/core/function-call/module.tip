@@ -4,132 +4,78 @@
 - 为主对话功能提供“函数调用（Function Call）”相关的服务实现与工具描述（JSON-only）。
 - 统一对外导出：模块、服务与描述，便于上层通过 barrel 入口引入。
 - 设计原则：安全、可控、仅返回 JSON；参数类型尽量收敛与显式校验；与业务模块解耦。
- - 更新：抽取并统一了函数句柄与服务契约（types/service.types.ts），对话层通过句柄进行注册与执行；支持按模块选项 includeFunction 进行启用开关。
 
 文件清单（File List）
 - core/function-call/function-call.module.ts
 - core/function-call/index.ts
 - core/function-call/services/context_window_keyword.function-service.ts
+- core/function-call/services/db_mongo_find.function-service.ts
 - core/function-call/services/db_mysql_select.function-service.ts
+- core/function-call/services/intent_agent_trigger.function-service.ts
 - core/function-call/services/plugin_orchestrate.function-service.ts
-- core/function-call/services/webmcp_get.function-service.ts（新增）
-- core/function-call/services/webmcp_op.function-service.ts（新增）
+- core/function-call/services/webmcp_get.function-service.ts
+- core/function-call/services/webmcp_op.function-service.ts
 - core/function-call/descriptions/index.ts
 - core/function-call/descriptions/types.ts
 - core/function-call/descriptions/context/window.keyword.ts
+- core/function-call/descriptions/db/mongo-find.ts
 - core/function-call/descriptions/db/mysql-select.ts
+- core/function-call/descriptions/intent/agent-trigger.ts
 - core/function-call/descriptions/plugin/orchestrate.ts
-- core/function-call/descriptions/webmcp/get.ts（新增）
-- core/function-call/descriptions/webmcp/op.ts（新增）
-- core/function-call/types/orchestrator.ts（新建）
-- core/function-call/types/index.ts（新建）
- - core/function-call/types/service.types.ts（新建）：定义 FunctionCallHandle 与 FunctionCallServiceContract
+- core/function-call/descriptions/webmcp/get.ts
+- core/function-call/descriptions/webmcp/op.ts
+- core/function-call/types/orchestrator.ts
+- core/function-call/types/index.ts
+- core/function-call/types/service.types.ts
 
 函数索引（Function Index）
-- ContextFunctionService（context_window_keyword.function-service.ts）
-  - method: getKeywordWindow(args, runtime?)
-    - desc: 根据关键词获取滑动窗口上下文；支持按会话或用户范围检索；仅返回非系统消息（可选前置系统消息）。
-    - params: { sessionId?: string; keywords: string[]; limit: number; includeSystem?: boolean; matchMode?: 'any' | 'all' }
-    - returns: ChatMessage[]（JSON-only）
-
-- MysqlReadonlyService（db_mysql_select.function-service.ts）
-  - method: select({ sql, params?, limit })
-    - desc: 只读 SELECT 查询；黑名单拦截写操作；限制最大返回行数；支持 `?` 参数绑定；对 params 类型进行收敛校验。
-    - params: { sql: string; params?: (string|number|boolean|null)[]; limit: number }
-    - returns: Record<string, unknown>[]（JSON-only）
-
-- PluginOrchestratorService（plugin_orchestrate.function-service.ts）
-  - method: orchestrate(params)
-    - desc: 两阶段调用：plan（生成计划 JSON）与 generate（按计划生成单文件代码 JSON）。
-    - params: OrchestratorParams（见 types/orchestrator.ts）
-    - returns: OrchestratorResult（见 types/orchestrator.ts）
+- ContextFunctionService (context_window_keyword.function-service.ts)
+  - method: getKeywordWindow
+  - desc: 根据关键词获取滑动窗口上下文；仅返回非系统消息。
+- MongoReadonlyService (db_mongo_find.function-service.ts)
+  - method: find
+  - desc: 只读 Mongo 查询；限制最大返回行数与 filter 合法性。
+- MysqlReadonlyService (db_mysql_select.function-service.ts)
+  - method: select
+  - desc: 只读 MySQL 查询；黑名单拦截写操作。
+- IntentAgentTriggerFunctionService (intent_agent_trigger.function-service.ts)
+  - method: getHandle (tool execution)
+  - desc: 意图分析触发；根据会话最近消息与 Agent 信息进行匹配。
+- PluginOrchestratorService (plugin_orchestrate.function-service.ts)
+  - method: orchestrate
+  - desc: 插件编排；两阶段调用（Plan -> Generate）。
+- WebMcpFunctionService (webmcp_get.function-service.ts)
+  - method: requestDescriptor
+  - desc: 获取 WebMCP 页面声明。
+- WebMcpOperationFunctionService (webmcp_op.function-service.ts)
+  - method: dispatchOperation
+  - desc: 下发 WebMCP 操作。
 
 工具描述（Function Call Descriptions）
-- context_window_keyword（context/window.keyword.ts）：关键词滑动窗口检索；模型仅提供关键词与 limit。
-- context_keyword_window（context/window.keyword.ts）：兼容旧名称，与上者等价。
-- db_mysql_select（db/mysql-select.ts）：只读的 MySQL SELECT；支持 `?` 参数绑定；必须提供 limit。
-- plugin_orchestrate（plugin/orchestrate.ts）：先规划后生成的单入口函数；模型仅提供插件意图输入。
-- getWebmcp（webmcp/get.ts）：拉取当前页面声明（wire 格式），仅返回 JSON 字符串。
-- webmcp_op（webmcp/op.ts）：下发操作 JSON（callHook / setData）并返回执行回执（JSON 字符串）。
- - intent_agent_trigger（intent/agent-trigger.ts）：向量检索（pgvector）优先，关键词匹配回退；默认阈值0.35（向量模式）；会话从 thread_id 注入。
+- context_window_keyword: 关键词滑动窗口检索
+- db_mongo_find: Mongo 只读查询
+- db_mysql_select: MySQL 只读查询
+- intent_agent_trigger: 意图分析触发 Agent
+- plugin_orchestrate: 插件编排
+- getWebmcp: 获取 WebMCP 页面声明
+- webmcp_op: 执行 WebMCP 操作
 
-更新记录（Update Log）
-- 新增：统一的函数句柄类型 FunctionCallHandle 与服务契约 FunctionCallServiceContract（types/service.types.ts），各服务实现 getHandle()：
-  - PluginOrchestratorService.getHandle() -> plugin_orchestrate
-  - ContextFunctionService.getHandle() -> context_window_keyword
-  - MysqlReadonlyService.getHandle() -> db_mysql_select
-  - WebMcpFunctionService.getHandle() -> getWebmcp
-  - WebMcpOperationFunctionService.getHandle() -> webmcp_op
-- 对话层（ConversationService）改为通过句柄注册函数并统一注入运行时上下文（sessionId/userId），同时支持从 AICoreModuleOptions.includeFunction 读取开关，仅按列出的描述 name 注册。
-- MySQL 只读参数校验策略：
-  - 校验 params 为原始值（string/number/boolean/null）数组；
-  - 强制 limit 必填且为数值；
-  - 执行返回统一规范化为 Record<string, unknown>[]（解决 any/any[] 的 linter 警告）；
- - 建议在生产环境对 SQL 中 `?` 占位符数量与 params.length 进行一致性检查（目前由调用方保证）。
-
-关键词索引（中文 / English Keyword Index）
-core/function-call/function-call.module.ts
-core/function-call/index.ts
-core/function-call/services/context_window_keyword.function-service.ts
-core/function-call/services/db_mysql_select.function-service.ts
-core/function-call/services/plugin_orchestrate.function-service.ts
-core/function-call/services/webmcp_get.function-service.ts
-core/function-call/services/webmcp_op.function-service.ts
-core/function-call/descriptions/index.ts
-core/function-call/descriptions/types.ts
-core/function-call/descriptions/context/window.keyword.ts
-core/function-call/descriptions/db/mysql-select.ts
-core/function-call/descriptions/plugin/orchestrate.ts
-core/function-call/descriptions/webmcp/get.ts
-core/function-call/descriptions/webmcp/op.ts
-core/function-call/types/orchestrator.ts
-core/function-call/types/index.ts
-
-快速检索映射（Keywords -> Files）
+关键词对照（Keywords -> Files）
 - "FunctionCallModule" -> core/function-call/function-call.module.ts
- - "ContextFunctionService" -> core/function-call/services/context_window_keyword.function-service.ts
- - "MysqlReadonlyService" -> core/function-call/services/db_mysql_select.function-service.ts
- - "PluginOrchestratorService" -> core/function-call/services/plugin_orchestrate.function-service.ts
+- "ContextFunctionService" -> core/function-call/services/context_window_keyword.function-service.ts
+- "MongoReadonlyService" -> core/function-call/services/db_mongo_find.function-service.ts
+- "MysqlReadonlyService" -> core/function-call/services/db_mysql_select.function-service.ts
+- "IntentAgentTriggerFunctionService" -> core/function-call/services/intent_agent_trigger.function-service.ts
+- "PluginOrchestratorService" -> core/function-call/services/plugin_orchestrate.function-service.ts
 - "WebMcpFunctionService" -> core/function-call/services/webmcp_get.function-service.ts
 - "WebMcpOperationFunctionService" -> core/function-call/services/webmcp_op.function-service.ts
-- "function-call.descriptions" -> core/function-call/descriptions/index.ts
-- "db_mysql_select" -> core/function-call/descriptions/db/mysql-select.ts
-- "context_window_keyword" -> core/function-call/descriptions/context/window.keyword.ts
-- "plugin_orchestrate" -> core/function-call/descriptions/plugin/orchestrate.ts
-- "getWebmcp" -> core/function-call/descriptions/webmcp/get.ts
-- "webmcp_op" -> core/function-call/descriptions/webmcp/op.ts
-- "OrchestratorParams" -> core/function-call/types/orchestrator.ts
-- "PlanPhaseResult" -> core/function-call/types/orchestrator.ts
- - "intent_agent_trigger" -> core/function-call/services/intent_agent_trigger.function-service.ts
+- "db_mongo_find" -> core/function-call/descriptions/db/mongo-find.ts
 
 哈希对照（Keywords -> Function Hash）
-- "getWebmcp" -> hash_fc_getWebmcp_001
-- "webmcp_op" -> hash_fc_webmcp_op_002
-
-#problems_and_diagnostics
-- [info] 此 tip 文件由 AI 生成，建议后续通过 TipGeneratorService 自动更新函数列表与映射。
-- [warning] 请确保 MysqlReadonlyService 的 params 仅包含原始值（string/number/boolean/null），并与 SQL 中的 `?` 占位符数量一致。
- - [info] ConversationService 已切换为基于各服务 getHandle() 的标准注册；如需按模块选项启停，请在 AICoreModuleOptions.includeFunction 中列出要启用的函数描述。
-- [info] 若上层 SQL 已含 LIMIT，系统会通过子查询包裹方式再次收敛返回行数（SELECT * FROM (...) AS __t LIMIT N）。
-
-补充（Mongo 支持）
-- 文件：
-  - core/function-call/services/db_mongo_find.function-service.ts
-  - core/function-call/descriptions/db/mongo-find.ts
-- 函数：
-  - MongoReadonlyService.getHandle() -> db_mongo_find
-  - MongoReadonlyService.find(params) -> Record<string, unknown>[]
-- 索引映射：
-121→  - "MongoReadonlyService" -> core/function-call/services/db_mongo_find.function-service.ts
-122→  - "db_mongo_find" -> core/function-call/descriptions/db/mongo-find.ts
-123→
-124→新增（意图分析工具）
-125→- 文件：
-126→  - core/function-call/services/intent_agent_trigger.function-service.ts
-127→  - core/function-call/descriptions/intent/agent-trigger.ts
-128→- 工具：
-129→  - IntentAgentTriggerFunctionService.getHandle() -> intent_agent_trigger
-130→- 索引映射：
-131→  - "intent_agent_trigger" -> core/function-call/descriptions/intent/agent-trigger.ts
-132→- 哈希对照：
-133→  - "intent_agent_trigger" -> hash_fc_intent_agent_trigger_003
+- ContextFunctionService.getKeywordWindow -> fc_ctx_kw_001
+- MongoReadonlyService.find -> fc_mongo_find_002
+- MysqlReadonlyService.select -> fc_mysql_sel_003
+- IntentAgentTriggerFunctionService.tool -> fc_intent_trig_004
+- PluginOrchestratorService.orchestrate -> fc_plugin_orch_005
+- WebMcpFunctionService.requestDescriptor -> fc_webmcp_get_006
+- WebMcpOperationFunctionService.dispatchOperation -> fc_webmcp_op_007

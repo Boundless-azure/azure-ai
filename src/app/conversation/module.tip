@@ -8,7 +8,7 @@
  - GET  /conversation/checkpoints/:threadId（检查点列表）
   - GET  /conversation/checkpoints/:threadId/:checkpointId（检查点详情/历史片段）
   - 对话组接口：
-    - GET  /conversation/groups（支持按 date 或 dayGroupId 筛选）
+    - GET  /conversation/groups（分页：page/pageSize；每组附带 latestMessage；不支持日期筛选）
     - GET  /conversation/groups/:groupId（组详情）
     - POST /conversation/groups（创建组，入参：date 或 dayGroupId）
     - PUT  /conversation/groups/:groupId（更新标题/active/chatClientId）
@@ -50,26 +50,9 @@
   - fetch + ReadableStream 逐块解析（POST 接口）
   - 或新增 GET 接口并使用 EventSource（SSE 标准方案）
 
-WebSocket 接口定义
-- 连接：`ws://<host>/conversation/ws`
-- 客户端入参事件：`chat_start`
-  - 载荷：ChatRequestDto（message、date、chatClientId 必填；可选 sessionId/modelId/systemPrompt/stream）
- - 客户端入参事件：`thread_chat_start`
-  - 载荷：ThreadChatStartDto（threadId、message 必填；可选 sessionId/modelId/systemPrompt/stream；chatClientId 由服务端按线程组派生）
-- 服务端统一出参事件：`conversation_event`
-  - 事件类型（ConversationSseEvent）：
-    - `token`：`{ text }`
-    - `reasoning`：`{ text }`
-    - `tool_start`：`{ name, input?, id? }`
-    - `tool_chunk`：`{ id?, name?, args?, index? }`
-    - `tool_end`：`{ name?, output?, id? }`
-    - `session_group`：`{ sessionGroupId, date, chatClientId }`
-    - `session_group_title`：`{ sessionGroupId, title }`
-    - `done`：无 data（仅附带 sessionId）
-    - `error`：`{ error }`
-- 使用建议：
-  - 首次收到 `session_group` 后，可在侧边栏渲染会话组卡片；随后等待 `session_group_title` 更新标题。
-  - 逐条处理 `token` 进行增量渲染；`done` 表示本轮结束。
+WebSocket 接口说明
+- 已移除 `/conversation/ws`（过期的 AI 对话 Socket.io 流式网关）。
+- AI 流式能力使用 SSE（`GET /conversation/chat/stream`）或非流式 REST（`POST /conversation/chat`）。
 
 Checkpoint 历史接口
  - GET `/conversation/checkpoints/:threadId`
@@ -109,6 +92,26 @@ Summary 接口
   - 处理：保持 tsc 通过后，针对具体行添加精准关闭注释
 - [info] 相对路径在目录迁移后断裂
   - 处理：统一使用路径别名 @ / @core 引入
+
+# 关键词与文件对照（Keywords ↔ Files）
+- 中文关键词 ↔ 英文关键词 ↔ 文件名
+- 对话组列表 ↔ conversation-group list ↔ controllers/conversation-group.controller.ts
+- 最新消息 ↔ latest message ↔ controllers/conversation-group.controller.ts
+- 分页 ↔ pagination ↔ controllers/conversation-group.controller.ts
+- 对话历史 ↔ conversation history ↔ controllers/conversation-group.controller.ts
+- 对话服务 ↔ conversation service ↔ services/conversation.service.ts
+- 类型与守卫 ↔ types and guards ↔ types/conversation.types.ts
+- IM 消息历史 ↔ im message history ↔ controllers/im.controller.ts
+- IM 新消息探测 ↔ im has-new probe ↔ controllers/im.controller.ts
+
+# 关键词到文件函数哈希映射（Keywords -> Function Hash）
+- ConversationGroupController.listGroups -> 98f1c2a7
+- ConversationGroupController.listGroupHistory -> 3b7d5e21
+- ConversationService.chat -> 5c2ea110
+- ConversationService.chatStream -> a8d44c6f
+- ConversationService.getSessionHistory -> 1d9b7e02
+- ImMessageService.getMessages -> im_msg_get_001
+- ImMessageService.hasNew -> im_msg_has_new_002
 
 备注
 - 本文件仅用于目录与规范说明，便于 IDE 与开发者快速了解模块结构；不参与构建。

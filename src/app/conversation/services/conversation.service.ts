@@ -65,78 +65,6 @@ export class ConversationService {
   async chat(request: ChatRequest): Promise<ChatResponse> {
     const sessionId = await this.ensureSessionId(request);
 
-    let conversationGroupId: string | undefined;
-    if (request.sessionId) {
-      conversationGroupId =
-        (await this.contextService.getConversationGroupIdForSession(
-          sessionId,
-        )) ?? undefined;
-      if (!conversationGroupId) {
-        const normalizedDate = this.normalizeDate(request.date);
-        const dayGroup = await this.contextService.ensureDayGroup(
-          normalizedDate,
-          'system',
-        );
-        const convGroup = await this.contextService.createConversationGroup(
-          dayGroup.id,
-          request.chatClientId,
-          'system',
-        );
-        await this.contextService.linkSessionToGroup(sessionId, convGroup.id);
-        conversationGroupId = convGroup.id;
-        try {
-          const modelId = request.modelId || (await this.pickDefaultModelId());
-          const title = await this.computeGroupTitle(
-            request.message,
-            sessionId,
-            conversationGroupId,
-            modelId,
-          );
-          if (title) {
-            await this.contextService.updateConversationGroupTitle(
-              conversationGroupId,
-              title,
-            );
-          }
-        } catch (_e) {
-          this.logger.warn(
-            'Compute group title (non-stream, existing session) failed',
-          );
-        }
-      }
-    } else {
-      const normalizedDate = this.normalizeDate(request.date);
-      const dayGroup = await this.contextService.ensureDayGroup(
-        normalizedDate,
-        'system',
-      );
-      const convGroup = await this.contextService.createConversationGroup(
-        dayGroup.id,
-        request.chatClientId,
-        'system',
-      );
-      await this.contextService.linkSessionToGroup(sessionId, convGroup.id);
-      conversationGroupId = convGroup.id;
-      // 非流式调用也补充计算并保存组标题，保证列表同步
-      try {
-        const modelId = request.modelId || (await this.pickDefaultModelId());
-        const title = await this.computeGroupTitle(
-          request.message,
-          sessionId,
-          conversationGroupId,
-          modelId,
-        );
-        if (title) {
-          await this.contextService.updateConversationGroupTitle(
-            conversationGroupId,
-            title,
-          );
-        }
-      } catch (_e) {
-        this.logger.warn('Compute group title (non-stream) failed');
-      }
-    }
-
     const messages: ChatMessage[] = [
       { role: 'user', content: request.message },
     ];
@@ -145,7 +73,6 @@ export class ConversationService {
       modelId: request.modelId || (await this.pickDefaultModelId()),
       messages,
       sessionId,
-      conversationGroupId,
       checkpointer: (await this.shouldUseCheckpointer(sessionId))
         ? this.checkpointer
         : undefined,
@@ -187,7 +114,6 @@ export class ConversationService {
   ): AsyncGenerator<ConversationSseEvent> {
     try {
       let sessionId: string;
-      let conversationGroupId: string | undefined;
       if (request.sessionId) {
         const ctx = await this.contextService.createContext(
           request.sessionId,
@@ -195,115 +121,13 @@ export class ConversationService {
           'system',
         );
         sessionId = ctx.sessionId;
-        conversationGroupId =
-          (await this.contextService.getConversationGroupIdForSession(
-            sessionId,
-          )) ?? undefined;
-        if (!conversationGroupId) {
-          const normalizedDate = this.normalizeDate(request.date);
-          const dayGroup = await this.contextService.ensureDayGroup(
-            normalizedDate,
-            'system',
-          );
-          const convGroup = await this.contextService.createConversationGroup(
-            dayGroup.id,
-            request.chatClientId,
-            'system',
-          );
-          await this.contextService.linkSessionToGroup(sessionId, convGroup.id);
-          conversationGroupId = convGroup.id;
-
-          // 广播 session_group 与计算标题
-          yield {
-            type: 'session_group',
-            data: {
-              sessionGroupId: convGroup.id,
-              date: normalizedDate,
-              chatClientId: request.chatClientId,
-            },
-            sessionId,
-          };
-
-          try {
-            const modelId =
-              request.modelId || (await this.pickDefaultModelId());
-            const title = await this.computeGroupTitle(
-              request.message,
-              sessionId,
-              convGroup.id,
-              modelId,
-            );
-            if (title) {
-              await this.contextService.updateConversationGroupTitle(
-                convGroup.id,
-                title,
-              );
-              yield {
-                type: 'session_group_title',
-                data: { sessionGroupId: convGroup.id, title },
-                sessionId,
-              };
-            }
-          } catch (_e) {
-            this.logger.warn(
-              'Compute group title (stream, existing session) failed',
-            );
-          }
-        }
       } else {
-        const normalizedDate = this.normalizeDate(request.date);
-        const dayGroup = await this.contextService.ensureDayGroup(
-          normalizedDate,
-          'system',
-        );
-        const convGroup = await this.contextService.createConversationGroup(
-          dayGroup.id,
-          request.chatClientId,
-          'system',
-        );
         const ctx = await this.contextService.createContext(
           undefined,
           request.systemPrompt,
           'system',
         );
         sessionId = ctx.sessionId;
-        await this.contextService.linkSessionToGroup(sessionId, convGroup.id);
-        conversationGroupId = convGroup.id;
-
-        // 仅在新建组时广播 session_group 事件（老会话不重复广播）
-        yield {
-          type: 'session_group',
-          data: {
-            sessionGroupId: convGroup.id,
-            date: normalizedDate,
-            chatClientId: request.chatClientId,
-          },
-          sessionId,
-        };
-
-        // 计算并保存组标题，同时向前端推送 session_group_title 事件
-        try {
-          const modelId = request.modelId || (await this.pickDefaultModelId());
-          const title = await this.computeGroupTitle(
-            request.message,
-            sessionId,
-            convGroup.id,
-            modelId,
-          );
-          if (title) {
-            await this.contextService.updateConversationGroupTitle(
-              convGroup.id,
-              title,
-            );
-            yield {
-              type: 'session_group_title',
-              data: { sessionGroupId: convGroup.id, title },
-              sessionId,
-            };
-          }
-        } catch (_e) {
-          this.logger.warn('Compute group title (stream) failed');
-        }
       }
 
       const messages: ChatMessage[] = [
@@ -314,7 +138,6 @@ export class ConversationService {
         modelId: request.modelId || (await this.pickDefaultModelId()),
         messages,
         sessionId,
-        conversationGroupId,
         checkpointer: (await this.shouldUseCheckpointer(sessionId))
           ? this.checkpointer
           : undefined,
@@ -380,44 +203,7 @@ export class ConversationService {
     }
   }
 
-  private normalizeDate(input?: string): string {
-    const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
-    const fmt = (d: Date) =>
-      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    if (typeof input === 'string' && input.trim().length > 0) {
-      // 直接匹配 YYYY-MM-DD
-      const m = input.trim().match(/^\d{4}-\d{2}-\d{2}$/);
-      if (m) return input.trim();
-      const d = new Date(input);
-      if (!isNaN(d.getTime())) return fmt(d);
-    }
-    return fmt(new Date());
-  }
-
-  private async computeGroupTitle(
-    message: string,
-    sessionId: string,
-    sessionGroupId: string,
-    modelId: string,
-  ): Promise<string> {
-    const messages: ChatMessage[] = [
-      {
-        role: 'user',
-        content:
-          '请为当前对话生成一个简短、准确的标题（不超过32字），用于列表展示。仅返回标题本身，不要多余说明。',
-      },
-      { role: 'user', content: message },
-    ];
-    const aiReq: AIModelRequest = {
-      modelId,
-      messages,
-      sessionId,
-      conversationGroupId: sessionGroupId,
-      params: { temperature: 0.2, maxTokens: 64, stream: false },
-    };
-    const resp = await this.aiModelService.chat(aiReq);
-    return (resp.content || '').trim().slice(0, 32);
-  }
+  // 已移除对话组相关逻辑，统一以会话为主
 
   /**
    * 创建新会话，并可写入系统提示。

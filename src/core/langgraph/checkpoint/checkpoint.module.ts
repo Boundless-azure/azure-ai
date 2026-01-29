@@ -4,21 +4,8 @@ import { AICoreModule } from '@core/ai/ai-core.module';
 import { LGCheckpointEntity } from './entities/lg-checkpoint.entity';
 import { LGWriteEntity } from './entities/lg-write.entity';
 import { TypeOrmCheckpointSaver } from './services/typeorm-checkpoint.saver';
-import { RoundSummaryEntity } from '@core/ai/entities/round-summary.entity';
-import type { ChatMessage } from '@core/ai/types';
 
-export interface SummaryModelHandle {
-  chat(messages: ChatMessage[]): Promise<string>;
-}
-
-export interface CheckpointModuleOptions {
-  summary?: boolean;
-  summaryInterval?: number;
-  insertSummaryAsSystemMessage?: boolean;
-  summaryModel?:
-    | SummaryModelHandle
-    | ((messages: ChatMessage[]) => Promise<string>);
-}
+export type CheckpointModuleOptions = Record<string, never>;
 
 /**
  * @title LangGraph Checkpoint 模块
@@ -29,11 +16,7 @@ export interface CheckpointModuleOptions {
 @Module({
   imports: [
     AICoreModule.forFeature(),
-    TypeOrmModule.forFeature([
-      LGCheckpointEntity,
-      LGWriteEntity,
-      RoundSummaryEntity,
-    ]),
+    TypeOrmModule.forFeature([LGCheckpointEntity, LGWriteEntity]),
   ],
   providers: [
     TypeOrmCheckpointSaver,
@@ -47,11 +30,7 @@ export class LangGraphCheckpointModule {
       module: LangGraphCheckpointModule,
       imports: [
         AICoreModule.forFeature(),
-        TypeOrmModule.forFeature([
-          LGCheckpointEntity,
-          LGWriteEntity,
-          RoundSummaryEntity,
-        ]),
+        TypeOrmModule.forFeature([LGCheckpointEntity, LGWriteEntity]),
       ],
       providers: [
         TypeOrmCheckpointSaver,

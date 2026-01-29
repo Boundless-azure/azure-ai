@@ -15,6 +15,28 @@ export interface QueryPrincipalDto {
   tenantId?: string;
 }
 
+export interface QueryUsersDto {
+  q?: string;
+  tenantId?: string;
+  type?: 'user_enterprise' | 'user_consumer' | 'system';
+}
+
+export interface CreateUserDto {
+  displayName: string;
+  principalType: 'user_enterprise' | 'user_consumer' | 'system';
+  email: string;
+  password?: string;
+  phone?: string | null;
+  tenantId?: string | null;
+}
+
+export interface UpdateUserDto {
+  displayName?: string;
+  email?: string;
+  phone?: string | null;
+  active?: boolean;
+}
+
 export interface CreatePrincipalDto {
   displayName: string;
   principalType:

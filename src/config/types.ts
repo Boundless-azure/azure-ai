@@ -1,5 +1,11 @@
 export type DbType = 'mysql' | 'postgres' | 'sqlite';
 
+/**
+ * @title 配置类型定义
+ * @description 定义应用程序各模块的配置接口
+ * @keywords-cn 配置接口, 类型定义, 数据结构
+ * @keywords-en config-interfaces, type-definitions, data-structures
+ */
 export interface DatabaseConfig {
   type: DbType;
   host?: string;

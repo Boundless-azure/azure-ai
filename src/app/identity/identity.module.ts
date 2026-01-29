@@ -5,6 +5,7 @@ import { OrganizationEntity } from './entities/organization.entity';
 import { MembershipEntity } from './entities/membership.entity';
 import { RoleEntity } from './entities/role.entity';
 import { RolePermissionEntity } from './entities/role-permission.entity';
+import { UserEntity } from './entities/user.entity';
 import { PrincipalService } from './services/principal.service';
 import { OrganizationService } from './services/organization.service';
 import { RoleService } from './services/role.service';
@@ -16,6 +17,7 @@ import { PrincipalController } from './controllers/principal.controller';
 import { OrganizationController } from './controllers/organization.controller';
 import { RoleController } from './controllers/role.controller';
 import { MembershipController } from './controllers/membership.controller';
+import { UsersController } from './controllers/users.controller';
 
 /**
  * @title Identity 模块
@@ -32,6 +34,7 @@ import { MembershipController } from './controllers/membership.controller';
       RoleEntity,
       RolePermissionEntity,
       PermissionDefinitionEntity,
+      UserEntity,
     ]),
   ],
   providers: [
@@ -46,6 +49,7 @@ import { MembershipController } from './controllers/membership.controller';
     OrganizationController,
     RoleController,
     MembershipController,
+    UsersController,
     PermissionDefinitionController,
   ],
   exports: [

@@ -188,10 +188,7 @@ export class AIModelService implements OnModuleInit {
       const agent = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
-      const invocationOptions = await this.buildInvocationOptions(
-        agent,
-        request,
-      );
+      const invocationOptions = this.buildInvocationOptions(agent, request);
       const response = await agent.invoke(
         {
           messages,
@@ -391,10 +388,7 @@ export class AIModelService implements OnModuleInit {
       const messages = this.convertToLangChainMessages(request.messages);
 
       const recursionLimit = 16;
-      const invocationOptions = await this.buildInvocationOptions(
-        agent,
-        request,
-      );
+      const invocationOptions = this.buildInvocationOptions(agent, request);
       const stream = agent.streamEvents(
         {
           messages,
@@ -706,16 +700,15 @@ export class AIModelService implements OnModuleInit {
    * - 根据提供的 request.params 应用模型调用参数（temperature/topP/maxTokens 等）。
    * - 不再在此处构建或传递工具/函数调用相关配置；如需启用原生工具绑定，请由上层自行决定并整合。
    */
-  private async buildInvocationOptions(
+  private buildInvocationOptions(
     model: unknown,
     request: AIModelRequest,
-  ): Promise<
+  ):
     | (ChatOpenAICompletionsCallOptions &
         ChatOpenAIResponsesCallOptions &
         ChatAnthropicCallOptions &
         GoogleGenerativeAIChatCallOptions)
-    | undefined
-  > {
+    | undefined {
     const callOptions = request.params
       ? this.applyModelParams(
           model,
@@ -724,10 +717,7 @@ export class AIModelService implements OnModuleInit {
       : {};
     let threadId: string | undefined = request.conversationGroupId;
     if (!threadId && request.sessionId) {
-      const gid = await this.contextService.getConversationGroupIdForSession(
-        request.sessionId,
-      );
-      threadId = gid ?? request.sessionId;
+      threadId = request.sessionId;
     }
     const cfg = threadId ? { configurable: { thread_id: threadId } } : {};
     return { ...callOptions, ...cfg };

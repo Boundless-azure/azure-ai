@@ -1,0 +1,49 @@
+模块名称：frontend/im（IM 前端模块）
+
+目录结构
+- constants/index.ts：IM namespace 与事件名常量
+- hooks/connection.ts：socket.io-client 连接选项构造（Authorization / auth.token）
+- hooks/im.api.ts：IM 事件封装（join-room / typing / read / event）
+- im.module.ts：统一导出常量与组合函数
+
+文件说明
+- constants/index.ts：定义 IM_NAMESPACE('/im') 与 IM_EVENTS 常量，用于前端统一引用事件名
+- hooks/connection.ts：构造连接参数；默认使用握手 auth.token；可选使用 Authorization: Bearer
+ - hooks/connection.ts：构造连接参数；默认使用握手 auth.token；可选使用 Authorization: Bearer；提供 createImSocket 与 setAuthAndConnect
+- hooks/im.api.ts：对 socket.emit/on 进行轻封装，统一请求/事件接口，避免在页面中散落字符串
+- im.module.ts：模块入口，导出全部公共函数与类型别名
+
+函数说明
+- buildImConnectionOptions(token, mode?)：返回连接选项（mode: 'auth' | 'header'），默认 'auth'
+- buildImNamespaceUrl(baseUrl)：拼接后端 IM namespace 地址
+ - createImSocket(io, baseUrl, token)：通过 io(url, opts) 创建连接（opts 使用 auth.token）
+ - setAuthAndConnect(socket, token)：设置 socket.auth 并触发 connect（适配 autoConnect=false）
+- joinSession(socket, sessionId)：加入会话房间
+- leaveSession(socket, sessionId)：离开会话房间
+- joinNotify(socket, principalId?)：加入个人通知房间（principalId 可选）
+- leaveNotify(socket)：离开个人通知房间
+- emitTyping(socket, sessionId, isTyping)：发送输入状态
+- emitRead(socket, sessionId, messageId)：发送已读回执
+- onImEvent(socket, listener)：监听统一事件流（im:event）
+
+关键词索引（中文 / English Keyword Index）
+IM常量 ↔ im-constants ↔ constants/index.ts
+连接选项 ↔ connection-options ↔ hooks/connection.ts
+事件封装 ↔ event-wrappers ↔ hooks/im.api.ts
+前端IM模块 ↔ im-frontend-module ↔ im.module.ts
+
+关键词到文件函数哈希映射（Keywords -> Function Hash）
+- buildImConnectionOptions -> im_conn_opts_001
+- buildImNamespaceUrl -> im_ns_url_002
+ - createImSocket -> im_create_socket_010
+ - setAuthAndConnect -> im_set_auth_connect_011
+- joinSession -> im_join_room_003
+- leaveSession -> im_leave_room_004
+- joinNotify -> im_join_notify_005
+- leaveNotify -> im_leave_notify_006
+- emitTyping -> im_emit_typing_007
+- emitRead -> im_emit_read_008
+- onImEvent -> im_on_event_009
+
+模块功能描述（Description）
+IM 前端模块提供与后端 IM WebSocket 网关一致的连接与事件封装：连接时通过 Authorization 或 auth.token 传递 JWT；加入/离开会话与个人通知房间；发送输入状态与已读回执；统一监听 im:event。该模块不直接依赖 socket.io-client，仅以轻量接口封装 emit/on，便于在各前端框架中复用与适配。

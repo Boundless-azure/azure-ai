@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { PrincipalEntity } from '@/app/identity/entities/principal.entity';
+import { UserEntity } from '@/app/identity/entities/user.entity';
 import { AuthService } from './services/auth.service';
 import { AuthController } from './controllers/auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -16,7 +17,7 @@ import { IdentityModule } from '@/app/identity/identity.module';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PrincipalEntity]),
+    TypeOrmModule.forFeature([PrincipalEntity, UserEntity]),
     PassportModule,
     IdentityModule,
   ],
