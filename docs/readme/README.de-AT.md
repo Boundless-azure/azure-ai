@@ -1,89 +1,69 @@
-# Xiaolan (Projektübersicht · Deutsch/Österreich)
+# Azure AI (XiaoLan)
 
-Sprachen wechseln: [Deutsch](/docs/readme/README.de.md) · [Deutsch (Österreich)](/docs/readme/README.de-AT.md) · [English](/docs/readme/README.en.md) · [中文](/docs/readme/README.zh-CN.md) · [עברית](/docs/readme/README.he.md) · [ไทย](/docs/readme/README.th.md)
+Sprachen: [English](/docs/readme/README.en.md) · [中文](/docs/readme/README.zh-CN.md)
 
-## Positionierung und Ziel
+## 🚀 Vision & Ziele
 
-1. Projektname: „Xiaolan“.
-2. Neue Interaktionsform: KI ersetzt das klassische Klick-Web; Nutzer steuern UI und Daten per natürlicher Sprache.
-3. Selbstwachstum: KI generiert Code‑Plugins, die zurück in das System fließen – ein kontinuierlicher Fähigkeits‑Kreislauf.
-4. Generierungs‑Constraints + Transaktions‑Bus (HookBus): Niedrige Abhängigkeiten, kontrollierbar und auditierbar – geeignet für Unternehmen.
-5. KI‑gesteuerte Frontend‑Komponenten: KI kontrolliert Komponenten direkt, vorhersagbar und überprüfbar.
+**"XiaoLan"** ist ein KI-Interaktionsportal der nächsten Generation, das entwickelt wurde, um traditionelle klickbasierte Web-Operationen durch Interaktionen in natürlicher Sprache zu ersetzen. Es ermöglicht Benutzern, Daten zu verwalten, Schnittstellen zu steuern und Geschäftslogik direkt durch Konversation auszuführen.
 
-## Aktueller Fortschritt (bereits implementiert)
+Kernfunktionen:
+*   **Selbstwachstum**: Die KI generiert autonom Code-Plugins, die sich wieder in die Plattform integrieren und so eine kontinuierliche Verbesserungsschleife schaffen.
+*   **Kontrollierte Generierung**: Verwendet "Generierungsbeschränkungen + Transaktionsbus (HookBus)", um sicherzustellen, dass KI-generierter Code sicher, abhängigkeitsarm und überprüfbar ist.
+*   **KI-Ausführungsstandards**: Standardisierte Steuerungsprotokolle für Frontend-Komponenten, die es der KI ermöglichen, die Benutzeroberfläche präzise zu manipulieren.
 
-- Konversation und Streaming
-  - Non‑Streaming: `ConversationService.chat()`
-  - Streaming (SSE‑ähnlich): `ConversationService.chatStream()`
+## 🛠️ Technische Architektur
 
-- Native Function‑Call via Services
-  - Beschreibungen unter `src/core/function-call/descriptions/`; jeder Service bietet `getHandle()` mit `description/validate/execute`.
-  - Die Konversations‑Schicht fügt `toolDescriptions` je nach aktivierten Services hinzu (native Tool‑Calls des Modells).
+### 1. Frontend (Web-Client)
+*   **Tech Stack**: Vue 3 (Composition API) + TypeScript + Tailwind CSS + Pinia.
+*   **Modulares Design**:
+    *   `Agent`-Modul: Kern der Chat-Interaktion.
+    *   `IM`-Modul: Entkoppelte Benutzeroberfläche und Kommunikation über `useImChatAdapter`.
+*   **Interaktionserlebnis**:
+    *   **Multimodale Eingabe**: Sprachaufzeichnung (Echtzeit-Wellenform/Minimalistische UI), Text, Emoji, Bildvorschau, Dateiverarbeitung.
+    *   **Intelligente Kontakte**: Automatische Gruppierung (KI-Agenten/Gruppen/Kontakte) mit Pinyin/Initialen-Sortierung.
+    *   **Streaming-Antwort**: Volle SSE-Unterstützung mit Echtzeit-Markdown-Rendering.
 
-- Verfügbare Function‑Call‑Services
-  - `PluginOrchestratorService` → Funktion: `plugin_orchestrate`
-    - Startpunkt für „Planen zuerst, Generieren danach“.
-    - Das Modell sendet nur `input`; System ergänzt `phase/modelId/temperature`.
-  - `MysqlReadonlyService` → Funktion: `db_mysql_select`
-    - Read‑Only Queries; Validierung: `params` muss ein Array primitiver Werte sein (string/number/boolean/null) und `limit` erforderlich. Rückgabe: `Record<string, unknown>[]`.
-  - `ContextFunctionService` → Funktion: `context_window_keyword`
-    - Alias: `context_keyword_window`.
+### 2. Backend (Server)
+*   **Service-Orchestrierung**: Modulare Dienste (basierend auf NestJS).
+*   **Function Call**: Native LLM-Funktionsintegration mit dynamischer Tool-Injektion.
+    *   `PluginOrchestratorService`: Plugin-Orchestrierung.
+    *   `MysqlReadonlyService`: Sichere schreibgeschützte Datenbankabfragen.
+*   **HookBus**: Der zentrale Bus, der Frontend-Aktionen und Backend-Logik verbindet und Ereigniskonsistenz und -reihenfolge gewährleistet.
 
-- Service‑basierte Registrierung (empfohlen)
-  - Konfiguration in `src/app/conversation/conversation.module.ts`.
-  - Beispiel: Nur MySQL Read‑Only aktivieren
-    - `includeFunctionServices: [MysqlReadonlyService]`
+## 📅 Roadmap
 
-- Ausführungslogik (`ConversationService`)
-  - Per Name (inkl. Alias) auswählen → `validate` → `execute`.
-  - Sonderfall `plugin_orchestrate`: System füllt Parameter; das Modell liefert nur `input`.
+### ✅ Abgeschlossen (Phase 1: Fundament & Interaktion)
+- [x] **Frontend-Framework**: Modulares Vue 3 + Tailwind Setup.
+- [x] **Chat-Interaktion**: Streaming-Nachrichten-Rendering, Markdown-Unterstützung.
+- [x] **Spracheingabe**: Minimalistische Aufnahme-UI mit Echtzeit-Lautstärke-Wellenform.
+- [x] **Multimodale Unterstützung**: Emoji-Picker, Bildvorschau für Mobile/PC, Dateisystemintegration.
+- [x] **Intelligentes Adressbuch**: Gruppierungsstrategie (KI-Agenten > Gruppen > Kontakte) und Pinyin-Sortierung.
+- [x] **Internationalisierung**: i18n-Unterstützung.
 
-- Qualität und Zusammenarbeit
-  - ESLint ignoriert ungenutzte Variablen mit Unterstrich‑Präfix; nützlich im Function‑Call‑Kontext.
-  - Modulhinweise: `src/core/function-call/module.tip`.
+### 🚧 In Arbeit (Phase 2: Kern-KI-Fähigkeiten)
+- [ ] **DB-Schreiboperationen**: Sichere SQL-Ausführung mit Whitelisting und Auditing.
+- [ ] **Granulare Berechtigungen**: Zugriffskontrolle auf Zeilen-/Spaltenebene.
+- [ ] **HookBus-Integration**: Einheitlicher Bus für Frontend-Backend-Aktionen.
+- [ ] **Selbstwachstumsschleife**: "Planen -> Generieren -> Testen -> Bereitstellen" Workflow.
 
-## Spezifikation: KI‑gesteuerte Frontend‑Ausführung (Überblick)
+### 🔮 Zukunft (Phase 3: Tiefe Integration)
+- [ ] **Auto-CRUD**: Generierung von Verwaltungsseiten aus dem DB-Schema.
+- [ ] **Multi-Agenten-Kollaboration**: Komplexe Aufgabenorchestrierung.
+- [ ] **Geschäfts-Plugins**: Kundenanalysen, automatisierte Berichte usw.
 
-- Aktion‑Benennungen: stabil und reproduzierbar, z. B. `openModal` / `updateTable` / `navigate`.
-- Parameter‑Validierung: Typen und Pflichtfelder definieren; unkontrollierte Nebenwirkungen ablehnen.
-- Idempotenz: Mehrfachausführung ohne widersprüchlichen Zustand; Transaktions‑Rollback unterstützen.
-- Timeouts & Retry: Jede Aktion mit Timeout, Retry und Fallback.
-- Sicherheit & Audit: Vollständige Protokollierung mit Kontext‑Snapshot.
-- HookBus: Frontend‑/Backend‑Aktionen über den Bus integrieren, Reihenfolge und Konsistenz sicherstellen.
+## 🚦 Schnellstart
 
-## Roadmap
-
-- Direkte DB‑Ausführung (Schreiben)
-  - Sicherer SQL‑Entry: Whitelist, Platzhalter‑Check, sensitive Workloads isolieren.
-  - Rechte‑System: Rollen/ Mandantensteuerung mit Audit‑Logs.
-
-- DB‑Sicherheit und Berechtigungen
-  - Fein granulare Kontrolle auf Schema/ Tabelle/ Spalte.
-  - Risikoerkennung, Management, Alarmierung und Rollback.
-
-- Intelligente Plugin‑Generierung (Selbstwachstum)
-  - Plan → Generate → Test → Publish.
-  - Generierungs‑Constraints: Dependencies/Versionen/Lizenzen kontrollieren; tiefe Ketten vermeiden.
-
-- Seitengenerierung basierend auf bestehenden Tabellen
-  - CRUD‑Screens inkl. Routing und Berechtigungen automatisch erstellen.
-  - Integration mit HookBus/Plugins (z. B. `plugins/customer-analytics`).
-
-## Quick Start
-
-1) Installieren & Build
-
+1. **Abhängigkeiten installieren**
 ```bash
 npm install
+```
+
+2. **Entwicklungsserver starten**
+```bash
+npm run dev
+```
+
+3. **Für Produktion bauen**
+```bash
 npm run build
 ```
-
-2) Aktivierte Services konfigurieren (`includeFunctionServices`)
-
-3) Entwicklungsserver starten (sofern vorhanden)
-
-```bash
-npm run start:dev
-```
-
-Hinweis: Für lokale DB‑Entwicklung siehe `docker/mysql/init` und `.env`. Beginnen Sie mit `MysqlReadonlyService`; Schreibzugriffe erst aktivieren, wenn Rechte‑ & Audit‑Mechanismen stehen.

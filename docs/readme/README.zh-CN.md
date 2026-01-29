@@ -1,89 +1,69 @@
-# 小蓝（项目概览 · 中文）
+# 小蓝 (Azure AI)
 
-语言切换：[中文](/docs/readme/README.zh-CN.md) · [English](/docs/readme/README.en.md) · [Deutsch](/docs/readme/README.de.md) · [Deutsch (Österreich)](/docs/readme/README.de-AT.md) · [עברית](/docs/readme/README.he.md) · [ไทย](/docs/readme/README.th.md)
+语言版本：[English](/docs/readme/README.en.md) · [中文](/docs/readme/README.zh-CN.md)
 
-## 定位与目标
+## 🚀 项目定位与愿景
 
-1. 项目叫「小蓝」。
-2. 作为新一代交互入口，用 AI 替代旧时代的 Web 点击式操作，让用户通过自然语言直接进行界面交互或数据管理。
-3. 具备“自增长能力”：由 AI 自动生成代码插件，回流并接入到本平台，形成持续增强的能力闭环。
-4. 通过“生成限定 + 事务总线（HookBus）”机制，约束 AI 产出为低依赖、低嵌套的可企用代码，保证接入与上线可控。
-5. 提供“前端组件 AI 执行规范”，让 AI 可以直接操控前端组件完成可预测、可审计的交互流程。
+**“小蓝”** 是新一代的 AI 交互入口，旨在通过自然语言替代旧时代的 Web 点击式操作。用户可以直接通过对话进行界面交互、数据管理和业务处理。
 
-## 目前项目进展（What works now）
+核心特性：
+*   **自增长能力**：由 AI 自动生成代码插件，回流并接入到本平台，形成持续增强的能力闭环。
+*   **可控生成**：通过“生成限定 + 事务总线（HookBus）”机制，确保 AI 产出的代码低依赖、低嵌套、可审计。
+*   **AI 执行规范**：标准化的前端组件控制协议，让 AI 精确操控界面。
 
-- 对话与流式响应
-  - 非流式：`ConversationService.chat()`
-  - 流式：`ConversationService.chatStream()`（SSE 风格）
+## 🛠️ 技术架构与实现思路
 
-- 原生 function-call 集成（由服务类提供句柄）
-  - 函数描述位于 `src/core/function-call/descriptions/`；各服务通过 `getHandle()` 暴露 `description/validate/execute`。
-  - 对话层基于启用的服务自动注入 `toolDescriptions` 到模型请求（模型原生 function-call）。
+### 1. 前端架构 (Web Client)
+*   **核心栈**：Vue 3 (Composition API) + TypeScript + Tailwind CSS + Pinia。
+*   **模块化设计**：
+    *   `Agent` 模块：承载核心对话交互。
+    *   `IM` 模块：通过适配器模式 (`useImChatAdapter`) 解耦 UI 与通信层。
+*   **交互体验优化**：
+    *   **多模态输入**：支持语音录制（实时波形/极简黑白UI）、文本、Emoji 表情、图片粘贴预览及文件上传。
+    *   **智能通讯录**：自动识别会话类型（AI 智能体/群聊/私聊），支持中文拼音首字母自动排序与分组。
+    *   **流式响应**：全链路支持 SSE 流式输出与 Markdown 实时渲染。
 
-- 已提供的函数服务（Function-Call Services）
-  - `PluginOrchestratorService` → 函数：`plugin_orchestrate`
-    - 用于“先规划（plan）后生成（generate）”的插件生成入口。
-    - 模型只需给 `input`；系统会补齐 `phase/modelId/temperature`。
-  - `MysqlReadonlyService` → 函数：`db_mysql_select`
-    - 只读查询，参数校验：`params` 必须是原始值（string/number/boolean/null）数组，必须带 `limit`；返回统一为 `Record<string, unknown>[]`。
-  - `ContextFunctionService` → 函数：`context_window_keyword`
-    - 兼容别名：`context_keyword_window`（沿用同一校验与执行器）。
+### 2. 后端架构 (Server)
+*   **服务编排**：基于 NestJS (推荐) 的模块化服务。
+*   **Function Call**：原生集成 LLM 函数调用，支持动态工具注入。
+    *   `PluginOrchestratorService`: 插件编排服务。
+    *   `MysqlReadonlyService`: 安全的只读数据查询。
+*   **HookBus 事务总线**：连接前端操作与后端逻辑的核心通道，保证事件的一致性与顺序性。
 
-- 按“服务类”开关注册函数（推荐）
-  - 配置位置：`src/app/conversation/conversation.module.ts`
-  - 示例：只启用 MySQL 只读查询
-    - `includeFunctionServices: [MysqlReadonlyService]`
+## 📅 待办清单 (Roadmap)
 
-- 对话层执行逻辑（`ConversationService`）
-  - 解析函数调用：按名称找到对应句柄（兼容别名），先 `validate` 后 `execute`。
-  - 特殊处理 `plugin_orchestrate`：系统补齐 `phase/modelId/temperature`，模型只需提供 `input`。
+### ✅ 已完成 (Phase 1: 基础交互与体验)
+- [x] **前端基础框架**：Vue 3 + Tailwind 模块化架构搭建。
+- [x] **对话交互**：流式消息渲染、Markdown 支持、会话管理。
+- [x] **语音输入增强**：实现极简风格的录音 UI，支持实时音量波形动画。
+- [x] **多模态支持**：集成 Emoji 选择器、移动/PC 端图片预览、非图片文件系统打开。
+- [x] **智能通讯录**：实现“AI 智能体 > 群聊 > 联系人”分组策略，及中文拼音首字母排序。
+- [x] **国际化支持**：中英文多语言切换。
 
-- 质量与协作
-  - ESLint 规则已支持“下划线前缀变量免提示未使用”，便于在函数调用上下文中标记保留变量。
-  - 文档与结构说明补充：`src/core/function-call/module.tip`。
+### 🚧 进行中 (Phase 2: 核心 AI 能力)
+- [ ] **数据库写操作**：实现基于白名单与审计的安全 SQL 执行引擎。
+- [ ] **权限精细化**：库/表/列级别的访问控制与风控策略。
+- [ ] **HookBus 对接**：完善前后端动作的统一总线接入。
+- [ ] **插件自增长闭环**：打通“规划 -> 代码生成 -> 测试 -> 部署”全流程。
 
-## 前端组件 AI 执行规范（概要）
+### 🔮 未来计划 (Phase 3: 深度集成)
+- [ ] **自动 CRUD 生成**：根据表结构自动生成管理页面。
+- [ ] **多智能体协作**：复杂任务的 Agent 编排与协作。
+- [ ] **业务深度插件**：如客户分析、报表自动生成等。
 
-- 组件动作命名：明确、稳定、可回放，例如 `openModal` / `updateTable` / `navigate`。
-- 参数校验：定义各动作的参数类型与必填项，拒绝含有副作用的未审计参数。
-- 幂等要求：同一动作多次执行不导致不一致状态，支持事务化回滚。
-- 超时与重试：每次执行包含超时、重试与失败回退策略。
-- 安全与审计：所有执行均产生日志与上下文快照，便于审计与追踪。
-- 事务总线（HookBus）对接：前端与后端动作统一接入总线，保证事件顺序与一致性。
+## 🚦 快速开始
 
-## 未来计划（Roadmap）
-
-- 数据库语句直接执行（写操作）
-  - 安全 SQL 入口：白名单、占位符数量校验、敏感操作隔离。
-  - 与权限管理打通：角色/租户控制与审计留痕。
-
-- 数据库安全与权限管理
-  - 库/表/列级别细粒度访问控制。
-  - 行为审计与风控：告警与回滚策略。
-
-- 智能生成插件（自增长能力强化）
-  - 完整闭环：计划 → 代码生成 → 测试 → 发布。
-  - 生成限定策略：控制依赖数量、版本与许可，避免深度嵌套。
-
-- 根据现有表自动生成页面能力
-  - 自动生成 CRUD 页面，绑定路由与权限策略。
-  - 与 HookBus/插件生态（如 `plugins/customer-analytics`）打通。
-
-## 开始使用（Quick Start）
-
-1. 安装依赖并编译
-
+1. **安装依赖**
 ```bash
 npm install
+```
+
+2. **启动开发环境**
+```bash
+npm run dev
+```
+
+3. **构建生产版本**
+```bash
 npm run build
 ```
-
-2. 配置函数服务开关（如上 `includeFunctionServices` 示例）
-
-3. 启动开发服务器（如有）
-
-```bash
-npm run start:dev
-```
-
-提示：数据库相关的本地开发，可参考 `docker/mysql/init` 与 `.env`；优先使用 `MysqlReadonlyService` 完成只读查询，在启用写操作前做好权限与审计。

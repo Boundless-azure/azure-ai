@@ -2,3 +2,5 @@ node_modules
 dist
 coverage-unit
 tmp-tip-write
+.trae
+.agent
