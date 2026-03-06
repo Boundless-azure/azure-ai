@@ -39,6 +39,7 @@ export type ChatMemberRole =
 export const ImMemberInfoSchema = z.object({
   principalId: z.string(),
   displayName: z.string(),
+  avatarUrl: z.string().nullable().optional(),
   role: z.enum(['owner', 'admin', 'member']),
   joinedAt: z.string().nullable(),
   lastReadAt: z.string().nullable(),
@@ -50,6 +51,7 @@ export const ImSessionSummarySchema = z.object({
   sessionId: z.string(),
   name: z.string().nullable(),
   type: z.enum(['private', 'group', 'channel']),
+  isPinned: z.boolean().optional(),
   avatarUrl: z.string().nullable(),
   members: z.array(ImMemberInfoSchema),
   lastMessageId: z.string().nullable().optional(),

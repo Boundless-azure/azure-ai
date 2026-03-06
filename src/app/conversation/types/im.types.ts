@@ -12,7 +12,11 @@ import {
   IsEnum,
   IsArray,
   IsUUID,
+  IsBoolean,
   ValidateNested,
+  IsInt,
+  MaxLength,
+  Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
@@ -47,6 +51,23 @@ export class CreateImSessionDto {
   @IsArray()
   @IsString({ each: true })
   memberIds?: string[];
+}
+
+/**
+ * 更新会话请求（群名、描述等）
+ */
+export class UpdateImSessionDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isPinned?: boolean;
 }
 
 /**
@@ -100,11 +121,30 @@ export class AddMemberDto {
 }
 
 /**
+ * 邀请成员（用于群聊加人 / 私聊拉群）
+ */
+export class InviteMembersDto {
+  @IsArray()
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  principalIds!: string[];
+}
+
+export interface InviteMembersResponse {
+  sessionId: string;
+  action: 'created_group' | 'added_to_session' | 'noop';
+  sessionName?: string;
+  addedCount?: number;
+  systemText?: string;
+}
+
+/**
  * 成员信息
  */
 export interface ImMemberInfo {
   principalId: string;
   displayName: string;
+  avatarUrl?: string | null;
   role: ChatMemberRole;
   joinedAt: Date | null;
   lastReadAt: Date | null;
@@ -170,10 +210,44 @@ export interface ImMessageInfo {
   replyToId: string | null;
   attachments: AttachmentDto[] | null;
   isEdited: boolean;
+  isAnnouncement: boolean;
   createdAt: Date;
 }
 
 export type ImMessageListResponse = ImCursorResult<ImMessageInfo>;
+
+// ========== 公告相关类型 ==========
+
+/**
+ * 发布公告请求
+ */
+export class CreateAnnouncementDto {
+  @IsString()
+  @IsNotEmpty()
+  content!: string;
+}
+
+/**
+ * 获取公告列表请求
+ */
+export class GetAnnouncementsDto {
+  @IsOptional()
+  limit?: number;
+}
+
+export interface ImAnnouncementListResponse {
+  items: ImMessageInfo[];
+  total: number;
+}
+
+/**
+ * 转移群主请求
+ */
+export class TransferOwnerDto {
+  @IsString()
+  @IsNotEmpty()
+  principalId!: string;
+}
 
 export class GetSessionsDto {
   @IsOptional()
@@ -306,4 +380,71 @@ export interface AgentResponseRequest {
   agentPrincipalId: string;
   triggerMessageId: string;
   userContent: string;
+}
+
+// ========== 通讯录分组相关类型 ==========
+
+/**
+ * @title 创建通讯录分组请求
+ * @description 创建当前主体的联系人分组。
+ * @keywords-cn 创建分组, 通讯录分组, 联系人分组
+ * @keywords-en create-group, contact-group, address-book-group
+ */
+export class CreateImContactGroupDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name!: string;
+}
+
+/**
+ * @title 更新通讯录分组请求
+ * @description 重命名/调整排序/启用或禁用分组。
+ * @keywords-cn 更新分组, 重命名, 排序, 启用
+ * @keywords-en update-group, rename, sort-order, active
+ */
+export class UpdateImContactGroupDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+}
+
+/**
+ * @title 批量添加分组成员请求
+ * @description 将一批主体 ID 添加到指定分组。
+ * @keywords-cn 添加分组成员, 批量, 主体ID
+ * @keywords-en add-members, batch, principal-ids
+ */
+export class AddImContactGroupMembersDto {
+  @IsArray()
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  principalIds!: string[];
+}
+
+/**
+ * @title 通讯录分组信息
+ * @description 分组列表返回的扁平结构，包含成员数量。
+ * @keywords-cn 分组信息, 成员数量, 列表
+ * @keywords-en group-info, member-count, list
+ */
+export interface ImContactGroupInfo {
+  id: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+  memberCount: number;
+  createdAt: Date;
+  updatedAt: Date;
 }

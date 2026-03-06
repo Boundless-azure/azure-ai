@@ -46,6 +46,7 @@ Agent表 -> app/agent/entities/agent.entity.ts
 改删查接口 -> app/agent/controllers/*
 用途说明 -> app/agent/entities/agent.entity.ts
 拟人昵称 -> app/agent/entities/agent.entity.ts
+头像地址 -> app/agent/entities/agent.entity.ts
 节点状态 -> app/agent/entities/agent-execution.entity.ts
 最新返回 -> app/agent/entities/agent-execution.entity.ts
 上下文关联 -> app/agent/entities/agent-execution.entity.ts
@@ -61,4 +62,4 @@ Agent表 -> app/agent/entities/agent.entity.ts
 - AgentExecutionController.update -> 84ad315e
 
 模块功能描述（Description）
-本模块提供 Agent 与其执行记录的持久化与接口，仅支持查询、修改（受限字段）与删除。Agent 修改仅允许更新“昵称”与“用途说明”。执行记录允许更新节点状态、最新返回与上下文关联。
+本模块提供 Agent 与其执行记录的持久化与接口，仅支持查询、修改（受限字段）与删除。Agent 修改允许更新“昵称”“用途说明”“头像地址”。执行记录允许更新节点状态、最新返回与上下文关联。

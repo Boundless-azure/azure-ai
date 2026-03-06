@@ -12,19 +12,27 @@ export function useChatContacts() {
   const allContacts = ref<SessionListItem[]>([]);
   const { list: listPrincipals } = usePrincipals();
 
+  const normalizeAvatarUrl = (
+    avatarUrl: string | null | undefined,
+  ): string | null => {
+    const raw = typeof avatarUrl === 'string' ? avatarUrl.trim() : '';
+    return raw ? raw : null;
+  };
+
   const loadContacts = async () => {
     try {
       const principals = await listPrincipals();
       const nowIso = new Date().toISOString();
       const mapped = (principals || []).map((p) => {
+        const isAgent = p.principalType === 'agent';
         const item: SessionListItem = {
           id: `contact:${p.id}`,
           title: p.displayName,
           chatClientId: null,
           threadType: 'dm',
           isPinned: false,
-          isAiInvolved: p.principalType === 'agent',
-          avatarUrl: p.avatarUrl || null,
+          isAiInvolved: isAgent,
+          avatarUrl: normalizeAvatarUrl(p.avatarUrl),
           createdAt: nowIso,
           updatedAt: nowIso,
         };

@@ -1,0 +1,43 @@
+模块名称：app/resource（统一资源上传与访问模块）
+
+概述
+- 提供统一资源上传接口：限制 100MB、计算文件 MD5、重复 MD5 视为“假上传”，仅新增记录并复用存储路径。
+- 提供统一资源访问接口：按资源表 id 进行流式返回，支持 Range、ETag 与缓存头，尽可能接近 Nginx 静态文件能力。
+
+文件清单（File List）
+- app/resource/entities/resource.entity.ts
+- app/resource/types/resource.types.ts
+- app/resource/services/resource.service.ts
+- app/resource/controllers/resource.controller.ts
+- app/resource/resource.module.ts
+
+函数清单（Function Index）
+- ResourceService
+  - upload(file, uploaderId)
+  - getResourceFileOrThrow(id)
+- ResourceController
+  - POST /resources/upload
+  - GET /resources/:id
+
+关键词索引（中文 / English Keyword Index）
+资源表 -> app/resource/entities/resource.entity.ts
+资源上传 -> app/resource/controllers/resource.controller.ts
+资源访问 -> app/resource/controllers/resource.controller.ts
+资源服务 -> app/resource/services/resource.service.ts
+资源类型 -> app/resource/types/resource.types.ts
+资源模块 -> app/resource/resource.module.ts
+
+快速检索映射（Keywords -> Files）
+- "ResourceEntity" -> app/resource/entities/resource.entity.ts
+- "ResourceService" -> app/resource/services/resource.service.ts
+- "ResourceController" -> app/resource/controllers/resource.controller.ts
+- "ResourceModule" -> app/resource/resource.module.ts
+
+关键词到文件函数哈希映射（Keywords -> Function Hash）
+- ResourceService.upload -> res_upload_001
+- ResourceService.getResourceFileOrThrow -> res_get_file_or_throw_002
+- ResourceController.upload -> res_ctl_upload_003
+- ResourceController.get -> res_ctl_get_004
+
+模块功能描述（Description）
+本模块统一了文件资源的上传、去重与访问：上传阶段对文件计算 MD5 并按 MD5 归档存储，重复内容不会重复落盘；访问阶段按资源 ID 进行流式返回，支持 Range 与缓存相关响应头，方便前端以 <img>/<video> 直接引用并获得良好的性能表现。

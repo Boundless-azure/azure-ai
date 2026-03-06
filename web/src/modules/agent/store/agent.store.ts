@@ -8,7 +8,6 @@
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import type { ChatMessage, GroupHistoryItem } from '../types/agent.types';
-import { imApi } from '../../../api/im';
 import { useImStore } from '../../im/im.module';
 import { ChatHistoryCache } from '../cache/chat-history.cache';
 import ImConfigCache from '../cache/im-config.cache';
@@ -30,7 +29,6 @@ export const useAgentStore = defineStore('agent', () => {
   const chatClientId = ref<string>('');
   const currentSessionId = ref<string | undefined>(undefined);
   const currentSessionTitle = ref<string>('');
-  const threadReadAt = ref<Record<string, string>>({});
   const chatHistoryTable = ref<Record<string, Record<string, ChatMessage[]>>>(
     {},
   );
@@ -49,7 +47,6 @@ export const useAgentStore = defineStore('agent', () => {
         currentSessionId?: string;
         currentSessionTitle?: string;
         lastVisitedDate?: string;
-        threadReadAt?: Record<string, string>;
       };
       const today = getLocalDateString();
       if (!parsed.lastVisitedDate || parsed.lastVisitedDate !== today) {
@@ -65,9 +62,6 @@ export const useAgentStore = defineStore('agent', () => {
       }
       if (parsed.currentSessionTitle) {
         currentSessionTitle.value = parsed.currentSessionTitle;
-      }
-      if (parsed.threadReadAt && typeof parsed.threadReadAt === 'object') {
-        threadReadAt.value = parsed.threadReadAt;
       }
     }
   } catch (e) {
@@ -92,7 +86,6 @@ export const useAgentStore = defineStore('agent', () => {
           currentSessionId: currentSessionId.value,
           currentSessionTitle: currentSessionTitle.value,
           lastVisitedDate: getLocalDateString(),
-          threadReadAt: threadReadAt.value,
         }),
       );
     } catch (e) {
@@ -101,38 +94,9 @@ export const useAgentStore = defineStore('agent', () => {
   };
 
   watch(
-    [
-      selectedDate,
-      chatClientId,
-      currentSessionId,
-      currentSessionTitle,
-      threadReadAt,
-    ],
+    [selectedDate, chatClientId, currentSessionId, currentSessionTitle],
     persistState,
   );
-
-  /**
-   * @title 获取当前用户 PrincipalId
-   * @description 从 localStorage 中解析当前身份信息，用于读取 chat_session_members 游标。
-   * @keywords-cn 主体ID, 本地存储, 读取游标
-   * @keywords-en principal-id, local-storage, read-cursor
-   */
-  function getCurrentPrincipalId(): string | undefined {
-    try {
-      const principalRaw = localStorage.getItem('principal');
-      if (principalRaw) {
-        const parsed = JSON.parse(principalRaw) as { id?: string } | null;
-        const pid =
-          parsed && typeof parsed.id === 'string' ? parsed.id.trim() : '';
-        if (pid) return pid;
-      }
-      const legacy = localStorage.getItem('identity.currentPrincipalId');
-      const id = (legacy || '').trim();
-      return id || undefined;
-    } catch {
-      return undefined;
-    }
-  }
 
   // Actions
   function setSelectedDate(date: string) {
@@ -142,23 +106,6 @@ export const useAgentStore = defineStore('agent', () => {
   function setCurrentSession(id: string | undefined, title: string) {
     currentSessionId.value = id;
     currentSessionTitle.value = title;
-  }
-
-  function markThreadRead(id: string, at?: string) {
-    if (!id) return;
-    const ts = at || new Date().toISOString();
-    threadReadAt.value = { ...threadReadAt.value, [id]: ts };
-  }
-
-  /**
-   * @title 设置会话游标
-   * @description 显式设置会话的 lastReadAt（ISO 字符串）。
-   * @keywords-cn 会话游标, 已读时间
-   * @keywords-en session-cursor, last-read-at
-   */
-  function setThreadReadCursor(sessionId: string, iso: string) {
-    if (!sessionId || !iso) return;
-    threadReadAt.value = { ...threadReadAt.value, [sessionId]: iso };
   }
 
   function ensureSessionDate(sessionId: string, date: string) {
@@ -421,43 +368,14 @@ export const useAgentStore = defineStore('agent', () => {
     void ImConfigCache.setLastMessageId(sessionId, principalId, message.id);
   }
 
-  /**
-   * @title 同步会话游标（chat_session_members）
-   * @description 读取服务器端成员游标并更新本地已读时间，用于正确计算未读量。
-   * @keywords-cn 未读量, 成员游标, 同步
-   * @keywords-en unread-count, member-cursor, sync
-   */
-  async function syncReadCursorForSessions(
-    sessionIds: string[],
-    principalId?: string,
-  ): Promise<void> {
-    const pid = principalId || getCurrentPrincipalId();
-    if (!pid) return;
-    for (const sid of sessionIds) {
-      try {
-        const resp = await imApi.getMembers(sid);
-        const list = resp && resp.data ? resp.data : [];
-        const self = list.find((m) => m.principalId === pid);
-        const last =
-          self && typeof self.lastReadAt === 'string' ? self.lastReadAt : null;
-        if (last) setThreadReadCursor(sid, last);
-      } catch {
-        // ignore single-session failure
-      }
-    }
-  }
-
   return {
     selectedDate,
     chatClientId,
     currentSessionId,
     currentSessionTitle,
-    threadReadAt,
     chatHistoryTable,
     setSelectedDate,
     setCurrentSession,
-    markThreadRead,
-    setThreadReadCursor,
     getSessionMessages,
     setSessionMessages,
     addSessionMessage,
@@ -467,6 +385,5 @@ export const useAgentStore = defineStore('agent', () => {
     fetchSessionMessages,
     syncSession,
     appendLocalMessage,
-    syncReadCursorForSessions,
   };
 });

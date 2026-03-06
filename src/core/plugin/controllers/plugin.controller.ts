@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { PluginService } from '../services/plugin.service';
 import { PluginEntity } from '../entities/plugin.entity';
@@ -28,8 +29,8 @@ export class PluginController {
    * 获取插件列表（按更新时间倒序）
    * @returns 插件实体数组
    */
-  async list(): Promise<PluginEntity[]> {
-    return this.service.list();
+  async list(@Query('sessionId') sessionId?: string): Promise<PluginEntity[]> {
+    return this.service.list({ sessionId });
   }
 
   @Get(':id')
@@ -46,12 +47,17 @@ export class PluginController {
   /**
    * 注册（录入）插件：通过插件目录读取配置并生成关键词入库
    * @param pluginDir 请求体中的插件目录（相对或绝对路径），例如：plugins/customer-analytics
+   * @param sessionId 可选：关联的会话 ID（用于按会话隔离 apps）
    * @returns 保存后的插件实体
    * @throws 当 pluginDir 未提供或配置文件缺失时抛出错误
    */
-  async register(@Body('pluginDir') pluginDir: string): Promise<PluginEntity> {
+  async register(
+    @Body('pluginDir') pluginDir: string,
+    @Body('sessionId') sessionId?: string,
+  ): Promise<PluginEntity> {
     if (!pluginDir) throw new Error('pluginDir is required');
-    return this.service.registerByDir(pluginDir);
+    if (!sessionId) throw new Error('sessionId is required');
+    return this.service.registerByDir(pluginDir, { sessionId });
   }
 
   @Put(':id')

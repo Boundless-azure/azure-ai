@@ -12,6 +12,7 @@ export const moduleTip = {
     cn: {
       身份管理入口: 'src/modules/identity/components/IdentityManager.vue',
       用户管理: 'src/modules/identity/components/UserManagement.vue',
+      用户头像编辑: 'src/modules/identity/components/UserManagement.vue',
       组织管理: 'src/modules/identity/components/OrganizationManagement.vue',
       角色管理: 'src/modules/identity/components/RoleManagement.vue',
       权限管理: 'src/modules/identity/components/PermissionManagement.vue',
@@ -29,6 +30,7 @@ export const moduleTip = {
     en: {
       identity_manager: 'src/modules/identity/components/IdentityManager.vue',
       user_management: 'src/modules/identity/components/UserManagement.vue',
+      user_avatar_edit: 'src/modules/identity/components/UserManagement.vue',
       organization_management:
         'src/modules/identity/components/OrganizationManagement.vue',
       role_management: 'src/modules/identity/components/RoleManagement.vue',
@@ -71,6 +73,7 @@ export const moduleTip = {
     usePrincipals_createUser: 'web_id_hook_principals_create_user_021',
     usePrincipals_updateUser: 'web_id_hook_principals_update_user_022',
     usePrincipals_removeUser: 'web_id_hook_principals_remove_user_023',
+    UserManagement_onAvatarConfirm: 'web_id_user_mgmt_avatar_confirm_024',
     useOrganizations_list: 'web_id_hook_org_list_005',
     useOrganizations_create: 'web_id_hook_org_create_006',
     useOrganizations_update: 'web_id_hook_org_update_007',

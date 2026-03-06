@@ -12,8 +12,5 @@ export * from './types/im.types';
 export { imSocketService, ImSocketService } from './services/im.socket.service';
 export type { ImSocketCallbacks, ImEvent } from './services/im.socket.service';
 
-// Hooks
-export { useImChat } from './hooks/useImChat';
-
 // Store
 export { useImStore } from './store/im.store';

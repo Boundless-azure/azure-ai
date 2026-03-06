@@ -15,6 +15,7 @@ import {
   WorkflowEdgeStatus,
   WorkflowGraphStatus,
 } from '../enums/agent.enums';
+import type { ImSessionSummary } from '../../../api/im';
 import { z } from 'zod';
 
 export interface ToolCall {
@@ -160,6 +161,100 @@ export interface Participant {
   name?: string;
 }
 
+export function mapImSessionToSessionListItem(
+  s: ImSessionSummary,
+  principal: { id?: string; displayName?: string },
+): SessionListItem {
+  const selfId = principal.id;
+  const selfName = principal.displayName;
+
+  const memberIds = Array.isArray(s.members)
+    ? Array.from(
+        new Set(
+          s.members
+            .map((m) => (m?.principalId ? m.principalId.trim() : ''))
+            .filter(Boolean),
+        ),
+      )
+    : [];
+
+  const isAzureFixedPrivate =
+    s.type === 'private' && memberIds.includes('azure-ai');
+  const isSystemFixedPrivate =
+    s.type === 'private' && memberIds.includes('ai-notify');
+
+  let threadType: SessionListItem['threadType'] = 'group';
+  let isAiInvolved = false;
+  let isFixedEntry = false;
+  if (s.sessionId === 'azure-ai' || isAzureFixedPrivate) {
+    threadType = 'assistant';
+    isAiInvolved = true;
+    isFixedEntry = true;
+  } else if (
+    s.sessionId === 'ai-notify' ||
+    s.type === 'channel' ||
+    isSystemFixedPrivate
+  ) {
+    threadType = 'system';
+    isFixedEntry = true;
+  } else if (s.type === 'private') {
+    threadType = 'dm';
+  } else {
+    threadType = 'group';
+  }
+
+  let title = s.name || null;
+  if (s.type === 'private') {
+    const nameTrimmed = title ? title.trim() : '';
+    const shouldResolve =
+      !nameTrimmed || (!!selfName && nameTrimmed === selfName);
+    if (shouldResolve) {
+      const members = Array.isArray(s.members) ? s.members : [];
+      let other = members.find((m) =>
+        selfId ? m.principalId !== selfId : false,
+      );
+      if (!other && selfName) {
+        other = members.find(
+          (m) => !!m.displayName && m.displayName !== selfName,
+        );
+      }
+      if (!other && members.length > 0) {
+        other = members[0];
+      }
+      title = other?.displayName || title;
+    }
+  }
+
+  return {
+    id: s.sessionId,
+    title,
+    chatClientId: null,
+    threadType,
+    isPinned: !!s.isPinned,
+    isFixedEntry,
+    isAiInvolved,
+    unreadCount: typeof s.unreadCount === 'number' ? s.unreadCount : undefined,
+    lastMessage: s.lastMessagePreview || undefined,
+    avatarUrl: s.avatarUrl,
+    createdAt: s.createdAt,
+    updatedAt: s.lastMessageAt || s.createdAt,
+    members: memberIds,
+  };
+}
+
+export function mapImSessionsToSessionListItems(
+  sessions: ImSessionSummary[],
+  principal: { id?: string; displayName?: string },
+): SessionListItem[] {
+  const mapped = sessions.map((s) =>
+    mapImSessionToSessionListItem(s, principal),
+  );
+  return [...mapped].sort((a, b) => {
+    if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+  });
+}
+
 /**
  * @title Identity Principal (Contact)
  * @description 统一主体（通讯录项）基本信息。
@@ -295,10 +390,13 @@ export interface SessionHistoryResponse {
 export interface Agent {
   id: string;
   nickname: string;
+  avatarUrl?: string | null;
+  avatar_url?: string | null;
   purpose: string;
   vector_id?: string;
   code_path?: string;
   is_ai_generated: boolean;
+  isAiGenerated?: boolean;
   nodes: any;
   createdAt: string;
   updatedAt: string;
@@ -307,6 +405,7 @@ export interface Agent {
 export interface UpdateAgentRequest {
   nickname?: string;
   purpose?: string;
+  avatarUrl?: string;
 }
 
 export interface ActiveWorkflowCard {
@@ -361,6 +460,7 @@ export const UpdateGroupRequestSchema = z.object({
 export const UpdateAgentRequestSchema = z.object({
   nickname: z.string().optional(),
   purpose: z.string().optional(),
+  avatarUrl: z.string().optional(),
 });
 
 export const ListThreadsParamsSchema = z.object({

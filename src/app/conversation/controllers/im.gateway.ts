@@ -40,6 +40,7 @@ export class ImGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** 使用 Socket.io v4 的 client.data 存储主体信息 */
 
   constructor(
+    @Inject(forwardRef(() => ImSessionService))
     private readonly sessionService: ImSessionService,
     @Inject(forwardRef(() => ImMessageService))
     private readonly messageService: ImMessageService,

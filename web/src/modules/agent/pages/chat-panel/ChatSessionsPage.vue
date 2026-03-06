@@ -8,6 +8,7 @@
       :empty-text="t('chat.emptyThreads')"
       :workflow-count="0"
       @select="enterSession"
+      @open-detail="openThreadDetail"
       @toggle-pin="togglePin"
       @delete="deleteSession"
     />
@@ -29,18 +30,20 @@ import { usePanelStore } from '../../store/panel.store';
 import { useAgentSessionStore } from '../../store/session.store';
 import { useAgentStore } from '../../store/agent.store';
 import type { SessionListItem } from '../../types/agent.types';
-import { imApi } from '../../../../api/im';
+import { useImStore } from '../../../im/im.module';
 
 const { t } = useI18n();
 
 const panelStore = usePanelStore();
-const { onlyAi, searchQuery } = storeToRefs(panelStore);
+const { onlyAi, searchQuery, sessionRefreshTrigger } = storeToRefs(panelStore);
 
 const agentStore = useAgentStore();
 const { currentSessionId } = storeToRefs(agentStore);
 
 const sessionStore = useAgentSessionStore();
 const { sessions } = storeToRefs(sessionStore);
+
+const imStore = useImStore();
 
 const isLoadingSessions = ref(false);
 
@@ -67,6 +70,7 @@ const debouncedLoadSessions = () => {
 
 watch(onlyAi, debouncedLoadSessions);
 watch(searchQuery, debouncedLoadSessions);
+watch(sessionRefreshTrigger, debouncedLoadSessions);
 
 onMounted(() => {
   void loadSessions();
@@ -78,8 +82,39 @@ onUnmounted(() => {
 });
 
 const enterSession = async (t: SessionListItem) => {
+  if (t.id === 'azure-ai') {
+    const id = await sessionStore.ensureFixedEntrySession(
+      'azure-ai',
+      t.title ?? undefined,
+    );
+    const resolved = sessionStore.getSession(id);
+    agentStore.setCurrentSession(id, resolved?.title ?? t.title ?? '');
+    panelStore.mode = 'chat';
+    return;
+  }
+  if (t.id === 'ai-notify') {
+    const id = await sessionStore.ensureFixedEntrySession(
+      'ai-notify',
+      t.title ?? undefined,
+    );
+    const resolved = sessionStore.getSession(id);
+    agentStore.setCurrentSession(id, resolved?.title ?? t.title ?? '');
+    panelStore.mode = 'chat';
+    return;
+  }
+
   agentStore.setCurrentSession(t.id, t.title ?? '');
   panelStore.mode = 'chat';
+};
+
+const openThreadDetail = (t: SessionListItem) => {
+  const type = t.threadType === 'group' ? 'group' : 'dm';
+  panelStore.openDrawer('info', {
+    sessionId: t.id,
+    type,
+    title: t.title ?? '',
+    isPinned: !!t.isPinned,
+  });
 };
 
 const togglePin = async (t: SessionListItem) => {
@@ -92,11 +127,10 @@ const togglePin = async (t: SessionListItem) => {
   }
   t.isPinned = !t.isPinned;
   try {
-    await imApi.updateSession(t.id, {
+    await imStore.updateSession(t.id, {
       name: t.title ?? undefined,
       isPinned: t.isPinned,
     });
-    await loadSessions();
   } catch {
     t.isPinned = !t.isPinned;
   }
@@ -113,9 +147,8 @@ const deleteSession = async (t: SessionListItem) => {
   if (!confirm('确定要删除该对话吗？')) return;
 
   try {
-    await imApi.deleteSession(t.id);
-    await loadSessions();
-    sessionStore.removeSession(t.id);
+    await imStore.deleteSession(t.id);
+    panelStore.triggerSessionRefresh();
   } catch {
     return;
   }

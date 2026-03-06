@@ -59,28 +59,22 @@
                 新建群聊
               </button>
               <button
-                @click="selectCreateType('dm')"
+                @click="selectCreateType('contact_group')"
                 class="w-full text-left px-4 py-1.5 hover:bg-gray-50 text-sm"
               >
-                新建私聊
-              </button>
-              <button
-                @click="selectCreateType('assistant')"
-                class="w-full text-left px-4 py-1.5 hover:bg-gray-50 text-sm"
-              >
-                新建助手
-              </button>
-              <button
-                @click="selectCreateType('system')"
-                class="w-full text-left px-4 py-1.5 hover:bg-gray-50 text-sm"
-              >
-                系统通知
+                新建聊天分组
               </button>
               <button
                 @click="selectCreateType('todo')"
                 class="w-full text-left px-4 py-1.5 hover:bg-gray-50 text-sm"
               >
                 待办通知
+              </button>
+              <button
+                @click="selectCreateType('system')"
+                class="w-full text-left px-4 py-1.5 hover:bg-gray-50 text-sm"
+              >
+                系统通知
               </button>
             </div>
           </div>
@@ -109,7 +103,7 @@ const emit = defineEmits<{
   (e: 'update:searchQuery', value: string): void;
   (e: 'update:onlyAi', value: boolean): void;
   (e: 'update:isCreateMenuOpen', value: boolean): void;
-  (e: 'createSession', type: 'group' | 'dm' | 'assistant' | 'system' | 'todo'):
+  (e: 'createSession', type: 'group' | 'contact_group' | 'system' | 'todo'):
     void;
 }>();
 
@@ -128,7 +122,7 @@ const toggleCreateMenu = () => {
 };
 
 const selectCreateType = (
-  type: 'group' | 'dm' | 'assistant' | 'system' | 'todo',
+  type: 'group' | 'contact_group' | 'system' | 'todo',
 ) => {
   emit('createSession', type);
   emit('update:isCreateMenuOpen', false);

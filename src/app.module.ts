@@ -15,6 +15,7 @@ import { AgentModule } from '@/app/agent/agent.module';
 import { TodoModule } from '@/app/todo/todo.module';
 import { WebMcpModule } from '@/app/webmcp/webmcp.module';
 import { IdentityModule } from '@/app/identity/identity.module';
+import { ResourceModule } from '@/app/resource/resource.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from '@/core/auth/guards/jwt-auth.guard';
 import { AbilityGuard } from '@/app/identity/guards/ability.guard';
@@ -92,6 +93,7 @@ import type { DatabaseConfig } from './config/types';
     WebMcpModule,
     AuthModule,
     IdentityModule,
+    ResourceModule,
     ConversationModule,
     AgentModule,
     TodoModule,

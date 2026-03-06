@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import type { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { ContextService } from '../src/core/ai/services/context.service';
 import { MessageKeywordsService } from '../src/core/ai/services/message.keywords.service';
 import { AIModelService } from '../src/core/ai/services/ai-model.service';
@@ -20,22 +21,40 @@ describe('ContextService window and AIModelService.chatWithContext', () => {
   let module: TestingModule;
   let contextService: ContextService;
   let aiModelService: AIModelService;
+  let schemaName = '';
 
   // 增加超时时间，避免数据库连接与实体同步耗时或慢查询导致的钩子/用例超时
   jest.setTimeout(90000);
 
   beforeAll(async () => {
+    const db = loadDatabaseConfigFromEnv();
+    schemaName = `jest_test_${process.pid}_${Date.now()}`;
+
+    if (db.type === 'postgres') {
+      const bootstrap = new DataSource({
+        type: 'postgres',
+        host: db.host ?? 'localhost',
+        port: db.port ?? 5432,
+        username: db.username ?? 'postgres',
+        password: db.password,
+        database: db.database ?? 'azure_ai_dev',
+        synchronize: false,
+        logging: false,
+      });
+      await bootstrap.initialize();
+      await bootstrap.query(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`);
+      await bootstrap.destroy();
+    }
+
     module = await Test.createTestingModule({
       imports: [
-        // 使用开发数据库运行单元测试，并开启 synchronize 以确保测试所需表存在
+        // 使用独立 schema 运行单元测试，避免污染开发数据
         TypeOrmModule.forRoot(
           (() => {
-            const db = loadDatabaseConfigFromEnv();
             const baseOpts: TypeOrmModuleOptions = createTypeOrmOptions({
               ...db,
-              synchronize: true,
+              synchronize: false,
             });
-            // 覆盖实体范围，避免通过通配符包含不需要的实体
             const finalOpts: TypeOrmModuleOptions = {
               ...baseOpts,
               entities: [
@@ -45,6 +64,8 @@ describe('ContextService window and AIModelService.chatWithContext', () => {
                 AIModelEntity,
               ],
               synchronize: true,
+              dropSchema: true,
+              schema: db.type === 'postgres' ? schemaName : undefined,
             };
             return finalOpts;
           })(),
@@ -74,6 +95,11 @@ describe('ContextService window and AIModelService.chatWithContext', () => {
   });
 
   afterAll(async () => {
+    if (!module) return;
+    const ds = module.get(DataSource);
+    if (ds && schemaName) {
+      await ds.query(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`);
+    }
     await module.close();
   });
 

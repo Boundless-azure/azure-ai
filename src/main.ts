@@ -10,7 +10,7 @@ declare const module: any;
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   // 静态资源目录：/static，访问路径为 /static/**
-  app.useStaticAssets(join(process.cwd(), 'static'), { prefix: '/static' });
+  app.useStaticAssets(join(__dirname, 'static'), { prefix: '/static' });
 
   app.useGlobalPipes(
     new ValidationPipe({

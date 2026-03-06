@@ -18,14 +18,40 @@ export interface MongoModuleOptions {
  */
 export interface PluginDoc {
   _id?: string;
+  sessionId?: string | null;
   name: string;
   version: string;
   description: string;
   hooks: { name: string; payloadDescription: string }[];
+  embedding?: string | number[] | Record<string, unknown> | null;
+  keywords?: string[] | null;
   keywordsZh?: string | null;
   keywordsEn?: string | null;
   pluginDir: string;
   registered: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+  isDelete?: boolean;
+}
+
+/**
+ * @title Mongo 文档类型：应用子单元
+ * @description 应用子模块/子单元文档结构（Mongo）。
+ * @keywords-cn 应用子模块文档, unit, appId, 会话关联, 关键词
+ * @keywords-en app-unit-doc, unit, appId, session, keywords
+ */
+export interface AppUnitDoc {
+  _id?: string;
+  sessionId?: string | null;
+  appId: string;
+  name: string;
+  version?: string | null;
+  description?: string | null;
+  embedding?: string | number[] | Record<string, unknown> | null;
+  keywords?: string[] | null;
+  keywordsZh?: string | null;
+  keywordsEn?: string | null;
+  active?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
   isDelete?: boolean;
@@ -41,6 +67,7 @@ export interface AgentDoc {
   _id?: string;
   codeDir: string;
   nickname: string;
+  avatarUrl?: string | null;
   isAiGenerated: boolean;
   purpose: string | null;
   embedding: string | number[] | Record<string, unknown> | null;

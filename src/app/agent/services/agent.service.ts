@@ -210,6 +210,7 @@ export class AgentService {
       const patch: Record<string, unknown> = { updatedAt: new Date() };
       patch['nickname'] = dto.nickname;
       if (typeof dto.purpose === 'string') patch['purpose'] = dto.purpose;
+      if (typeof dto.avatarUrl === 'string') patch['avatarUrl'] = dto.avatarUrl;
       await col.updateOne({ _id: id }, { $set: patch });
       const saved = await col.findOne({ _id: id });
       if (!saved) throw new Error('Agent update failed');
@@ -219,6 +220,7 @@ export class AgentService {
     if (!current) throw new Error('Agent not found');
     current.nickname = dto.nickname;
     if (typeof dto.purpose === 'string') current.purpose = dto.purpose;
+    if (typeof dto.avatarUrl === 'string') current.avatarUrl = dto.avatarUrl;
     return await this.repo.save(current);
   }
 
@@ -251,6 +253,10 @@ export class AgentService {
     e.id = doc._id ?? '';
     e.codeDir = doc.codeDir;
     e.nickname = doc.nickname;
+    e.avatarUrl =
+      typeof doc.avatarUrl === 'string' && doc.avatarUrl.trim()
+        ? doc.avatarUrl.trim()
+        : null;
     e.isAiGenerated = doc.isAiGenerated;
     e.purpose = doc.purpose;
     if (typeof doc.embedding === 'string') {

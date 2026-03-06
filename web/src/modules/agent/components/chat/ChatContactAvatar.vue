@@ -1,6 +1,10 @@
 <template>
   <div
-    v-if="thread.threadType === 'group' && thread.members && thread.members.length > 0"
+    v-if="
+      thread.threadType === 'group' &&
+      thread.members &&
+      thread.members.length > 0
+    "
     :class="groupAvatarClass"
   >
     <div
@@ -8,12 +12,20 @@
       :key="idx"
       :class="memberAvatarClass"
     >
-      <img v-if="member.startsWith('http')" :src="member" :class="imgClass" />
+      <img
+        v-if="member.startsWith('http') || member.startsWith('/')"
+        :src="resolveResourceUrl(member)"
+        :class="imgClass"
+      />
       <span v-else>{{ member.slice(0, 1) }}</span>
     </div>
   </div>
   <div v-else :class="singleAvatarClass">
-    <img v-if="hasAvatarUrl" :src="avatarUrl" :class="imgClass" />
+    <img
+      v-if="hasAvatarUrl"
+      :src="resolveResourceUrl(avatarUrl)"
+      :class="imgClass"
+    />
     <i v-else class="fa-solid" :class="threadIcon(thread)"></i>
   </div>
 </template>
@@ -27,6 +39,7 @@
  */
 import { computed } from 'vue';
 import type { ThreadListItem } from '../../types/agent.types';
+import { resolveResourceUrl } from '../../../../utils/http';
 
 interface Props {
   thread: ThreadListItem;
@@ -39,8 +52,8 @@ const isLarge = computed(() => props.size === 'lg');
 
 const groupAvatarClass = computed(() =>
   isLarge.value
-    ? 'w-full h-full rounded-xl bg-gray-200 p-1 grid gap-0.5 overflow-hidden'
-    : 'w-8 h-8 rounded bg-gray-200 p-0.5 grid gap-0.5 overflow-hidden',
+    ? 'w-full h-full rounded-lg bg-gray-200 p-1 grid gap-0.5 overflow-hidden'
+    : 'w-8 h-8 rounded-lg bg-gray-200 p-0.5 grid gap-0.5 overflow-hidden',
 );
 
 const memberAvatarClass = computed(() =>
@@ -49,14 +62,14 @@ const memberAvatarClass = computed(() =>
     : 'bg-gray-300 flex items-center justify-center text-[5px] font-bold text-gray-600 rounded-sm overflow-hidden',
 );
 
-const imgClass = computed(() => 'w-full h-full object-cover');
+const imgClass = computed(() => 'w-full h-full object-contain');
 const avatarUrl = computed(() => (props.thread.avatarUrl || '').trim());
 const hasAvatarUrl = computed(() => avatarUrl.value.length > 0);
 
 const singleAvatarClass = computed(() =>
   isLarge.value
-    ? `w-full h-full rounded-xl flex items-center justify-center text-white text-4xl ${getAvatarClass(props.thread)}`
-    : `w-8 h-8 rounded flex items-center justify-center text-white text-sm ${getAvatarClass(props.thread)}`,
+    ? `w-full h-full rounded-lg overflow-hidden flex items-center justify-center text-white text-4xl ${getAvatarClass(props.thread)}`
+    : `w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center text-white text-sm ${getAvatarClass(props.thread)}`,
 );
 
 const threadIcon = (t: ThreadListItem) => {

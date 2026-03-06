@@ -105,6 +105,22 @@ export class ImSocketService {
   private notifyAudio: HTMLAudioElement | null = null;
   private lastNotifyAt: number | null = null;
 
+  private getCurrentPrincipalId(): string | null {
+    try {
+      const principalRaw = localStorage.getItem('principal');
+      if (principalRaw) {
+        const parsed = JSON.parse(principalRaw) as { id?: string };
+        const id = typeof parsed.id === 'string' ? parsed.id.trim() : '';
+        return id || null;
+      }
+      const legacy = localStorage.getItem('identity.currentPrincipalId');
+      const id = (legacy || '').trim();
+      return id || null;
+    } catch {
+      return null;
+    }
+  }
+
   private playNotifySound(): void {
     if (typeof window === 'undefined' || typeof Audio === 'undefined') return;
     const now = Date.now();
@@ -126,8 +142,8 @@ export class ImSocketService {
     }
 
     const p = this.notifyAudio.play();
-    if (p && typeof p.catch === 'function') {
-      p.catch(() => undefined);
+    if (p !== undefined) {
+      void p.catch(() => undefined);
     }
   }
 
@@ -176,6 +192,8 @@ export class ImSocketService {
       reconnection: true,
       reconnectionAttempts: IM_CONSTANTS.SOCKET.RECONNECTION_ATTEMPTS,
       reconnectionDelay: IM_CONSTANTS.SOCKET.RECONNECTION_DELAY,
+      reconnectionDelayMax: IM_CONSTANTS.SOCKET.RECONNECTION_DELAY_MAX,
+      randomizationFactor: IM_CONSTANTS.SOCKET.RANDOMIZATION_FACTOR,
       timeout: IM_CONSTANTS.SOCKET.TIMEOUT,
       auth: { token },
     });
@@ -286,6 +304,15 @@ export class ImSocketService {
   private handleEvent(event: ImEvent): void {
     switch (event.type) {
       case 'im:message':
+        if (typeof window !== 'undefined') {
+          const selfId = this.getCurrentPrincipalId();
+          const senderId =
+            typeof event.data.senderId === 'string'
+              ? event.data.senderId.trim()
+              : '';
+          const shouldNotify = !selfId || !senderId || senderId !== selfId;
+          if (shouldNotify) this.playNotifySound();
+        }
         this.callbacks.onMessage?.(event.data, event.sessionId);
         break;
       case 'im:typing':

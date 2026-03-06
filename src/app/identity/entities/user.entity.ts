@@ -19,6 +19,16 @@ export class UserEntity extends BaseAuditedEntity {
   @Column({ name: 'email', type: 'varchar', length: 255 })
   email!: string;
 
+  /** 头像地址（可为静态资源或外部 URL） */
+  @Column({
+    name: 'avatar_url',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    default: '/static/system/avatars/default.svg',
+  })
+  avatarUrl!: string | null;
+
   /**
    * @title 密码哈希
    * @description 使用 scrypt 生成的哈希值，配合 salt 校验。

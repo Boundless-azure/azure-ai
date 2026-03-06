@@ -3,9 +3,9 @@ import { IsArray } from 'class-validator';
 
 /**
  * @title Agent 更新请求
- * @description 仅允许更新拟人昵称与用途说明。
- * @keywords-cn Agent更新, 昵称, 用途说明, DTO
- * @keywords-en agent-update, nickname, purpose, dto
+ * @description 允许更新拟人昵称、用途说明与头像地址。
+ * @keywords-cn Agent更新, 昵称, 用途说明, 头像, DTO
+ * @keywords-en agent-update, nickname, purpose, avatar, dto
  */
 export class UpdateAgentDto {
   @IsString()
@@ -15,6 +15,11 @@ export class UpdateAgentDto {
   @IsOptional()
   @IsString()
   purpose?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 255)
+  avatarUrl?: string;
 }
 
 /**

@@ -34,6 +34,7 @@ export interface UpdateUserDto {
   displayName?: string;
   email?: string;
   phone?: string | null;
+  avatarUrl?: string | null;
   active?: boolean;
 }
 

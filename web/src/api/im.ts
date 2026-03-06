@@ -24,6 +24,7 @@ export interface ImSessionSummary {
   sessionId: string;
   name: string | null;
   type: ChatSessionType;
+  isPinned?: boolean;
   avatarUrl: string | null;
   members: ImMemberInfo[];
   lastMessageId?: string | null;
@@ -67,10 +68,40 @@ export interface ImMessageInfo {
     size?: number;
   }> | null;
   isEdited: boolean;
+  isAnnouncement: boolean;
   createdAt: string;
 }
 
 export type ImMessageListResponse = ImCursorResult<ImMessageInfo>;
+
+export type InviteMembersAction = 'created_group' | 'added_to_session' | 'noop';
+
+export interface InviteMembersResponse {
+  sessionId: string;
+  action: InviteMembersAction;
+  sessionName?: string;
+  addedCount?: number;
+  systemText?: string;
+}
+
+export interface ImAnnouncementListResponse {
+  items: ImMessageInfo[];
+  total: number;
+}
+
+export interface ImContactGroupInfo {
+  id: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImContactGroupMemberIdsResponse {
+  items: string[];
+}
 
 // ========== Schemas ==========
 
@@ -113,6 +144,36 @@ const GetSessionsSchema = z.object({
 const AddMemberSchema = z.object({
   principalId: z.string().uuid(),
   role: z.enum(['owner', 'admin', 'member']).optional(),
+});
+
+const InviteMembersSchema = z.object({
+  principalIds: z.array(z.string().min(1)).min(1),
+});
+
+const CreateAnnouncementSchema = z.object({
+  content: z.string().min(1),
+});
+
+const GetAnnouncementsSchema = z.object({
+  limit: z.number().int().min(1).max(200).optional(),
+});
+
+const TransferOwnerSchema = z.object({
+  principalId: z.string().uuid(),
+});
+
+const CreateContactGroupSchema = z.object({
+  name: z.string().min(1).max(100),
+});
+
+const UpdateContactGroupSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  sortOrder: z.number().int().min(0).optional(),
+  active: z.boolean().optional(),
+});
+
+const AddContactGroupMembersSchema = z.object({
+  principalIds: z.array(z.string().min(1)).min(1),
 });
 
 // ========== API ==========
@@ -168,6 +229,10 @@ export const imApi = {
     return http.delete<{ success: boolean }>(`/im/sessions/${sessionId}`);
   },
 
+  leaveSession: (sessionId: string) => {
+    return http.delete<{ success: boolean }>(`/im/sessions/${sessionId}/leave`);
+  },
+
   /**
    * Get session members
    */
@@ -187,12 +252,120 @@ export const imApi = {
     );
   },
 
+  inviteMembers: (
+    sessionId: string,
+    data: z.infer<typeof InviteMembersSchema>,
+  ) => {
+    const parsed = InviteMembersSchema.safeParse(data);
+    if (!parsed.success) throw new Error('Invalid invite members payload');
+    return http.post<InviteMembersResponse>(
+      `/im/sessions/${sessionId}/invite`,
+      parsed.data,
+    );
+  },
+
   /**
    * Remove member from session
    */
   removeMember: (sessionId: string, principalId: string) => {
     return http.delete<{ success: boolean }>(
       `/im/sessions/${sessionId}/members/${principalId}`,
+    );
+  },
+
+  transferOwner: (
+    sessionId: string,
+    data: z.infer<typeof TransferOwnerSchema>,
+  ) => {
+    const parsed = TransferOwnerSchema.safeParse(data);
+    if (!parsed.success) throw new Error('Invalid transfer owner payload');
+    return http.post<{ success: boolean }>(
+      `/im/sessions/${sessionId}/transfer-owner`,
+      parsed.data,
+    );
+  },
+
+  getAnnouncements: (
+    sessionId: string,
+    params?: z.infer<typeof GetAnnouncementsSchema>,
+  ) => {
+    const parsed = params
+      ? GetAnnouncementsSchema.safeParse(params)
+      : { success: true, data: {} };
+    if (!parsed.success) throw new Error('Invalid get announcements params');
+    return http.get<ImAnnouncementListResponse>(
+      `/im/sessions/${sessionId}/announcements`,
+      parsed.data,
+    );
+  },
+
+  createAnnouncement: (
+    sessionId: string,
+    data: z.infer<typeof CreateAnnouncementSchema>,
+  ) => {
+    const parsed = CreateAnnouncementSchema.safeParse(data);
+    if (!parsed.success) throw new Error('Invalid create announcement payload');
+    return http.post<ImMessageInfo>(
+      `/im/sessions/${sessionId}/announcements`,
+      parsed.data,
+    );
+  },
+
+  deleteAnnouncement: (sessionId: string, messageId: string) => {
+    return http.delete<{ success: boolean }>(
+      `/im/sessions/${sessionId}/announcements/${messageId}`,
+    );
+  },
+
+  listContactGroups: () => {
+    return http.get<ImContactGroupInfo[]>(`/im/contact-groups`);
+  },
+
+  createContactGroup: (data: z.infer<typeof CreateContactGroupSchema>) => {
+    const parsed = CreateContactGroupSchema.safeParse(data);
+    if (!parsed.success)
+      throw new Error('Invalid create contact group payload');
+    return http.post<ImContactGroupInfo>(`/im/contact-groups`, parsed.data);
+  },
+
+  updateContactGroup: (
+    groupId: string,
+    data: z.infer<typeof UpdateContactGroupSchema>,
+  ) => {
+    const parsed = UpdateContactGroupSchema.safeParse(data);
+    if (!parsed.success)
+      throw new Error('Invalid update contact group payload');
+    return http.patch<ImContactGroupInfo>(
+      `/im/contact-groups/${groupId}`,
+      parsed.data,
+    );
+  },
+
+  deleteContactGroup: (groupId: string) => {
+    return http.delete<{ success: boolean }>(`/im/contact-groups/${groupId}`);
+  },
+
+  getContactGroupMembers: (groupId: string) => {
+    return http.get<ImContactGroupMemberIdsResponse>(
+      `/im/contact-groups/${groupId}/members`,
+    );
+  },
+
+  addContactGroupMembers: (
+    groupId: string,
+    data: z.infer<typeof AddContactGroupMembersSchema>,
+  ) => {
+    const parsed = AddContactGroupMembersSchema.safeParse(data);
+    if (!parsed.success) throw new Error('Invalid add contact group members');
+    return http.post<{ addedCount: number }>(
+      `/im/contact-groups/${groupId}/members`,
+      parsed.data,
+    );
+  },
+
+  removeContactGroupMember: (groupId: string, principalId: string) => {
+    return http.delete<{ success: boolean }>(
+      `/im/contact-groups/${groupId}/members/${principalId}`,
     );
   },
 

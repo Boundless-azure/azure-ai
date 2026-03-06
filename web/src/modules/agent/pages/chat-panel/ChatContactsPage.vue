@@ -25,6 +25,7 @@ import { usePanelStore } from '../../store/panel.store';
 import { useAgentStore } from '../../store/agent.store';
 import type { SessionListItem } from '../../types/agent.types';
 import { imApi } from '../../../../api/im';
+import { useImStore } from '../../../im/im.module';
 
 interface UpdateSessionOptions {
   title?: string | null;
@@ -48,6 +49,8 @@ const agentStore = useAgentStore();
 const sessionStore = useAgentSessionStore();
 const { sessions } = storeToRefs(sessionStore);
 
+const imStore = useImStore();
+
 const loadSessions = async () => {
   await sessionStore.loadSessions({
     onlyAi: onlyAi.value,
@@ -57,6 +60,7 @@ const loadSessions = async () => {
 
 onMounted(() => {
   void loadContacts();
+  void panelStore.loadContactGroups();
 });
 
 const createSession = async (options: {
@@ -83,10 +87,7 @@ const createSession = async (options: {
 
 const updateSession = async (id: string, options: UpdateSessionOptions) => {
   if (options.title !== undefined || options.isPinned !== undefined) {
-    await imApi.updateSession(id, {
-      name: options.title ?? undefined,
-      isPinned: options.isPinned,
-    });
+    await imStore.updateSession(id, { name: options.title ?? undefined, isPinned: options.isPinned });
   }
   if (options.participants && options.participants.length > 0) {
     for (const p of options.participants) {

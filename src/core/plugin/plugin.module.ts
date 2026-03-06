@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PluginEntity } from './entities/plugin.entity';
+import { AppUnitEntity } from './entities/app-unit.entity';
 import { PluginKeywordsService } from './services/plugin.keywords.service';
 import { PluginService } from './services/plugin.service';
+import { AppUnitService } from './services/app-unit.service';
 import { PluginController } from './controllers/plugin.controller';
+import { AppUnitController } from './controllers/app-unit.controller';
 import { AICoreModule } from '../ai/ai-core.module';
 
 /**
@@ -16,11 +19,11 @@ import { AICoreModule } from '../ai/ai-core.module';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PluginEntity]),
+    TypeOrmModule.forFeature([PluginEntity, AppUnitEntity]),
     AICoreModule.forFeature(),
   ],
-  providers: [PluginService, PluginKeywordsService],
-  controllers: [PluginController],
-  exports: [PluginService],
+  providers: [PluginService, PluginKeywordsService, AppUnitService],
+  controllers: [PluginController, AppUnitController],
+  exports: [PluginService, AppUnitService],
 })
 export class PluginModule {}

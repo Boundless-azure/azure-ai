@@ -1,15 +1,20 @@
-模块名称：core/plugin（插件元信息与录入模块）
+模块名称：core/plugin（Apps/AppUnit 元信息与录入模块）
 
 概述
-- 负责插件信息的入库（name、version、description、hooks、keywords）、关键词生成（AI）、以及基础的增删改查接口。
-- 录入流程通过读取指定目录的 plugin.conf.ts（纯数据对象，默认导出），生成关键词并 upsert 至数据库。
+- apps：负责应用信息的入库（session_id、name、version、description、hooks、embedding、keywords）、关键词生成（AI）、以及基础的增删改查接口。
+- app_units：负责应用子单元（CRM 子模块等）的入库（session_id、app_id、name、description、embedding、keywords）与 CRUD。
+- apps 录入流程通过读取指定目录的 plugin.conf.ts（纯数据对象，默认导出），生成关键词并 upsert 至数据库。
 
 文件清单（File List）
 - core/plugin/types.ts
-- core/plugin/plugin.entity.ts
-- core/plugin/plugin.keywords.service.ts
-- core/plugin/plugin.service.ts
-- core/plugin/plugin.controller.ts
+- core/plugin/types/app-unit.types.ts
+- core/plugin/entities/plugin.entity.ts
+- core/plugin/entities/app-unit.entity.ts
+- core/plugin/services/plugin.keywords.service.ts
+- core/plugin/services/plugin.service.ts
+- core/plugin/services/app-unit.service.ts
+- core/plugin/controllers/plugin.controller.ts
+- core/plugin/controllers/app-unit.controller.ts
 - core/plugin/plugin.module.ts
 
 函数清单（Function Index）
@@ -26,31 +31,52 @@
   - method: registerByDir
   - method: update
   - method: loadConfig (private)
+- AppUnitService
+  - method: list
+  - method: get
+  - method: create
+  - method: update
+  - method: delete
 - PluginController
   - method: list (GET /plugin)
   - method: get (GET /plugin/:id)
   - method: register (POST /plugin/register)
   - method: update (PUT /plugin/:id)
   - method: delete (DELETE /plugin/:id)
+- AppUnitController
+  - method: list (GET /app-unit)
+  - method: get (GET /app-unit/:id)
+  - method: create (POST /app-unit)
+  - method: update (PUT /app-unit/:id)
+  - method: delete (DELETE /app-unit/:id)
 
 文件说明
 - types.ts：约定 PluginConfig、HookDescriptor、PluginHookTuple，以及校验方法。
-- plugin.entity.ts：插件实体，包含索引/约束与字段定义。
+- entities/plugin.entity.ts：apps 实体（兼容导出 PluginEntity），包含 session_id/embedding/keywords。
+- entities/app-unit.entity.ts：app_units 实体，包含 session_id/app_id/embedding/keywords。
 - plugin.keywords.service.ts：关键词生成服务，依赖 AIModelService。
-- plugin.service.ts：录入流程与 CRUD。
-- plugin.controller.ts：REST 接口。
+- plugin.service.ts：apps 录入流程与 CRUD（兼容保留 PluginService 名称）。
+- app-unit.service.ts：app_units CRUD。
+- plugin.controller.ts：apps（兼容保留 /plugin 路由）接口。
+- app-unit.controller.ts：app_units 接口。
 - plugin.module.ts：模块声明，集成 TypeORM 与 AI Core。
 
 关键词索引（中文 / English Keyword Index）
 core/plugin/types.ts
-core/plugin/plugin.entity.ts
-core/plugin/plugin.keywords.service.ts
-core/plugin/plugin.service.ts
-core/plugin/plugin.controller.ts
+core/plugin/types/app-unit.types.ts
+core/plugin/entities/plugin.entity.ts
+core/plugin/entities/app-unit.entity.ts
+core/plugin/services/plugin.keywords.service.ts
+core/plugin/services/plugin.service.ts
+core/plugin/services/app-unit.service.ts
+core/plugin/controllers/plugin.controller.ts
+core/plugin/controllers/app-unit.controller.ts
 core/plugin/plugin.module.ts
 PluginKeywordsService
 PluginService
+AppUnitService
 PluginController
+AppUnitController
 PluginModule
 
 快速检索映射（Keywords -> Files）

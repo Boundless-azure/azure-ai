@@ -10,6 +10,11 @@ export interface SocketConnectOptions {
   auth?: Record<string, unknown>;
   transports?: string[];
   withCredentials?: boolean;
+  reconnection?: boolean;
+  reconnectionAttempts?: number;
+  reconnectionDelay?: number;
+  reconnectionDelayMax?: number;
+  randomizationFactor?: number;
 }
 
 /** 客户端 Socket 轻量接口（用于不直接依赖 socket.io-client） */
@@ -26,22 +31,40 @@ export type SocketFactory = (url: string, opts?: unknown) => ClientSocket;
 /**
  * 构造连接选项：默认使用握手参数 auth.token 传递 JWT。
  * 可选 mode='header' 时改为使用 Authorization Bearer 头。
+ * 默认开启无限重连，并设置重连间隔（指数退避上限）。
  */
 export function buildImConnectionOptions(
   token: string,
   mode: 'header' | 'auth' = 'auth',
 ): SocketConnectOptions {
+  const reconnectOptions: Pick<
+    SocketConnectOptions,
+    | 'reconnection'
+    | 'reconnectionAttempts'
+    | 'reconnectionDelay'
+    | 'reconnectionDelayMax'
+    | 'randomizationFactor'
+  > = {
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 10000,
+    randomizationFactor: 0.5,
+  };
+
   if (mode === 'auth') {
     return {
       auth: { token },
       transports: ['websocket'],
       withCredentials: true,
+      ...reconnectOptions,
     };
   }
   return {
     extraHeaders: { Authorization: `Bearer ${token}` },
     transports: ['websocket'],
     withCredentials: true,
+    ...reconnectOptions,
   };
 }
 

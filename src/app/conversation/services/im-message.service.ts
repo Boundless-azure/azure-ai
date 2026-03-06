@@ -100,6 +100,7 @@ export class ImMessageService {
       messageType: dto.messageType ?? ChatMessageType.Text,
       replyToId: dto.replyToId ?? null,
       attachments: dto.attachments ?? null,
+      isAnnouncement: false,
       isEdited: false,
       isDelete: false,
       // 向后兼容字段
@@ -123,6 +124,7 @@ export class ImMessageService {
       replyToId: saved.replyToId,
       attachments: saved.attachments,
       isEdited: saved.isEdited,
+      isAnnouncement: saved.isAnnouncement,
       createdAt: saved.createdAt,
     };
 
@@ -138,6 +140,180 @@ export class ImMessageService {
     }
 
     return messageInfo;
+  }
+
+  /**
+   * 发布群公告（本质为一条带 isAnnouncement 标识的文本消息）
+   */
+  async sendAnnouncement(
+    ownerId: string,
+    args: { sessionId: string; content: string },
+  ): Promise<ImMessageInfo> {
+    const session = await this.sessionRepo.findOne({
+      where: [
+        { id: args.sessionId, isDelete: false, active: true },
+        { sessionId: args.sessionId, isDelete: false, active: true },
+      ],
+    });
+
+    if (!session) {
+      throw new NotFoundException(`Session not found: ${args.sessionId}`);
+    }
+
+    if (session.type !== ChatSessionType.Group) {
+      throw new BadRequestException(
+        'Announcements are only supported in group',
+      );
+    }
+
+    await this.sessionService.ensureOwner(session.id, ownerId);
+
+    const rawContent = (args.content || '').trim();
+    if (!rawContent) {
+      throw new BadRequestException('Announcement content is empty');
+    }
+
+    const content = rawContent.startsWith('@所有人')
+      ? rawContent
+      : `@所有人 ${rawContent}`;
+
+    const message = this.messageRepo.create({
+      sessionId: session.sessionId,
+      senderId: ownerId,
+      content,
+      messageType: ChatMessageType.Text,
+      replyToId: null,
+      attachments: null,
+      isAnnouncement: true,
+      isEdited: false,
+      isDelete: false,
+      role: 'user',
+    });
+    const saved = await this.messageRepo.save(message);
+
+    const sender = await this.principalRepo.findOne({ where: { id: ownerId } });
+    const info: ImMessageInfo = {
+      id: saved.id,
+      sessionId: session.sessionId,
+      senderId: saved.senderId,
+      senderName: sender?.displayName,
+      messageType: saved.messageType,
+      content: saved.content,
+      replyToId: saved.replyToId,
+      attachments: saved.attachments,
+      isEdited: saved.isEdited,
+      isAnnouncement: saved.isAnnouncement,
+      createdAt: saved.createdAt,
+    };
+
+    await this.notifyMessageSaved(session.id, {
+      sessionId: session.sessionId,
+      messageId: saved.id,
+      senderId: ownerId,
+    });
+
+    return info;
+  }
+
+  /**
+   * 获取群公告列表
+   */
+  async getAnnouncements(args: {
+    sessionId: string;
+    principalId: string;
+    limit?: number;
+  }): Promise<{ items: ImMessageInfo[]; total: number }> {
+    const session = await this.sessionRepo.findOne({
+      where: [
+        { id: args.sessionId, isDelete: false },
+        { sessionId: args.sessionId, isDelete: false },
+      ],
+    });
+    if (!session) {
+      throw new NotFoundException(`Session not found: ${args.sessionId}`);
+    }
+
+    const isMember = await this.sessionService.isMember(
+      session.id,
+      args.principalId,
+    );
+    if (!isMember) {
+      throw new NotFoundException('User is not a member of this session');
+    }
+
+    const limit = Math.min(Math.max(args.limit ?? 20, 1), 50);
+
+    const baseQb = this.messageRepo
+      .createQueryBuilder('m')
+      .where('m.session_id = :sid', { sid: session.sessionId })
+      .andWhere('m.is_delete = false')
+      .andWhere('m.is_announcement = true');
+
+    const total = await baseQb.getCount();
+
+    const messages = await baseQb
+      .orderBy('m.created_at', 'DESC')
+      .limit(limit)
+      .getMany();
+
+    const senderIds = [
+      ...new Set(messages.map((m) => m.senderId).filter(Boolean)),
+    ] as string[];
+    const senders = senderIds.length
+      ? await this.principalRepo
+          .createQueryBuilder('p')
+          .where('p.id IN (:...ids)', { ids: senderIds })
+          .getMany()
+      : [];
+    const senderMap = new Map(senders.map((s) => [s.id, s.displayName]));
+
+    const items: ImMessageInfo[] = messages.map((m) => ({
+      id: m.id,
+      sessionId: m.sessionId,
+      senderId: m.senderId,
+      senderName: m.senderId ? senderMap.get(m.senderId) : undefined,
+      messageType: m.messageType,
+      content: m.content,
+      replyToId: m.replyToId,
+      attachments: m.attachments,
+      isEdited: m.isEdited,
+      isAnnouncement: m.isAnnouncement,
+      createdAt: m.createdAt,
+    }));
+
+    return { items, total };
+  }
+
+  /**
+   * 删除群公告标识（不删除消息）
+   */
+  async unsetAnnouncement(args: {
+    sessionId: string;
+    ownerId: string;
+    messageId: string;
+  }): Promise<void> {
+    const session = await this.sessionRepo.findOne({
+      where: [
+        { id: args.sessionId, isDelete: false, active: true },
+        { sessionId: args.sessionId, isDelete: false, active: true },
+      ],
+    });
+    if (!session) {
+      throw new NotFoundException(`Session not found: ${args.sessionId}`);
+    }
+
+    await this.sessionService.ensureOwner(session.id, args.ownerId);
+
+    const msg = await this.messageRepo.findOne({
+      where: { id: args.messageId, isDelete: false },
+    });
+    if (!msg || msg.sessionId !== session.sessionId) {
+      throw new NotFoundException('Announcement message not found');
+    }
+
+    if (!msg.isAnnouncement) return;
+
+    await this.messageRepo.update(msg.id, { isAnnouncement: false });
   }
 
   private async notifyMessageSaved(
@@ -227,6 +403,7 @@ export class ImMessageService {
       replyToId: m.replyToId,
       attachments: m.attachments,
       isEdited: m.isEdited,
+      isAnnouncement: m.isAnnouncement,
       createdAt: m.createdAt,
     }));
 

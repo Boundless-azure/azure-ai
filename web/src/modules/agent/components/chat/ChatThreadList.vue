@@ -70,7 +70,15 @@
       >
         <div class="px-4 py-3 flex items-center space-x-3">
           <div class="flex-shrink-0">
-            <ChatContactAvatar :thread="thread" size="sm" />
+            <button
+              class="block"
+              title="聊天详情"
+              @mousedown.stop
+              @touchstart.stop
+              @click.stop="$emit('open-detail', thread)"
+            >
+              <ChatContactAvatar :thread="thread" size="sm" />
+            </button>
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between">
@@ -138,6 +146,7 @@ const movedHorizontally = ref(false);
 
 const emit = defineEmits<{
   (e: 'select', thread: SessionListItem): void;
+  (e: 'open-detail', thread: SessionListItem): void;
   (e: 'toggle-pin', thread: SessionListItem): void;
   (e: 'delete', thread: SessionListItem): void;
 }>();
@@ -332,8 +341,19 @@ const displayThreads = computed<SessionListItem[]>(() => {
     threads = threads.filter((t) => (t.title || '').toLowerCase().includes(q));
   }
 
-  const azureThread = threads.find((t) => t.id === 'azure-ai');
-  const systemThread = threads.find((t) => t.id === 'ai-notify');
+  const azureThread = threads
+    .filter((t) => t.threadType === 'assistant')
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )[0];
+
+  const systemThread = threads
+    .filter((t) => t.threadType === 'system' && !t.id.startsWith('fixed:'))
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    )[0];
 
   const pinned = threads.filter(
     (t) =>
@@ -367,7 +387,11 @@ const displayThreads = computed<SessionListItem[]>(() => {
     !props.onlyAi && (!q || systemTitle.toLowerCase().includes(q));
 
   const azureItem: SessionListItem = azureThread
-    ? { ...azureThread, isPinned: true }
+    ? {
+        ...azureThread,
+        title: azureThread.title || t('chat.assistantTitle'),
+        isPinned: true,
+      }
     : {
         id: 'azure-ai',
         title: t('chat.assistantTitle'),
@@ -381,7 +405,11 @@ const displayThreads = computed<SessionListItem[]>(() => {
       };
 
   const systemItem: SessionListItem = systemThread
-    ? { ...systemThread, isPinned: true }
+    ? {
+        ...systemThread,
+        title: systemThread.title || t('chat.systemNotification'),
+        isPinned: true,
+      }
     : {
         id: 'ai-notify',
         title: t('chat.systemNotification'),

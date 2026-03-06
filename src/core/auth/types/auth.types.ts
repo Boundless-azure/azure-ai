@@ -22,6 +22,7 @@ export interface LoginResponse {
     id: string;
     displayName: string;
     principalType: string;
+    avatarUrl?: string | null;
     email?: string | null;
     phone?: string | null;
     tenantId?: string | null;

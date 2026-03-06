@@ -7,6 +7,39 @@ export const moduleDescription = {
   name: 'api',
   description: 'Centralized API definitions and endpoints for the application.',
   keywords: {
+    'resource-api': {
+      cn: '资源API',
+      en: 'Resource API',
+      file: 'resource.ts',
+      functions: {
+        upload: 'upload',
+      },
+      hashes: {
+        upload: 'api_res_upload_001',
+      },
+    },
+    'im-api': {
+      cn: 'IM API',
+      en: 'IM API',
+      file: 'im.ts',
+      functions: {
+        createSession: 'createSession',
+        updateSession: 'updateSession',
+        getSessions: 'getSessions',
+        getSession: 'getSession',
+        deleteSession: 'deleteSession',
+        getMembers: 'getMembers',
+        addMember: 'addMember',
+        inviteMembers: 'inviteMembers',
+        removeMember: 'removeMember',
+        getMessages: 'getMessages',
+        hasNew: 'hasNew',
+        sendMessage: 'sendMessage',
+      },
+      hashes: {
+        inviteMembers: 'api_im_invite_members_001',
+      },
+    },
     'agent-api': {
       cn: '代理API',
       en: 'Agent API',

@@ -11,7 +11,9 @@
           ? 'bg-white text-gray-900 shadow-lg shadow-white/10 scale-[1.02]'
           : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white',
         isExpanded
-          ? 'h-14 pl-4 pr-4 justify-start'
+          ? hasUnread
+            ? 'h-14 pl-4 pr-10 justify-start'
+            : 'h-14 pl-4 pr-4 justify-start'
           : 'w-12 h-12 justify-center',
       ]"
       @click="emitChange('chat')"
@@ -39,6 +41,17 @@
       >
         {{ t('sidebar.chat') }}
       </div>
+
+      <span
+        v-if="hasUnread && !isExpanded"
+        class="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full"
+      ></span>
+      <span
+        v-if="hasUnread && isExpanded"
+        class="absolute top-1/2 -translate-y-1/2 right-3 bg-red-500 text-white text-[10px] px-1 rounded-full min-w-[16px] h-[16px] flex items-center justify-center leading-none"
+      >
+        {{ unreadDisplay }}
+      </span>
     </div>
 
     <!-- Separator -->
@@ -192,9 +205,11 @@
  * @keywords-cn 侧边栏, 响应式导航, 国际化, 白色主题
  * @keywords-en sidebar, responsive-navigation, i18n, white-theme
  */
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { storeToRefs } from 'pinia';
 import { useI18n } from '../composables/useI18n';
 import LanguageModal from './LanguageModal.vue';
+import { useAgentSessionStore } from '../store/session.store';
 
 const props = defineProps<{
   activeView: string;
@@ -207,6 +222,25 @@ const emit = defineEmits<{
 
 const { t, setLocale, currentLocale } = useI18n();
 const showLanguageModal = ref(false);
+
+const sessionStore = useAgentSessionStore();
+const { sessions } = storeToRefs(sessionStore);
+
+const unreadCount = computed(() => {
+  const list = sessions.value;
+  return list.reduce((sum, s) => {
+    const c = typeof s.unreadCount === 'number' ? s.unreadCount : 0;
+    return sum + c;
+  }, 0);
+});
+
+const hasUnread = computed(() => unreadCount.value > 0);
+
+const unreadDisplay = computed(() => {
+  const c = unreadCount.value;
+  if (c > 99) return '99+';
+  return String(c);
+});
 
 const menuItems = [
   { id: 'users', icon: 'users' },

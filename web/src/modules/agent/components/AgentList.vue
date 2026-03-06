@@ -71,9 +71,14 @@
           <!-- Agent Card -->
           <div class="flex justify-between items-start mb-4">
             <div
-              class="w-14 h-14 rounded-2xl bg-gradient-to-br from-gray-900 to-gray-700 flex items-center justify-center text-white shadow-lg shadow-gray-900/20"
+              class="w-14 h-14 rounded-lg bg-gradient-to-br from-gray-900 to-gray-700 flex items-center justify-center text-white shadow-lg shadow-gray-900/20"
             >
-              <i class="fa-solid fa-robot text-2xl"></i>
+              <img
+                v-if="getAgentAvatarUrl(agent)"
+                :src="getAgentAvatarUrl(agent)"
+                class="w-full h-full object-cover rounded-lg"
+              />
+              <i v-else class="fa-solid fa-robot text-2xl"></i>
             </div>
             <div class="flex space-x-2">
               <button
@@ -163,7 +168,7 @@
     <div
       v-if="showModal"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity"
-      @click.self="showModal = false"
+      @click.self="closeEditModal"
     >
       <div
         class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 transform transition-all scale-100"
@@ -173,7 +178,7 @@
             {{ t('agent.edit') }}
           </h3>
           <button
-            @click="showModal = false"
+            @click="closeEditModal"
             class="text-gray-400 hover:text-gray-600 transition-colors"
           >
             <i class="fa-solid fa-times text-xl"></i>
@@ -181,6 +186,33 @@
         </div>
 
         <div class="space-y-6">
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2"
+              >头像</label
+            >
+            <div class="flex items-center gap-3">
+              <div
+                class="w-14 h-14 rounded-lg bg-gray-100 overflow-hidden border border-gray-200 flex items-center justify-center"
+              >
+                <img
+                  v-if="editForm.avatarUrl"
+                  :src="editForm.avatarUrl"
+                  class="w-full h-full object-cover"
+                />
+                <i v-else class="fa-solid fa-robot text-xl text-gray-400"></i>
+              </div>
+              <button
+                type="button"
+                class="px-4 py-2.5 rounded-xl bg-gray-50 border border-gray-200 hover:bg-gray-100 font-medium"
+                @click="showAvatarModal = true"
+              >
+                更换头像
+              </button>
+              <div v-if="uploading" class="text-xs text-gray-500">
+                上传中 {{ progress.percent }}%
+              </div>
+            </div>
+          </div>
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-2">{{
               t('agent.nickname')
@@ -205,7 +237,7 @@
 
         <div class="flex justify-end space-x-3 mt-10">
           <button
-            @click="showModal = false"
+            @click="closeEditModal"
             class="px-6 py-2.5 rounded-xl text-gray-600 hover:bg-gray-100 font-bold transition-colors"
           >
             {{ t('agent.cancel') }}
@@ -219,6 +251,13 @@
         </div>
       </div>
     </div>
+
+    <SquareAvatarCropModal
+      v-model:open="showAvatarModal"
+      title="裁剪头像"
+      :initial-url="resolveResourceUrl(editForm.avatarUrl) || null"
+      @confirm="onAvatarConfirm"
+    />
   </div>
 </template>
 
@@ -234,18 +273,40 @@ import { useI18n } from '../composables/useI18n';
 import type { Agent, UpdateAgentRequest } from '../types/agent.types';
 import { useAgents } from '../hooks/useAgents';
 import { useUIStore } from '../store/ui.store';
+import {
+  SquareAvatarCropModal,
+  useResourceUpload,
+} from '../../resource/resource.module';
+import { resolveResourceUrl } from '../../../utils/http';
 
 const { t, currentLocale } = useI18n();
 const ui = useUIStore();
 const { agents, loading, list, update, remove, updateEmbeddings } = useAgents();
 const searchQuery = ref('');
 const showModal = ref(false);
+const showAvatarModal = ref(false);
 const currentAgent = ref<Agent | null>(null);
 const isUpdating = ref(false);
 const editForm = ref<UpdateAgentRequest>({
   nickname: '',
   purpose: '',
+  avatarUrl: '',
 });
+
+const { uploading, progress, upload: uploadResource } = useResourceUpload();
+
+function closeEditModal() {
+  showModal.value = false;
+  showAvatarModal.value = false;
+}
+
+function getAgentAvatarUrl(agent: Agent): string {
+  const v1 = agent.avatarUrl;
+  if (typeof v1 === 'string' && v1.trim()) return v1.trim();
+  const v2 = agent.avatar_url;
+  if (typeof v2 === 'string' && v2.trim()) return v2.trim();
+  return '';
+}
 
 const filteredAgents = computed(() => {
   if (!searchQuery.value) return agents.value;
@@ -294,9 +355,15 @@ const openEditModal = (agent: Agent) => {
   editForm.value = {
     nickname: agent.nickname,
     purpose: agent.purpose,
+    avatarUrl: getAgentAvatarUrl(agent),
   };
   showModal.value = true;
 };
+
+async function onAvatarConfirm(file: File) {
+  const res = await uploadResource(file);
+  editForm.value.avatarUrl = res.data.path;
+}
 
 const handleSave = async () => {
   if (!currentAgent.value) return;
@@ -304,6 +371,7 @@ const handleSave = async () => {
     await update(currentAgent.value.id, editForm.value);
     await fetchAgents();
     showModal.value = false;
+    showAvatarModal.value = false;
   } catch (error) {
     console.error('Failed to update agent:', error);
   }

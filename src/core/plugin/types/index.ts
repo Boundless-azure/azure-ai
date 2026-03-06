@@ -35,6 +35,8 @@ export interface PluginConfig {
   hooks: HookDescriptor[];
 }
 
+export * from './app-unit.types';
+
 /**
  * 供插件在各自的 plugin.d.ts 中使用的元祖类型约定
  * - 左侧为 hook 名称，右侧为该 hook 的 payload 类型

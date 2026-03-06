@@ -103,6 +103,16 @@ Summary 接口
 - 类型与守卫 ↔ types and guards ↔ types/conversation.types.ts
 - IM 消息历史 ↔ im message history ↔ controllers/im.controller.ts
 - IM 新消息探测 ↔ im has-new probe ↔ controllers/im.controller.ts
+- IM 邀请成员 ↔ im invite members ↔ controllers/im.controller.ts
+- IM 会话更新 ↔ im session update ↔ controllers/im.controller.ts
+- IM 退出群聊 ↔ im leave group ↔ controllers/im.controller.ts
+- IM 踢人 ↔ im kick member ↔ controllers/im.controller.ts
+- IM 转让群主 ↔ im transfer owner ↔ controllers/im.controller.ts
+- IM 群公告 ↔ im announcements ↔ controllers/im.controller.ts
+- IM 私聊拉群 ↔ im dm to group ↔ services/im-session.service.ts
+- IM 系统消息 ↔ im system message ↔ services/im-message.service.ts
+- IM 通讯录分组 ↔ im contact groups ↔ controllers/im-contact-group.controller.ts
+- IM 分组成员维护 ↔ im contact group members ↔ services/im-contact-group.service.ts
 
 # 关键词到文件函数哈希映射（Keywords -> Function Hash）
 - ConversationGroupController.listGroups -> 98f1c2a7
@@ -112,6 +122,31 @@ Summary 接口
 - ConversationService.getSessionHistory -> 1d9b7e02
 - ImMessageService.getMessages -> im_msg_get_001
 - ImMessageService.hasNew -> im_msg_has_new_002
+- ImController.inviteMembers -> im_ctl_invite_003
+- ImSessionService.inviteMembers -> im_sess_invite_004
+- ImController.updateSession -> im_ctl_update_session_005
+- ImSessionService.updateSession -> im_sess_update_session_006
+- ImController.leaveSession -> im_ctl_leave_session_007
+- ImSessionService.leaveSession -> im_sess_leave_session_008
+- ImController.removeMember -> im_ctl_kick_009
+- ImSessionService.kickMember -> im_sess_kick_010
+- ImController.transferOwner -> im_ctl_transfer_owner_011
+- ImSessionService.transferOwner -> im_sess_transfer_owner_012
+- ImController.getAnnouncements -> im_ctl_announce_list_013
+- ImMessageService.getAnnouncements -> im_msg_announce_list_014
+- ImController.createAnnouncement -> im_ctl_announce_create_015
+- ImMessageService.sendAnnouncement -> im_msg_announce_create_016
+- ImController.deleteAnnouncement -> im_ctl_announce_unset_017
+- ImMessageService.unsetAnnouncement -> im_msg_announce_unset_018
+- ImContactGroupController.list -> im_cg_list_019
+- ImContactGroupController.create -> im_cg_create_020
+- ImContactGroupController.update -> im_cg_update_021
+- ImContactGroupController.delete -> im_cg_delete_022
+- ImContactGroupController.listMembers -> im_cg_members_list_023
+- ImContactGroupController.addMembers -> im_cg_members_add_024
+- ImContactGroupController.removeMember -> im_cg_members_remove_025
+- ImContactGroupService.listGroups -> im_cg_svc_list_026
+- ImContactGroupService.addMembers -> im_cg_svc_add_027
 
 备注
 - 本文件仅用于目录与规范说明，便于 IDE 与开发者快速了解模块结构；不参与构建。

@@ -37,7 +37,7 @@ export class IntentAgentTriggerFunctionService implements FunctionCallServiceCon
     const row = await this.msgRepo
       .createQueryBuilder('m')
       .where('m.session_id = :sid', { sid: sessionId })
-      .andWhere('m.is_delete = 0')
+      .andWhere('m.is_delete = false')
       .andWhere('m.role = :role', { role: 'user' })
       .orderBy('m.created_at', 'DESC')
       .getOne();

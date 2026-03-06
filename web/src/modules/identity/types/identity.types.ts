@@ -66,6 +66,7 @@ export interface UpdateUserDto {
   displayName?: string;
   email?: string;
   phone?: string | null;
+  avatarUrl?: string | null;
   active?: boolean;
 }
 
@@ -254,6 +255,7 @@ export const UpdateUserSchema = z.object({
   displayName: z.string().min(1).optional(),
   email: z.string().email().optional(),
   phone: z.string().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(),
   active: z.boolean().optional(),
 });
 

@@ -293,7 +293,7 @@ export class ContextService {
     const rows = await this.chatMessageRepository
       .createQueryBuilder('m')
       .where('m.session_id = :sid', { sid: sessionId })
-      .andWhere('m.is_delete = 0')
+      .andWhere('m.is_delete = false')
       .andWhere('m.role != :role', { role: 'system' })
       .orderBy('m.created_at', 'DESC')
       .limit(n)
@@ -1170,9 +1170,9 @@ export class ContextService {
       .createQueryBuilder('m')
       .innerJoin(ChatSessionEntity, 's', 's.session_id = m.session_id')
       .where('s.user_id = :uid', { uid: userId })
-      .andWhere('s.active = 1')
-      .andWhere('s.is_delete = 0')
-      .andWhere('m.is_delete = 0')
+      .andWhere('s.active = true')
+      .andWhere('s.is_delete = false')
+      .andWhere('m.is_delete = false')
       .andWhere('m.role != :role', { role: 'system' });
 
     if (dbType === 'mysql') {
@@ -1182,6 +1182,11 @@ export class ContextService {
       const where = clauses.join(matchMode === 'all' ? ' AND ' : ' OR ');
       qb.andWhere(`(${where})`);
       keywords.forEach((kw, i) => qb.setParameter(`kw${i}`, kw));
+    } else if (dbType === 'postgres') {
+      const clauses = keywords.map((_, i) => `m.keywords::text ILIKE :kw${i}`);
+      const where = clauses.join(matchMode === 'all' ? ' AND ' : ' OR ');
+      qb.andWhere(`(${where})`);
+      keywords.forEach((kw, i) => qb.setParameter(`kw${i}`, `%"${kw}"%`));
     } else {
       const clauses = keywords.map((_, i) => `m.keywords LIKE :kw${i}`);
       const where = clauses.join(matchMode === 'all' ? ' AND ' : ' OR ');

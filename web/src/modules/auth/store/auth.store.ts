@@ -23,6 +23,16 @@ function isPrincipal(value: unknown): value is Principal {
   if (typeof value.id !== 'string') return false;
   if (typeof value.displayName !== 'string') return false;
   if (typeof value.principalType !== 'string') return false;
+  const avatarUrl = value.avatarUrl;
+  if (
+    !(
+      avatarUrl === undefined ||
+      avatarUrl === null ||
+      typeof avatarUrl === 'string'
+    )
+  ) {
+    return false;
+  }
   const email = value.email;
   if (!(email === undefined || email === null || typeof email === 'string')) {
     return false;

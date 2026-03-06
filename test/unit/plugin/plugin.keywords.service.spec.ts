@@ -1,21 +1,38 @@
-import 'dotenv/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PluginKeywordsService } from '../../../src/core/plugin/services/plugin.keywords.service';
 import type { PluginConfig } from '../../../src/core/plugin/types';
-import { AppModule } from '../../../src/app.module';
+import { AIModelService } from '../../../src/core/ai/services/ai-model.service';
 
-// Gate real-AI tests behind an env flag to avoid failures when API key/network
-// is unavailable in CI or local environments. Set RUN_AI_TESTS=true to enable.
-const RUN_AI_TESTS = process.env.RUN_AI_TESTS === 'true';
-
-describe('PluginKeywordsService (real AI, no mocks)', () => {
+describe('PluginKeywordsService', () => {
   let moduleRef: TestingModule;
   let service: PluginKeywordsService;
-  jest.setTimeout(60000);
+  const aiModelService = {
+    getEnabledModels: () =>
+      Promise.resolve([
+        {
+          id: 'model-1',
+        },
+      ]),
+    chat: () =>
+      Promise.resolve({
+        role: 'assistant',
+        content: JSON.stringify({
+          zh: ['用户分析', '用户-生命周期', '用户分析'],
+          en: [
+            'customer analytics',
+            'customer-analytics',
+            'Customer Analytics',
+          ],
+        }),
+      }),
+  };
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
-      imports: [AppModule],
+      providers: [
+        PluginKeywordsService,
+        { provide: AIModelService, useValue: aiModelService },
+      ],
     }).compile();
     service = moduleRef.get(PluginKeywordsService);
   });
@@ -40,19 +57,13 @@ describe('PluginKeywordsService (real AI, no mocks)', () => {
     ],
   };
 
-  it('pickDefaultModelId returns first enabled model id (DB-backed)', async () => {
+  it('pickDefaultModelId returns first enabled model id', async () => {
     const id = await service.pickDefaultModelId();
     expect(typeof id).toBe('string');
     expect(id.length).toBeGreaterThan(0);
   });
 
-  it('generateKeywords returns normalized keyword arrays using real AI', async () => {
-    if (!RUN_AI_TESTS) {
-      console.warn(
-        'Skipping real AI test: set RUN_AI_TESTS=true to enable PluginKeywordsService.generateKeywords.',
-      );
-      return;
-    }
+  it('generateKeywords returns normalized keyword arrays', async () => {
     const res = await service.generateKeywords(conf);
     expect(Array.isArray(res.zh)).toBe(true);
     expect(Array.isArray(res.en)).toBe(true);

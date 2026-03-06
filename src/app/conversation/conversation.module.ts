@@ -9,6 +9,10 @@ import { ImController } from './controllers/im.controller';
 import { ImGateway } from './controllers/im.gateway';
 import { ImSessionService } from './services/im-session.service';
 import { ImMessageService } from './services/im-message.service';
+import { ImContactGroupController } from './controllers/im-contact-group.controller';
+import { ImContactGroupService } from './services/im-contact-group.service';
+import { ImContactGroupEntity } from './entities/im-contact-group.entity';
+import { ImContactGroupMemberEntity } from './entities/im-contact-group-member.entity';
 import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
 import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
 import { ChatSessionMemberEntity } from '@core/ai/entities/chat-session-member.entity';
@@ -20,6 +24,7 @@ import { AgentEntity } from '@/app/agent/entities/agent.entity';
 import { PluginEntity } from '@core/plugin/entities/plugin.entity';
 import { MembershipEntity } from '@/app/identity/entities/membership.entity';
 import { PrincipalEntity } from '@/app/identity/entities/principal.entity';
+import { UserEntity } from '@/app/identity/entities/user.entity';
 import { IdentityModule } from '@/app/identity/identity.module';
 import { AuthModule } from '@/core/auth/auth.module';
 
@@ -51,17 +56,21 @@ import { AuthModule } from '@/core/auth/auth.module';
       PluginEntity,
       MembershipEntity,
       PrincipalEntity,
+      UserEntity,
+      ImContactGroupEntity,
+      ImContactGroupMemberEntity,
     ]),
     LangGraphCheckpointModule.forRoot(),
     IdentityModule,
     AuthModule,
   ],
-  controllers: [ConversationController, ImController],
+  controllers: [ConversationController, ImController, ImContactGroupController],
   providers: [
     ConversationService,
     ImGateway,
     ImSessionService,
     ImMessageService,
+    ImContactGroupService,
   ],
   exports: [ConversationService, ImSessionService, ImMessageService],
 })

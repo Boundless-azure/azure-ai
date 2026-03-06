@@ -7,7 +7,7 @@ import * as ts from 'typescript';
 import * as os from 'os';
 import { createHash } from 'crypto';
 import { pathToFileURL } from 'url';
-import { PluginEntity } from '../entities/plugin.entity';
+import { AppEntity } from '../entities/plugin.entity';
 import { PluginKeywordsService } from './plugin.keywords.service';
 import type { Db, Collection } from 'mongodb';
 import type { PluginDoc } from '../../../mongo/types/mongo.types';
@@ -23,36 +23,42 @@ export class PluginService {
   private readonly logger = new Logger(PluginService.name);
 
   constructor(
-    @InjectRepository(PluginEntity)
-    private readonly repo: Repository<PluginEntity>,
+    @InjectRepository(AppEntity)
+    private readonly repo: Repository<AppEntity>,
     private readonly keywords: PluginKeywordsService,
     @Optional() @Inject('MONGO_DB') private readonly mongoDb?: Db,
   ) {}
 
   /**
-   * 获取所有插件列表
-   * @returns 插件实体数组（按 updatedAt 倒序）
+   * 获取应用列表（向后兼容：原 PluginService.list）
+   * @param filter 可选过滤条件
+   * @returns 应用实体数组（按 updatedAt 倒序）
    */
-  async list(): Promise<PluginEntity[]> {
+  async list(filter?: { sessionId?: string }): Promise<AppEntity[]> {
+    const sessionId = filter?.sessionId;
     if (this.useMongo()) {
       const col = this.pluginCollection();
       if (!col) return [];
+      const where: Record<string, unknown> = { isDelete: { $ne: true } };
+      if (sessionId) where['sessionId'] = sessionId;
       const docs = await col
-        .find({ isDelete: { $ne: true } })
+        .find(where)
         .sort({ updatedAt: -1 })
         .limit(500)
         .toArray();
       return docs.map((d) => this.toEntity(d));
     }
-    return this.repo.find({ order: { updatedAt: 'DESC' } });
+    const where: Record<string, unknown> = { isDelete: false };
+    if (sessionId) where['sessionId'] = sessionId;
+    return this.repo.find({ where, order: { updatedAt: 'DESC' } });
   }
 
   /**
-   * 根据 ID 获取插件
+   * 根据 ID 获取应用
    * @param id 插件主键
    * @returns 找到则返回实体，否则返回 null
    */
-  async get(id: string): Promise<PluginEntity | null> {
+  async get(id: string): Promise<AppEntity | null> {
     if (this.useMongo()) {
       const col = this.pluginCollection();
       if (!col) return null;
@@ -66,7 +72,7 @@ export class PluginService {
   }
 
   /**
-   * 删除插件
+   * 删除应用
    * @param id 插件主键
    */
   async delete(id: string): Promise<void> {
@@ -82,22 +88,31 @@ export class PluginService {
   }
 
   /**
-   * 录入插件：通过目录读取 plugin.conf.ts，生成关键词并入库（upsert by name+version）
+   * 录入应用：通过目录读取 plugin.conf.ts，生成关键词并入库（upsert by name+version）
    */
-  async registerByDir(pluginDir: string): Promise<PluginEntity> {
+  async registerByDir(
+    pluginDir: string,
+    opts?: { sessionId?: string },
+  ): Promise<AppEntity> {
+    if (!opts?.sessionId) {
+      throw new Error('sessionId is required');
+    }
     const conf = await this.loadConfig(pluginDir);
     validatePluginConfig(conf);
     const kw = await this.keywords.generateKeywords(conf);
+    const keywords = normalizeKeywords([...kw.zh, ...kw.en]);
 
     if (this.useMongo()) {
       const col = this.pluginCollection();
       if (!col) throw new Error('MongoDB not available');
       const now = new Date();
       const doc: PluginDoc = {
+        sessionId: opts.sessionId,
         name: conf.name,
         version: conf.version,
         description: conf.description,
         hooks: conf.hooks,
+        keywords,
         keywordsZh: kw.zh.join(', '),
         keywordsEn: kw.en.join(', '),
         pluginDir,
@@ -121,11 +136,13 @@ export class PluginService {
       where: { name: conf.name, version: conf.version },
     });
 
-    const entityData: Partial<PluginEntity> = {
+    const entityData: Partial<AppEntity> = {
+      sessionId: opts.sessionId,
       name: conf.name,
       version: conf.version,
       description: conf.description,
       hooks: JSON.stringify(conf.hooks),
+      keywords,
       keywordsZh: kw.zh.join(', '),
       keywordsEn: kw.en.join(', '),
       pluginDir,
@@ -138,7 +155,7 @@ export class PluginService {
       this.logger.log(`Updated plugin: ${conf.name}@${conf.version}`);
       return saved;
     } else {
-      const instance = Object.assign(new PluginEntity(), entityData);
+      const instance = Object.assign(new AppEntity(), entityData);
       await this.repo.insert(instance);
       const created = await this.repo.findOne({
         where: { name: conf.name, version: conf.version },
@@ -155,10 +172,7 @@ export class PluginService {
    * @param updates 需要更新的字段（局部）
    * @returns 更新后的实体
    */
-  async update(
-    id: string,
-    updates: Partial<PluginEntity>,
-  ): Promise<PluginEntity> {
+  async update(id: string, updates: Partial<AppEntity>): Promise<AppEntity> {
     if (this.useMongo()) {
       const col = this.pluginCollection();
       if (!col) throw new Error('MongoDB not available');
@@ -258,14 +272,17 @@ export class PluginService {
     return this.mongoDb.collection<PluginDoc>('plugins');
   }
 
-  private toEntity(doc: PluginDoc): PluginEntity {
-    const e = new PluginEntity();
+  private toEntity(doc: PluginDoc): AppEntity {
+    const e = new AppEntity();
     (e as unknown as { id?: string }).id =
       doc._id ?? `${doc.name}:${doc.version}`;
+    e.sessionId = doc.sessionId ?? null;
     e.name = doc.name;
     e.version = doc.version;
     e.description = doc.description;
     e.hooks = JSON.stringify(doc.hooks);
+    e.embedding = typeof doc.embedding === 'string' ? doc.embedding : null;
+    e.keywords = doc.keywords ?? null;
     e.keywordsZh = doc.keywordsZh ?? null;
     e.keywordsEn = doc.keywordsEn ?? null;
     e.pluginDir = doc.pluginDir;
@@ -287,4 +304,18 @@ function isObject(v: unknown): v is Record<string, unknown> {
 // 将 unknown 收窄为 Partial<PluginConfig>，便于传入 validatePluginConfig
 function isPartialPluginConfig(v: unknown): v is Partial<PluginConfig> {
   return typeof v === 'object' && v !== null;
+}
+
+function normalizeKeywords(input: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of input) {
+    const v = raw.trim();
+    if (!v) continue;
+    const key = v.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out.slice(0, 50);
 }

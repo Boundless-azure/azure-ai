@@ -142,12 +142,24 @@ export class AuthService {
         },
       );
     }
+    const defaultAvatarUrl = '/static/system/avatars/default.svg';
+    const resolvedAvatarUrl = (() => {
+      const raw =
+        principal.avatarUrl && principal.avatarUrl.trim()
+          ? principal.avatarUrl
+          : user.avatarUrl && user.avatarUrl.trim()
+            ? user.avatarUrl
+            : defaultAvatarUrl;
+      return raw;
+    })();
+
     return {
       token,
       principal: {
         id: principal.id,
         displayName: principal.displayName,
         principalType: principal.principalType,
+        avatarUrl: resolvedAvatarUrl,
         email: principal.email,
         phone: principal.phone,
         tenantId: principal.tenantId,

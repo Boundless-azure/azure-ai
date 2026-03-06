@@ -170,9 +170,11 @@ export class PrincipalService {
   }
 
   async createUser(dto: CreateUserDto): Promise<PrincipalEntity> {
+    const defaultAvatarUrl = '/static/system/avatars/default.svg';
     if (!dto.email || !dto.email.trim()) {
       throw new BadRequestException('email is required');
     }
+    const email = dto.email.trim();
     const password = this.normalizePassword(dto.password);
     const salt = password ? this.generateSalt() : null;
     const hash = password && salt ? this.hashPassword(password, salt) : null;
@@ -191,7 +193,7 @@ export class PrincipalService {
         throw new BadRequestException('MongoDB not ready');
       }
       const existed = await userCol.findOne({
-        email: dto.email,
+        email,
         isDelete: { $ne: true },
       });
       if (existed) {
@@ -203,8 +205,8 @@ export class PrincipalService {
         _id: id,
         displayName: dto.displayName,
         principalType: dto.principalType,
-        avatarUrl: null,
-        email: dto.email,
+        avatarUrl: defaultAvatarUrl,
+        email,
         phone: dto.phone ?? null,
         tenantId: dto.tenantId ?? null,
         active: true,
@@ -214,7 +216,8 @@ export class PrincipalService {
       });
       await userCol.insertOne({
         principalId: id,
-        email: dto.email,
+        email,
+        avatarUrl: defaultAvatarUrl,
         passwordHash: hash,
         passwordSalt: salt,
         lastLoginAt: null,
@@ -228,8 +231,8 @@ export class PrincipalService {
         _id: id,
         displayName: dto.displayName,
         principalType: dto.principalType,
-        avatarUrl: null,
-        email: dto.email,
+        avatarUrl: defaultAvatarUrl,
+        email,
         phone: dto.phone ?? null,
         tenantId: dto.tenantId ?? null,
         active: true,
@@ -239,7 +242,7 @@ export class PrincipalService {
       });
     }
     const existing = await this.userRepo.findOne({
-      where: { email: dto.email, isDelete: false },
+      where: { email, isDelete: false },
     });
     if (existing) {
       throw new BadRequestException('email already exists');
@@ -252,8 +255,8 @@ export class PrincipalService {
         principalType: this.toDbPrincipalType(
           dto.principalType,
         ) as unknown as PrincipalType,
-        avatarUrl: null,
-        email: dto.email,
+        avatarUrl: defaultAvatarUrl,
+        email,
         phone: dto.phone ?? null,
         tenantId: dto.tenantId ?? null,
         active: true,
@@ -262,7 +265,8 @@ export class PrincipalService {
       const saved = await principalRepo.save(entityDb);
       const user = userRepo.create({
         principalId: saved.id,
-        email: dto.email,
+        email,
+        avatarUrl: defaultAvatarUrl,
         passwordHash: hash,
         passwordSalt: salt,
         lastLoginAt: null,
@@ -287,30 +291,49 @@ export class PrincipalService {
       if (!col || !userCol) {
         throw new BadRequestException('MongoDB not ready');
       }
-      if (dto.email) {
-        const existed = await userCol.findOne({
-          email: dto.email,
+
+      let nextEmail: string | undefined;
+      if (dto.email !== undefined) {
+        const current = await userCol.findOne({
+          principalId: id,
           isDelete: { $ne: true },
         });
-        if (existed && existed['principalId'] !== id) {
-          throw new BadRequestException('email already exists');
+        if (!current) {
+          throw new NotFoundException('user not found');
+        }
+        const incoming = dto.email.trim();
+        const currentEmail =
+          typeof current['email'] === 'string' ? current['email'] : '';
+
+        if (incoming && incoming !== currentEmail) {
+          const existed = await userCol.findOne({
+            email: incoming,
+            isDelete: { $ne: true },
+          });
+          if (existed && existed['principalId'] !== id) {
+            throw new BadRequestException('email already exists');
+          }
+          nextEmail = incoming;
         }
       }
       const principalPatch: Record<string, unknown> = {};
       if (dto.displayName !== undefined)
         principalPatch['displayName'] = dto.displayName;
-      if (dto.email !== undefined) principalPatch['email'] = dto.email;
+      if (nextEmail !== undefined) principalPatch['email'] = nextEmail;
       if (dto.phone !== undefined) principalPatch['phone'] = dto.phone;
+      if (dto.avatarUrl !== undefined)
+        principalPatch['avatarUrl'] = dto.avatarUrl;
       if (dto.active !== undefined) principalPatch['active'] = !!dto.active;
       if (Object.keys(principalPatch).length) {
         principalPatch['updatedAt'] = new Date();
         await col.updateOne({ _id: id }, { $set: principalPatch });
       }
-      if (dto.email !== undefined) {
-        await userCol.updateOne(
-          { principalId: id },
-          { $set: { email: dto.email, updatedAt: new Date() } },
-        );
+
+      if (nextEmail !== undefined || dto.avatarUrl !== undefined) {
+        const userPatch: Record<string, unknown> = { updatedAt: new Date() };
+        if (nextEmail !== undefined) userPatch['email'] = nextEmail;
+        if (dto.avatarUrl !== undefined) userPatch['avatarUrl'] = dto.avatarUrl;
+        await userCol.updateOne({ principalId: id }, { $set: userPatch });
       }
       return;
     }
@@ -320,12 +343,18 @@ export class PrincipalService {
     if (!user) {
       throw new NotFoundException('user not found');
     }
-    if (dto.email) {
-      const existed = await this.userRepo.findOne({
-        where: { email: dto.email, isDelete: false },
-      });
-      if (existed && existed.principalId !== id) {
-        throw new BadRequestException('email already exists');
+
+    let nextEmail: string | undefined;
+    if (dto.email !== undefined) {
+      const incoming = dto.email.trim();
+      if (incoming && incoming !== user.email) {
+        const existed = await this.userRepo.findOne({
+          where: { email: incoming, isDelete: false },
+        });
+        if (existed && existed.principalId !== id) {
+          throw new BadRequestException('email already exists');
+        }
+        nextEmail = incoming;
       }
     }
     await this.repo.manager.transaction(async (manager) => {
@@ -333,14 +362,16 @@ export class PrincipalService {
       const userRepo = manager.getRepository(UserEntity);
       const patch: Partial<PrincipalEntity> = {};
       if (dto.displayName !== undefined) patch.displayName = dto.displayName;
-      if (dto.email !== undefined) patch.email = dto.email;
+      if (nextEmail !== undefined) patch.email = nextEmail;
       if (dto.phone !== undefined) patch.phone = dto.phone;
+      if (dto.avatarUrl !== undefined) patch.avatarUrl = dto.avatarUrl;
       if (dto.active !== undefined) patch.active = !!dto.active;
       if (Object.keys(patch).length) {
         await principalRepo.update({ id }, patch);
       }
       const userPatch: Partial<UserEntity> = {};
-      if (dto.email !== undefined) userPatch.email = dto.email;
+      if (nextEmail !== undefined) userPatch.email = nextEmail;
+      if (dto.avatarUrl !== undefined) userPatch.avatarUrl = dto.avatarUrl;
       if (Object.keys(userPatch).length) {
         await userRepo.update({ principalId: id }, userPatch);
       }

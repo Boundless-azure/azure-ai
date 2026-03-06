@@ -18,6 +18,15 @@ export class AgentEntity extends BaseAuditedEntity {
   @Column({ name: 'nickname', type: 'varchar', length: 100 })
   nickname!: string;
 
+  /** 头像地址（可为静态资源或外部 URL） */
+  @Column({
+    name: 'avatar_url',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  avatarUrl!: string | null;
+
   /** 是否由 AI 产生 */
   @Column({ name: 'is_ai_generated', type: 'boolean', default: false })
   isAiGenerated!: boolean;

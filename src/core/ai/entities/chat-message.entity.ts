@@ -52,6 +52,10 @@ export class ChatMessageEntity extends BaseAuditedEntity {
   @Column({ name: 'metadata', type: 'json', nullable: true })
   metadata?: Record<string, any> | null;
 
+  /** 是否为群公告 */
+  @Column({ name: 'is_announcement', type: 'boolean', default: false })
+  isAnnouncement!: boolean;
+
   /** 是否已编辑 */
   @Column({ name: 'is_edited', type: 'boolean', default: false })
   isEdited!: boolean;

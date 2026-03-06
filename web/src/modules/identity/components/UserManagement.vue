@@ -80,7 +80,7 @@
                   >
                     <img
                       v-if="user.avatarUrl"
-                      :src="user.avatarUrl"
+                      :src="resolveResourceUrl(user.avatarUrl)"
                       class="w-full h-full object-cover"
                     />
                     <i v-else class="fa-solid fa-user"></i>
@@ -207,6 +207,34 @@
         </div>
 
         <div class="space-y-3">
+          <div v-if="isEdit">
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >头像</label
+            >
+            <div class="flex items-center gap-3">
+              <div
+                class="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500 overflow-hidden border border-gray-200"
+              >
+                <img
+                  v-if="form.avatarUrl"
+                  :src="resolveResourceUrl(form.avatarUrl)"
+                  class="w-full h-full object-cover"
+                />
+                <i v-else class="fa-solid fa-user"></i>
+              </div>
+              <button
+                type="button"
+                class="px-3 py-2 rounded-lg border border-gray-200 text-sm hover:bg-gray-50"
+                @click="showAvatarModal = true"
+              >
+                更换头像
+              </button>
+              <div v-if="uploading" class="text-xs text-gray-500">
+                上传中 {{ progress.percent }}%
+              </div>
+            </div>
+          </div>
+
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1"
               >显示名称</label
@@ -297,6 +325,13 @@
         </div>
       </div>
     </div>
+
+    <SquareAvatarCropModal
+      v-model:open="showAvatarModal"
+      title="裁剪头像"
+      :initial-url="resolveResourceUrl(form.avatarUrl)"
+      @confirm="onAvatarConfirm"
+    />
   </div>
 
   <div
@@ -407,6 +442,11 @@ import { ref, onMounted, reactive } from 'vue';
 import { usePrincipals } from '../hooks/usePrincipals';
 import { useOrganizations } from '../hooks/useOrganizations';
 import { useMemberships } from '../hooks/useMemberships';
+import {
+  SquareAvatarCropModal,
+  useResourceUpload,
+} from '../../resource/resource.module';
+import { resolveResourceUrl } from '../../../utils/http';
 import type {
   IdentityPrincipalItem,
   UserPrincipalType,
@@ -434,6 +474,7 @@ const query = reactive({
 const showModal = ref(false);
 const isEdit = ref(false);
 const showPassword = ref(true);
+const showAvatarModal = ref(false);
 const form = reactive({
   id: '',
   displayName: '',
@@ -441,9 +482,11 @@ const form = reactive({
   email: '',
   password: '',
   phone: '',
+  avatarUrl: null as string | null,
 });
 
 const { listUsers, createUser, updateUser, removeUser } = usePrincipals();
+const { uploading, progress, upload: uploadResource } = useResourceUpload();
 const { list: listOrganizations } = useOrganizations();
 const {
   list: listMemberships,
@@ -504,6 +547,7 @@ function openCreateModal() {
   form.email = '';
   form.password = '';
   form.phone = '';
+  form.avatarUrl = null;
   showPassword.value = true;
   showModal.value = true;
 }
@@ -516,8 +560,14 @@ function openEditModal(user: IdentityPrincipalItem) {
   form.email = user.email || '';
   form.password = '';
   form.phone = user.phone || '';
+  form.avatarUrl = user.avatarUrl || null;
   showPassword.value = true;
   showModal.value = true;
+}
+
+async function onAvatarConfirm(file: File) {
+  const res = await uploadResource(file);
+  form.avatarUrl = res.data.path;
 }
 
 function toUserPrincipalType(type: string): UserPrincipalType {
@@ -561,6 +611,7 @@ function buildRandomPassword(length: number): string {
 
 function closeModal() {
   showModal.value = false;
+  showAvatarModal.value = false;
 }
 
 function getOrganizationName(id: string) {
@@ -589,6 +640,7 @@ async function handleSubmit() {
         displayName: form.displayName,
         email: form.email,
         phone: form.phone || null,
+        avatarUrl: form.avatarUrl,
       });
     } else {
       if (!form.email.trim()) {

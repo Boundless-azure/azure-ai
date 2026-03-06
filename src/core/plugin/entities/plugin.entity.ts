@@ -2,15 +2,18 @@ import { Column, Entity, Index, Unique } from 'typeorm';
 import { BaseAuditedEntity } from '../../ai/entities/base.entity';
 
 /**
- * 插件实体（TypeORM）
- * - 表名：plugins
- * - 唯一约束：name + version（避免重复录入同名同版本）
+ * @title 应用实体（TypeORM）
+ * @description 应用元信息表（由 plugin 模块演进而来）：支持 session 关联、向量与关键词检索。
+ * @keywords-cn 应用表, apps, 会话关联, 向量, 关键词, hooks
+ * @keywords-en app-entity, apps, session, embedding, keywords, hooks
  */
-@Entity('plugins')
-@Unique('UQ_PLUGIN_NAME_VERSION', ['name', 'version'])
-export class PluginEntity extends BaseAuditedEntity {
-  /** 主键 ID（UUID v7，继承自 BaseAudititedEntity {
-  // id: string; // 由基类提供
+@Entity('apps')
+@Unique('UQ_APP_NAME_VERSION', ['name', 'version'])
+export class AppEntity extends BaseAuditedEntity {
+  /** 关联的 IM 会话 ID（可选，用于按会话隔离应用集合） */
+  @Column({ name: 'session_id', type: 'varchar', length: 100, nullable: true })
+  @Index()
+  sessionId!: string | null;
 
   /** 插件名称（带索引，便于查询与统计） */
   @Column({ type: 'varchar', length: 255 })
@@ -28,6 +31,14 @@ export class PluginEntity extends BaseAuditedEntity {
   /** hooks 以 JSON 字符串形式存储（数组：{ name, payloadDescription }） */
   @Column({ type: 'text' })
   hooks!: string;
+
+  /** 向量字段（pgvector），用于向量检索 */
+  @Column({ name: 'embedding', type: 'vector', nullable: true })
+  embedding!: string | null;
+
+  /** 关键词数组（JSON 存储，做为回退匹配机制） */
+  @Column({ name: 'keywords', type: 'json', nullable: true })
+  keywords!: string[] | null;
 
   // 关键词（中文 / 英文），逗号分隔的文本，便于 FULLTEXT 索引
   /** 中文关键词（逗号分隔文本，便于全文索引） */
@@ -49,3 +60,5 @@ export class PluginEntity extends BaseAuditedEntity {
   // 审计与软删除字段由 BaseAuditedEntity 提供：
   // createdUser, updateUser, channelId, isDelete, createdAt, updatedAt, deletedAt
 }
+
+export { AppEntity as PluginEntity };

@@ -8,13 +8,12 @@
 
 文件说明
 - constants/index.ts：定义 IM_NAMESPACE('/im') 与 IM_EVENTS 常量，用于前端统一引用事件名
-- hooks/connection.ts：构造连接参数；默认使用握手 auth.token；可选使用 Authorization: Bearer
- - hooks/connection.ts：构造连接参数；默认使用握手 auth.token；可选使用 Authorization: Bearer；提供 createImSocket 与 setAuthAndConnect
+- hooks/connection.ts：构造连接参数；默认使用握手 auth.token；可选使用 Authorization: Bearer；默认开启无限重连并设置重连间隔；提供 createImSocket 与 setAuthAndConnect
 - hooks/im.api.ts：对 socket.emit/on 进行轻封装，统一请求/事件接口，避免在页面中散落字符串
 - im.module.ts：模块入口，导出全部公共函数与类型别名
 
 函数说明
-- buildImConnectionOptions(token, mode?)：返回连接选项（mode: 'auth' | 'header'），默认 'auth'
+- buildImConnectionOptions(token, mode?)：返回连接选项（mode: 'auth' | 'header'），默认 'auth'；默认开启无限重连并设置重连间隔
 - buildImNamespaceUrl(baseUrl)：拼接后端 IM namespace 地址
  - createImSocket(io, baseUrl, token)：通过 io(url, opts) 创建连接（opts 使用 auth.token）
  - setAuthAndConnect(socket, token)：设置 socket.auth 并触发 connect（适配 autoConnect=false）
@@ -29,6 +28,7 @@
 关键词索引（中文 / English Keyword Index）
 IM常量 ↔ im-constants ↔ constants/index.ts
 连接选项 ↔ connection-options ↔ hooks/connection.ts
+重连 ↔ reconnection ↔ hooks/connection.ts
 事件封装 ↔ event-wrappers ↔ hooks/im.api.ts
 前端IM模块 ↔ im-frontend-module ↔ im.module.ts
 

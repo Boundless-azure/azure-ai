@@ -42,6 +42,7 @@ export const useImStore = defineStore('im', () => {
   const stateByPrincipal = ref<Record<string, PrincipalState>>({});
 
   let userNotifyTimeout: number | null = null;
+  let sessionsPullTimeout: number | null = null;
 
   const pullTimeoutBySession = new Map<string, number>();
   const pullLastAtBySession = new Map<string, number>();
@@ -52,8 +53,9 @@ export const useImStore = defineStore('im', () => {
   const STORAGE_KEY_PREFIX = 'im.cursors';
   const DB_NAME = 'im_store';
   const CURSORS_STORE_NAME = 'cursors';
+  const SESSIONS_STORE_NAME = 'sessions';
   const MESSAGES_STORE_NAME = 'messages';
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
 
   type ImCursorRecord = {
     key: string;
@@ -68,6 +70,12 @@ export const useImStore = defineStore('im', () => {
     updatedAt: number;
   };
 
+  type ImSessionsRecord = {
+    key: string;
+    items: ImSessionSummary[];
+    updatedAt: number;
+  };
+
   function openDb(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -75,6 +83,9 @@ export const useImStore = defineStore('im', () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(CURSORS_STORE_NAME)) {
           db.createObjectStore(CURSORS_STORE_NAME, { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains(SESSIONS_STORE_NAME)) {
+          db.createObjectStore(SESSIONS_STORE_NAME, { keyPath: 'key' });
         }
         if (!db.objectStoreNames.contains(MESSAGES_STORE_NAME)) {
           db.createObjectStore(MESSAGES_STORE_NAME, { keyPath: 'key' });
@@ -137,6 +148,13 @@ export const useImStore = defineStore('im', () => {
     action: (store: IDBObjectStore) => IDBRequest<T>,
   ): Promise<T | undefined> {
     return runInStore(CURSORS_STORE_NAME, mode, action);
+  }
+
+  function runInSessionsStore<T>(
+    mode: IDBTransactionMode,
+    action: (store: IDBObjectStore) => IDBRequest<T>,
+  ): Promise<T | undefined> {
+    return runInStore(SESSIONS_STORE_NAME, mode, action);
   }
 
   function runInMessagesStore<T>(
@@ -220,8 +238,43 @@ export const useImStore = defineStore('im', () => {
     return `${STORAGE_KEY_PREFIX}:${pid}`;
   }
 
+  function getSessionsStorageKey(pid: string): string {
+    return `im.sessions:${pid}`;
+  }
+
   function getMessagesStorageKey(pid: string, sessionId: string): string {
     return `im.messages:${pid}:${sessionId}`;
+  }
+
+  async function hydrateSessions(pid: string) {
+    try {
+      const key = getSessionsStorageKey(pid);
+      const rec = await runInSessionsStore<ImSessionsRecord>(
+        'readonly',
+        (store) => store.get(key) as IDBRequest<ImSessionsRecord>,
+      );
+      if (!rec || !Array.isArray(rec.items)) return;
+      const state = ensurePrincipalState(pid);
+      if (state.sessions.length > 0) return;
+      updatePrincipalState(pid, { sessions: sortSessions(rec.items) });
+    } catch {
+      return;
+    }
+  }
+
+  async function persistSessions(pid: string) {
+    const state = ensurePrincipalState(pid);
+    const key = getSessionsStorageKey(pid);
+    const record: ImSessionsRecord = {
+      key,
+      items: state.sessions,
+      updatedAt: Date.now(),
+    };
+    try {
+      await runInSessionsStore('readwrite', (store) => store.put(record));
+    } catch {
+      return;
+    }
   }
 
   function sortMessages(list: ImMessageInfo[]): ImMessageInfo[] {
@@ -345,7 +398,7 @@ export const useImStore = defineStore('im', () => {
     if (hydratedCursorPids.has(targetPid)) return;
 
     const existing = hydratePromiseByPid.get(targetPid);
-    if (existing) {
+    if (existing !== undefined) {
       await existing;
       return;
     }
@@ -381,6 +434,7 @@ export const useImStore = defineStore('im', () => {
   const bootstrapPid = getCurrentPrincipalId();
   if (bootstrapPid) {
     void hydrateCursors(bootstrapPid);
+    void hydrateSessions(bootstrapPid);
   }
 
   const sessions = computed<ImSessionSummary[]>(() => {
@@ -472,6 +526,7 @@ export const useImStore = defineStore('im', () => {
     updatePrincipalState(pid, {
       sessions: sortSessions([...map.values()]),
     });
+    void persistSessions(pid);
   }
 
   function mergeMessages(
@@ -481,11 +536,95 @@ export const useImStore = defineStore('im', () => {
   ) {
     const state = ensurePrincipalState(pid);
     const existing = state.messagesBySession[sessionId] ?? [];
-    const map = new Map(existing.map((m) => [m.id, m]));
+
+    const normalizeId = (v: string | null | undefined) => (v ?? '').trim();
+    const normalizeContent = (v: string) => v.trim();
+    const timeMs = (iso: string) => {
+      const ms = Date.parse(iso);
+      return Number.isFinite(ms) ? ms : 0;
+    };
+
+    const normalizedPid = pid.trim();
+    const tempCandidates = existing.filter(
+      (m) =>
+        m.id.startsWith('temp-') && normalizeId(m.senderId) === normalizedPid,
+    );
+
+    const tempIdsToRemove = new Set<string>();
+    for (const update of updates) {
+      if (update.id.startsWith('temp-')) continue;
+      if (normalizeId(update.senderId) !== normalizedPid) continue;
+
+      const updateTime = timeMs(update.createdAt);
+      const updateContent = normalizeContent(update.content);
+
+      const exactMatches = tempCandidates.filter(
+        (e) =>
+          !tempIdsToRemove.has(e.id) &&
+          e.messageType === update.messageType &&
+          normalizeContent(e.content) === updateContent,
+      );
+
+      let match: ImMessageInfo | undefined;
+      if (exactMatches.length > 0) {
+        match = exactMatches.reduce<ImMessageInfo>((best, cur) => {
+          const bDiff = Math.abs(timeMs(best.createdAt) - updateTime);
+          const cDiff = Math.abs(timeMs(cur.createdAt) - updateTime);
+          return cDiff < bDiff ? cur : best;
+        }, exactMatches[0]);
+      } else {
+        const nearMatches = tempCandidates.filter((e) => {
+          if (tempIdsToRemove.has(e.id)) return false;
+          if (e.messageType !== update.messageType) return false;
+          const diff = Math.abs(timeMs(e.createdAt) - updateTime);
+          return diff < 120000;
+        });
+        if (nearMatches.length > 0) {
+          match = nearMatches.reduce<ImMessageInfo>((best, cur) => {
+            const bDiff = Math.abs(timeMs(best.createdAt) - updateTime);
+            const cDiff = Math.abs(timeMs(cur.createdAt) - updateTime);
+            return cDiff < bDiff ? cur : best;
+          }, nearMatches[0]);
+        }
+      }
+
+      if (match) tempIdsToRemove.add(match.id);
+    }
+
+    const map = new Map(
+      existing.filter((m) => !tempIdsToRemove.has(m.id)).map((m) => [m.id, m]),
+    );
     for (const m of updates) {
       map.set(m.id, m);
     }
     const merged = sortMessages([...map.values()]);
+    let nextSendStatusByMessageId = state.sendStatusByMessageId;
+    if (tempIdsToRemove.size > 0) {
+      nextSendStatusByMessageId = { ...state.sendStatusByMessageId };
+      for (const id of tempIdsToRemove) {
+        delete nextSendStatusByMessageId[id];
+      }
+    }
+    updatePrincipalState(pid, {
+      messagesBySession: { ...state.messagesBySession, [sessionId]: merged },
+      sendStatusByMessageId: nextSendStatusByMessageId,
+    });
+  }
+
+  function replaceTempMessage(
+    pid: string,
+    sessionId: string,
+    tempId: string,
+    realMessage: ImMessageInfo,
+  ) {
+    const state = ensurePrincipalState(pid);
+    const existing = state.messagesBySession[sessionId] ?? [];
+
+    const filtered = existing.filter(
+      (m) => m.id !== tempId && m.id !== realMessage.id,
+    );
+    const merged = sortMessages([...filtered, realMessage]);
+
     updatePrincipalState(pid, {
       messagesBySession: { ...state.messagesBySession, [sessionId]: merged },
     });
@@ -529,6 +668,7 @@ export const useImStore = defineStore('im', () => {
         sessions: nextSessions,
         sessionsCursor: nextCursor,
       });
+      await persistSessions(pid);
       await persistCursors(pid);
       return respItems;
     } catch (e) {
@@ -567,6 +707,7 @@ export const useImStore = defineStore('im', () => {
         sessionsCursor:
           resp.data.cursor ?? ensurePrincipalState(pid).sessionsCursor,
       });
+      await persistSessions(pid);
       await persistCursors(pid);
       return items;
     } catch (e) {
@@ -827,6 +968,7 @@ export const useImStore = defineStore('im', () => {
     updatePrincipalState(pid, { activeSessionId: sessionId });
     await ensureSelfIsMember(sessionId);
     await loadSessionDetail(sessionId);
+    await refreshSessionMembers(sessionId);
     imSocketService.joinRoom(sessionId);
 
     await hydrateMessages(pid, sessionId);
@@ -906,6 +1048,7 @@ export const useImStore = defineStore('im', () => {
       replyToId: options?.replyToId ?? null,
       attachments: options?.attachments ?? null,
       isEdited: false,
+      isAnnouncement: false,
       createdAt: nowIso,
     };
 
@@ -926,16 +1069,8 @@ export const useImStore = defineStore('im', () => {
         attachments: options?.attachments ?? undefined,
       });
 
-      const nextState = ensurePrincipalState(pid);
-      const existing = nextState.messagesBySession[sessionId] ?? [];
-      const filtered = existing.filter((m) => m.id !== tempId);
-      updatePrincipalState(pid, {
-        messagesBySession: {
-          ...nextState.messagesBySession,
-          [sessionId]: filtered,
-        },
-      });
-      await mergeMessagesIncremental(pid, sessionId, [resp.data], 50);
+      // 成功发送后，显式替换临时消息
+      replaceTempMessage(pid, sessionId, tempId, resp.data);
 
       const statusState = ensurePrincipalState(pid);
       updatePrincipalState(pid, {
@@ -957,6 +1092,36 @@ export const useImStore = defineStore('im', () => {
         },
       });
       return null;
+    }
+  }
+
+  async function ensureFixedEntrySession(
+    fixedId: 'azure-ai' | 'ai-notify',
+    title?: string,
+  ): Promise<string> {
+    const pid = getActivePid();
+    if (!pid) return fixedId;
+
+    const state = ensurePrincipalState(pid);
+    if (state.sessions.some((s) => s.sessionId === fixedId)) {
+      return fixedId;
+    }
+
+    try {
+      const resp = await imApi.getSession(fixedId);
+      mergeSessions(pid, [resp.data]);
+      return fixedId;
+    } catch {
+      try {
+        const created = await createSession({
+          type: 'private',
+          name: title || undefined,
+          memberIds: [fixedId],
+        });
+        return created.sessionId;
+      } catch {
+        return fixedId;
+      }
     }
   }
 
@@ -982,6 +1147,47 @@ export const useImStore = defineStore('im', () => {
     return resp.data;
   }
 
+  async function deleteSession(sessionId: string): Promise<boolean> {
+    const resp = await imApi.deleteSession(sessionId);
+    const pid = getActivePid();
+    if (pid) {
+      const state = ensurePrincipalState(pid);
+      const nextSessions = state.sessions.filter(
+        (s) => s.sessionId !== sessionId,
+      );
+
+      const nextSessionDetails = { ...state.sessionDetails };
+      delete nextSessionDetails[sessionId];
+
+      const nextMessagesBySession = { ...state.messagesBySession };
+      delete nextMessagesBySession[sessionId];
+
+      const nextMessageCursors = { ...state.messageCursors };
+      delete nextMessageCursors[sessionId];
+
+      const nextLoadingMessages = { ...state.loadingMessages };
+      delete nextLoadingMessages[sessionId];
+
+      const shouldClearActive = state.activeSessionId === sessionId;
+      updatePrincipalState(pid, {
+        sessions: nextSessions,
+        sessionDetails: nextSessionDetails,
+        messagesBySession: nextMessagesBySession,
+        messageCursors: nextMessageCursors,
+        loadingMessages: nextLoadingMessages,
+        activeSessionId: shouldClearActive ? null : state.activeSessionId,
+      });
+
+      if (shouldClearActive) {
+        imSocketService.leaveRoom(sessionId);
+      }
+
+      await persistSessions(pid);
+      await persistCursors(pid);
+    }
+    return !!resp.data.success;
+  }
+
   function connectRealtime(callbacks?: ImSocketCallbacks) {
     const token = (localStorage.getItem('token') || '').trim();
     const pid = getCurrentPrincipalId() ?? '';
@@ -993,6 +1199,33 @@ export const useImStore = defineStore('im', () => {
     if (pid) {
       ensurePrincipalState(pid);
     }
+
+    const scheduleSessionsPull = () => {
+      if (sessionsPullTimeout !== null) {
+        clearTimeout(sessionsPullTimeout);
+      }
+      sessionsPullTimeout = window.setTimeout(() => {
+        const activePid = getActivePid();
+        if (!activePid) {
+          sessionsPullTimeout = null;
+          return;
+        }
+        const state = ensurePrincipalState(activePid);
+        if (state.loadingSessions) {
+          sessionsPullTimeout = null;
+          return;
+        }
+        const now = Date.now();
+        const lastAt = state.lastSessionsFetchAt;
+        if (typeof lastAt === 'number' && now - lastAt < 300) {
+          sessionsPullTimeout = null;
+          return;
+        }
+        void pullSessionsIncremental(100);
+        sessionsPullTimeout = null;
+      }, 250);
+    };
+
     imSocketService.connect(token, {
       onNewMessageBeacon: ({ sessionId, lastMessageId }) => {
         const existingTimeout = pullTimeoutBySession.get(sessionId);
@@ -1011,6 +1244,7 @@ export const useImStore = defineStore('im', () => {
             pullLastAtBySession.set(sessionId, now);
             await hydrateMessages(activePid, sessionId);
             await pullMessagesIncremental(sessionId, 50);
+            scheduleSessionsPull();
           })();
         }, 200);
         pullTimeoutBySession.set(sessionId, timeout);
@@ -1023,7 +1257,25 @@ export const useImStore = defineStore('im', () => {
         }
         callbacks?.onError?.(msg, sessionId);
       },
-      onMessage: callbacks?.onMessage,
+      onMessage: (message, sessionId) => {
+        const activePid = getActivePid();
+        if (activePid) {
+          void (async () => {
+            try {
+              await mergeMessagesIncremental(
+                activePid,
+                sessionId,
+                [message],
+                50,
+              );
+              scheduleSessionsPull();
+            } catch {
+              return;
+            }
+          })();
+        }
+        callbacks?.onMessage?.(message, sessionId);
+      },
       onTyping: callbacks?.onTyping,
       onMemberJoined: callbacks?.onMemberJoined,
       onMemberLeft: callbacks?.onMemberLeft,
@@ -1094,6 +1346,8 @@ export const useImStore = defineStore('im', () => {
     sendMessageOptimistic,
     createSession,
     updateSession,
+    deleteSession,
+    ensureFixedEntrySession,
     connectRealtime,
     disconnectRealtime,
   };

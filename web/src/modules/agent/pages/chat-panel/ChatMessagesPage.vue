@@ -12,6 +12,7 @@
         :messages="currentMessages"
         :selfPrincipalId="selfPrincipalId"
         :sessionMembers="currentSessionMembers"
+        :sessionType="currentSession?.threadType"
       />
     </div>
 
@@ -50,6 +51,7 @@ import { useI18n } from '../../composables/useI18n';
 import { useAgentStore } from '../../store/agent.store';
 import { useAgentSessionStore } from '../../store/session.store';
 import { useChatContacts } from '../../hooks/useChatContacts';
+import type { SessionListItem } from '../../types/agent.types';
 import { useImStore } from '../../../im/im.module';
 import { ChatRole } from '../../enums/agent.enums';
 import type { Attachment, ChatMessage } from '../../types/agent.types';
@@ -72,7 +74,9 @@ const { currentSessionId } = storeToRefs(agentStore);
 const sessionStore = useAgentSessionStore();
 const { sessions } = storeToRefs(sessionStore);
 
-const { mentionCandidates, loadContacts } = useChatContacts();
+// loadContacts 仍用于无 session 时的消息路由匹配
+const { allContacts, loadContacts } = useChatContacts();
+void allContacts; // suppress unused warning
 
 const imStore = useImStore();
 const {
@@ -101,9 +105,36 @@ watch(isTitleLoading, (v) => emit('titleLoadingChange', v), {
   immediate: true,
 });
 
-const currentSessionMembers = ref<
-  Array<{ principalId: string; displayName: string }>
->([]);
+const currentSessionMembers = computed(() => {
+  const detail = activeSession.value;
+  const members = detail?.members || [];
+  return members.map((m) => ({
+    principalId: m.principalId,
+    displayName: m.displayName,
+    avatarUrl: m.avatarUrl,
+  }));
+});
+
+/**
+ * 群聊 @提及候选列表：仅取当前会话成员，且排除自己
+ */
+const mentionCandidates = computed((): SessionListItem[] => {
+  const selfId = getPrincipalId();
+  const nowIso = new Date().toISOString();
+  return currentSessionMembers.value
+    .filter((m) => m.principalId && m.principalId !== selfId)
+    .map((m) => ({
+      id: m.principalId!,
+      title: m.displayName ?? m.principalId!,
+      chatClientId: null,
+      threadType: 'dm' as const,
+      isPinned: false,
+      isAiInvolved: false,
+      avatarUrl: m.avatarUrl ?? null,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    }));
+});
 
 const currentSession = computed(() => {
   return sessionStore.getSession(currentSessionId.value);
@@ -192,11 +223,6 @@ const openSessionAndLoadHistory = async (
   isTitleLoading.value = true;
   try {
     await imStore.openSession(sessionId);
-    const detail = activeSession.value;
-    currentSessionMembers.value = (detail?.members || []).map((m) => ({
-      principalId: m.principalId,
-      displayName: m.displayName,
-    }));
   } finally {
     isTitleLoading.value = false;
   }

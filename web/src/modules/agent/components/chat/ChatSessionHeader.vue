@@ -8,6 +8,15 @@
         <i class="fa-solid fa-arrow-left"></i>
       </button>
 
+      <button
+        v-if="currentThread"
+        class="flex-shrink-0"
+        @click="openTab('info')"
+        title="聊天详情"
+      >
+        <ChatContactAvatar :thread="currentThread" size="sm" />
+      </button>
+
       <div class="flex flex-col min-w-0">
         <div class="flex items-center space-x-2">
           <h2 class="text-base font-bold text-gray-800 truncate">
@@ -102,8 +111,11 @@
  * @keywords-en session-header, chat-settings, title-bar
  */
 import { ref } from 'vue';
+import type { SessionListItem } from '../../types/agent.types';
+import ChatContactAvatar from './ChatContactAvatar.vue';
 
 interface Props {
+  currentThread?: SessionListItem;
   currentSessionTitle?: string | null;
   isTitleLoading: boolean;
 }
