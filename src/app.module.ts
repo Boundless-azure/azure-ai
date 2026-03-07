@@ -12,7 +12,8 @@ import { PromptModule } from './core/prompt/prompt.module';
 import { HookBusModule } from './core/hookbus/hookbus.module';
 import { ConversationModule } from '@/app/conversation/conversation.module';
 import { AgentModule } from '@/app/agent/agent.module';
-import { TodoModule } from '@/app/todo/todo.module';
+import { TodoModule } from './app/todo/todo.module';
+import { AiModelsModule } from './app/ai-models/ai-models.module';
 import { WebMcpModule } from '@/app/webmcp/webmcp.module';
 import { IdentityModule } from '@/app/identity/identity.module';
 import { ResourceModule } from '@/app/resource/resource.module';
@@ -97,6 +98,7 @@ import type { DatabaseConfig } from './config/types';
     ConversationModule,
     AgentModule,
     TodoModule,
+    AiModelsModule,
   ],
   controllers: [AppController],
   providers: [

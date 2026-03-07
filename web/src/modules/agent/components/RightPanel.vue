@@ -149,17 +149,17 @@
             </section>
           </div>
 
-          <!-- Right Column: Notifications & Files -->
+          <!-- Right Column: Notifications -->
           <div class="col-span-1 space-y-6 md:space-y-8">
-            <!-- Plugin Notifications -->
+            <!-- System Notifications -->
             <section
               class="bg-white p-4 md:p-6 rounded-2xl border border-gray-200 shadow-sm"
             >
               <h3
                 class="text-sm font-bold text-gray-900 mb-6 flex items-center uppercase tracking-wide border-b border-gray-100 pb-4"
               >
-                <i class="fa-solid fa-plug text-purple-500 mr-3"></i
-                >{{ t('dashboard.pluginNotifications') }}
+                <i class="fa-solid fa-bell text-red-500 mr-3"></i
+                >{{ t('dashboard.systemNotifications') }}
               </h3>
               <div class="space-y-4">
                 <div
@@ -201,132 +201,23 @@
                 </div>
               </div>
             </section>
-
-            <!-- System Notifications -->
-            <section
-              class="bg-white p-4 md:p-6 rounded-2xl border border-gray-200 shadow-sm"
-            >
-              <h3
-                class="text-sm font-bold text-gray-900 mb-6 flex items-center uppercase tracking-wide border-b border-gray-100 pb-4"
-              >
-                <i class="fa-solid fa-bell text-red-500 mr-3"></i
-                >{{ t('dashboard.systemNotifications') }}
-              </h3>
-              <div class="space-y-4">
-                <div
-                  v-for="item in notificationItems"
-                  :key="item.id"
-                  class="p-4 bg-gray-50 border border-gray-100 rounded-xl hover:bg-white hover:shadow-md hover:border-gray-200 transition-all cursor-pointer"
-                >
-                  <div class="flex items-start">
-                    <div
-                      class="w-2 h-2 rounded-full bg-red-500 mt-1.5 mr-3 flex-shrink-0 animate-pulse"
-                    ></div>
-                    <div>
-                      <p class="text-sm text-gray-800 font-bold mb-1">
-                        {{ item.title }}
-                      </p>
-                      <p class="text-xs text-gray-400 font-medium">
-                        {{ t('dashboard.justNow') }}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <!-- Recent Files -->
-            <section
-              class="bg-white p-4 md:p-6 rounded-2xl border border-gray-200 shadow-sm"
-            >
-              <h3
-                class="text-sm font-bold text-gray-900 mb-6 flex items-center uppercase tracking-wide border-b border-gray-100 pb-4"
-              >
-                <i class="fa-solid fa-file text-gray-500 mr-3"></i
-                >{{ t('dashboard.recentFiles') }}
-              </h3>
-              <div class="space-y-3">
-                <div
-                  class="flex items-center p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-all border border-transparent hover:border-gray-200 group"
-                >
-                  <div
-                    class="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center mr-3 group-hover:bg-red-100 transition-colors"
-                  >
-                    <i class="fa-solid fa-file-pdf text-red-500 text-lg"></i>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <p
-                      class="text-sm font-bold text-gray-700 truncate group-hover:text-gray-900"
-                    >
-                      Project_Specs.pdf
-                    </p>
-                    <p class="text-xs text-gray-400">2.4 MB</p>
-                  </div>
-                </div>
-                <div
-                  class="flex items-center p-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-all border border-transparent hover:border-gray-200 group"
-                >
-                  <div
-                    class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center mr-3 group-hover:bg-blue-100 transition-colors"
-                  >
-                    <i class="fa-solid fa-file-code text-blue-500 text-lg"></i>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <p
-                      class="text-sm font-bold text-gray-700 truncate group-hover:text-gray-900"
-                    >
-                      main.py
-                    </p>
-                    <p class="text-xs text-gray-400">12 KB</p>
-                  </div>
-                </div>
-              </div>
-            </section>
           </div>
         </div>
       </div>
 
       <!-- 非 Dashboard：动态组件加载 -->
-      <div v-else class="h-full overflow-y-auto p-8 bg-gray-50/50">
-        <div
-          v-if="['users', 'orgs', 'roles', 'perms'].includes(currentTab)"
-          class="mb-6"
-        >
-          <h2 class="text-2xl font-bold text-gray-900">
-            {{
-              currentTab === 'users'
-                ? '用户管理'
-                : currentTab === 'orgs'
-                  ? '组织管理'
-                  : currentTab === 'roles'
-                    ? '角色管理'
-                    : '权限管理'
-            }}
-          </h2>
-          <p class="text-sm text-gray-500 mt-1">
-            {{
-              currentTab === 'users'
-                ? '管理系统用户、账号及基本信息'
-                : currentTab === 'orgs'
-                  ? '管理组织架构、部门及成员关系'
-                  : currentTab === 'roles'
-                    ? '定义角色及分配权限策略'
-                    : '浏览及配置系统权限规则'
-            }}
-          </p>
-        </div>
-
+      <div v-else class="h-full overflow-y-auto bg-gray-50/50 flex flex-col">
         <component
           :is="currentAsyncComponent"
           v-if="currentAsyncComponent"
           v-bind="currentTabProps"
           @close="closeTab(currentTab)"
-          class="max-w-7xl mx-auto h-full"
+          class="flex-1 w-full px-8 pb-8"
         />
 
         <div
           v-else
-          class="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl"
+          class="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl m-8"
         >
           <div
             class="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-4 shadow-sm"
@@ -509,9 +400,6 @@ const resourceItems = computed(() =>
 );
 const todoItems = computed(() =>
   quickItems.value.filter((i) => i.type === 'todo'),
-);
-const notificationItems = computed(() =>
-  quickItems.value.filter((i) => i.type === 'notification'),
 );
 
 const pluginNotifications = [

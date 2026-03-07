@@ -1,5 +1,9 @@
 <template>
-  <div class="space-y-4" v-bind="$attrs">
+  <div class="space-y-4">
+    <IdentitySectionHeader
+      title="用户管理"
+      description="管理系统用户、账号及基本信息"
+    />
     <!-- Filter Bar -->
     <div
       class="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 shadow-sm"
@@ -439,6 +443,7 @@
  */
 
 import { ref, onMounted, reactive } from 'vue';
+import IdentitySectionHeader from './IdentitySectionHeader.vue';
 import { usePrincipals } from '../hooks/usePrincipals';
 import { useOrganizations } from '../hooks/useOrganizations';
 import { useMemberships } from '../hooks/useMemberships';

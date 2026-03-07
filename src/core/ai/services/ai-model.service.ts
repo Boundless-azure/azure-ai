@@ -98,7 +98,7 @@ export class AIModelService implements OnModuleInit {
       const maxRetries = aiConf.client.maxRetries;
       // 代理已在 onModuleInit 通过 applyAIProxyFetchOverride 全局生效，无需在此重复设置
       switch (config.provider) {
-        case AIProvider.OPENAI:
+        case 'openai':
           model = new ChatOpenAI({
             openAIApiKey: config.apiKey,
             modelName: config.name,
@@ -109,7 +109,7 @@ export class AIModelService implements OnModuleInit {
             }),
           });
           break;
-        case AIProvider.DEEPSEEK:
+        case 'deepseek':
           {
             const baseURL = config.baseURL || 'https://api.deepseek.com';
             model = new ChatOpenAI({
@@ -121,8 +121,34 @@ export class AIModelService implements OnModuleInit {
             });
           }
           break;
+        case 'nvidia':
+          {
+            const baseURL =
+              config.baseURL || 'https://integrate.api.nvidia.com/v1';
+            model = new ChatOpenAI({
+              apiKey: config.apiKey,
+              modelName: config.name,
+              temperature: config.defaultParams?.temperature || 0.7,
+              maxTokens: config.defaultParams?.maxTokens || 4096,
+              configuration: { baseURL },
+            });
+          }
+          break;
+        case 'azure_openai':
+          {
+            model = new ChatOpenAI({
+              apiKey: config.apiKey,
+              modelName: config.name,
+              temperature: config.defaultParams?.temperature || 0.7,
+              maxTokens: config.defaultParams?.maxTokens || 4096,
+              ...(config.baseURL && {
+                configuration: { baseURL: config.baseURL },
+              }),
+            });
+          }
+          break;
 
-        case AIProvider.ANTHROPIC:
+        case 'anthropic':
           model = new ChatAnthropic({
             anthropicApiKey: config.apiKey,
             modelName: config.name,
@@ -135,7 +161,7 @@ export class AIModelService implements OnModuleInit {
           });
           break;
 
-        case AIProvider.GOOGLE:
+        case 'google':
           model = new ChatGoogleGenerativeAI({
             apiKey: config.apiKey,
             model: config.name,
@@ -144,7 +170,7 @@ export class AIModelService implements OnModuleInit {
           });
           break;
 
-        case AIProvider.GEMINI:
+        case 'gemini':
           model = new ChatGoogleGenerativeAI({
             apiKey: config.apiKey,
             model: config.name,

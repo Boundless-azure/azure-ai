@@ -6,7 +6,7 @@
  */
 
 import { http } from '../../../utils/http';
-import type { LoginResponse } from '../types/auth.types';
+import type { ChangePasswordDto, LoginResponse } from '../types/auth.types';
 
 export const authService = {
   /**
@@ -15,4 +15,6 @@ export const authService = {
    */
   login: (data: Record<string, any>) =>
     http.post<LoginResponse>('/auth/login', data),
+  changePassword: (data: ChangePasswordDto) =>
+    http.post<{ success: true }>('/auth/change-password', data),
 };

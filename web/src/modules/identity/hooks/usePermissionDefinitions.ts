@@ -7,7 +7,10 @@
 import { ref } from 'vue';
 import { agentApi } from '../../../api/agent';
 import type { BaseResponse } from '../../../utils/types';
-import type { PermissionDefinitionItem } from '../types/identity.types';
+import type {
+  PermissionDefinitionItem,
+  PermissionDefinitionType,
+} from '../types/identity.types';
 import { IDENTITY_EVENT_NAMES } from '../constants/identity.constants';
 
 export function usePermissionDefinitions() {
@@ -33,15 +36,19 @@ export function usePermissionDefinitions() {
   }
 
   async function create(data: {
-    subject: string;
-    action: string;
+    fid?: string | null;
+    nodeKey: string;
+    extraData?: Record<string, unknown> | null;
+    permissionType?: PermissionDefinitionType;
     description?: string;
   }) {
     const res = await agentApi.createPermissionDefinition(data);
     const item: PermissionDefinitionItem = {
       id: res.data.id,
-      subject: data.subject,
-      action: data.action,
+      fid: data.fid ?? null,
+      nodeKey: data.nodeKey,
+      extraData: data.extraData ?? null,
+      permissionType: data.permissionType ?? 'management',
       description: data.description,
     };
     window.dispatchEvent(
@@ -59,5 +66,23 @@ export function usePermissionDefinitions() {
     return res.data;
   }
 
-  return { loading, items, error, list, create, remove };
+  async function update(
+    id: string,
+    data: {
+      fid?: string | null;
+      nodeKey?: string;
+      extraData?: Record<string, unknown> | null;
+      permissionType?: PermissionDefinitionType;
+      description?: string;
+    },
+  ) {
+    await agentApi.updatePermissionDefinition(id, data);
+    const target = items.value.find((it) => it.id === id);
+    if (target) Object.assign(target, data);
+    window.dispatchEvent(
+      new CustomEvent(IDENTITY_EVENT_NAMES.permissionsChanged),
+    );
+  }
+
+  return { loading, items, error, list, create, remove, update };
 }

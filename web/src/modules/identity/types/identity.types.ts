@@ -160,10 +160,14 @@ export interface MembershipItem {
 
 export interface PermissionDefinitionItem {
   id: string;
-  subject: string;
-  action: string;
+  fid?: string | null;
+  nodeKey: string;
+  extraData?: Record<string, unknown> | null;
+  permissionType: PermissionDefinitionType;
   description?: string;
 }
+
+export type PermissionDefinitionType = 'management' | 'data' | 'menu';
 
 /**
  * @title PrincipalType Schema
@@ -364,7 +368,11 @@ export const AddMembershipSchema = z.object({
  * @keywords-en create-permission-definition-schema
  */
 export const CreatePermissionDefinitionSchema = z.object({
-  subject: z.string().min(1),
-  action: z.string().min(1),
+  fid: z.string().nullable().optional(),
+  nodeKey: z.string().min(1),
+  extraData: z.record(z.any()).nullable().optional(),
+  permissionType: z
+    .union([z.literal('management'), z.literal('data'), z.literal('menu')])
+    .optional(),
   description: z.string().optional(),
 });

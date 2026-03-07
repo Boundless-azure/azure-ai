@@ -1,5 +1,9 @@
 <template>
   <div class="space-y-4">
+    <IdentitySectionHeader
+      title="角色管理"
+      description="定义角色及分配权限策略"
+    />
     <!-- Filter Bar -->
     <div
       class="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 shadow-sm"
@@ -214,7 +218,7 @@
         @click="closePermModal"
       ></div>
       <div
-        class="relative bg-white rounded-2xl shadow-xl w-[900px] max-w-[95vw] border border-gray-200 flex flex-col max-h-[85vh]"
+        class="relative bg-white rounded-2xl shadow-xl w-[900px] max-w-[95vw] border border-gray-200 flex flex-col h-[85vh] max-h-[85vh]"
       >
         <div
           class="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0"
@@ -250,9 +254,10 @@
  */
 
 import { ref, onMounted, reactive, computed } from 'vue';
+import IdentitySectionHeader from './IdentitySectionHeader.vue';
+import RolePermissionAssign from './RolePermissionAssign.vue';
 import { useRoles } from '../hooks/useRoles';
 import type { RoleItem } from '../types/identity.types';
-import PermissionManagement from './PermissionManagement.vue';
 
 const roles = ref<RoleItem[]>([]);
 const showModal = ref(false);
@@ -322,9 +327,16 @@ function closeModal() {
 async function handleSubmit() {
   try {
     if (isEdit.value) {
-      await update(form.id, { name: form.name, description: form.description || null });
+      await update(form.id, {
+        name: form.name,
+        description: form.description || null,
+      });
     } else {
-      await create({ name: form.name, code: form.code, description: form.description || null });
+      await create({
+        name: form.name,
+        code: form.code,
+        description: form.description || null,
+      });
     }
     closeModal();
     fetchData();

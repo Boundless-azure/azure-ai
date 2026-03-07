@@ -10,7 +10,6 @@ import { AgentExecutionEntity } from '@/app/agent/entities/agent-execution.entit
 import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
 import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
 import { AIModelService } from '@core/ai/services/ai-model.service';
-import { AIProvider } from '@core/ai/types';
 import { OpenAIEmbeddings } from '@langchain/openai';
 
 /**
@@ -108,11 +107,7 @@ export class IntentAgentTriggerFunctionService implements FunctionCallServiceCon
   private async pickOpenAIKey(): Promise<string | undefined> {
     const models = await this.aiModelService.getEnabledModels();
     for (const m of models) {
-      if (
-        m.provider === AIProvider.OPENAI &&
-        typeof m.apiKey === 'string' &&
-        m.apiKey
-      ) {
+      if (m.provider === 'openai' && typeof m.apiKey === 'string' && m.apiKey) {
         return m.apiKey;
       }
     }

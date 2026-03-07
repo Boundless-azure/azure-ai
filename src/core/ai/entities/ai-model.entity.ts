@@ -1,5 +1,5 @@
 import { Entity, Column, Index } from 'typeorm';
-import { AIProvider, AIModelType, AIModelStatus } from '../types';
+import { AIModelApiSpec, AIModelType, AIModelStatus } from '../types';
 import { BaseAuditedEntity } from './base.entity';
 
 /**
@@ -19,12 +19,18 @@ export class AIModelEntity extends BaseAuditedEntity {
   @Column({ length: 200, nullable: true })
   displayName!: string;
 
-  // 使用 MySQL 的 enum 类型
+  @Column({
+    type: 'varchar',
+    length: 50,
+  })
+  provider!: string;
+
   @Column({
     type: 'enum',
-    enum: AIProvider,
+    enum: AIModelApiSpec,
+    default: AIModelApiSpec.OPENAI,
   })
-  provider!: AIProvider;
+  apiProtocol!: AIModelApiSpec;
 
   // 使用 MySQL 的 enum 类型
   @Column({

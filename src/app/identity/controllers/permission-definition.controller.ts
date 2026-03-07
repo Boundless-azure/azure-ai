@@ -1,6 +1,18 @@
-import { Body, Controller, Get, Post, Delete, Param } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+} from '@nestjs/common';
 import { PermissionDefinitionService } from '../services/permission-definition.service';
 import { CheckAbility } from '../decorators/check-ability.decorator';
+import type {
+  CreatePermissionDefinitionDto,
+  UpdatePermissionDefinitionDto,
+} from '../types/identity.types';
 
 /**
  * @title PermissionDefinition 控制器
@@ -20,10 +32,18 @@ export class PermissionDefinitionController {
 
   @Post()
   @CheckAbility('create', 'permission_definition')
-  async create(
-    @Body() dto: { subject: string; action: string; description?: string },
-  ) {
+  async create(@Body() dto: CreatePermissionDefinitionDto) {
     return await this.service.create(dto);
+  }
+
+  @Put(':id')
+  @CheckAbility('update', 'permission_definition')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdatePermissionDefinitionDto,
+  ) {
+    await this.service.update(id, dto);
+    return { success: true } as const;
   }
 
   @Delete(':id')

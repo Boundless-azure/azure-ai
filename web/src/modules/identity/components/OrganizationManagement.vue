@@ -1,5 +1,9 @@
 <template>
   <div class="space-y-4">
+    <IdentitySectionHeader
+      title="组织管理"
+      description="管理组织架构、部门及成员关系"
+    />
     <!-- Filter Bar -->
     <div class="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
       <div class="flex-1 min-w-[200px]">
@@ -203,6 +207,7 @@
  */
 
 import { ref, onMounted, reactive } from 'vue';
+import IdentitySectionHeader from './IdentitySectionHeader.vue';
 import { useOrganizations } from '../hooks/useOrganizations';
 import { useMemberships } from '../hooks/useMemberships';
 import type { OrganizationItem, MembershipItem } from '../types/identity.types';

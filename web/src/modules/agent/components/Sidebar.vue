@@ -172,18 +172,30 @@
             ? 'w-full px-2 py-2 rounded-xl hover:bg-gray-800 border border-transparent hover:border-gray-700'
             : 'justify-center',
         ]"
+        @click="showProfileModal = true"
       >
         <div
-          class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 border-2 border-gray-700 flex items-center justify-center group-hover:border-white transition-colors flex-shrink-0"
+          class="w-10 h-10 rounded-full bg-gray-800 border-2 border-gray-700 flex items-center justify-center group-hover:border-white transition-colors flex-shrink-0 overflow-hidden"
         >
-          <span class="text-xs font-bold">US</span>
+          <img
+            v-if="avatarUrl"
+            :src="avatarUrl"
+            class="w-full h-full object-cover"
+          />
+          <span v-else class="text-xs font-bold">
+            {{ initials }}
+          </span>
         </div>
         <div
           class="ml-3 transition-all duration-300 overflow-hidden"
           :class="isExpanded ? 'opacity-100 w-auto' : 'opacity-0 w-0 absolute'"
         >
-          <p class="text-sm font-bold text-white truncate">User Name</p>
-          <p class="text-xs text-gray-500 truncate">user@example.com</p>
+          <p class="text-sm font-bold text-white truncate">
+            {{ displayName }}
+          </p>
+          <p class="text-xs text-gray-500 truncate">
+            {{ email }}
+          </p>
         </div>
       </div>
     </div>
@@ -194,6 +206,10 @@
       :current-locale="currentLocale"
       @confirm="handleLanguageConfirm"
       @close="showLanguageModal = false"
+    />
+    <AccountProfileModal
+      v-if="showProfileModal"
+      @close="showProfileModal = false"
     />
   </div>
 </template>
@@ -210,6 +226,9 @@ import { storeToRefs } from 'pinia';
 import { useI18n } from '../composables/useI18n';
 import LanguageModal from './LanguageModal.vue';
 import { useAgentSessionStore } from '../store/session.store';
+import { useAuthStore } from '../../auth/store/auth.store';
+import { resolveResourceUrl } from '../../../utils/http';
+import AccountProfileModal from './AccountProfileModal.vue';
 
 const props = defineProps<{
   activeView: string;
@@ -222,9 +241,22 @@ const emit = defineEmits<{
 
 const { t, setLocale, currentLocale } = useI18n();
 const showLanguageModal = ref(false);
+const showProfileModal = ref(false);
 
 const sessionStore = useAgentSessionStore();
 const { sessions } = storeToRefs(sessionStore);
+const authStore = useAuthStore();
+
+const displayName = computed(() => authStore.principal?.displayName || 'User');
+const email = computed(() => authStore.principal?.email || '');
+const avatarUrl = computed(() => {
+  const raw = authStore.principal?.avatarUrl;
+  return raw ? resolveResourceUrl(raw) : '';
+});
+const initials = computed(() => {
+  const name = displayName.value.trim();
+  return (name ? name.slice(0, 2) : 'U').toUpperCase();
+});
 
 const unreadCount = computed(() => {
   const list = sessions.value;
@@ -247,6 +279,7 @@ const menuItems = [
   { id: 'orgs', icon: 'building' },
   { id: 'roles', icon: 'user-tag' },
   { id: 'perms', icon: 'shield-halved' },
+  { id: 'aiProviders', icon: 'server' },
   { id: 'resources', icon: 'folder-open' },
   { id: 'database', icon: 'database' },
   { id: 'plugins', icon: 'plug' },

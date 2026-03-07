@@ -37,6 +37,12 @@ import {
   AddMembershipSchema,
   CreatePermissionDefinitionSchema,
 } from '../modules/identity/types/identity.types';
+import {
+  CreateAiModelSchema,
+  QueryAiModelSchema,
+  TestAiModelConnectionSchema,
+  UpdateAiModelSchema,
+} from '../modules/ai-provider/types/ai-provider.types';
 import type {
   WorkflowStep,
   Checkpoint,
@@ -55,6 +61,11 @@ import type {
   GroupListQueryDto,
   SessionHistoryResponse,
 } from '../modules/agent/types/agent.types';
+import type {
+  AiModelItem,
+  TestAiModelConnectionRequest,
+  TestAiModelConnectionResult,
+} from '../modules/ai-provider/types/ai-provider.types';
 
 export const agentApi = {
   /**
@@ -271,6 +282,73 @@ export const agentApi = {
     }>(
       '/agent/embeddings',
       parsed.data.ids && parsed.data.ids.length ? { ids: parsed.data.ids } : {},
+    );
+  },
+
+  listAiModels: (params?: {
+    q?: string;
+    provider?: string;
+    type?: string;
+    status?: string;
+    enabled?: boolean;
+  }) => {
+    const parsed = params
+      ? QueryAiModelSchema.safeParse(params)
+      : { success: true, data: {} };
+    if (!parsed.success) throw new Error('Invalid ai model query');
+    return http.get<AiModelItem[]>('/ai-models', parsed.data);
+  },
+
+  createAiModel: (data: {
+    name: string;
+    displayName?: string | null;
+    provider: string;
+    apiProtocol?: string;
+    type: string;
+    status?: string;
+    apiKey: string;
+    baseURL?: string | null;
+    azureConfig?: Record<string, unknown> | null;
+    defaultParams?: Record<string, unknown> | null;
+    description?: string | null;
+    enabled?: boolean;
+  }) => {
+    const parsed = CreateAiModelSchema.safeParse(data);
+    if (!parsed.success) throw new Error('Invalid create ai model payload');
+    return http.post<AiModelItem>('/ai-models', parsed.data);
+  },
+
+  updateAiModel: (
+    id: string,
+    data: {
+      name?: string;
+      displayName?: string | null;
+      provider?: string;
+      apiProtocol?: string;
+      type?: string;
+      status?: string;
+      apiKey?: string;
+      baseURL?: string | null;
+      azureConfig?: Record<string, unknown> | null;
+      defaultParams?: Record<string, unknown> | null;
+      description?: string | null;
+      enabled?: boolean;
+    },
+  ) => {
+    const parsed = UpdateAiModelSchema.safeParse(data);
+    if (!parsed.success) throw new Error('Invalid update ai model payload');
+    return http.put<{ success: true }>(`/ai-models/${id}`, parsed.data);
+  },
+
+  deleteAiModel: (id: string) =>
+    http.delete<{ success: true }>(`/ai-models/${id}`),
+
+  testAiModelConnection: (data: TestAiModelConnectionRequest) => {
+    const parsed = TestAiModelConnectionSchema.safeParse(data);
+    if (!parsed.success) throw new Error('Invalid test ai model payload');
+    return http.post<TestAiModelConnectionResult>(
+      '/ai-models/test-connection',
+      parsed.data,
     );
   },
 
@@ -646,14 +724,18 @@ export const agentApi = {
     http.get<
       {
         id: string;
-        subject: string;
-        action: string;
+        fid?: string | null;
+        nodeKey: string;
+        extraData?: Record<string, unknown> | null;
+        permissionType: 'management' | 'data' | 'menu';
         description?: string;
       }[]
     >('/identity/permissions/definitions'),
   createPermissionDefinition: (data: {
-    subject: string;
-    action: string;
+    fid?: string | null;
+    nodeKey: string;
+    extraData?: Record<string, unknown> | null;
+    permissionType?: 'management' | 'data' | 'menu';
     description?: string;
   }) => {
     const parsed = CreatePermissionDefinitionSchema.safeParse(data);
@@ -666,4 +748,18 @@ export const agentApi = {
   },
   deletePermissionDefinition: (id: string) =>
     http.delete<{ success: true }>(`/identity/permissions/definitions/${id}`),
+  updatePermissionDefinition: (
+    id: string,
+    data: {
+      fid?: string | null;
+      nodeKey?: string;
+      extraData?: Record<string, unknown> | null;
+      permissionType?: 'management' | 'data' | 'menu';
+      description?: string;
+    },
+  ) =>
+    http.put<{ success: true }>(
+      `/identity/permissions/definitions/${id}`,
+      data,
+    ),
 };

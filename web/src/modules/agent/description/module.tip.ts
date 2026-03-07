@@ -40,6 +40,8 @@ export const moduleTip = {
       输入区: 'src/modules/agent/components/chat/InputArea.vue',
       待办状态切换: 'src/modules/agent/components/ChatPanel.vue',
       侧边栏: 'src/modules/agent/components/Sidebar.vue',
+      AI提供商: 'src/modules/ai-provider/components/AiProviderManagement.vue',
+      账户资料弹窗: 'src/modules/agent/components/AccountProfileModal.vue',
       右侧面板: 'src/modules/agent/components/RightPanel.vue',
       右侧面板Tab注册表: 'src/modules/agent/config/tab.registry.ts',
       工作区: 'src/modules/agent/components/AgentWorkspace.vue',
@@ -115,6 +117,9 @@ export const moduleTip = {
       create_session: 'src/api/agent.ts',
       update_session: 'src/api/agent.ts',
       sidebar: 'src/modules/agent/components/Sidebar.vue',
+      ai_providers: 'src/modules/ai-provider/components/AiProviderManagement.vue',
+      account_profile_modal:
+        'src/modules/agent/components/AccountProfileModal.vue',
       right_panel: 'src/modules/agent/components/RightPanel.vue',
       tab_registry: 'src/modules/agent/config/tab.registry.ts',
       workspace: 'src/modules/agent/components/AgentWorkspace.vue',
@@ -249,6 +254,10 @@ export const moduleTip = {
     inputArea_insertEmoji: 'hash_inputArea_emoji_001',
     inputArea_startRecording: 'hash_inputArea_record_001',
     chatMessageList_handleClick: 'hash_chatMsg_click_001',
+      accountProfileModal_changePassword:
+        'web_agent_component_account_profile_change_password_001',
+      accountProfileModal_saveProfile:
+        'web_agent_component_account_profile_save_profile_002',
 
     agent_list_getAgentAvatarUrl: 'web_agent_list_avatar_url_001',
     agent_list_onAvatarConfirm: 'web_agent_list_avatar_confirm_002',

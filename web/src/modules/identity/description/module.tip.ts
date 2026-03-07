@@ -16,6 +16,8 @@ export const moduleTip = {
       组织管理: 'src/modules/identity/components/OrganizationManagement.vue',
       角色管理: 'src/modules/identity/components/RoleManagement.vue',
       权限管理: 'src/modules/identity/components/PermissionManagement.vue',
+      身份页面标题: 'src/modules/identity/components/IdentitySectionHeader.vue',
+      角色权限分配: 'src/modules/identity/components/RolePermissionAssign.vue',
       身份类型: 'src/modules/identity/types/identity.types.ts',
       身份枚举: 'src/modules/identity/constants/identity.constants.ts',
       身份常量: 'src/modules/identity/constants/identity.constants.ts',
@@ -36,6 +38,10 @@ export const moduleTip = {
       role_management: 'src/modules/identity/components/RoleManagement.vue',
       permission_management:
         'src/modules/identity/components/PermissionManagement.vue',
+      identity_section_header:
+        'src/modules/identity/components/IdentitySectionHeader.vue',
+      role_permission_assign:
+        'src/modules/identity/components/RolePermissionAssign.vue',
       identity_types: 'src/modules/identity/types/identity.types.ts',
       identity_enums: 'src/modules/identity/constants/identity.constants.ts',
       identity_constants:
@@ -89,5 +95,7 @@ export const moduleTip = {
     usePermissionDefs_list: 'web_id_hook_permdefs_list_017',
     usePermissionDefs_create: 'web_id_hook_permdefs_create_018',
     usePermissionDefs_remove: 'web_id_hook_permdefs_remove_019',
+    identitySectionHeader_component: 'web_id_component_section_header_001',
+    rolePermissionAssign_component: 'web_id_component_role_perm_assign_002',
   },
 };

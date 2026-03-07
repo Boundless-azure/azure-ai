@@ -17,6 +17,7 @@ export const moduleTip = {
       认证常量: 'src/modules/auth/constants/auth.constants.ts',
       认证hook: 'src/modules/auth/hooks/useAuth.ts',
       认证API: 'src/modules/auth/services/auth.service.ts',
+      修改密码: 'src/modules/auth/services/auth.service.ts',
       登录文案: 'src/modules/auth/i18n/login.ts',
     },
     en: {
@@ -27,6 +28,7 @@ export const moduleTip = {
       auth_constants: 'src/modules/auth/constants/auth.constants.ts',
       auth_hook: 'src/modules/auth/hooks/useAuth.ts',
       auth_api: 'src/modules/auth/services/auth.service.ts',
+      change_password: 'src/modules/auth/services/auth.service.ts',
       login_i18n: 'src/modules/auth/i18n/login.ts',
     },
   },
@@ -34,5 +36,7 @@ export const moduleTip = {
     useAuth_login: 'hash_auth_hook_login_001',
     useAuth_logout: 'hash_auth_hook_logout_002',
     store_login: 'hash_auth_store_login_003',
+    store_update_principal: 'hash_auth_store_update_principal_004',
+    auth_change_password: 'hash_auth_change_password_001',
   },
 };

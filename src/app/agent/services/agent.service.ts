@@ -6,7 +6,6 @@ import type { QueryAgentDto, UpdateAgentDto } from '../types/agent.types';
 import type { Db, Collection } from 'mongodb';
 import type { AgentDoc } from '@/mongo/types/mongo.types';
 import { AIModelService } from '@core/ai/services/ai-model.service';
-import { AIProvider } from '@core/ai/types';
 import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 
 /**
@@ -151,11 +150,7 @@ export class AgentService {
     if (!this.aiModelService) return undefined;
     const models = await this.aiModelService.getEnabledModels();
     for (const m of models) {
-      if (
-        m.provider === AIProvider.OPENAI &&
-        typeof m.apiKey === 'string' &&
-        m.apiKey
-      ) {
+      if (m.provider === 'openai' && typeof m.apiKey === 'string' && m.apiKey) {
         return m.apiKey;
       }
     }
@@ -166,11 +161,7 @@ export class AgentService {
     if (!this.aiModelService) return undefined;
     const models = await this.aiModelService.getEnabledModels();
     for (const m of models) {
-      if (
-        m.provider === AIProvider.GEMINI &&
-        typeof m.apiKey === 'string' &&
-        m.apiKey
-      ) {
+      if (m.provider === 'gemini' && typeof m.apiKey === 'string' && m.apiKey) {
         return m.apiKey;
       }
     }

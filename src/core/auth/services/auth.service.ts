@@ -5,7 +5,12 @@ import { JwtService } from '@nestjs/jwt';
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { PrincipalEntity } from '@/app/identity/entities/principal.entity';
 import { UserEntity } from '@/app/identity/entities/user.entity';
-import type { LoginDto, LoginResponse, AbilityRule } from '../types/auth.types';
+import type {
+  AbilityRule,
+  ChangePasswordDto,
+  LoginDto,
+  LoginResponse,
+} from '../types/auth.types';
 import { AbilityService } from '@/app/identity/services/ability.service';
 import { CommonRedisService } from '@/redis/services/common.service';
 
@@ -166,5 +171,46 @@ export class AuthService {
       },
       ability: { rules },
     };
+  }
+
+  /**
+   * @title 修改密码
+   * @description 校验当前密码后更新新的密码哈希与盐值。
+   * @keywords-cn 修改密码, 密码更新, 账户安全
+   * @keywords-en change-password, password-update, account-security
+   */
+  async changePassword(
+    principalId: string,
+    dto: ChangePasswordDto,
+  ): Promise<void> {
+    if (!principalId || !principalId.trim()) {
+      throw new UnauthorizedException('invalid principal');
+    }
+    const current = dto.currentPassword?.trim();
+    const next = dto.nextPassword?.trim();
+    if (!current || !next) {
+      throw new UnauthorizedException('missing password');
+    }
+    const user = await this.userRepo.findOne({
+      where: { principalId, isDelete: false },
+    });
+    if (!user || !user.passwordSalt || !user.passwordHash) {
+      throw new UnauthorizedException('invalid credentials');
+    }
+    const ok = this.verifyPassword(
+      current,
+      this.ensureString(user.passwordSalt),
+      this.ensureString(user.passwordHash),
+    );
+    if (!ok) {
+      throw new UnauthorizedException('invalid credentials');
+    }
+    const salt = this.generateSalt();
+    const hash = this.hashPassword(next, salt);
+    user.passwordSalt = salt;
+    user.passwordHash = hash;
+    user.loginAttempts = 0;
+    user.lockedUntil = null;
+    await this.userRepo.save(user);
   }
 }

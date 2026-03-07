@@ -11,6 +11,17 @@ export interface LoginDto {
 }
 
 /**
+ * @title 修改密码请求体
+ * @description 提供当前密码与新密码，用于更新登录密码。
+ * @keywords-cn 修改密码, 当前密码, 新密码
+ * @keywords-en change-password, current-password, new-password
+ */
+export interface ChangePasswordDto {
+  currentPassword: string;
+  nextPassword: string;
+}
+
+/**
  * @title 登录响应体
  * @description 返回 JWT 令牌与主体信息。
  * @keywords-cn 登录响应, 令牌, 主体

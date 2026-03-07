@@ -1,5 +1,6 @@
 import { IsOptional, IsString, Length, IsObject } from 'class-validator';
 import { IsArray } from 'class-validator';
+import { BindDataPermissionNode } from '@core/data-permission/decorators/data-permission-node.decorator';
 
 /**
  * @title Agent 更新请求
@@ -32,6 +33,11 @@ export class QueryAgentDto {
   @IsOptional()
   @IsString()
   q?: string;
+
+  @BindDataPermissionNode('agent:read-tenant-scope')
+  dataPermissionNodeReadTenantScope(): string {
+    return 'agent:read-tenant-scope';
+  }
 }
 
 /**

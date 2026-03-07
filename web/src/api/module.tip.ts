@@ -56,6 +56,11 @@ export const moduleDescription = {
         listCheckpoints: 'listCheckpoints',
         getCheckpointDetail: 'getCheckpointDetail',
         getWorkflow: 'getWorkflow',
+        listAiModels: 'listAiModels',
+        testAiModelConnection: 'testAiModelConnection',
+        createAiModel: 'createAiModel',
+        updateAiModel: 'updateAiModel',
+        deleteAiModel: 'deleteAiModel',
       },
     },
     'todo-api': {

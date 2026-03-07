@@ -6,6 +6,7 @@ import {
   IsObject,
 } from 'class-validator';
 import { TodoStatus } from '../enums/todo.enums';
+import { BindDataPermissionNode } from '@core/data-permission/decorators/data-permission-node.decorator';
 
 /**
  * @title 待办创建请求
@@ -42,6 +43,11 @@ export class CreateTodoDto {
   @IsOptional()
   @IsEnum(TodoStatus)
   status?: TodoStatus;
+
+  @BindDataPermissionNode('todo:create-only-myself')
+  dataPermissionNodeCreateOnlyMyself(): string {
+    return 'todo:create-only-myself';
+  }
 }
 
 /**
@@ -66,6 +72,11 @@ export class UpdateTodoDto {
   @IsOptional()
   @IsObject()
   receipt?: Record<string, unknown>;
+
+  @BindDataPermissionNode('todo:update-only-myself')
+  dataPermissionNodeUpdateOnlyMyself(): string {
+    return 'todo:update-only-myself';
+  }
 }
 
 /**
@@ -86,4 +97,9 @@ export class QueryTodoDto {
   @IsOptional()
   @IsString()
   pluginId?: string;
+
+  @BindDataPermissionNode('todo:read-only-myself')
+  dataPermissionNodeReadOnlyMyself(): string {
+    return 'todo:read-only-myself';
+  }
 }

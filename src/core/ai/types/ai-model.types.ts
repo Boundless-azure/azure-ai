@@ -7,6 +7,9 @@ export enum AIProvider {
   GOOGLE = 'google',
   GEMINI = 'gemini',
   DEEPSEEK = 'deepseek',
+  NVIDIA = 'nvidia',
+  AZURE_OPENAI = 'azure_openai',
+  CUSTOM = 'custom',
 }
 
 /**
@@ -26,6 +29,11 @@ export enum AIModelStatus {
   INACTIVE = 'inactive',
   DEPRECATED = 'deprecated',
   MAINTENANCE = 'maintenance',
+}
+
+export enum AIModelApiSpec {
+  OPENAI = 'openai',
+  ANTHROPIC = 'anthropic',
 }
 
 /**
@@ -67,7 +75,9 @@ export interface AIModelConfig {
   /** 模型显示名称 */
   displayName?: string;
   /** 提供商 */
-  provider: AIProvider;
+  provider: string;
+  /** 接口规范 */
+  apiProtocol: AIModelApiSpec;
   /** 模型类型 */
   type: AIModelType;
   /** 模型状态 */

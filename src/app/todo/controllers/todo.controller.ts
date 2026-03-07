@@ -16,6 +16,8 @@ import {
   UpdateTodoDto,
 } from '../types/todo.types';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
+import { CurrentPrincipal } from '@/core/auth/decorators/current-principal.decorator';
+import type { JwtPayload } from '@/core/auth/types/auth.types';
 
 /**
  * @title 待办事项控制器
@@ -29,8 +31,11 @@ export class TodoController {
 
   @Get()
   @CheckAbility('read', 'todo')
-  async list(@Query() query: QueryTodoDto): Promise<TodoEntity[]> {
-    return await this.service.list(query);
+  async list(
+    @Query() query: QueryTodoDto,
+    @CurrentPrincipal() principal?: JwtPayload,
+  ): Promise<TodoEntity[]> {
+    return await this.service.list(query, principal);
   }
 
   @Get(':id')
@@ -41,8 +46,11 @@ export class TodoController {
 
   @Post()
   @CheckAbility('create', 'todo')
-  async create(@Body() dto: CreateTodoDto): Promise<TodoEntity> {
-    return await this.service.create(dto);
+  async create(
+    @Body() dto: CreateTodoDto,
+    @CurrentPrincipal() principal?: JwtPayload,
+  ): Promise<TodoEntity> {
+    return await this.service.create(dto, principal);
   }
 
   @Put(':id')
@@ -50,8 +58,9 @@ export class TodoController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateTodoDto,
+    @CurrentPrincipal() principal?: JwtPayload,
   ): Promise<TodoEntity> {
-    return await this.service.update(id, dto);
+    return await this.service.update(id, dto, principal);
   }
 
   @Delete(':id')

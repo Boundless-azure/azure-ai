@@ -2,11 +2,10 @@
   <div
     class="h-full flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
   >
-    <!-- Header/Toolbar -->
     <div
-      class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50"
+      class="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4 bg-gray-50/50"
     >
-      <div class="flex items-center gap-4">
+      <div class="flex flex-wrap items-center gap-4">
         <div v-if="!roleId" class="flex items-center gap-2">
           <label class="text-sm font-medium text-gray-700">角色:</label>
           <select
@@ -20,170 +19,148 @@
             </option>
           </select>
         </div>
-        <div class="text-sm text-gray-500">
-          <i class="fa-solid fa-layer-group mr-1"></i>
-          {{ resources.length }} 个资源对象
+        <div class="flex items-center gap-2">
+          <button
+            v-for="tab in nodeTabs"
+            :key="tab.id"
+            class="px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors border"
+            :class="
+              activeType === tab.id
+                ? 'bg-white text-gray-900 border-gray-200 shadow-sm'
+                : 'text-gray-500 border-transparent hover:bg-white'
+            "
+            @click="activeType = tab.id"
+          >
+            <i class="fa-solid" :class="tab.icon"></i>
+            {{ tab.label }}
+          </button>
         </div>
       </div>
       <button
         class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 text-sm transition-colors flex items-center gap-2"
         @click="save"
-        :disabled="loading"
+        :disabled="saving || !selectedRoleId"
       >
-        <i v-if="loading" class="fa-solid fa-circle-notch fa-spin"></i>
+        <i v-if="saving" class="fa-solid fa-circle-notch fa-spin"></i>
         <i v-else class="fa-solid fa-save"></i>
         <span>保存变更</span>
       </button>
     </div>
 
     <div class="flex-1 flex overflow-hidden">
-      <!-- Left Sidebar: Resources -->
-      <div class="w-64 border-r border-gray-200 bg-gray-50 flex flex-col">
-        <div
-          class="p-3 border-b border-gray-200 flex justify-between items-center bg-gray-100/50"
-        >
-          <span class="text-xs font-bold text-gray-500 uppercase tracking-wider"
-            >资源列表 (Subjects)</span
-          >
-          <button
-            class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-            title="添加资源"
-            @click="addResource"
-          >
-            <i class="fa-solid fa-plus"></i>
-          </button>
+      <div class="w-72 border-r border-gray-200 bg-gray-50 flex flex-col">
+        <div class="p-3 border-b border-gray-200 bg-gray-100/50">
+          <div class="text-xs font-bold text-gray-500 uppercase tracking-wider">
+            权限节点
+          </div>
+          <div class="text-xs text-gray-400 mt-1">
+            {{ subjects.length }} 个父级节点
+          </div>
         </div>
-        <div class="flex-1 overflow-y-auto p-2 space-y-1">
+        <div class="flex-1 overflow-y-auto p-2 space-y-2">
           <div
-            v-for="(res, idx) in resources"
-            :key="idx"
-            class="px-3 py-2 rounded-lg text-sm cursor-pointer flex justify-between items-center group transition-all duration-200"
-            :class="
-              currentResourceIndex === idx
-                ? 'bg-white text-blue-600 shadow-sm font-medium ring-1 ring-gray-200'
-                : 'text-gray-600 hover:bg-gray-100'
-            "
-            @click="currentResourceIndex = idx"
+            v-for="subject in subjects"
+            :key="subject.id"
+            class="space-y-1"
           >
-            <div class="truncate flex-1">
-              <span v-if="res.subject" class="font-mono">{{
-                res.subject
-              }}</span>
-              <span v-else class="text-gray-400 italic">未命名资源</span>
-            </div>
-            <button
-              class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600 p-1 transition-all"
-              @click.stop="removeResource(idx)"
+            <div
+              class="px-3 py-2 rounded-lg text-sm flex items-center gap-2 cursor-pointer transition-colors"
+              :class="
+                activeSelection?.kind === 'subject' &&
+                activeSelection.subjectId === subject.id
+                  ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                  : 'text-gray-600 hover:bg-gray-100'
+              "
+              @click="setActiveSubject(subject)"
             >
-              <i class="fa-solid fa-xmark"></i>
-            </button>
+              <input
+                :ref="(el) => setSubjectCheckboxRef(subject.id, el)"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                :checked="isSubjectChecked(subject)"
+                @change="toggleSubject(subject)"
+                @click.stop
+              />
+              <span class="font-mono truncate flex-1">
+                {{ subject.nodeKey }}
+              </span>
+            </div>
+            <div class="pl-8 space-y-1">
+              <div
+                v-for="child in subject.children"
+                :key="child.id"
+                class="px-3 py-2 rounded-lg text-sm flex items-center gap-2 cursor-pointer transition-colors"
+                :class="
+                  activeSelection?.kind === 'action' &&
+                  activeSelection.actionId === child.id
+                    ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                    : 'text-gray-600 hover:bg-gray-100'
+                "
+                @click="setActiveAction(subject, child)"
+              >
+                <input
+                  type="checkbox"
+                  class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  :checked="isChildSelected(subject, child)"
+                  @change="toggleChild(subject, child)"
+                  @click.stop
+                />
+                <span class="font-mono truncate flex-1">
+                  {{ child.nodeKey }}
+                </span>
+              </div>
+            </div>
           </div>
           <div
-            v-if="resources.length === 0"
+            v-if="subjects.length === 0"
             class="text-center py-8 text-gray-400 text-xs"
           >
-            暂无资源配置<br />点击上方 + 添加
+            暂无权限节点
           </div>
         </div>
       </div>
 
-      <!-- Right Content: Actions -->
       <div class="flex-1 bg-white flex flex-col min-w-0">
-        <div v-if="currentResource" class="h-full flex flex-col">
-          <!-- Resource Header -->
-          <div class="p-6 border-b border-gray-100 flex items-start gap-4">
-            <div class="flex-1">
-              <label
-                class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2"
-                >资源名称 (Subject)</label
-              >
-              <input
-                v-model="currentResource.subject"
-                class="w-full text-lg font-bold text-gray-900 border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent px-1 py-1 font-mono placeholder-gray-300 transition-colors"
-                placeholder="例如: article, user, order"
-              />
-              <p class="text-xs text-gray-400 mt-2">
-                定义权限作用的目标资源标识符 (CASL Subject)。
-              </p>
-            </div>
-            <button
-              class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors"
-              @click="addAction(currentResource)"
-            >
-              <i class="fa-solid fa-plus mr-1"></i> 添加操作
-            </button>
+        <div class="p-6 border-b border-gray-100">
+          <div class="text-sm text-gray-500">描述详情</div>
+          <div
+            v-if="activeDetail"
+            class="mt-2 text-lg font-semibold text-gray-900"
+          >
+            {{ activeDetail.title }}
           </div>
-
-          <!-- Actions Table -->
-          <div class="flex-1 overflow-y-auto p-6">
-            <table class="w-full text-left text-sm">
-              <thead>
-                <tr class="text-xs text-gray-500 border-b border-gray-100">
-                  <th class="pb-3 pl-2 w-1/4 font-semibold">操作 (Action)</th>
-                  <th class="pb-3 w-1/2 font-semibold">
-                    条件 (Conditions - JSON)
-                  </th>
-                  <th class="pb-3 pr-2 w-16 text-right font-semibold">移除</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-50">
-                <tr
-                  v-for="(action, aIdx) in currentResource.actions"
-                  :key="aIdx"
-                  class="group hover:bg-gray-50/50 transition-colors"
-                >
-                  <td class="py-3 pl-2 align-top">
-                    <input
-                      v-model="action.action"
-                      class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono text-sm transition-all"
-                      placeholder="e.g. create"
-                    />
-                  </td>
-                  <td class="py-3 align-top px-2">
-                    <textarea
-                      v-model="action.conditionsText"
-                      class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-mono text-xs resize-none h-[38px] focus:h-24 transition-all"
-                      placeholder="{}"
-                    ></textarea>
-                  </td>
-                  <td class="py-3 pr-2 align-top text-right">
-                    <button
-                      class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      @click="removeAction(currentResource, aIdx)"
-                    >
-                      <i class="fa-solid fa-trash-can"></i>
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div
-              v-if="currentResource.actions.length === 0"
-              class="text-center py-12 text-gray-400 border-2 border-dashed border-gray-100 rounded-xl mt-4"
-            >
-              <i class="fa-solid fa-shield-cat text-2xl mb-2"></i>
-              <p class="mt-2 text-sm">暂无操作定义</p>
-              <button
-                class="mt-2 text-blue-600 hover:underline text-sm font-medium"
-                @click="addAction(currentResource)"
-              >
-                添加一个操作
-              </button>
-            </div>
+          <div v-else class="mt-2 text-gray-400 text-sm">
+            请选择左侧节点查看描述
           </div>
         </div>
-
-        <div
-          v-else
-          class="flex-1 flex flex-col items-center justify-center text-gray-400 bg-gray-50/30"
-        >
-          <div
-            class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4"
-          >
-            <i class="fa-regular fa-folder-open text-2xl text-gray-400"></i>
+        <div class="flex-1 overflow-y-auto p-6">
+          <div v-if="activeDetail" class="space-y-4">
+            <div class="text-sm text-gray-700">
+              {{ activeDetail.description || '暂无描述' }}
+            </div>
+            <div v-if="activeDetail.children.length > 0" class="space-y-3">
+              <div class="text-xs font-semibold text-gray-500 uppercase">
+                子级节点描述
+              </div>
+              <div class="space-y-2">
+                <div
+                  v-for="child in activeDetail.children"
+                  :key="child.id"
+                  class="p-3 rounded-lg border border-gray-100 bg-gray-50/60"
+                >
+                  <div class="text-sm font-mono text-gray-900">
+                    {{ child.nodeKey }}
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">
+                    {{ child.description || '暂无描述' }}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <p class="font-medium text-gray-600">请选择左侧资源</p>
-          <p class="text-sm mt-1">或点击 "+" 添加新资源</p>
+          <div v-else class="text-gray-400 text-sm">
+            点击左侧节点显示对应描述
+          </div>
         </div>
       </div>
     </div>
@@ -200,42 +177,92 @@
 
 import { ref, watch, onMounted, computed } from 'vue';
 import { useRoles } from '../hooks/useRoles';
-import type { RoleItem } from '../types/identity.types';
+import { usePermissionDefinitions } from '../hooks/usePermissionDefinitions';
+import type {
+  PermissionDefinitionItem,
+  PermissionDefinitionType,
+  RoleItem,
+} from '../types/identity.types';
 import { useUIStore } from '../../agent/store/ui.store';
 
 const props = defineProps<{
   roleId?: string;
 }>();
 
-interface ActionItem {
-  action: string;
-  conditionsText: string;
-}
-
-interface ResourceGroup {
-  subject: string;
-  actions: ActionItem[];
-}
-
 const loading = ref(false);
+const saving = ref(false);
 const roles = ref<RoleItem[]>([]);
 const selectedRoleId = ref('');
-const resources = ref<ResourceGroup[]>([]);
-const currentResourceIndex = ref<number>(-1);
+const definitions = ref<PermissionDefinitionItem[]>([]);
+const selectedKeys = ref<Set<string>>(new Set());
+const activeType = ref<PermissionDefinitionType>('management');
+const activeSelection = ref<
+  | { kind: 'subject'; subjectId: string }
+  | { kind: 'action'; subjectId: string; actionId: string }
+  | null
+>(null);
+const subjectCheckboxRefs = new Map<string, HTMLInputElement>();
 
-const currentResource = computed(() =>
-  currentResourceIndex.value >= 0 &&
-  currentResourceIndex.value < resources.value.length
-    ? resources.value[currentResourceIndex.value]
-    : null,
-);
+const nodeTabs: Array<{
+  id: PermissionDefinitionType;
+  label: string;
+  icon: string;
+}> = [
+  { id: 'management', label: '管理权限节点', icon: 'fa-shield-halved' },
+  { id: 'data', label: '数据权限节点', icon: 'fa-database' },
+  { id: 'menu', label: '菜单节点', icon: 'fa-bars' },
+];
 
-const { list, listPermissions, upsertPermissions } = useRoles();
+const { list: listRoles, listPermissions, upsertPermissions } = useRoles();
+const { list: listDefinitions } = usePermissionDefinitions();
+
+const subjects = computed(() => {
+  const items = definitions.value.filter(
+    (d) => d.permissionType === activeType.value,
+  );
+  const parents = items.filter((d) => !d.fid);
+  return parents
+    .map((subject) => ({
+      ...subject,
+      children: items
+        .filter((d) => d.fid === subject.id)
+        .sort((a, b) => a.nodeKey.localeCompare(b.nodeKey)),
+    }))
+    .sort((a, b) => a.nodeKey.localeCompare(b.nodeKey));
+});
+
+const activeDetail = computed(() => {
+  if (!activeSelection.value) return null;
+  if (activeSelection.value.kind === 'subject') {
+    const subject = subjects.value.find(
+      (s) => s.id === activeSelection.value?.subjectId,
+    );
+    if (!subject) return null;
+    return {
+      title: subject.nodeKey,
+      description: subject.description,
+      children: subject.children,
+    };
+  }
+  const subject = subjects.value.find(
+    (s) => s.id === activeSelection.value?.subjectId,
+  );
+  const child = subject?.children.find(
+    (c) => c.id === activeSelection.value?.actionId,
+  );
+  if (!subject || !child) return null;
+  return {
+    title: `${subject.nodeKey} · ${child.nodeKey}`,
+    description: child.description,
+    children: [],
+  };
+});
 
 onMounted(async () => {
+  await loadDefinitions();
   if (!props.roleId) {
     try {
-      roles.value = await list();
+      roles.value = await listRoles();
     } catch (e) {
       console.error(e);
     }
@@ -255,35 +282,49 @@ watch(
   },
 );
 
+watch(
+  () => [subjects.value, selectedKeys.value],
+  () => {
+    subjects.value.forEach((subject) => updateSubjectCheckbox(subject.id));
+  },
+);
+
+watch(
+  () => activeType.value,
+  () => {
+    const first = subjects.value[0];
+    if (first) {
+      activeSelection.value = { kind: 'subject', subjectId: first.id };
+    } else {
+      activeSelection.value = null;
+    }
+  },
+);
+
+async function loadDefinitions() {
+  try {
+    definitions.value = await listDefinitions();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 async function loadPermissions() {
   if (!selectedRoleId.value) return;
   loading.value = true;
-  resources.value = [];
-  currentResourceIndex.value = -1;
 
   try {
     const perms = await listPermissions(selectedRoleId.value);
-
-    // Group by Subject
-    const grouped = new Map<string, ActionItem[]>();
+    const next = new Set<string>();
     perms.forEach((p) => {
-      const items = grouped.get(p.subject) || [];
-      items.push({
-        action: p.action,
-        conditionsText: p.conditions ? JSON.stringify(p.conditions) : '',
-      });
-      grouped.set(p.subject, items);
+      next.add(makeKey(p.subject, p.action));
     });
-
-    resources.value = Array.from(grouped.entries()).map(
-      ([subject, actions]) => ({
-        subject,
-        actions,
-      }),
-    );
-
-    if (resources.value.length > 0) {
-      currentResourceIndex.value = 0;
+    selectedKeys.value = next;
+    if (!activeSelection.value && subjects.value.length > 0) {
+      activeSelection.value = {
+        kind: 'subject',
+        subjectId: subjects.value[0].id,
+      };
     }
   } catch (e) {
     console.error(e);
@@ -292,77 +333,119 @@ async function loadPermissions() {
   }
 }
 
-function addResource() {
-  resources.value.push({
-    subject: '',
-    actions: [{ action: 'create', conditionsText: '' }],
-  });
-  currentResourceIndex.value = resources.value.length - 1;
+function makeKey(subject: string, action: string) {
+  return `${subject}::${action}`;
 }
 
-function removeResource(index: number) {
-  if (confirm('确认移除该资源及其所有操作权限吗？')) {
-    resources.value.splice(index, 1);
-    if (currentResourceIndex.value >= resources.value.length) {
-      currentResourceIndex.value = Math.max(0, resources.value.length - 1);
-    }
+function setSubjectCheckboxRef(subjectId: string, el: Element | null) {
+  if (!el) {
+    subjectCheckboxRefs.delete(subjectId);
+    return;
+  }
+  if (el instanceof HTMLInputElement) {
+    subjectCheckboxRefs.set(subjectId, el);
+    updateSubjectCheckbox(subjectId);
   }
 }
 
-function addAction(resource: ResourceGroup) {
-  resource.actions.push({ action: '', conditionsText: '' });
+function updateSubjectCheckbox(subjectId: string) {
+  const el = subjectCheckboxRefs.get(subjectId);
+  if (!el) return;
+  const subject = subjects.value.find((s) => s.id === subjectId);
+  if (!subject) return;
+  el.indeterminate = isSubjectIndeterminate(subject);
 }
 
-function removeAction(resource: ResourceGroup, index: number) {
-  resource.actions.splice(index, 1);
+function isChildSelected(
+  subject: PermissionDefinitionItem,
+  child: PermissionDefinitionItem,
+) {
+  return selectedKeys.value.has(makeKey(subject.nodeKey, child.nodeKey));
+}
+
+function isSubjectChecked(subject: {
+  nodeKey: string;
+  children: PermissionDefinitionItem[];
+}) {
+  if (subject.children.length === 0) return false;
+  return subject.children.every((child) =>
+    selectedKeys.value.has(makeKey(subject.nodeKey, child.nodeKey)),
+  );
+}
+
+function isSubjectIndeterminate(subject: {
+  nodeKey: string;
+  children: PermissionDefinitionItem[];
+}) {
+  const selectedCount = subject.children.filter((child) =>
+    selectedKeys.value.has(makeKey(subject.nodeKey, child.nodeKey)),
+  ).length;
+  return selectedCount > 0 && selectedCount < subject.children.length;
+}
+
+function toggleSubject(subject: {
+  nodeKey: string;
+  id: string;
+  children: PermissionDefinitionItem[];
+}) {
+  const next = new Set(selectedKeys.value);
+  const shouldSelect = !isSubjectChecked(subject);
+  subject.children.forEach((child) => {
+    const key = makeKey(subject.nodeKey, child.nodeKey);
+    if (shouldSelect) next.add(key);
+    else next.delete(key);
+  });
+  selectedKeys.value = next;
+  setActiveSubject(subject);
+}
+
+function toggleChild(
+  subject: PermissionDefinitionItem,
+  child: PermissionDefinitionItem,
+) {
+  const next = new Set(selectedKeys.value);
+  const key = makeKey(subject.nodeKey, child.nodeKey);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  selectedKeys.value = next;
+  setActiveAction(subject, child);
+}
+
+function setActiveSubject(subject: { id: string }) {
+  activeSelection.value = { kind: 'subject', subjectId: subject.id };
+}
+
+function setActiveAction(
+  subject: { id: string },
+  child: { id: string },
+) {
+  activeSelection.value = {
+    kind: 'action',
+    subjectId: subject.id,
+    actionId: child.id,
+  };
 }
 
 async function save() {
   if (!selectedRoleId.value) return;
-
   const ui = useUIStore();
-
-  // Validate and Flatten
-  const payloadItems = [];
-
-  for (const res of resources.value) {
-    const subject = res.subject.trim();
-    if (!subject) {
-      ui.showToast('存在未命名的资源 (Subject)', 'error');
-      return;
-    }
-
-    for (const act of res.actions) {
-      const action = act.action.trim();
-      if (!action) continue; // Skip empty actions
-
-      let conditions = null;
-      if (act.conditionsText && act.conditionsText.trim()) {
-        try {
-          conditions = JSON.parse(act.conditionsText);
-        } catch (e) {
-          ui.showToast(`JSON 格式错误: ${subject} - ${action}`, 'error');
-          return;
-        }
-      }
-
-      payloadItems.push({
+  try {
+    saving.value = true;
+    const payloadItems = Array.from(selectedKeys.value).map((key) => {
+      const [subject, action] = key.split('::');
+      return {
         subject,
         action,
-        conditions,
-      });
-    }
-  }
-
-  try {
-    loading.value = true;
+        conditions: null,
+      };
+    });
     await upsertPermissions(selectedRoleId.value, { items: payloadItems });
     ui.showToast('权限配置已保存', 'success');
   } catch (e) {
     console.error(e);
     ui.showToast('保存失败', 'error');
   } finally {
-    loading.value = false;
+    saving.value = false;
   }
 }
 </script>

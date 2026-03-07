@@ -43,6 +43,12 @@ export const tabRegistry: Record<string, TabRegistryEntry> = {
     file: 'src/modules/identity/components/PermissionManagement.vue',
     loader: () => import('../../identity/components/PermissionManagement.vue'),
   },
+  aiProviders: {
+    name: 'AI提供商',
+    file: 'src/modules/ai-provider/components/AiProviderManagement.vue',
+    loader: () =>
+      import('../../ai-provider/components/AiProviderManagement.vue'),
+  },
   'chat-detail': {
     name: '聊天信息',
     file: 'src/modules/agent/components/ChatDetail.vue',

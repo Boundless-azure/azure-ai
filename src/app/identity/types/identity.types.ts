@@ -4,6 +4,8 @@
  * @keywords-cn 身份类型, 组织类型, 角色类型
  * @keywords-en identity-types, organization-types, role-types
  */
+import { PermissionDefinitionType } from '../enums/permission.enums';
+
 export interface QueryPrincipalDto {
   q?: string;
   type?:
@@ -93,4 +95,20 @@ export interface UpsertRolePermissionsDto {
     action: string;
     conditions?: Record<string, unknown> | null;
   }>;
+}
+
+export interface CreatePermissionDefinitionDto {
+  fid?: string | null;
+  nodeKey: string;
+  extraData?: Record<string, unknown> | null;
+  description?: string;
+  permissionType?: PermissionDefinitionType;
+}
+
+export interface UpdatePermissionDefinitionDto {
+  fid?: string | null;
+  nodeKey?: string;
+  extraData?: Record<string, unknown> | null;
+  description?: string;
+  permissionType?: PermissionDefinitionType;
 }

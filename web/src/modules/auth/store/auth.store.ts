@@ -124,6 +124,12 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem('abilityRules', JSON.stringify(data.ability.rules));
   }
 
+  function updatePrincipal(patch: Partial<Principal>) {
+    if (!principal.value) return;
+    principal.value = { ...principal.value, ...patch };
+    localStorage.setItem('principal', JSON.stringify(principal.value));
+  }
+
   function logout() {
     token.value = '';
     principal.value = null;
@@ -143,6 +149,7 @@ export const useAuthStore = defineStore('auth', () => {
     principal,
     abilityRules,
     login,
+    updatePrincipal,
     logout,
   };
 });
