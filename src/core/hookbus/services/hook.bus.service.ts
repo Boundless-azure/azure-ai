@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { HookRegistryService } from './hook.registry.service';
 import { HookInvokerService } from './hook.invoker.service';
+import { HookResultStatus } from '../enums/hook.enums';
 import type {
   HookBusOptions,
   HookEvent,
@@ -9,6 +10,7 @@ import type {
   HookResult,
   HookHandler,
   HookMetadata,
+  HookDebugEvent,
 } from '../types/hook.types';
 
 /**
@@ -20,6 +22,12 @@ import type {
 @Injectable()
 export class HookBusService implements OnModuleInit {
   private readonly logger = new Logger(HookBusService.name);
+  private readonly debugListeners = new Set<(event: HookDebugEvent) => void>();
+  private readonly queue: Array<{
+    event: HookEvent<unknown>;
+    resolve: (results: HookResult<unknown>[]) => void;
+  }> = [];
+  private activeWorkers = 0;
   private opts: HookBusOptions = {
     bufferSize: 1000,
     debug: false,
@@ -47,11 +55,23 @@ export class HookBusService implements OnModuleInit {
     return this.registry.register<T, R>(name, handler, metadata);
   }
 
-  async emit<T>(event: HookEvent<T>): Promise<void> {
+  async emit<T, R>(event: HookEvent<T>): Promise<HookResult<R>[]> {
     const now = Date.now();
     const src = this.captureSource();
     const enriched: HookEvent<T> = { ...event, ts: now, source: src };
-    await this.dispatchLocal(enriched);
+    this.emitDebug({
+      type: 'emit',
+      name: enriched.name,
+      payload: enriched.payload,
+      ts: Date.now(),
+    });
+    return await new Promise<HookResult<R>[]>((resolve) => {
+      this.queue.push({
+        event: enriched as HookEvent<unknown>,
+        resolve: (results) => resolve(results as HookResult<R>[]),
+      });
+      this.scheduleConsumers();
+    });
   }
 
   private async dispatchLocal<T, R>(
@@ -92,6 +112,13 @@ export class HookBusService implements OnModuleInit {
     return this.registry.list();
   }
 
+  onDebug(listener: (event: HookDebugEvent) => void): () => void {
+    this.debugListeners.add(listener);
+    return () => {
+      this.debugListeners.delete(listener);
+    };
+  }
+
   // 本地模式无需跨进程轮询
 
   private captureSource(): { file?: string; line?: number; stack?: string[] } {
@@ -115,13 +142,53 @@ export class HookBusService implements OnModuleInit {
     return { file, line, stack };
   }
 
-  /**
-   * @title HookBus 等待式发布
-   * @description 本地执行并等待所有处理器完成，返回每个处理器的执行结果。
-   * @keywords-cn Hook发布等待, 本地执行, 结果收集
-   * @keywords-en hook-emit-await, local-execution, result-collect
-   */
-  async emitAwait<T, R>(event: HookEvent<T>): Promise<HookResult<R>[]> {
-    return await this.dispatchLocal<T, R>(event);
+  private scheduleConsumers(): void {
+    const concurrency = Math.max(1, this.opts.concurrency ?? 1);
+    while (this.activeWorkers < concurrency && this.queue.length > 0) {
+      const task = this.queue.shift();
+      if (!task) break;
+      this.activeWorkers += 1;
+      void this.consumeTask(task).finally(() => {
+        this.activeWorkers -= 1;
+        this.scheduleConsumers();
+      });
+    }
+  }
+
+  private async consumeTask(task: {
+    event: HookEvent<unknown>;
+    resolve: (results: HookResult<unknown>[]) => void;
+  }): Promise<void> {
+    try {
+      const results = await this.dispatchLocal(task.event);
+      this.emitDebug({
+        type: 'result',
+        name: task.event.name,
+        results: results,
+        ts: Date.now(),
+      });
+      task.resolve(results);
+    } catch (error) {
+      const failed: HookResult<unknown>[] = [
+        {
+          status: HookResultStatus.Error,
+          error:
+            error instanceof Error ? error.message : 'hook dispatch failed',
+        },
+      ];
+      this.emitDebug({
+        type: 'result',
+        name: task.event.name,
+        results: failed,
+        ts: Date.now(),
+      });
+      task.resolve(failed);
+    }
+  }
+
+  private emitDebug(event: HookDebugEvent): void {
+    for (const listener of this.debugListeners) {
+      listener(event);
+    }
   }
 }

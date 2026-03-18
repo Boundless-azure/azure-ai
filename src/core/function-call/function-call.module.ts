@@ -5,9 +5,6 @@ import { PluginOrchestratorService } from './services/plugin_orchestrate.functio
 import { ContextFunctionService } from './services/context_window_keyword.function-service';
 import { MysqlReadonlyService } from './services/db_mysql_select.function-service';
 import { MongoReadonlyService } from './services/db_mongo_find.function-service';
-import { WebMcpFunctionService } from './services/webmcp_get.function-service';
-import { WebMcpOperationFunctionService } from './services/webmcp_op.function-service';
-import { WebMcpModule } from '@/app/webmcp/webmcp.module';
 import { IntentAgentTriggerFunctionService } from './services/intent_agent_trigger.function-service';
 import { AgentEntity } from '@/app/agent/entities/agent.entity';
 import { AgentExecutionEntity } from '@/app/agent/entities/agent-execution.entity';
@@ -21,7 +18,6 @@ import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
  */
 @Module({
   imports: [
-    WebMcpModule,
     AICoreModule.forFeature(),
     TypeOrmModule.forFeature([
       AgentEntity,
@@ -35,8 +31,6 @@ import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
     ContextFunctionService,
     MysqlReadonlyService,
     MongoReadonlyService,
-    WebMcpFunctionService,
-    WebMcpOperationFunctionService,
     IntentAgentTriggerFunctionService,
   ],
   exports: [
@@ -44,8 +38,6 @@ import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
     ContextFunctionService,
     MysqlReadonlyService,
     MongoReadonlyService,
-    WebMcpFunctionService,
-    WebMcpOperationFunctionService,
     IntentAgentTriggerFunctionService,
   ],
 })

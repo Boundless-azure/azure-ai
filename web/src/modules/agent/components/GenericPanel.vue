@@ -6,7 +6,7 @@
     </div>
 
     <!-- Content -->
-    <div class="flex-1 overflow-y-auto p-6">
+    <div class="flex-1 overflow-y-auto p-3 md:p-6">
       <div class="border-2 border-dashed border-gray-200 rounded-xl h-full flex flex-col items-center justify-center text-gray-400">
         <i class="fa-solid fa-layer-group text-4xl mb-4"></i>
         <p>Content for {{ title }}</p>

@@ -20,6 +20,15 @@ export interface HookEvent<T = unknown> {
   requestId?: string;
   ts?: number;
   source?: HookSource;
+  declaration?: HookDeclaration;
+}
+
+export interface HookDeclaration {
+  description?: string;
+  payloadDto?: new () => object;
+  middlewares?: string[];
+  filter?: HookFilter;
+  errorMode?: 'capture' | 'throw';
 }
 
 export interface HookMetadata {
@@ -29,6 +38,9 @@ export interface HookMetadata {
   tags?: string[];
   phase?: HookPhase;
   priority?: number;
+  description?: string;
+  middlewares?: string[];
+  errorMode?: 'capture' | 'throw';
 }
 
 export interface HookResult<R = unknown> {
@@ -36,6 +48,14 @@ export interface HookResult<R = unknown> {
   data?: R;
   error?: string;
   durationMs?: number;
+}
+
+export interface HookDebugEvent {
+  type: 'emit' | 'result';
+  name: string;
+  payload?: unknown;
+  results?: HookResult<unknown>[];
+  ts: number;
 }
 
 export interface HookContext<T = unknown> {
@@ -65,6 +85,11 @@ export interface HookBusOptions {
   debug?: boolean;
   /** 并发处理的最大数（用于轮询批处理） */
   concurrency?: number;
+  storage?: {
+    mode: 'memory' | 'redis';
+    queueKeyPrefix?: string;
+    bindingKeyPrefix?: string;
+  };
 }
 
 export interface HookSource {

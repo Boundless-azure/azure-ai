@@ -19,7 +19,7 @@
 - app/identity/controllers/organization.controller.ts
 - app/identity/controllers/role.controller.ts
 - app/identity/controllers/membership.controller.ts
-- app/identity/controllers/membership.controller.ts
+- app/identity/controllers/permission-definition.controller.ts
 - app/identity/controllers/users.controller.ts
 - app/identity/enums/principal.enums.ts
 - app/identity/types/identity.types.ts
@@ -51,6 +51,8 @@
   - buildForRoles(roleIds)
   - buildForPrincipal(principalId)
   - getHandle()
+- Identity Controllers
+  - HookLifecycle on RBAC CRUD before/after/error
 
 关键词索引（中文 / English Keyword Index）
 统一主体 -> app/identity/entities/principal.entity.ts
@@ -70,6 +72,9 @@
 - RoleService.upsertPermissions -> id_role_upsert_perm_003
 - AbilityService.buildForRoles -> id_ability_build_004
  - AbilityService.buildForPrincipal -> id_ability_build_005
+- RoleController.create(HookLifecycle) -> id_hook_role_create_010
+- MembershipController.add(HookLifecycle) -> id_hook_membership_add_011
+- PermissionDefinitionController.create(HookLifecycle) -> id_hook_perm_def_create_012
 
 模块功能描述（Description）
 本模块统一了 B2B 与 B2C 的身份与权限模型：所有交互主体均为 Principal，通过 principalType 区分企业用户/消费者/官方账号/Agent/系统。组织与成员关系管理采用 RBAC（Role + RolePermission），结合资源级 ACL（由业务模块维护）进行权限决策。AbilityService 提供 can/cannot 能力检查，并可后续替换为 CASL 原生实现。

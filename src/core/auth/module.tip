@@ -8,6 +8,7 @@
 - core/auth/auth.module.ts
 - core/auth/controllers/auth.controller.ts
 - core/auth/services/auth.service.ts
+- core/auth/services/auth.hook-handlers.service.ts
 - core/auth/strategies/jwt.strategy.ts
 - core/auth/guards/jwt-auth.guard.ts
 - core/auth/decorators/current-principal.decorator.ts
@@ -17,6 +18,10 @@
 - AuthService
   - login(dto)
   - changePassword(principalId, dto)
+- AuthHookHandlersService
+  - handleLoginSuccess(ctx)
+  - handleLoginFailed(ctx)
+  - handlePasswordChanged(ctx)
 - JwtStrategy
   - validate(payload)
 
@@ -25,6 +30,7 @@
 登录接口 -> core/auth/controllers/auth.controller.ts
 修改密码接口 -> core/auth/controllers/auth.controller.ts
 认证服务 -> core/auth/services/auth.service.ts
+鉴权Hook处理器 -> core/auth/services/auth.hook-handlers.service.ts
 JWT策略 -> core/auth/strategies/jwt.strategy.ts
 JWT守卫 -> core/auth/guards/jwt-auth.guard.ts
 当前主体 -> core/auth/decorators/current-principal.decorator.ts
@@ -34,6 +40,9 @@ JWT守卫 -> core/auth/guards/jwt-auth.guard.ts
 关键词到文件函数哈希映射（Keywords -> Function Hash）
 - AuthService.login -> auth_login_001
 - AuthService.changePassword -> auth_change_password_003
+- AuthHookHandlersService.handleLoginSuccess -> auth_hook_login_success_004
+- AuthHookHandlersService.handleLoginFailed -> auth_hook_login_failed_005
+- AuthHookHandlersService.handlePasswordChanged -> auth_hook_password_changed_006
 - JwtStrategy.validate -> auth_jwt_validate_002
 
 模块功能描述（Description）

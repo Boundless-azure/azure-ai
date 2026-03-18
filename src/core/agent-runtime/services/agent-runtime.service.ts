@@ -49,12 +49,16 @@ export class AgentRuntimeService {
   async *startDialogue(
     agentDir: string,
     messages: ChatMessage[],
+    options?: { aiModelIds?: string[] },
   ): AsyncGenerator<ModelSseEvent> {
     const loaded = await this.loader.loadAll(agentDir);
     if (!loaded.dialogues) {
       throw new Error('该 Agent 未提供对话层（dialogues）');
     }
     loaded.dialogues.handleAiServer(this.buildAiAdapter());
+    loaded.dialogues.setAgentConfig?.({
+      aiModelIds: options?.aiModelIds,
+    });
     const gen = loaded.dialogues.handle(messages);
     // 透传底层生成器（增加类型保护）
     for await (const ev of gen as AsyncGenerator<ModelSseEvent>) {
@@ -99,6 +103,8 @@ export class AgentRuntimeService {
         };
         return this.aiModelService.chatStream(aiReq);
       },
+      resolveModelNameByIds: (modelIds: string[]) =>
+        this.aiModelService.resolveModelNameByIds(modelIds),
     };
   }
 }

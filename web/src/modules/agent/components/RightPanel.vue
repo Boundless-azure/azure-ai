@@ -39,11 +39,11 @@
     </div>
 
     <!-- Tab Content -->
-    <div class="flex-1 overflow-y-auto p-8 bg-gray-50/50">
+    <div class="flex-1 overflow-y-auto p-3 md:p-8 bg-gray-50/50">
       <!-- Dashboard Tab -->
       <div
         v-if="currentTab === 'dashboard'"
-        class="space-y-8 max-w-6xl mx-auto"
+        class="space-y-4 md:space-y-8 max-w-6xl mx-auto"
       >
         <!-- Quick Stats -->
         <div
@@ -212,7 +212,7 @@
           v-if="currentAsyncComponent"
           v-bind="currentTabProps"
           @close="closeTab(currentTab)"
-          class="flex-1 w-full px-8 pb-8"
+          class="flex-1 w-full px-3 pb-3 md:px-8 md:pb-8"
         />
 
         <div

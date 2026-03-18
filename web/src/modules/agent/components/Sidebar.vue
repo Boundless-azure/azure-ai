@@ -284,6 +284,7 @@ const menuItems = [
   { id: 'database', icon: 'database' },
   { id: 'plugins', icon: 'plug' },
   { id: 'agents', icon: 'robot' },
+  { id: 'runners', icon: 'play' },
   { id: 'todos', icon: 'list-check' },
   { id: 'more', icon: 'ellipsis' },
 ];

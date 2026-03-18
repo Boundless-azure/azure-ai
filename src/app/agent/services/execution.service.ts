@@ -31,6 +31,7 @@ export class AgentExecutionService {
       if (query.agentId) filter['agentId'] = query.agentId;
       if (query.contextMessageId)
         filter['contextMessageId'] = query.contextMessageId;
+      if (query.runnerId) filter['runnerId'] = query.runnerId;
       const docs = await col
         .find(filter)
         .sort({ createdAt: -1 })
@@ -42,6 +43,7 @@ export class AgentExecutionService {
     if (query.agentId) where['agentId'] = query.agentId;
     if (query.contextMessageId)
       where['contextMessageId'] = query.contextMessageId;
+    if (query.runnerId) where['runnerId'] = query.runnerId;
     return await this.repo.find({ where, order: { createdAt: 'DESC' } });
   }
 
@@ -70,6 +72,7 @@ export class AgentExecutionService {
       if (dto.latestResponse) patch['latestResponse'] = dto.latestResponse;
       if (typeof dto.contextMessageId === 'string')
         patch['contextMessageId'] = dto.contextMessageId;
+      if (typeof dto.runnerId === 'string') patch['runnerId'] = dto.runnerId;
       await col.updateOne({ _id: id } as unknown as Record<string, unknown>, {
         $set: patch,
       });
@@ -86,6 +89,7 @@ export class AgentExecutionService {
     if (dto.latestResponse) current.latestResponse = dto.latestResponse;
     if (typeof dto.contextMessageId === 'string')
       current.contextMessageId = dto.contextMessageId;
+    if (typeof dto.runnerId === 'string') current.runnerId = dto.runnerId;
     return await this.repo.save(current);
   }
 
@@ -114,16 +118,17 @@ export class AgentExecutionService {
 
   private toEntity(doc: AgentExecutionDoc): AgentExecutionEntity {
     const e = new AgentExecutionEntity();
-    (e as unknown as { id?: string }).id = doc._id ?? '';
-    (e as unknown as { agentId?: string }).agentId = doc.agentId;
+    // BaseAuditedEntity fields
+    e.id = doc._id ?? '';
+    e.agentId = doc.agentId;
     e.nodeStatus = doc.nodeStatus ?? null;
     e.latestResponse = doc.latestResponse ?? null;
     e.contextMessageId = doc.contextMessageId ?? null;
-    (e as unknown as { createdAt?: Date }).createdAt =
-      doc.createdAt ?? new Date();
-    (e as unknown as { updatedAt?: Date }).updatedAt =
-      doc.updatedAt ?? new Date();
-    (e as unknown as { isDelete?: boolean }).isDelete = doc.isDelete ?? false;
+    e.runnerId = doc.runnerId ?? null;
+    // BaseAuditedEntity timestamp fields
+    e.createdAt = doc.createdAt ?? new Date();
+    e.updatedAt = doc.updatedAt ?? new Date();
+    e.isDelete = doc.isDelete ?? false;
     return e;
   }
 }

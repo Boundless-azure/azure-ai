@@ -29,7 +29,9 @@ export interface AgentDialoguesContract {
       checkpointer?: unknown;
       params?: Record<string, unknown>;
     }) => AsyncGenerator<unknown>;
+    resolveModelNameByIds: (modelIds: string[]) => Promise<string | null>;
   }): void;
+  setAgentConfig?: (config: { aiModelIds?: string[] }) => void;
   handle(messages: ChatMessage[]): AsyncGenerator<unknown> | Promise<unknown>;
 }
 

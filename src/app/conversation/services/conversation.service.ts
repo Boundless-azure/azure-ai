@@ -70,7 +70,7 @@ export class ConversationService {
     ];
 
     const aiRequest: AIModelRequest = {
-      modelId: request.modelId || (await this.pickDefaultModelId()),
+      modelId: request.modelId,
       messages,
       sessionId,
       checkpointer: (await this.shouldUseCheckpointer(sessionId))
@@ -135,7 +135,7 @@ export class ConversationService {
       ];
 
       const aiRequest: AIModelRequest = {
-        modelId: request.modelId || (await this.pickDefaultModelId()),
+        modelId: request.modelId,
         messages,
         sessionId,
         checkpointer: (await this.shouldUseCheckpointer(sessionId))
@@ -172,24 +172,6 @@ export class ConversationService {
         error: error instanceof Error ? error.message : String(error),
       };
     }
-  }
-
-  /**
-   * 选择默认模型：在未显式传入 modelId 时，返回第一个启用的模型。
-   * @returns 默认模型的 ID
-   * @keywords-en Model, Default, Selection, Fallback
-   * @keywords-zh 模型, 默认, 选择, 回退
-   * @throws 当没有启用的模型时抛出错误，提示先配置模型。
-   * @remarks 通过 AIModelService.getEnabledModels() 获取启用模型列表。
-   */
-  private async pickDefaultModelId(): Promise<string> {
-    const enabled = await this.aiModelService.getEnabledModels();
-    if (!enabled.length) {
-      throw new Error(
-        'No enabled AI models. Please configure at least one model in ai_models table.',
-      );
-    }
-    return enabled[0].id;
   }
 
   private async shouldUseCheckpointer(sessionId: string): Promise<boolean> {

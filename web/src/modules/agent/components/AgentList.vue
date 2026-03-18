@@ -2,7 +2,7 @@
   <div class="space-y-6 h-full flex flex-col relative">
     <!-- Header -->
     <div
-      class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm"
+      class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 md:p-6 rounded-2xl border border-gray-200 shadow-sm"
     >
       <div>
         <h2 class="text-2xl font-bold text-gray-900">
@@ -12,7 +12,7 @@
           {{ t('dashboard.welcomeSub') }}
         </p>
       </div>
-      <div class="flex items-center gap-3 w-full md:w-auto">
+      <div class="flex flex-col md:flex-row items-stretch md:items-center gap-3 w-full md:w-auto">
         <div class="relative w-full md:w-64">
           <input
             v-model="searchQuery"
@@ -24,22 +24,24 @@
             class="fa-solid fa-search absolute left-3 top-3.5 text-gray-400"
           ></i>
         </div>
-        <button
-          @click="updateAllEmbeddings"
-          class="px-4 py-2 rounded-xl bg-gray-900 text-white hover:bg-gray-800 font-bold transition-colors shadow-md flex items-center"
-          :disabled="isUpdating"
-        >
-          <i v-if="isUpdating" class="fa-solid fa-spinner fa-spin mr-2"></i>
-          {{ t('agent.updateAllEmbeddings') }}
-        </button>
-        <button
-          @click="updateSelectedEmbeddings"
-          class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-500 font-bold transition-colors shadow-md flex items-center"
-          :disabled="isUpdating || selectedIds.size === 0"
-        >
-          <i v-if="isUpdating" class="fa-solid fa-spinner fa-spin mr-2"></i>
-          {{ t('agent.updateSelectedEmbeddings') }}
-        </button>
+        <div class="grid grid-cols-2 md:flex md:gap-2 gap-3">
+          <button
+            @click="updateAllEmbeddings"
+            class="px-4 py-2 rounded-xl bg-gray-900 text-white hover:bg-gray-800 font-bold transition-colors shadow-md flex items-center justify-center whitespace-nowrap"
+            :disabled="isUpdating"
+          >
+            <i v-if="isUpdating" class="fa-solid fa-spinner fa-spin mr-2"></i>
+            {{ t('agent.updateAllEmbeddings') }}
+          </button>
+          <button
+            @click="updateSelectedEmbeddings"
+            class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-500 font-bold transition-colors shadow-md flex items-center justify-center whitespace-nowrap"
+            :disabled="isUpdating || selectedIds.size === 0"
+          >
+            <i v-if="isUpdating" class="fa-solid fa-spinner fa-spin mr-2"></i>
+            {{ t('agent.updateSelectedEmbeddings') }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -61,11 +63,11 @@
         <p>{{ t('agent.search') }} - No results</p>
       </div>
 
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
         <div
           v-for="agent in filteredAgents"
           :key="agent.id"
-          class="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-lg hover:border-gray-300 transition-all group relative flex flex-col"
+          class="bg-white rounded-2xl border border-gray-200 p-4 md:p-6 hover:shadow-lg hover:border-gray-300 transition-all group relative flex flex-col"
           :class="isUpdating ? 'animate-pulse' : ''"
         >
           <!-- Agent Card -->
@@ -233,6 +235,69 @@
               class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900 focus:bg-white transition-all font-medium resize-none"
             ></textarea>
           </div>
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2"
+              >AI模型（多选）</label
+            >
+            <div class="flex gap-2">
+              <select
+                v-model="selectedModelToAdd"
+                class="flex-1 px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              >
+                <option value="" disabled>请选择模型</option>
+                <option
+                  v-for="item in availableModelOptions"
+                  :key="item.value"
+                  :value="item.value"
+                >
+                  {{ item.label }}
+                </option>
+              </select>
+              <button
+                type="button"
+                class="px-4 py-2 rounded-xl bg-gray-900 text-white hover:bg-gray-800 text-sm font-semibold"
+                @click="addSelectedModel"
+              >
+                添加
+              </button>
+            </div>
+            <div class="mt-3 space-y-2">
+              <div
+                v-for="(item, idx) in orderedSelectedModels"
+                :key="`${item.id}-${idx}`"
+                class="flex items-center justify-between px-3 py-2 rounded-xl border border-gray-200 bg-white"
+              >
+                <div class="text-sm font-medium text-gray-700">
+                  {{ idx + 1 }}. {{ item.label }}
+                </div>
+                <div class="flex items-center gap-1">
+                  <button
+                    type="button"
+                    class="w-8 h-8 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+                    :disabled="idx === 0"
+                    @click="moveSelectedModel(idx, -1)"
+                  >
+                    <i class="fa-solid fa-arrow-up text-xs"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="w-8 h-8 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40"
+                    :disabled="idx === orderedSelectedModels.length - 1"
+                    @click="moveSelectedModel(idx, 1)"
+                  >
+                    <i class="fa-solid fa-arrow-down text-xs"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="w-8 h-8 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                    @click="removeSelectedModel(item.id)"
+                  >
+                    <i class="fa-solid fa-xmark text-xs"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="flex justify-end space-x-3 mt-10">
@@ -278,6 +343,8 @@ import {
   useResourceUpload,
 } from '../../resource/resource.module';
 import { resolveResourceUrl } from '../../../utils/http';
+import { agentApi } from '../../../api/agent';
+import type { AiModelItem } from '../../ai-provider/types/ai-provider.types';
 
 const { t, currentLocale } = useI18n();
 const ui = useUIStore();
@@ -291,7 +358,33 @@ const editForm = ref<UpdateAgentRequest>({
   nickname: '',
   purpose: '',
   avatarUrl: '',
+  aiModelIds: [],
 });
+const aiModels = ref<AiModelItem[]>([]);
+const modelOptions = computed(() =>
+  aiModels.value.map((item) => ({
+    value: item.name,
+    label: `${item.provider} / ${item.name}`,
+  })),
+);
+const selectedModelToAdd = ref('');
+const selectedModelSet = computed(() => new Set(editForm.value.aiModelIds ?? []));
+const availableModelOptions = computed(() =>
+  modelOptions.value.filter((item) => !selectedModelSet.value.has(item.value)),
+);
+const modelLabelMap = computed(() => {
+  const map = new Map<string, string>();
+  for (const item of modelOptions.value) {
+    map.set(item.value, item.label);
+  }
+  return map;
+});
+const orderedSelectedModels = computed(() =>
+  (editForm.value.aiModelIds ?? []).map((id) => ({
+    id,
+    label: modelLabelMap.value.get(id) ?? id,
+  })),
+);
 
 const { uploading, progress, upload: uploadResource } = useResourceUpload();
 
@@ -350,13 +443,20 @@ const fetchAgents = async () => {
   }
 };
 
+const fetchAiModels = async () => {
+  const res = await agentApi.listAiModels({ enabled: true });
+  aiModels.value = Array.isArray(res.data) ? res.data : [];
+};
+
 const openEditModal = (agent: Agent) => {
   currentAgent.value = agent;
   editForm.value = {
     nickname: agent.nickname,
     purpose: agent.purpose,
     avatarUrl: getAgentAvatarUrl(agent),
+    aiModelIds: Array.isArray(agent.aiModelIds) ? agent.aiModelIds : [],
   };
+  selectedModelToAdd.value = '';
   showModal.value = true;
 };
 
@@ -368,13 +468,52 @@ async function onAvatarConfirm(file: File) {
 const handleSave = async () => {
   if (!currentAgent.value) return;
   try {
-    await update(currentAgent.value.id, editForm.value);
+    const payload = { ...editForm.value };
+    if (!payload.avatarUrl) {
+      delete payload.avatarUrl;
+    }
+    await update(currentAgent.value.id, payload);
     await fetchAgents();
     showModal.value = false;
     showAvatarModal.value = false;
   } catch (error) {
     console.error('Failed to update agent:', error);
+    const msg = error instanceof Error ? error.message : '';
+    ui.showToast(
+      currentLocale.value === 'en'
+        ? `Failed to update agent: ${msg}`
+        : `更新Agent失败: ${msg}`,
+      'error',
+      4000,
+    );
   }
+};
+
+const addSelectedModel = () => {
+  const modelId = selectedModelToAdd.value;
+  if (!modelId) return;
+  const list = [...(editForm.value.aiModelIds ?? [])];
+  if (!list.includes(modelId)) {
+    list.push(modelId);
+    editForm.value.aiModelIds = list;
+  }
+  selectedModelToAdd.value = '';
+};
+
+const removeSelectedModel = (modelId: string) => {
+  editForm.value.aiModelIds = (editForm.value.aiModelIds ?? []).filter(
+    (item) => item !== modelId,
+  );
+};
+
+const moveSelectedModel = (index: number, step: -1 | 1) => {
+  const list = [...(editForm.value.aiModelIds ?? [])];
+  const target = index + step;
+  if (target < 0 || target >= list.length) return;
+  const current = list[index];
+  list[index] = list[target];
+  list[target] = current;
+  editForm.value.aiModelIds = list;
 };
 
 const confirmDelete = async (agent: Agent) => {
@@ -444,5 +583,6 @@ const updateSelectedEmbeddings = async () => {
 
 onMounted(() => {
   fetchAgents();
+  fetchAiModels();
 });
 </script>

@@ -49,6 +49,11 @@ export const tabRegistry: Record<string, TabRegistryEntry> = {
     loader: () =>
       import('../../ai-provider/components/AiProviderManagement.vue'),
   },
+  runners: {
+    name: 'Runner 管理',
+    file: 'src/modules/runner/components/RunnerManagement.vue',
+    loader: () => import('../../runner/components/RunnerManagement.vue'),
+  },
   'chat-detail': {
     name: '聊天信息',
     file: 'src/modules/agent/components/ChatDetail.vue',

@@ -26,6 +26,7 @@ export class AppUnitService {
       const col = this.unitCollection();
       if (!col) return [];
       const where: Record<string, unknown> = { isDelete: { $ne: true } };
+      if (query.runnerId) where['runnerId'] = query.runnerId;
       if (query.sessionId) where['sessionId'] = query.sessionId;
       if (query.appId) where['appId'] = query.appId;
       const docs = await col
@@ -37,6 +38,7 @@ export class AppUnitService {
     }
 
     const where: Record<string, unknown> = { isDelete: false };
+    if (query.runnerId) where['runnerId'] = query.runnerId;
     if (query.sessionId) where['sessionId'] = query.sessionId;
     if (query.appId) where['appId'] = query.appId;
     return await this.repo.find({ where, order: { updatedAt: 'DESC' } });
@@ -62,6 +64,7 @@ export class AppUnitService {
       const now = new Date();
       const doc: AppUnitDoc = {
         _id: randomUUID(),
+        runnerId: dto.runnerId ?? null,
         sessionId: dto.sessionId,
         appId: dto.appId,
         name: dto.name,
@@ -83,6 +86,7 @@ export class AppUnitService {
     }
 
     const entity = this.repo.create({
+      runnerId: dto.runnerId ?? null,
       sessionId: dto.sessionId ?? null,
       appId: dto.appId,
       name: dto.name,
@@ -103,6 +107,7 @@ export class AppUnitService {
       const col = this.unitCollection();
       if (!col) throw new Error('MongoDB not available');
       const patch: Record<string, unknown> = { updatedAt: new Date() };
+      if (dto.runnerId !== undefined) patch['runnerId'] = dto.runnerId;
       if (dto.sessionId !== undefined) patch['sessionId'] = dto.sessionId;
       if (dto.name !== undefined) patch['name'] = dto.name;
       if (dto.version !== undefined) patch['version'] = dto.version;
@@ -120,6 +125,7 @@ export class AppUnitService {
     }
 
     const entity = await this.repo.findOneOrFail({ where: { id } });
+    if (dto.runnerId !== undefined) entity.runnerId = dto.runnerId;
     if (dto.sessionId !== undefined) entity.sessionId = dto.sessionId;
     if (dto.name !== undefined) entity.name = dto.name;
     if (dto.version !== undefined) entity.version = dto.version;
@@ -159,6 +165,7 @@ export class AppUnitService {
     const e = new AppUnitEntity();
     (e as unknown as { id?: string }).id =
       doc._id ?? `${doc.appId}:${doc.name}`;
+    e.runnerId = doc.runnerId ?? null;
     e.sessionId = doc.sessionId ?? null;
     e.appId = doc.appId;
     e.name = doc.name;

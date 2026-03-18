@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { PermissionDefinitionService } from '../services/permission-definition.service';
 import { CheckAbility } from '../decorators/check-ability.decorator';
+import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
 import type {
   CreatePermissionDefinitionDto,
   UpdatePermissionDefinitionDto,
@@ -26,18 +27,30 @@ export class PermissionDefinitionController {
 
   @Get()
   @CheckAbility('read', 'permission_definition')
+  @HookLifecycle({
+    hook: 'onRbacPermissionDefinitionList',
+    description: 'RBAC权限定义列表查询',
+  })
   async list() {
     return await this.service.list();
   }
 
   @Post()
   @CheckAbility('create', 'permission_definition')
+  @HookLifecycle({
+    hook: 'onRbacPermissionDefinitionCreate',
+    description: 'RBAC权限定义创建',
+  })
   async create(@Body() dto: CreatePermissionDefinitionDto) {
     return await this.service.create(dto);
   }
 
   @Put(':id')
   @CheckAbility('update', 'permission_definition')
+  @HookLifecycle({
+    hook: 'onRbacPermissionDefinitionUpdate',
+    description: 'RBAC权限定义更新',
+  })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdatePermissionDefinitionDto,
@@ -48,6 +61,10 @@ export class PermissionDefinitionController {
 
   @Delete(':id')
   @CheckAbility('delete', 'permission_definition')
+  @HookLifecycle({
+    hook: 'onRbacPermissionDefinitionDelete',
+    description: 'RBAC权限定义删除',
+  })
   async remove(@Param('id') id: string) {
     await this.service.remove(id);
     return { success: true } as const;

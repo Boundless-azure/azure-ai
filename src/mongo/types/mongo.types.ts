@@ -18,6 +18,7 @@ export interface MongoModuleOptions {
  */
 export interface PluginDoc {
   _id?: string;
+  runnerId?: string | null;
   sessionId?: string | null;
   name: string;
   version: string;
@@ -42,6 +43,7 @@ export interface PluginDoc {
  */
 export interface AppUnitDoc {
   _id?: string;
+  runnerId?: string | null;
   sessionId?: string | null;
   appId: string;
   name: string;
@@ -75,6 +77,7 @@ export interface AgentDoc {
   nodes: Record<string, unknown> | null;
   conversationGroupId: string | null;
   active: boolean;
+  aiModelIds?: string[] | null;
   createdAt?: Date;
   updatedAt?: Date;
   isDelete?: boolean;
@@ -92,6 +95,7 @@ export interface AgentExecutionDoc {
   nodeStatus?: Record<string, unknown> | null;
   latestResponse?: Record<string, unknown> | null;
   contextMessageId?: string | null;
+  runnerId?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
   isDelete?: boolean;

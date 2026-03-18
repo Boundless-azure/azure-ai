@@ -68,7 +68,7 @@ export class AgentService {
     if (this.useMongo()) {
       const col = this.agentCollection();
       if (!col) return null;
-      const doc = await col.findOne({ _id: id });
+      const doc = await col.findOne({ _id: id } as Record<string, unknown>);
       return doc ? this.toEntity(doc) : null;
     }
     return await this.repo.findOne({ where: { id, isDelete: false } });
@@ -199,9 +199,12 @@ export class AgentService {
       const col = this.agentCollection();
       if (!col) throw new Error('MongoDB not available');
       const patch: Record<string, unknown> = { updatedAt: new Date() };
-      patch['nickname'] = dto.nickname;
+      if (typeof dto.nickname === 'string') patch['nickname'] = dto.nickname;
       if (typeof dto.purpose === 'string') patch['purpose'] = dto.purpose;
       if (typeof dto.avatarUrl === 'string') patch['avatarUrl'] = dto.avatarUrl;
+      if (Array.isArray(dto.aiModelIds)) {
+        patch['aiModelIds'] = dto.aiModelIds.map((item) => item.trim());
+      }
       await col.updateOne({ _id: id }, { $set: patch });
       const saved = await col.findOne({ _id: id });
       if (!saved) throw new Error('Agent update failed');
@@ -209,9 +212,12 @@ export class AgentService {
     }
     const current = await this.get(id);
     if (!current) throw new Error('Agent not found');
-    current.nickname = dto.nickname;
+    if (typeof dto.nickname === 'string') current.nickname = dto.nickname;
     if (typeof dto.purpose === 'string') current.purpose = dto.purpose;
     if (typeof dto.avatarUrl === 'string') current.avatarUrl = dto.avatarUrl;
+    if (Array.isArray(dto.aiModelIds)) {
+      current.aiModelIds = dto.aiModelIds.map((item) => item.trim());
+    }
     return await this.repo.save(current);
   }
 
@@ -263,6 +269,9 @@ export class AgentService {
     e.keywords = Array.isArray(doc.keywords) ? doc.keywords : null;
     e.nodes = doc.nodes;
     e.active = doc.active;
+    e.aiModelIds = Array.isArray(doc.aiModelIds)
+      ? doc.aiModelIds.map((item) => item.trim())
+      : null;
     e.createdAt = doc.createdAt ?? new Date();
     e.updatedAt = doc.updatedAt ?? new Date();
     e.isDelete = doc.isDelete ?? false;

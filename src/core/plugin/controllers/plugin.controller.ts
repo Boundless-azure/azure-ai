@@ -29,8 +29,11 @@ export class PluginController {
    * 获取插件列表（按更新时间倒序）
    * @returns 插件实体数组
    */
-  async list(@Query('sessionId') sessionId?: string): Promise<PluginEntity[]> {
-    return this.service.list({ sessionId });
+  async list(
+    @Query('sessionId') sessionId?: string,
+    @Query('runnerId') runnerId?: string,
+  ): Promise<PluginEntity[]> {
+    return this.service.list({ sessionId, runnerId });
   }
 
   @Get(':id')
@@ -54,10 +57,11 @@ export class PluginController {
   async register(
     @Body('pluginDir') pluginDir: string,
     @Body('sessionId') sessionId?: string,
+    @Body('runnerId') runnerId?: string,
   ): Promise<PluginEntity> {
     if (!pluginDir) throw new Error('pluginDir is required');
     if (!sessionId) throw new Error('sessionId is required');
-    return this.service.registerByDir(pluginDir, { sessionId });
+    return this.service.registerByDir(pluginDir, { sessionId, runnerId });
   }
 
   @Put(':id')

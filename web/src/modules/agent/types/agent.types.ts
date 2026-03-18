@@ -398,6 +398,7 @@ export interface Agent {
   is_ai_generated: boolean;
   isAiGenerated?: boolean;
   nodes: any;
+  aiModelIds?: string[] | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -406,6 +407,7 @@ export interface UpdateAgentRequest {
   nickname?: string;
   purpose?: string;
   avatarUrl?: string;
+  aiModelIds?: string[];
 }
 
 export interface ActiveWorkflowCard {
@@ -461,6 +463,7 @@ export const UpdateAgentRequestSchema = z.object({
   nickname: z.string().optional(),
   purpose: z.string().optional(),
   avatarUrl: z.string().optional(),
+  aiModelIds: z.array(z.string()).optional(),
 });
 
 export const ListThreadsParamsSchema = z.object({
@@ -493,7 +496,7 @@ export const ChatStartPayloadSchema = z.object({
   message: z.string().min(1),
   chatClientId: z.string().min(1),
   sessionId: z.string().optional(),
-  modelId: z.string().optional(),
+  modelId: z.string().min(1),
   systemPrompt: z.string().optional(),
   stream: z.boolean().optional(),
   threadType: z
@@ -511,7 +514,7 @@ export const ThreadChatStartPayloadSchema = z.object({
   threadId: z.string().min(1),
   message: z.string().min(1),
   sessionId: z.string().optional(),
-  modelId: z.string().optional(),
+  modelId: z.string().min(1),
   systemPrompt: z.string().optional(),
   stream: z.boolean().optional(),
 });

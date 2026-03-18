@@ -6,9 +6,9 @@
     />
     <!-- Filter Bar -->
     <div
-      class="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 shadow-sm"
+      class="flex flex-col md:flex-row md:items-center gap-3 bg-white p-3 md:p-4 rounded-xl border border-gray-100 shadow-sm"
     >
-      <div class="flex-1 min-w-[200px]">
+      <div class="flex-1 w-full md:w-auto md:min-w-[200px]">
         <div class="relative">
           <i
             class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -22,40 +22,42 @@
         </div>
       </div>
 
-      <div class="min-w-[150px]">
-        <select
-          v-model="query.type"
-          class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+      <div class="grid grid-cols-2 md:flex md:gap-2 gap-3">
+        <div class="col-span-2 md:col-span-1 md:min-w-[120px]">
+          <select
+            v-model="query.type"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+          >
+            <option value="">所有类型</option>
+            <option value="user_enterprise">企业用户</option>
+            <option value="user_consumer">消费者</option>
+            <option value="system">系统</option>
+          </select>
+        </div>
+
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+          @click="handleSearch"
         >
-          <option value="">所有类型</option>
-          <option value="user_enterprise">企业用户</option>
-          <option value="user_consumer">消费者</option>
-          <option value="system">系统</option>
-        </select>
+          <i class="fa-solid fa-filter"></i>
+          <span>筛选</span>
+        </button>
+
+        <div class="hidden md:block h-6 w-px bg-gray-200 mx-1 self-center"></div>
+
+        <button
+          class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+          @click="openCreateModal"
+        >
+          <i class="fa-solid fa-plus"></i>
+          <span>新增</span>
+        </button>
       </div>
-
-      <button
-        class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors flex items-center gap-2"
-        @click="handleSearch"
-      >
-        <i class="fa-solid fa-filter"></i>
-        <span>筛选</span>
-      </button>
-
-      <div class="h-6 w-px bg-gray-200 mx-1"></div>
-
-      <button
-        class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-2"
-        @click="openCreateModal"
-      >
-        <i class="fa-solid fa-plus"></i>
-        <span>新增用户</span>
-      </button>
     </div>
 
-    <!-- User List -->
+    <!-- User List (Desktop Table) -->
     <div
-      class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden"
+      class="hidden md:block bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden"
     >
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
@@ -180,6 +182,116 @@
           <span class="text-sm text-gray-700 font-medium px-2">{{ page }}</span>
           <button
             class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="page * limit >= total"
+            @click="page++"
+          >
+            下一页
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- User List (Mobile Cards) -->
+    <div class="md:hidden space-y-3">
+      <div
+        v-for="user in users"
+        :key="user.id"
+        class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"
+      >
+        <div class="flex justify-between items-start mb-3">
+          <div class="flex items-center gap-3">
+            <div
+              class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 overflow-hidden"
+            >
+              <img
+                v-if="user.avatarUrl"
+                :src="resolveResourceUrl(user.avatarUrl)"
+                class="w-full h-full object-cover"
+              />
+              <i v-else class="fa-solid fa-user"></i>
+            </div>
+            <div>
+              <div class="font-medium text-gray-900">
+                {{ user.displayName }}
+              </div>
+              <div class="text-xs text-gray-500 mt-0.5">
+                {{ formatType(user.principalType) }}
+              </div>
+            </div>
+          </div>
+          <span
+            class="px-2 py-1 rounded-full text-xs font-medium"
+            :class="
+              user.active
+                ? 'bg-green-100 text-green-700'
+                : 'bg-red-100 text-red-700'
+            "
+          >
+            {{ user.active ? '启用' : '禁用' }}
+          </span>
+        </div>
+
+        <div class="space-y-2 text-sm text-gray-600 mb-3">
+          <div v-if="user.email" class="flex items-center gap-2">
+            <i class="fa-regular fa-envelope text-gray-400 w-4"></i>
+            {{ user.email }}
+          </div>
+          <div v-if="user.phone" class="flex items-center gap-2">
+            <i class="fa-solid fa-mobile-screen text-gray-400 w-4"></i>
+            {{ user.phone }}
+          </div>
+          <div class="flex items-center gap-2 text-xs text-gray-400">
+            <i class="fa-regular fa-clock w-4"></i>
+            {{ formatDate(user.createdAt) }}
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 border-t border-gray-100 pt-3">
+          <button
+            class="px-3 py-1.5 text-xs font-medium text-purple-600 bg-purple-50 rounded-lg"
+            @click="openRoleModal(user)"
+          >
+            分配角色
+          </button>
+          <button
+            class="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg"
+            @click="openEditModal(user)"
+          >
+            编辑
+          </button>
+          <button
+            class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg"
+            @click="handleDelete(user)"
+          >
+            删除
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="users.length === 0"
+        class="bg-white p-8 rounded-xl border border-gray-100 text-center text-gray-400"
+      >
+        <div class="flex flex-col items-center gap-2">
+          <i class="fa-regular fa-folder-open text-2xl"></i>
+          <span>暂无数据</span>
+        </div>
+      </div>
+
+      <!-- Mobile Pagination -->
+      <div v-if="total > 0" class="flex justify-between items-center pt-2 px-2">
+        <span class="text-xs text-gray-500">共 {{ total }} 条</span>
+        <div class="flex gap-2">
+          <button
+            class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white disabled:opacity-50"
+            :disabled="page <= 1"
+            @click="page--"
+          >
+            上一页
+          </button>
+          <span class="text-xs flex items-center bg-white px-2 rounded-lg border border-gray-200">{{ page }}</span>
+          <button
+            class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white disabled:opacity-50"
             :disabled="page * limit >= total"
             @click="page++"
           >

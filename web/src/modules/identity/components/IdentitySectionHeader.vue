@@ -1,6 +1,6 @@
 <template>
-  <div class="pt-8 pb-6">
-    <h2 class="text-2xl font-bold text-gray-900">{{ title }}</h2>
+  <div class="pt-4 pb-4 md:pt-8 md:pb-6">
+    <h2 class="text-xl md:text-2xl font-bold text-gray-900">{{ title }}</h2>
     <p v-if="description" class="text-sm text-gray-500 mt-1">
       {{ description }}
     </p>

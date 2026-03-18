@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AICoreModule } from '@core/ai';
 import { IntentAgentTriggerFunctionService } from '@core/function-call';
 import { FunctionCallModule } from '@core/function-call/function-call.module';
+import { AgentRuntimeModule } from '@core/agent-runtime/agent-runtime.module';
 import { ConversationController } from './controllers/conversation.controller';
 import { ConversationService } from './services/conversation.service';
 import { ImController } from './controllers/im.controller';
@@ -44,6 +45,7 @@ import { AuthModule } from '@/core/auth/auth.module';
       includeFunctionServices: [IntentAgentTriggerFunctionService],
     }),
     FunctionCallModule,
+    AgentRuntimeModule,
     TypeOrmModule.forFeature([
       ChatMessageEntity,
       ChatSessionEntity,

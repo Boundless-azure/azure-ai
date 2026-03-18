@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { PrincipalService } from '../services/principal.service';
 import { CheckAbility } from '../decorators/check-ability.decorator';
+import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
 import type {
   QueryPrincipalDto,
   CreatePrincipalDto,
@@ -28,18 +29,30 @@ export class PrincipalController {
 
   @Get()
   @CheckAbility('read', 'principal')
+  @HookLifecycle({
+    hook: 'onRbacPrincipalList',
+    description: 'RBAC主体列表查询',
+  })
   async list(@Query() query: QueryPrincipalDto) {
     return await this.principalService.list(query);
   }
 
   @Post()
   @CheckAbility('create', 'principal')
+  @HookLifecycle({
+    hook: 'onRbacPrincipalCreate',
+    description: 'RBAC主体创建',
+  })
   async create(@Body() dto: CreatePrincipalDto) {
     return await this.principalService.create(dto);
   }
 
   @Put(':id')
   @CheckAbility('update', 'principal')
+  @HookLifecycle({
+    hook: 'onRbacPrincipalUpdate',
+    description: 'RBAC主体更新',
+  })
   async update(@Param('id') id: string, @Body() dto: UpdatePrincipalDto) {
     await this.principalService.update(id, dto);
     return { success: true } as const;
@@ -47,6 +60,10 @@ export class PrincipalController {
 
   @Delete(':id')
   @CheckAbility('delete', 'principal')
+  @HookLifecycle({
+    hook: 'onRbacPrincipalDelete',
+    description: 'RBAC主体删除',
+  })
   async delete(@Param('id') id: string) {
     await this.principalService.delete(id);
     return { success: true } as const;

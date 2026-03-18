@@ -5,6 +5,7 @@ import { PassportModule } from '@nestjs/passport';
 import { PrincipalEntity } from '@/app/identity/entities/principal.entity';
 import { UserEntity } from '@/app/identity/entities/user.entity';
 import { AuthService } from './services/auth.service';
+import { AuthHookHandlersService } from './services/auth.hook-handlers.service';
 import { AuthController } from './controllers/auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { IdentityModule } from '@/app/identity/identity.module';
@@ -23,13 +24,18 @@ import { IdentityModule } from '@/app/identity/identity.module';
   ],
   providers: [
     AuthService,
+    AuthHookHandlersService,
     JwtStrategy,
     {
       provide: JwtService,
       useFactory: (): JwtService => {
-        const svc = new JwtService({
-          secret: process.env.JWT_SECRET || 'dev_secret',
-        });
+        const secret = process.env.JWT_SECRET;
+        if (!secret) {
+          throw new Error(
+            'JWT_SECRET environment variable is required. Set it in production.',
+          );
+        }
+        const svc = new JwtService({ secret });
         return svc;
       },
     },

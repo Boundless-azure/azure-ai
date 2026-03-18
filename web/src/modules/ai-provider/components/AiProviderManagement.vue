@@ -5,8 +5,8 @@
       <p class="text-sm text-gray-500 mt-1">管理系统内所有模型配置</p>
     </div>
 
-    <div class="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-      <div class="flex-1 min-w-[200px]">
+    <div class="flex flex-col md:flex-row md:items-center gap-3 bg-white p-3 md:p-4 rounded-xl border border-gray-100 shadow-sm">
+      <div class="flex-1 w-full md:w-auto md:min-w-[200px]">
         <div class="relative">
           <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
           <input
@@ -18,153 +18,214 @@
         </div>
       </div>
 
-      <div class="min-w-[150px]">
-        <select
-          v-model="query.provider"
-          class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+      <div class="grid grid-cols-2 md:flex md:gap-2 gap-3">
+        <div class="md:min-w-[120px]">
+          <select
+            v-model="query.provider"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+          >
+            <option value="">全部提供商</option>
+            <option v-for="opt in providerOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
+
+        <div class="md:min-w-[120px]">
+          <select
+            v-model="query.type"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+          >
+            <option value="">全部类型</option>
+            <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
+
+        <div class="md:min-w-[120px]">
+          <select
+            v-model="query.status"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+          >
+            <option value="">全部状态</option>
+            <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
+        </div>
+
+        <div class="md:min-w-[100px]">
+          <select
+            v-model="query.enabled"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+          >
+            <option value="">全部启用</option>
+            <option value="true">启用</option>
+            <option value="false">禁用</option>
+          </select>
+        </div>
+
+        <button
+          class="col-span-1 px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+          @click="handleSearch"
         >
-          <option value="">全部提供商</option>
-          <option v-for="opt in providerOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
-      </div>
+          <i class="fa-solid fa-filter"></i>
+          <span>筛选</span>
+        </button>
 
-      <div class="min-w-[140px]">
-        <select
-          v-model="query.type"
-          class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+        <div class="hidden md:block h-6 w-px bg-gray-200 mx-1 self-center"></div>
+
+        <button
+          class="col-span-1 px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+          @click="openCreateModal"
         >
-          <option value="">全部类型</option>
-          <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
+          <i class="fa-solid fa-plus"></i>
+          <span>新增</span>
+        </button>
       </div>
-
-      <div class="min-w-[140px]">
-        <select
-          v-model="query.status"
-          class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-        >
-          <option value="">全部状态</option>
-          <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">
-            {{ opt.label }}
-          </option>
-        </select>
-      </div>
-
-      <div class="min-w-[120px]">
-        <select
-          v-model="query.enabled"
-          class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-        >
-          <option value="">全部启用</option>
-          <option value="true">启用</option>
-          <option value="false">禁用</option>
-        </select>
-      </div>
-
-      <button
-        class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors flex items-center gap-2"
-        @click="handleSearch"
-      >
-        <i class="fa-solid fa-filter"></i>
-        <span>筛选</span>
-      </button>
-
-      <div class="h-6 w-px bg-gray-200 mx-1"></div>
-
-      <button
-        class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-2"
-        @click="openCreateModal"
-      >
-        <i class="fa-solid fa-plus"></i>
-        <span>新增模型</span>
-      </button>
     </div>
 
     <div class="flex-1 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
       <div v-if="loading" class="flex items-center justify-center py-16 text-gray-400">
         <i class="fa-solid fa-spinner fa-spin text-xl"></i>
       </div>
-      <div v-else class="overflow-x-auto">
-        <table class="w-full text-left text-sm">
-          <thead class="bg-gray-50 border-b border-gray-100">
-            <tr>
-              <th class="px-6 py-3 font-semibold text-gray-700">模型ID</th>
-              <th class="px-6 py-3 font-semibold text-gray-700">显示名称</th>
-              <th class="px-6 py-3 font-semibold text-gray-700">提供商</th>
-              <th class="px-6 py-3 font-semibold text-gray-700">接口规范</th>
-              <th class="px-6 py-3 font-semibold text-gray-700">类型</th>
-              <th class="px-6 py-3 font-semibold text-gray-700">状态</th>
-              <th class="px-6 py-3 font-semibold text-gray-700">启用</th>
-              <th class="px-6 py-3 font-semibold text-gray-700">BaseURL</th>
-              <th class="px-6 py-3 font-semibold text-gray-700 text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100">
-            <tr v-for="item in items" :key="item.id" class="hover:bg-gray-50">
-              <td class="px-6 py-3 font-mono text-xs text-gray-700">
-                {{ item.name }}
-              </td>
-              <td class="px-6 py-3 text-gray-900">
-                {{ item.displayName || '-' }}
-              </td>
-              <td class="px-6 py-3 text-gray-600">
-                {{ formatProvider(item.provider) }}
-              </td>
-              <td class="px-6 py-3 text-gray-600">
-                {{ formatProtocol(item.apiProtocol) }}
-              </td>
-              <td class="px-6 py-3 text-gray-600">
-                {{ formatType(item.type) }}
-              </td>
-              <td class="px-6 py-3">
+      <div v-else>
+        <!-- Desktop Table -->
+        <div class="hidden md:block overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th class="px-6 py-3 font-semibold text-gray-700">模型ID</th>
+                <th class="px-6 py-3 font-semibold text-gray-700">显示名称</th>
+                <th class="px-6 py-3 font-semibold text-gray-700">提供商</th>
+                <th class="px-6 py-3 font-semibold text-gray-700">接口规范</th>
+                <th class="px-6 py-3 font-semibold text-gray-700">类型</th>
+                <th class="px-6 py-3 font-semibold text-gray-700">状态</th>
+                <th class="px-6 py-3 font-semibold text-gray-700">启用</th>
+                <th class="px-6 py-3 font-semibold text-gray-700">BaseURL</th>
+                <th class="px-6 py-3 font-semibold text-gray-700 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="item in items" :key="item.id" class="hover:bg-gray-50">
+                <td class="px-6 py-3 font-mono text-xs text-gray-700">
+                  {{ item.name }}
+                </td>
+                <td class="px-6 py-3 text-gray-900">
+                  {{ item.displayName || '-' }}
+                </td>
+                <td class="px-6 py-3 text-gray-600">
+                  {{ formatProvider(item.provider) }}
+                </td>
+                <td class="px-6 py-3 text-gray-600">
+                  {{ formatProtocol(item.apiProtocol) }}
+                </td>
+                <td class="px-6 py-3 text-gray-600">
+                  {{ formatType(item.type) }}
+                </td>
+                <td class="px-6 py-3">
+                  <span
+                    class="px-2 py-1 rounded-full text-xs font-medium"
+                    :class="statusClass(item.status)"
+                  >
+                    {{ formatStatus(item.status) }}
+                  </span>
+                </td>
+                <td class="px-6 py-3">
+                  <span
+                    class="px-2 py-1 rounded-full text-xs font-medium"
+                    :class="item.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+                  >
+                    {{ item.enabled ? '启用' : '禁用' }}
+                  </span>
+                </td>
+                <td class="px-6 py-3 text-gray-500">
+                  {{ item.baseURL || '-' }}
+                </td>
+                <td class="px-6 py-3 text-right">
+                  <div class="flex items-center justify-end gap-2">
+                    <button
+                      class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="编辑"
+                      @click="openEditModal(item)"
+                    >
+                      <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
+                    <button
+                      class="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="删除"
+                      @click="handleDelete(item)"
+                    >
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="items.length === 0">
+                <td colspan="9" class="px-6 py-10 text-center text-gray-400">
+                  暂无模型配置
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Mobile Cards -->
+        <div class="md:hidden p-4 space-y-4">
+          <div v-for="item in items" :key="item.id" class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+            <div class="flex justify-between items-start mb-3">
+              <div>
+                <div class="font-medium text-gray-900">{{ item.displayName || item.name }}</div>
+                <div class="font-mono text-xs text-gray-500 mt-1">{{ item.name }}</div>
+              </div>
+              <span
+                class="px-2 py-1 rounded-full text-xs font-medium"
+                :class="item.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
+              >
+                {{ item.enabled ? '启用' : '禁用' }}
+              </span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-3">
+              <div>
+                <span class="text-gray-400">提供商:</span> {{ formatProvider(item.provider) }}
+              </div>
+              <div>
+                <span class="text-gray-400">类型:</span> {{ formatType(item.type) }}
+              </div>
+              <div>
+                <span class="text-gray-400">协议:</span> {{ formatProtocol(item.apiProtocol) }}
+              </div>
+              <div>
                 <span
-                  class="px-2 py-1 rounded-full text-xs font-medium"
+                  class="px-1.5 py-0.5 rounded text-xs font-medium"
                   :class="statusClass(item.status)"
                 >
                   {{ formatStatus(item.status) }}
                 </span>
-              </td>
-              <td class="px-6 py-3">
-                <span
-                  class="px-2 py-1 rounded-full text-xs font-medium"
-                  :class="item.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'"
-                >
-                  {{ item.enabled ? '启用' : '禁用' }}
-                </span>
-              </td>
-              <td class="px-6 py-3 text-gray-500">
-                {{ item.baseURL || '-' }}
-              </td>
-              <td class="px-6 py-3 text-right">
-                <div class="flex items-center justify-end gap-2">
-                  <button
-                    class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                    title="编辑"
-                    @click="openEditModal(item)"
-                  >
-                    <i class="fa-solid fa-pen-to-square"></i>
-                  </button>
-                  <button
-                    class="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="删除"
-                    @click="handleDelete(item)"
-                  >
-                    <i class="fa-solid fa-trash"></i>
-                  </button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="items.length === 0">
-              <td colspan="9" class="px-6 py-10 text-center text-gray-400">
-                暂无模型配置
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-2 border-t border-gray-100 pt-3">
+              <button
+                class="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg"
+                @click="openEditModal(item)"
+              >
+                编辑
+              </button>
+              <button
+                class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg"
+                @click="handleDelete(item)"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+          <div v-if="items.length === 0" class="text-center text-gray-400 py-8">
+            暂无模型配置
+          </div>
+        </div>
       </div>
     </div>
 

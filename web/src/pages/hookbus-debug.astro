@@ -1,0 +1,13 @@
+---
+import Layout from '../layouts/Layout.astro';
+import HookbusDebugPage from '../modules/hookbus-debug/pages/HookbusDebugPage.vue';
+---
+
+<Layout>
+  <script is:inline slot="head">
+    if (!localStorage.getItem('token')) {
+      window.location.href = '/login';
+    }
+  </script>
+  <HookbusDebugPage client:only="vue" />
+</Layout>

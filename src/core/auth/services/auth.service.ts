@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -13,6 +13,7 @@ import type {
 } from '../types/auth.types';
 import { AbilityService } from '@/app/identity/services/ability.service';
 import { CommonRedisService } from '@/redis/services/common.service';
+import { HookBusService } from '@/core/hookbus/services/hook.bus.service';
 
 /**
  * @title 认证服务
@@ -30,6 +31,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly abilityService: AbilityService,
     private readonly redis: CommonRedisService,
+    @Optional() private readonly hookBus?: HookBusService,
   ) {}
 
   /** 校验并解析 JWT，返回载荷 */
@@ -69,6 +71,10 @@ export class AuthService {
    */
   async login(dto: LoginDto): Promise<LoginResponse> {
     if (!dto.email && !dto.phone) {
+      await this.emitAuthHook('onAuthLoginFailed', {
+        identifier: dto.email || dto.phone || '',
+        reason: 'missing identifier',
+      });
       throw new UnauthorizedException('missing identifier');
     }
 
@@ -81,11 +87,19 @@ export class AuthService {
     }
 
     if (!user || !user.passwordSalt || !user.passwordHash) {
+      await this.emitAuthHook('onAuthLoginFailed', {
+        identifier: dto.email || dto.phone || '',
+        reason: 'invalid credentials',
+      });
       throw new UnauthorizedException('invalid credentials');
     }
 
     // 检查账号锁定
     if (user.lockedUntil && user.lockedUntil > new Date()) {
+      await this.emitAuthHook('onAuthLoginFailed', {
+        identifier: dto.email || dto.phone || '',
+        reason: 'account is locked',
+      });
       throw new UnauthorizedException('account is locked');
     }
 
@@ -103,6 +117,10 @@ export class AuthService {
         user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 锁定15分钟
       }
       await this.userRepo.save(user);
+      await this.emitAuthHook('onAuthLoginFailed', {
+        identifier: dto.email || dto.phone || '',
+        reason: 'invalid credentials',
+      });
       throw new UnauthorizedException('invalid credentials');
     }
 
@@ -112,6 +130,10 @@ export class AuthService {
     });
 
     if (!principal) {
+      await this.emitAuthHook('onAuthLoginFailed', {
+        identifier: dto.email || dto.phone || '',
+        reason: 'principal not found',
+      });
       throw new UnauthorizedException('principal not found');
     }
 
@@ -158,6 +180,12 @@ export class AuthService {
       return raw;
     })();
 
+    await this.emitAuthHook('onAuthLoginSuccess', {
+      principalId: principal.id,
+      userId: user.id,
+      loginAt: user.lastLoginAt?.toISOString() ?? new Date().toISOString(),
+    });
+
     return {
       token,
       principal: {
@@ -184,17 +212,29 @@ export class AuthService {
     dto: ChangePasswordDto,
   ): Promise<void> {
     if (!principalId || !principalId.trim()) {
+      await this.emitAuthHook('onAuthPasswordChanged', {
+        principalId: '',
+        ok: false,
+      });
       throw new UnauthorizedException('invalid principal');
     }
     const current = dto.currentPassword?.trim();
     const next = dto.nextPassword?.trim();
     if (!current || !next) {
+      await this.emitAuthHook('onAuthPasswordChanged', {
+        principalId,
+        ok: false,
+      });
       throw new UnauthorizedException('missing password');
     }
     const user = await this.userRepo.findOne({
       where: { principalId, isDelete: false },
     });
     if (!user || !user.passwordSalt || !user.passwordHash) {
+      await this.emitAuthHook('onAuthPasswordChanged', {
+        principalId,
+        ok: false,
+      });
       throw new UnauthorizedException('invalid credentials');
     }
     const ok = this.verifyPassword(
@@ -203,6 +243,10 @@ export class AuthService {
       this.ensureString(user.passwordHash),
     );
     if (!ok) {
+      await this.emitAuthHook('onAuthPasswordChanged', {
+        principalId,
+        ok: false,
+      });
       throw new UnauthorizedException('invalid credentials');
     }
     const salt = this.generateSalt();
@@ -212,5 +256,18 @@ export class AuthService {
     user.loginAttempts = 0;
     user.lockedUntil = null;
     await this.userRepo.save(user);
+    await this.emitAuthHook('onAuthPasswordChanged', {
+      principalId,
+      ok: true,
+    });
+  }
+
+  private async emitAuthHook(name: string, payload: Record<string, unknown>) {
+    if (!this.hookBus) return;
+    try {
+      await this.hookBus.emit({ name, payload });
+    } catch {
+      return;
+    }
   }
 }

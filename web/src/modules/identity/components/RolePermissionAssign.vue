@@ -3,14 +3,14 @@
     class="h-full flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
   >
     <div
-      class="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4 bg-gray-50/50"
+      class="p-4 border-b border-gray-100 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-gray-50/50"
     >
-      <div class="flex flex-wrap items-center gap-4">
+      <div class="flex flex-col md:flex-row md:items-center gap-4">
         <div v-if="!roleId" class="flex items-center gap-2">
-          <label class="text-sm font-medium text-gray-700">角色:</label>
+          <label class="text-sm font-medium text-gray-700 whitespace-nowrap">角色:</label>
           <select
             v-model="selectedRoleId"
-            class="px-3 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            class="w-full md:w-auto px-3 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             @change="loadPermissions"
           >
             <option value="" disabled>请选择...</option>
@@ -19,11 +19,11 @@
             </option>
           </select>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
           <button
             v-for="tab in nodeTabs"
             :key="tab.id"
-            class="px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors border"
+            class="flex-shrink-0 px-3 py-1.5 rounded-lg text-sm flex items-center gap-2 transition-colors border whitespace-nowrap"
             :class="
               activeType === tab.id
                 ? 'bg-white text-gray-900 border-gray-200 shadow-sm'
@@ -37,7 +37,7 @@
         </div>
       </div>
       <button
-        class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 text-sm transition-colors flex items-center gap-2"
+        class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 text-sm transition-colors flex items-center justify-center gap-2"
         @click="save"
         :disabled="saving || !selectedRoleId"
       >
@@ -47,8 +47,8 @@
       </button>
     </div>
 
-    <div class="flex-1 flex overflow-hidden">
-      <div class="w-72 border-r border-gray-200 bg-gray-50 flex flex-col">
+    <div class="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <div class="w-full md:w-72 border-b md:border-b-0 md:border-r border-gray-200 bg-gray-50 flex flex-col h-1/2 md:h-auto">
         <div class="p-3 border-b border-gray-200 bg-gray-100/50">
           <div class="text-xs font-bold text-gray-500 uppercase tracking-wider">
             权限节点
@@ -120,7 +120,7 @@
         </div>
       </div>
 
-      <div class="flex-1 bg-white flex flex-col min-w-0">
+      <div class="flex-1 bg-white flex flex-col min-w-0 h-1/2 md:h-auto border-t md:border-t-0">
         <div class="p-6 border-b border-gray-100">
           <div class="text-sm text-gray-500">描述详情</div>
           <div

@@ -6,9 +6,9 @@
     />
     <!-- Filter Bar -->
     <div
-      class="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 shadow-sm"
+      class="flex flex-col md:flex-row md:items-center gap-3 bg-white p-3 md:p-4 rounded-xl border border-gray-100 shadow-sm"
     >
-      <div class="flex-1 min-w-[200px]">
+      <div class="flex-1 w-full md:w-auto md:min-w-[200px]">
         <div class="relative">
           <i
             class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -22,28 +22,30 @@
         </div>
       </div>
 
-      <button
-        class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors flex items-center gap-2"
-        @click="handleSearch"
-      >
-        <i class="fa-solid fa-filter"></i>
-        <span>筛选</span>
-      </button>
+      <div class="grid grid-cols-2 md:flex md:gap-2 gap-3">
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+          @click="handleSearch"
+        >
+          <i class="fa-solid fa-filter"></i>
+          <span>筛选</span>
+        </button>
 
-      <div class="h-6 w-px bg-gray-200 mx-1"></div>
+        <div class="hidden md:block h-6 w-px bg-gray-200 mx-1 self-center"></div>
 
-      <button
-        class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-2"
-        @click="openCreateModal"
-      >
-        <i class="fa-solid fa-plus"></i>
-        <span>新增角色</span>
-      </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+          @click="openCreateModal"
+        >
+          <i class="fa-solid fa-plus"></i>
+          <span>新增角色</span>
+        </button>
+      </div>
     </div>
 
-    <!-- Role List (Table) -->
+    <!-- Role List (Desktop Table) -->
     <div
-      class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden"
+      class="hidden md:block bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden"
     >
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
@@ -130,6 +132,79 @@
         v-if="roles.length > 0"
       >
         <span class="text-sm text-gray-500">共 {{ roles.length }} 条记录</span>
+      </div>
+    </div>
+
+    <!-- Role List (Mobile Cards) -->
+    <div class="md:hidden space-y-3">
+      <div
+        v-for="role in filteredRoles"
+        :key="role.id"
+        class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"
+      >
+        <div class="flex justify-between items-start mb-3">
+          <div>
+            <div class="font-medium text-gray-900">{{ role.name }}</div>
+            <div class="mt-1">
+              <span
+                class="font-mono text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded inline-block"
+              >
+                {{ role.code }}
+              </span>
+            </div>
+          </div>
+          <span
+            v-if="role.builtin"
+            class="bg-blue-50 text-blue-600 text-xs px-2 py-1 rounded font-medium"
+            >系统内置</span
+          >
+          <span
+            v-else
+            class="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded font-medium"
+            >自定义</span
+          >
+        </div>
+
+        <div class="text-sm text-gray-600 mb-3">
+          {{ role.description || '暂无描述' }}
+        </div>
+
+        <div class="flex justify-end gap-2 border-t border-gray-100 pt-3">
+          <button
+            class="px-3 py-1.5 text-xs font-medium text-orange-600 bg-orange-50 rounded-lg"
+            @click="openPermissions(role)"
+          >
+            权限配置
+          </button>
+          <button
+            class="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg"
+            @click="openEditModal(role)"
+          >
+            编辑
+          </button>
+          <button
+            v-if="!role.builtin"
+            class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg"
+            @click="handleDelete(role)"
+          >
+            删除
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="filteredRoles.length === 0"
+        class="bg-white p-8 rounded-xl border border-gray-100 text-center text-gray-500"
+      >
+        暂无数据
+      </div>
+
+      <!-- Mobile Pagination Info -->
+      <div
+        class="flex justify-between items-center pt-2 px-2"
+        v-if="roles.length > 0"
+      >
+        <span class="text-xs text-gray-500">共 {{ roles.length }} 条记录</span>
       </div>
     </div>
 

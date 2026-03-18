@@ -5,95 +5,95 @@
       description="浏览及配置系统权限规则"
     />
     <div
-      class="flex-1 flex bg-white rounded-xl border border-gray-200 overflow-hidden"
+      class="flex-1 flex flex-col md:flex-row bg-white rounded-xl border border-gray-200 overflow-hidden"
     >
-      <!-- Left Sidebar: Tabs -->
-      <div class="w-64 border-r border-gray-200 bg-gray-50/60 flex flex-col p-3 space-y-2">
-      <button
-        v-for="tab in nodeTabs"
-        :key="tab.id"
-        class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors"
-        :class="
-          activeType === tab.id
-            ? 'bg-white text-gray-900 shadow-sm border border-gray-200 font-medium'
-            : 'text-gray-600 hover:bg-gray-100'
-        "
-        @click="switchType(tab.id)"
-      >
-        <span class="flex items-center gap-2">
-          <i class="fa-solid" :class="tab.icon"></i>
-          {{ tab.label }}
-        </span>
-        <span class="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{{ getTypeCount(tab.id) }}</span>
-      </button>
-    </div>
-
-      <!-- Right Content: Full Width List -->
-      <div class="flex-1 flex flex-col min-w-0">
-        <!-- Toolbar -->
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-        <div class="relative w-72">
-          <i
-            class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"
-          ></i>
-          <input
-            v-model="searchSubject"
-            class="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white shadow-sm"
-            placeholder="搜索 Subject..."
-          />
-        </div>
+      <!-- Left Sidebar: Tabs (Horizontal on mobile) -->
+      <div class="w-full md:w-64 border-b md:border-b-0 md:border-r border-gray-200 bg-gray-50/60 flex flex-row md:flex-col p-2 md:p-3 space-x-2 md:space-x-0 md:space-y-2 overflow-x-auto flex-shrink-0">
         <button
-          class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm hover:bg-gray-800 shadow-sm transition-colors flex items-center gap-2"
-          @click="openAddResourceModal"
+          v-for="tab in nodeTabs"
+          :key="tab.id"
+          class="flex-shrink-0 flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors whitespace-nowrap border"
+          :class="
+            activeType === tab.id
+              ? 'bg-white text-gray-900 shadow-sm border-gray-200 font-medium'
+              : 'text-gray-600 border-transparent hover:bg-gray-100'
+          "
+          @click="switchType(tab.id)"
         >
-          <i class="fa-solid fa-plus"></i>
-          <span>添加 Subject</span>
+          <span class="flex items-center gap-2">
+            <i class="fa-solid" :class="tab.icon"></i>
+            {{ tab.label }}
+          </span>
+          <span class="ml-2 text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{{ getTypeCount(tab.id) }}</span>
         </button>
       </div>
 
-      <!-- Subject List -->
-        <div class="flex-1 overflow-y-auto px-6 py-6 bg-white space-y-8">
+      <!-- Right Content: Full Width List -->
+      <div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        <!-- Toolbar -->
+        <div class="px-3 md:px-6 py-3 md:py-4 border-b border-gray-100 flex flex-col md:flex-row items-stretch md:items-center gap-3 md:justify-between flex-shrink-0">
+          <div class="relative w-full md:w-72">
+            <i
+              class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"
+            ></i>
+            <input
+              v-model="searchSubject"
+              class="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 bg-white shadow-sm"
+              placeholder="搜索 Subject..."
+            />
+          </div>
+          <button
+            class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm hover:bg-gray-800 shadow-sm transition-colors flex items-center justify-center gap-2"
+            @click="openAddResourceModal"
+          >
+            <i class="fa-solid fa-plus"></i>
+            <span>添加 Subject</span>
+          </button>
+        </div>
+
+        <!-- Subject List -->
+        <div class="flex-1 overflow-y-auto px-3 md:px-6 py-4 md:py-6 bg-white space-y-6 md:space-y-8">
           <div v-if="subjectCards.length > 0" class="w-full">
             <article
               v-for="card in subjectCards"
               :key="card.id"
               class="group/card w-full border-b border-gray-100 pb-8 last:border-0 last:pb-0"
             >
-            <!-- Subject Header -->
-            <div class="flex items-center gap-4 mb-2">
-              <h3
-                class="text-lg font-bold text-gray-900 font-mono whitespace-nowrap"
-              >
-                {{ card.nodeKey }}
-              </h3>
-              <div class="h-px bg-gray-200 flex-1"></div>
+              <!-- Subject Header -->
+              <div class="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 mb-2">
+                <h3
+                  class="text-lg font-bold text-gray-900 font-mono"
+                >
+                  {{ card.nodeKey }}
+                </h3>
+                <div class="hidden md:block h-px bg-gray-200 flex-1"></div>
 
-              <div
-                class="flex items-center gap-2 opacity-0 group-hover/card:opacity-100 transition-all duration-200 translate-x-2 group-hover/card:translate-x-0"
-              >
-                <button
-                  class="text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 font-medium"
-                  @click="openEditSubjectModal(card)"
+                <div
+                  class="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover/card:opacity-100 transition-all duration-200 md:translate-x-2 md:group-hover/card:translate-x-0"
                 >
-                  <i class="fa-solid fa-pen"></i>
-                  编辑
-                </button>
-                <button
-                  class="text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 font-medium"
-                  @click="openAddActionModal(card)"
-                >
-                  <i class="fa-solid fa-plus"></i>
-                  添加节点
-                </button>
-                <button
-                  class="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
-                  title="删除 Subject"
-                  @click="handleDeleteSubject(card)"
-                >
-                  <i class="fa-solid fa-trash-can"></i>
-                </button>
+                  <button
+                    class="text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 font-medium border border-gray-200 md:border-0"
+                    @click="openEditSubjectModal(card)"
+                  >
+                    <i class="fa-solid fa-pen"></i>
+                    编辑
+                  </button>
+                  <button
+                    class="text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 font-medium border border-gray-200 md:border-0"
+                    @click="openAddActionModal(card)"
+                  >
+                    <i class="fa-solid fa-plus"></i>
+                    添加节点
+                  </button>
+                  <button
+                    class="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors border border-gray-200 md:border-0"
+                    title="删除 Subject"
+                    @click="handleDeleteSubject(card)"
+                  >
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </div>
               </div>
-            </div>
 
             <!-- Subject Meta/Description -->
             <p class="text-xs text-gray-500 mb-4 font-medium">

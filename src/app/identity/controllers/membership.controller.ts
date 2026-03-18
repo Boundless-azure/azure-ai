@@ -12,6 +12,7 @@ import { Repository } from 'typeorm';
 import { MembershipEntity } from '../entities/membership.entity';
 import { RoleEntity } from '../entities/role.entity';
 import { CheckAbility } from '../decorators/check-ability.decorator';
+import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
 
 /**
  * @title Membership 控制器
@@ -30,6 +31,10 @@ export class MembershipController {
 
   @Get()
   @CheckAbility('read', 'membership')
+  @HookLifecycle({
+    hook: 'onRbacMembershipList',
+    description: 'RBAC成员关系列表查询',
+  })
   async list(
     @Query('organizationId') organizationId?: string,
     @Query('principalId') principalId?: string,
@@ -58,6 +63,10 @@ export class MembershipController {
 
   @Post()
   @CheckAbility('create', 'membership')
+  @HookLifecycle({
+    hook: 'onRbacMembershipCreate',
+    description: 'RBAC成员关系创建',
+  })
   async add(
     @Body()
     dto: {
@@ -88,6 +97,10 @@ export class MembershipController {
 
   @Delete(':id')
   @CheckAbility('delete', 'membership')
+  @HookLifecycle({
+    hook: 'onRbacMembershipDelete',
+    description: 'RBAC成员关系删除',
+  })
   async remove(@Param('id') id: string) {
     await this.repo.update({ id }, { isDelete: true, active: false });
     return { success: true } as const;

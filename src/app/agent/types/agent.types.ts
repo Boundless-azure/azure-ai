@@ -9,9 +9,10 @@ import { BindDataPermissionNode } from '@core/data-permission/decorators/data-pe
  * @keywords-en agent-update, nickname, purpose, avatar, dto
  */
 export class UpdateAgentDto {
+  @IsOptional()
   @IsString()
   @Length(1, 100)
-  nickname!: string;
+  nickname?: string;
 
   @IsOptional()
   @IsString()
@@ -21,6 +22,11 @@ export class UpdateAgentDto {
   @IsString()
   @Length(1, 255)
   avatarUrl?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  aiModelIds?: string[];
 }
 
 /**
@@ -59,6 +65,11 @@ export class UpdateExecutionDto {
   @IsString()
   @Length(1, 36)
   contextMessageId?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 36)
+  runnerId?: string;
 }
 
 /**
@@ -75,6 +86,10 @@ export class QueryExecutionDto {
   @IsOptional()
   @IsString()
   contextMessageId?: string;
+
+  @IsOptional()
+  @IsString()
+  runnerId?: string;
 }
 
 /**

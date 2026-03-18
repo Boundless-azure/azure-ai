@@ -429,8 +429,8 @@ export class AIModelService implements OnModuleInit {
       for await (const event of stream) {
         const data = event.data as {
           chunk?: AIMessageChunk;
-          input?: any;
-          output?: any;
+          input?: unknown;
+          output?: unknown;
         };
         const evtName = event.event;
         const runId = event.run_id;
@@ -445,13 +445,13 @@ export class AIModelService implements OnModuleInit {
               break;
             }
             if (typeof chunk.content === 'string') {
-              const tags = (event as unknown as { tags?: string[] }).tags;
+              const tags = (event as { tags?: string[] }).tags;
               if (Array.isArray(tags) && tags.includes('subagent')) break;
               yield { type: 'token', data: { text: chunk.content } };
               break;
             }
             const tChunks = (
-              chunk as unknown as {
+              chunk as {
                 tool_call_chunks?: Array<{
                   id?: string;
                   name?: string;
@@ -490,24 +490,21 @@ export class AIModelService implements OnModuleInit {
             break;
           }
           case 'on_tool_end': {
-            const outAny = data?.output;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            const toolId = outAny?.tool_call_id;
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+            const output = data?.output as { tool_call_id?: string; content?: unknown } | undefined;
+            const toolId = output?.tool_call_id;
             const rid = toolId ? runIdToToolId.get(toolId) : undefined;
             yield {
               type: 'tool_end',
               data: {
-                name: (event as unknown as { name?: string }).name,
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-                output: outAny?.content,
+                name: (event as { name?: string }).name,
+                output: output?.content,
                 id: rid,
               },
             };
             break;
           }
           case 'on_chain_end': {
-            const name = (event as unknown as { name?: string }).name;
+            const name = (event as { name?: string }).name;
             if (name === 'AgentExecutor' || !name) {
               finalOutput = data?.output;
             }
@@ -650,13 +647,44 @@ export class AIModelService implements OnModuleInit {
     });
   }
 
+  async resolveModelNameByIds(modelIds: string[]): Promise<string | null> {
+    const normalized = modelIds
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    if (!normalized.length) return null;
+    for (const modelId of normalized) {
+      const config = await this.aiModelRepository.findOne({
+        where: {
+          name: modelId,
+          enabled: true,
+          status: AIModelStatus.ACTIVE,
+          isDelete: false,
+        },
+      });
+      if (config?.name) return config.name;
+    }
+    const fallback = await this.aiModelRepository.findOne({
+      where: {
+        name: normalized[0],
+        enabled: true,
+        status: AIModelStatus.ACTIVE,
+        isDelete: false,
+      },
+    });
+    return fallback?.name ?? null;
+  }
+
   /**
    * 获取模型实例
    */
   private async getModelInstance(request: AIModelRequest) {
+    const modelName = request.modelId?.trim();
+    if (!modelName) {
+      throw new Error('model name is required');
+    }
     const config = await this.aiModelRepository.findOne({
       where: {
-        id: request.modelId,
+        name: modelName,
         enabled: true,
         status: AIModelStatus.ACTIVE,
         isDelete: false,
@@ -664,7 +692,7 @@ export class AIModelService implements OnModuleInit {
     });
 
     if (!config) {
-      throw new Error(`AI model not found or disabled: ${request.modelId}`);
+      throw new Error(`AI model not found or disabled: ${modelName}`);
     }
 
     return this.createModelInstance(config, request);

@@ -25,6 +25,7 @@
   - POST /todo
   - PUT /todo/:id
   - DELETE /todo/:id
+  - HookLifecycle on CRUD before/after/error
 
 关键词索引（中文 / English Keyword Index）
 待办事项实体 -> app/todo/entities/todo.entity.ts
@@ -51,7 +52,8 @@
 - TodoService.delete -> 0f7e915c
 - TodoController.create -> 7e3c112a
 - TodoController.update -> 1c9a77b3
+- TodoController.list(HookLifecycle) -> todo_hook_list_001
+- TodoController.create(HookLifecycle) -> todo_hook_create_002
 
 模块功能描述（Description）
 本模块提供待办事项的实体与 REST 接口，支持创建、查询、更新状态与结果回执，并提供过滤能力以便前端快速构建列表视图。
-

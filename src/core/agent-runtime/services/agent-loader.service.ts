@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
 import * as os from 'os';
-import { createHash } from 'crypto';
-import { pathToFileURL } from 'url';
+import { createHash, randomUUID } from 'crypto';
+import { createRequire } from 'module';
 import type {
   AgentDescriptor,
   LoadedAgent,
@@ -83,11 +83,19 @@ export class AgentLoaderService {
       .slice(0, 8);
     const tempFile = path.join(
       os.tmpdir(),
-      `azureai-agent-${hash}-${Date.now()}.cjs`,
+      `azureai-agent-${hash}-${randomUUID()}.cjs`,
     );
     fs.writeFileSync(tempFile, code, 'utf-8');
 
-    const mod: unknown = await import(pathToFileURL(tempFile).href);
+    const requireFn = createRequire(__filename);
+    let mod: unknown;
+    try {
+      mod = requireFn(tempFile);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`require 临时文件失败 ${tempFile}: ${msg}`);
+      mod = await import(tempFile);
+    }
     try {
       fs.unlinkSync(tempFile);
     } catch (e) {

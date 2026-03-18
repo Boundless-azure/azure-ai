@@ -5,8 +5,8 @@
       description="管理组织架构、部门及成员关系"
     />
     <!-- Filter Bar -->
-    <div class="flex flex-wrap items-center gap-3 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-      <div class="flex-1 min-w-[200px]">
+    <div class="flex flex-col md:flex-row md:items-center gap-3 bg-white p-3 md:p-4 rounded-xl border border-gray-100 shadow-sm">
+      <div class="flex-1 w-full md:w-auto md:min-w-[200px]">
         <div class="relative">
           <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
           <input 
@@ -18,21 +18,23 @@
         </div>
       </div>
       
-      <button class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors flex items-center gap-2" @click="handleSearch">
-        <i class="fa-solid fa-filter"></i>
-        <span>筛选</span>
-      </button>
-      
-      <div class="h-6 w-px bg-gray-200 mx-1"></div>
+      <div class="grid grid-cols-2 md:flex md:gap-2 gap-3">
+        <button class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors flex items-center justify-center gap-2" @click="handleSearch">
+          <i class="fa-solid fa-filter"></i>
+          <span>筛选</span>
+        </button>
+        
+        <div class="hidden md:block h-6 w-px bg-gray-200 mx-1 self-center"></div>
 
-      <button class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-2" @click="openCreateModal">
-        <i class="fa-solid fa-plus"></i>
-        <span>新增组织</span>
-      </button>
+        <button class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center justify-center gap-2 whitespace-nowrap" @click="openCreateModal">
+          <i class="fa-solid fa-plus"></i>
+          <span>新增组织</span>
+        </button>
+      </div>
     </div>
 
-    <!-- Organization List -->
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+    <!-- Organization List (Desktop Table) -->
+    <div class="hidden md:block bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
           <thead class="bg-gray-50 border-b border-gray-100">
@@ -105,6 +107,74 @@
           <span class="text-sm text-gray-700 font-medium px-2">{{ page }}</span>
           <button 
             class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="page * limit >= total"
+            @click="page++"
+          >
+            下一页
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Organization List (Mobile Cards) -->
+    <div class="md:hidden space-y-3">
+      <div v-for="org in organizations" :key="org.id" class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+        <div class="flex justify-between items-start mb-3">
+          <div>
+            <div class="font-medium text-gray-900">{{ org.name }}</div>
+            <div class="mt-1">
+              <span class="font-mono text-xs bg-gray-100 px-2 py-1 rounded text-gray-500">{{ org.code || '-' }}</span>
+            </div>
+          </div>
+          <span 
+            class="px-2 py-1 rounded-full text-xs font-medium"
+            :class="org.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+          >
+            {{ org.active ? '启用' : '禁用' }}
+          </span>
+        </div>
+
+        <div class="space-y-2 text-sm text-gray-600 mb-3">
+          <div class="flex items-center gap-2 text-xs text-gray-400">
+            <i class="fa-regular fa-clock w-4"></i>
+            {{ formatDate(org.createdAt) }}
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 border-t border-gray-100 pt-3">
+          <button class="px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg" @click="openMembersModal(org)">
+            成员管理
+          </button>
+          <button class="px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg" @click="openEditModal(org)">
+            编辑
+          </button>
+          <button class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg" @click="handleDelete(org)">
+            删除
+          </button>
+        </div>
+      </div>
+
+      <div v-if="organizations.length === 0" class="bg-white p-8 rounded-xl border border-gray-100 text-center text-gray-400">
+        <div class="flex flex-col items-center gap-2">
+          <i class="fa-regular fa-building text-2xl"></i>
+          <span>暂无组织数据</span>
+        </div>
+      </div>
+
+      <!-- Mobile Pagination -->
+      <div v-if="total > 0" class="flex justify-between items-center pt-2 px-2">
+        <span class="text-xs text-gray-500">共 {{ total }} 条</span>
+        <div class="flex gap-2">
+          <button 
+            class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white disabled:opacity-50"
+            :disabled="page <= 1"
+            @click="page--"
+          >
+            上一页
+          </button>
+          <span class="text-xs flex items-center bg-white px-2 rounded-lg border border-gray-200">{{ page }}</span>
+          <button 
+            class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white disabled:opacity-50"
             :disabled="page * limit >= total"
             @click="page++"
           >

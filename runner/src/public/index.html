@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Runner Config</title>
+    <style>
+      body { font-family: Arial, sans-serif; background: #f5f7fb; margin: 0; padding: 24px; color: #111827; }
+      .card { max-width: 1200px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+      h2 { margin: 0; }
+      .lang-switch { border: 1px solid #d1d5db; background: #fff; color: #111827; }
+      .section { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-top: 12px; }
+      .section h3 { margin: 0 0 10px; font-size: 15px; }
+      .layout { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 16px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .single { grid-column: 1 / -1; }
+      label { display: flex; flex-direction: column; font-size: 13px; color: #374151; gap: 6px; }
+      input { height: 36px; border: 1px solid #d1d5db; border-radius: 6px; padding: 0 10px; }
+      input[readonly] { background: #f9fafb; color: #6b7280; }
+      .check-row { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #374151; }
+      .check-row input { width: 16px; height: 16px; border-radius: 4px; }
+      .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+      button { border: 0; border-radius: 6px; padding: 9px 14px; cursor: pointer; background: #111827; color: #fff; }
+      button.secondary { background: #374151; }
+      #status { background: #f8fafc; border-radius: 8px; padding: 10px; margin-top: 12px; font-size: 12px; color: #6b7280; white-space: pre-wrap; }
+      .hint { font-size: 12px; color: #6b7280; margin-top: 8px; }
+      .status-panel { position: sticky; top: 16px; height: fit-content; }
+      .status-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; background: #f9fafb; }
+      .status-title { font-size: 14px; font-weight: 600; margin: 0 0 10px; color: #111827; }
+      .status-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding: 6px 0; border-bottom: 1px dashed #e5e7eb; }
+      .status-row:last-child { border-bottom: 0; }
+      .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+      .badge.ok { background: #dcfce7; color: #15803d; }
+      .badge.fail { background: #fee2e2; color: #b91c1c; }
+      .kv { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; color: #374151; }
+      @media (max-width: 900px) {
+        .grid { grid-template-columns: 1fr; }
+        .layout { grid-template-columns: 1fr; }
+        .status-panel { position: static; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="topbar">
+        <h2 id="title">Runner 配置页</h2>
+        <button class="lang-switch" id="langBtn">English</button>
+      </div>
+
+      <div class="layout">
+        <div>
+          <div class="section">
+            <h3 id="runnerBlockTitle">Runner Key 配置</h3>
+            <div class="grid">
+              <label class="single"><span id="labelSaas">SaaS Socket URL</span><input id="saasSocketUrl" placeholder="http://localhost:3000" /></label>
+              <label class="single"><span id="labelRunnerKey">Runner Key</span><input id="runnerKey" placeholder="runner-key" /></label>
+              <label class="single"><span id="labelRunnerId">Runner ID（自动识别）</span><input id="runnerId" readonly /></label>
+              <label><span id="labelServerPort">服务端口</span><input id="serverPort" placeholder="4310" /></label>
+              <label class="single check-row"><input type="checkbox" id="hookbusDebugEnabled" /><span id="labelHookbusDebugEnabled">启用 HookBus 调试网关 (/hookbus)</span></label>
+            </div>
+            <div class="actions">
+              <button id="saveRunnerBtn">保存 Runner 配置</button>
+              <button class="secondary" id="testRunnerKeyBtn">测试 Runner Key</button>
+              <button id="registerBtn">执行注册</button>
+            </div>
+            <div class="hint" id="runnerHint">Runner ID 不用手填，测试通过后会自动写入。</div>
+          </div>
+
+          <div class="section">
+            <h3 id="dbBlockTitle">数据库连接配置</h3>
+            <div class="grid">
+              <label><span id="labelMongoUri">Mongo URI</span><input id="mongoUri" placeholder="mongodb://localhost:27017" /></label>
+              <label><span id="labelMongoDb">Mongo DB Name</span><input id="mongoDbName" placeholder="azure_ai_runner" /></label>
+              <label class="single"><span id="labelRedisUri">Redis URI</span><input id="redisUri" placeholder="redis://localhost:6379" /></label>
+            </div>
+            <div class="actions">
+              <button id="saveDbBtn">保存数据库配置</button>
+              <button class="secondary" id="testMongoBtn">测试 Mongo 连接</button>
+              <button class="secondary" id="testRedisBtn">测试 Redis 连接</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="status-panel">
+          <div class="status-card">
+            <div class="status-title" id="statusTitle">当前配置状态</div>
+            <div class="status-row">
+              <span id="labelRunnerKeyStatus">Runner Key</span>
+              <span class="badge" id="runnerKeyBadge">-</span>
+            </div>
+            <div class="status-row">
+              <span id="labelMongoStatus">Mongo 配置</span>
+              <span class="badge" id="mongoBadge">-</span>
+            </div>
+            <div class="status-row">
+              <span id="labelRedisStatus">Redis 配置</span>
+              <span class="badge" id="redisBadge">-</span>
+            </div>
+            <div class="status-row">
+              <span id="labelMongoConn">Mongo 连接</span>
+              <span class="badge" id="mongoConnBadge">-</span>
+            </div>
+            <div class="status-row">
+              <span id="labelRedisConn">Redis 连接</span>
+              <span class="badge" id="redisConnBadge">-</span>
+            </div>
+            <div class="status-row">
+              <span id="labelRunnerIdValue">Runner ID</span>
+              <span class="kv" id="runnerIdValue">-</span>
+            </div>
+            <div class="status-row">
+              <span id="labelServerPortValue">端口</span>
+              <span class="kv" id="serverPortValue">-</span>
+            </div>
+            <div class="status-row">
+              <span id="labelRegisterState">注册状态</span>
+              <span class="kv" id="registerStateValue">-</span>
+            </div>
+            <div class="status-row">
+              <span id="labelRegisterError">注册错误</span>
+              <span class="kv" id="registerErrorValue">-</span>
+            </div>
+            <div class="status-row">
+              <span id="labelHookbusDebugValue">HookBus 调试</span>
+              <span class="kv" id="hookbusDebugValue">-</span>
+            </div>
+          </div>
+          <div id="status">加载中...</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      const i18n = {
+        zh: {
+          title: 'Runner 配置页',
+          langBtn: 'English',
+          runnerBlockTitle: 'Runner Key 配置',
+          labelSaas: 'SaaS Socket URL',
+          labelRunnerKey: 'Runner Key',
+          labelRunnerId: 'Runner ID（自动识别）',
+          labelServerPort: '服务端口',
+          labelHookbusDebugEnabled: '启用 HookBus 调试网关 (/hookbus)',
+          saveRunnerBtn: '保存 Runner 配置',
+          testRunnerKeyBtn: '测试 Runner Key',
+          registerBtn: '执行注册',
+          runnerHint: 'Runner ID 不用手填，测试通过后会自动写入。',
+          dbBlockTitle: '数据库连接配置',
+          labelMongoUri: 'Mongo URI',
+          labelMongoDb: 'Mongo DB Name',
+          labelRedisUri: 'Redis URI',
+          saveDbBtn: '保存数据库配置',
+          testMongoBtn: '测试 Mongo 连接',
+          testRedisBtn: '测试 Redis 连接',
+          statusTitle: '当前配置状态',
+          labelRunnerKeyStatus: 'Runner Key',
+          labelMongoStatus: 'Mongo 配置',
+          labelRedisStatus: 'Redis 配置',
+          labelMongoConn: 'Mongo 连接',
+          labelRedisConn: 'Redis 连接',
+          labelRunnerIdValue: 'Runner ID',
+          labelServerPortValue: '端口',
+          labelRegisterState: '注册状态',
+          labelRegisterError: '注册错误',
+          labelHookbusDebugValue: 'HookBus 调试',
+          loading: '加载中...'
+        },
+        en: {
+          title: 'Runner Config',
+          langBtn: '中文',
+          runnerBlockTitle: 'Runner Key Settings',
+          labelSaas: 'SaaS Socket URL',
+          labelRunnerKey: 'Runner Key',
+          labelRunnerId: 'Runner ID (auto detected)',
+          labelServerPort: 'Server Port',
+          labelHookbusDebugEnabled: 'Enable HookBus debug gateway (/hookbus)',
+          saveRunnerBtn: 'Save Runner Settings',
+          testRunnerKeyBtn: 'Test Runner Key',
+          registerBtn: 'Register Runner',
+          runnerHint: 'Runner ID is auto populated after key test success.',
+          dbBlockTitle: 'Database Settings',
+          labelMongoUri: 'Mongo URI',
+          labelMongoDb: 'Mongo DB Name',
+          labelRedisUri: 'Redis URI',
+          saveDbBtn: 'Save DB Settings',
+          testMongoBtn: 'Test Mongo',
+          testRedisBtn: 'Test Redis',
+          statusTitle: 'Current Status',
+          labelRunnerKeyStatus: 'Runner Key',
+          labelMongoStatus: 'Mongo Config',
+          labelRedisStatus: 'Redis Config',
+          labelMongoConn: 'Mongo Connection',
+          labelRedisConn: 'Redis Connection',
+          labelRunnerIdValue: 'Runner ID',
+          labelServerPortValue: 'Port',
+          labelRegisterState: 'Registration',
+          labelRegisterError: 'Register Error',
+          labelHookbusDebugValue: 'HookBus Debug',
+          loading: 'Loading...'
+        }
+      };
+      let locale = 'zh';
+
+      function t(key) {
+        return i18n[locale][key] || key;
+      }
+
+      function applyLocale() {
+        document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en';
+        const ids = [
+          'title','runnerBlockTitle','labelSaas','labelRunnerKey','labelRunnerId','labelServerPort',
+          'labelHookbusDebugEnabled',
+          'saveRunnerBtn','testRunnerKeyBtn','registerBtn','runnerHint','dbBlockTitle',
+          'labelMongoUri','labelMongoDb','labelRedisUri','saveDbBtn','testMongoBtn','testRedisBtn',
+          'statusTitle','labelRunnerKeyStatus','labelMongoStatus','labelRedisStatus',
+          'labelMongoConn','labelRedisConn','labelRunnerIdValue','labelServerPortValue',
+          'labelRegisterState','labelRegisterError','labelHookbusDebugValue'
+        ];
+        for (const id of ids) {
+          const el = document.getElementById(id);
+          if (el) el.textContent = t(id);
+        }
+        document.getElementById('langBtn').textContent = t('langBtn');
+        getStatus();
+      }
+
+      function readRunnerPayload() {
+        return {
+          saasSocketUrl: document.getElementById('saasSocketUrl').value,
+          runnerKey: document.getElementById('runnerKey').value,
+          serverPort: Number(document.getElementById('serverPort').value || 4310),
+          hookbusDebugEnabled: document.getElementById('hookbusDebugEnabled').checked
+        };
+      }
+
+      function readDbPayload() {
+        return {
+          mongoUri: document.getElementById('mongoUri').value,
+          mongoDbName: document.getElementById('mongoDbName').value,
+          redisUri: document.getElementById('redisUri').value
+        };
+      }
+
+      function setStatus(data, extra) {
+        const merged = { ...(data || {}), ...(extra || {}) };
+        document.getElementById('status').textContent = JSON.stringify(merged, null, 2);
+        if (!merged || typeof merged !== 'object') return;
+        const badge = (id, ok) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.className = `badge ${ok ? 'ok' : 'fail'}`;
+          el.textContent = ok ? (locale === 'zh' ? '已配置' : 'Ready') : (locale === 'zh' ? '未配置' : 'Missing');
+        };
+        const badgeConn = (id, ok) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.className = `badge ${ok ? 'ok' : 'fail'}`;
+          el.textContent = ok ? (locale === 'zh' ? '已连接' : 'Connected') : (locale === 'zh' ? '未连接' : 'Disconnected');
+        };
+        badge('runnerKeyBadge', Boolean(merged.hasRunnerKey));
+        badge('mongoBadge', Boolean(merged.hasMongoConfig));
+        badge('redisBadge', Boolean(merged.hasRedisConfig));
+        badgeConn('mongoConnBadge', Boolean(merged.mongoConnected));
+        badgeConn('redisConnBadge', Boolean(merged.redisConnected));
+        const runnerIdValue = document.getElementById('runnerIdValue');
+        if (runnerIdValue) runnerIdValue.textContent = merged?.config?.runnerId || '-';
+        const serverPortValue = document.getElementById('serverPortValue');
+        if (serverPortValue) serverPortValue.textContent = merged?.config?.serverPort ?? '-';
+        const registerStateValue = document.getElementById('registerStateValue');
+        if (registerStateValue) registerStateValue.textContent = merged?.registerState || '-';
+        const registerErrorValue = document.getElementById('registerErrorValue');
+        if (registerErrorValue) registerErrorValue.textContent = merged?.registerError || '-';
+        const hookbusDebugValue = document.getElementById('hookbusDebugValue');
+        if (hookbusDebugValue) {
+          hookbusDebugValue.textContent = merged?.config?.hookbusDebugEnabled
+            ? (locale === 'zh' ? '已启用' : 'Enabled')
+            : (locale === 'zh' ? '已禁用' : 'Disabled');
+        }
+      }
+
+      async function getStatus() {
+        const [configRes, regRes] = await Promise.all([
+          fetch('/config/status'),
+          fetch('/registration/status')
+        ]);
+        const configJson = await configRes.json();
+        const regJson = await regRes.json();
+        const extra = {
+          registerState: regJson?.state ?? '-',
+          registerError: regJson?.error ?? '-'
+        };
+        setStatus(configJson, extra);
+        if (configJson.config) {
+          for (const key of Object.keys(configJson.config)) {
+            const el = document.getElementById(key);
+            if (!el) continue;
+            const value = configJson.config[key];
+            if (value !== undefined && value !== null) {
+              if (el instanceof HTMLInputElement && el.type === 'checkbox') {
+                el.checked = Boolean(value);
+              } else {
+                el.value = value;
+              }
+            }
+          }
+        }
+      }
+
+      async function saveRunnerConfig() {
+        const payload = readRunnerPayload();
+        await fetch('/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        await getStatus();
+      }
+
+      async function saveDbConfig() {
+        const payload = readDbPayload();
+        await fetch('/config/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        await getStatus();
+      }
+
+      async function testRunnerKey() {
+        const payload = {
+          saasSocketUrl: document.getElementById('saasSocketUrl').value,
+          runnerKey: document.getElementById('runnerKey').value
+        };
+        const res = await fetch('/registration/test-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.runnerId) {
+          document.getElementById('runnerId').value = data.runnerId;
+        }
+        await getStatus();
+      }
+
+      async function registerRunner() {
+        const res = await fetch('/registration/register', { method: 'POST' });
+        const data = await res.json();
+        await getStatus();
+      }
+
+      async function testMongo() {
+        const res = await fetch('/config/test/mongo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mongoUri: document.getElementById('mongoUri').value,
+            mongoDbName: document.getElementById('mongoDbName').value
+          })
+        });
+        const data = await res.json();
+        setStatus(data);
+      }
+
+      async function testRedis() {
+        const res = await fetch('/config/test/redis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            redisUri: document.getElementById('redisUri').value
+          })
+        });
+        const data = await res.json();
+        setStatus(data);
+      }
+
+      document.getElementById('saveRunnerBtn').addEventListener('click', saveRunnerConfig);
+      document.getElementById('saveDbBtn').addEventListener('click', saveDbConfig);
+      document.getElementById('testRunnerKeyBtn').addEventListener('click', testRunnerKey);
+      document.getElementById('registerBtn').addEventListener('click', registerRunner);
+      document.getElementById('testMongoBtn').addEventListener('click', testMongo);
+      document.getElementById('testRedisBtn').addEventListener('click', testRedis);
+      document.getElementById('langBtn').addEventListener('click', () => {
+        locale = locale === 'zh' ? 'en' : 'zh';
+        applyLocale();
+      });
+      applyLocale();
+      getStatus();
+    </script>
+  </body>
+</html>

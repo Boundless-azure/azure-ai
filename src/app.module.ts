@@ -14,9 +14,9 @@ import { ConversationModule } from '@/app/conversation/conversation.module';
 import { AgentModule } from '@/app/agent/agent.module';
 import { TodoModule } from './app/todo/todo.module';
 import { AiModelsModule } from './app/ai-models/ai-models.module';
-import { WebMcpModule } from '@/app/webmcp/webmcp.module';
 import { IdentityModule } from '@/app/identity/identity.module';
 import { ResourceModule } from '@/app/resource/resource.module';
+import { RunnerModule } from '@/app/runner/runner.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from '@/core/auth/guards/jwt-auth.guard';
 import { AbilityGuard } from '@/app/identity/guards/ability.guard';
@@ -91,7 +91,7 @@ import type { DatabaseConfig } from './config/types';
     RedisModule,
     MongoModule.forRoot({}),
     PluginModule,
-    WebMcpModule,
+    RunnerModule,
     AuthModule,
     IdentityModule,
     ResourceModule,

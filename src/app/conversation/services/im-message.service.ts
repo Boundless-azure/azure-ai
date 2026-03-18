@@ -13,10 +13,11 @@ import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
 import { ChatSessionMemberEntity } from '@core/ai/entities/chat-session-member.entity';
 import { PrincipalEntity } from '@/app/identity/entities/principal.entity';
 import { AgentEntity } from '@/app/agent/entities/agent.entity';
+import { AgentRuntimeService } from '@core/agent-runtime/services/agent-runtime.service';
 import { ChatMessageType, ChatSessionType } from '@core/ai/enums/chat.enums';
+import type { ChatMessage } from '@core/ai/types';
 import { ImSessionService } from './im-session.service';
 import { ImGateway } from '../controllers/im.gateway';
-import { ConversationService } from './conversation.service';
 import type {
   SendMessageDto,
   ImMessageInfo,
@@ -56,9 +57,9 @@ export class ImMessageService {
     private readonly agentRepo: Repository<AgentEntity>,
     @Inject(forwardRef(() => ImSessionService))
     private readonly sessionService: ImSessionService,
-    private readonly conversationService: ConversationService,
     @Inject(forwardRef(() => ImGateway))
     private readonly imGateway: ImGateway,
+    private readonly agentRuntimeService: AgentRuntimeService,
   ) {}
 
   /**
@@ -136,6 +137,7 @@ export class ImMessageService {
 
     // === AI 触发逻辑 ===
     if (!options?.skipAgentTrigger) {
+      console.log('ai 触发了');
       await this.checkAndTriggerAgent(session, senderId, saved, dto.content);
     }
 
@@ -518,17 +520,46 @@ export class ImMessageService {
     triggerMessageId: string;
     userContent: string;
   }): Promise<void> {
-    const gen = this.conversationService.chatStream({
-      message: payload.userContent,
-      sessionId: payload.sessionId,
-      stream: true,
-      chatClientId: 'im-service',
+    const agent = await this.agentRepo.findOne({
+      where: {
+        principalId: payload.agentPrincipalId,
+        active: true,
+        isDelete: false,
+      },
     });
+    if (!agent) {
+      throw new BadRequestException('未找到可用Agent配置');
+    }
+    const baseMessages = await this.buildAgentDialogueMessages({
+      sessionId: payload.sessionId,
+      agentPrincipalId: payload.agentPrincipalId,
+    });
+    const fallbackMessage: ChatMessage = {
+      role: 'user',
+      content: payload.userContent,
+    };
+    const messages = baseMessages.length > 0 ? baseMessages : [fallbackMessage];
+    const gen = this.agentRuntimeService.startDialogue(
+      agent.codeDir,
+      messages,
+      {
+        aiModelIds: Array.isArray(agent.aiModelIds) ? agent.aiModelIds : [],
+      },
+    ) as AsyncGenerator<unknown>;
 
     let fullContent = '';
     for await (const ev of gen) {
-      if (ev.type === 'token') {
-        fullContent += ev.data.text;
+      if (typeof ev === 'string') {
+        fullContent += ev;
+        continue;
+      }
+      if (this.isEventRecord(ev) && ev.type === 'token') {
+        fullContent += ev.data?.text ?? '';
+        continue;
+      }
+      if (this.isEventRecord(ev) && ev.type === 'error') {
+        const err = typeof ev.error === 'string' ? ev.error : 'agent error';
+        this.logger.warn(`Agent dialogue error: ${err}`);
       }
     }
 
@@ -581,6 +612,39 @@ export class ImMessageService {
       where: { principalId, isDelete: false },
     });
     return !!agent;
+  }
+
+  private isEventRecord(
+    ev: unknown,
+  ): ev is { type?: string; data?: { text?: string }; error?: string } {
+    return typeof ev === 'object' && ev !== null && 'type' in ev;
+  }
+
+  private async buildAgentDialogueMessages(args: {
+    sessionId: string;
+    agentPrincipalId: string;
+  }): Promise<ChatMessage[]> {
+    const raw = await this.messageRepo
+      .createQueryBuilder('m')
+      .where('m.session_id = :sid', { sid: args.sessionId })
+      .andWhere('m.is_delete = false')
+      .orderBy('m.created_at', 'DESC')
+      .limit(20)
+      .getMany();
+    const ordered = raw.reverse();
+    return ordered.map((msg) => {
+      const role =
+        msg.messageType === ChatMessageType.System
+          ? 'system'
+          : msg.senderId === args.agentPrincipalId
+            ? 'assistant'
+            : 'user';
+      return {
+        role,
+        content: msg.content,
+        timestamp: msg.createdAt,
+      };
+    });
   }
 
   /**

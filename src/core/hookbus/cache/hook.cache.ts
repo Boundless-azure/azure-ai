@@ -22,4 +22,16 @@ export class HookCacheService {
     const key = `hookbus:status:${hook}`;
     return await this.redis.getString(key);
   }
+
+  async recordBinding(hook: string, methodRef: string): Promise<void> {
+    if (!this.redis.isAvailable()) return;
+    const key = `hookbus:binding:${hook}`;
+    await this.redis.setString(key, methodRef, 24 * 60 * 60);
+  }
+
+  async getBinding(hook: string): Promise<string | null> {
+    if (!this.redis.isAvailable()) return null;
+    const key = `hookbus:binding:${hook}`;
+    return await this.redis.getString(key);
+  }
 }

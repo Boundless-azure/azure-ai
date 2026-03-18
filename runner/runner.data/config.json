@@ -1,0 +1,10 @@
+{
+  "serverPort": 4310,
+  "saasSocketUrl": "http://localhost:3000",
+  "runnerId": "019cd659-1288-75be-b1d6-c10cd2707060",
+  "runnerKey": "fa6553c69b5cec15ac0e306e9587ca6dee6776665a83ec87",
+  "hookbusDebugEnabled": true,
+  "mongoUri": "",
+  "mongoDbName": "",
+  "redisUri": ""
+}

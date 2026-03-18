@@ -54,4 +54,7 @@ export class AgentEntity extends BaseAuditedEntity {
   /** 是否启用 */
   @Column({ name: 'active', type: 'boolean', default: true })
   active!: boolean;
+
+  @Column({ name: 'ai_model_ids', type: 'json', nullable: true })
+  aiModelIds!: string[] | null;
 }

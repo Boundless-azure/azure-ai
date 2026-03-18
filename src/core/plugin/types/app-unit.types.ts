@@ -7,6 +7,11 @@ import { IsOptional, IsString, Length, IsBoolean } from 'class-validator';
  * @keywords-en app-unit-create, dto, submodule, unit
  */
 export class CreateAppUnitDto {
+  @IsOptional()
+  @IsString()
+  @Length(1, 36)
+  runnerId?: string;
+
   @IsString()
   @Length(1, 100)
   sessionId!: string;
@@ -38,6 +43,11 @@ export class CreateAppUnitDto {
 export class UpdateAppUnitDto {
   @IsOptional()
   @IsString()
+  @Length(1, 36)
+  runnerId?: string;
+
+  @IsOptional()
+  @IsString()
   @Length(1, 100)
   sessionId?: string;
 
@@ -67,6 +77,11 @@ export class UpdateAppUnitDto {
  * @keywords-en app-unit-query, filter, appId, sessionId
  */
 export class QueryAppUnitDto {
+  @IsOptional()
+  @IsString()
+  @Length(1, 36)
+  runnerId?: string;
+
   @IsOptional()
   @IsString()
   @Length(1, 100)

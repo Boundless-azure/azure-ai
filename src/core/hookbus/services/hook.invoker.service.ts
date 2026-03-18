@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { HookResultStatus } from '../enums/hook.enums';
 import type {
   HookContext,
@@ -16,12 +16,18 @@ import { HookCacheService } from '../cache/hook.cache';
  */
 @Injectable()
 export class HookInvokerService {
+  private readonly logger = new Logger(HookInvokerService.name);
   private middlewares: HookMiddleware[] = [];
+  private namedMiddlewares = new Map<string, HookMiddleware>();
 
   constructor(private readonly cache: HookCacheService) {}
 
   use(mw: HookMiddleware): void {
     this.middlewares.push(mw);
+  }
+
+  useNamed(name: string, mw: HookMiddleware): void {
+    this.namedMiddlewares.set(name, mw);
   }
 
   async invoke<T, R>(
@@ -40,7 +46,10 @@ export class HookInvokerService {
         metadata: reg.metadata,
         state: { ...(ctx.state ?? {}), regId: reg.id },
       };
-      const chain = this.compose([...this.middlewares], async () =>
+      const eventMws = (ctx.event.declaration?.middlewares ?? [])
+        .map((name) => this.namedMiddlewares.get(name))
+        .filter((item): item is HookMiddleware<T, R> => Boolean(item));
+      const chain = this.compose([...eventMws, ...this.middlewares], async () =>
         reg.handler(ctxWithMeta),
       );
       try {
@@ -89,8 +98,9 @@ export class HookInvokerService {
   ): Promise<void> {
     try {
       await this.cache.recordStatus(hook, status);
-    } catch {
-      void 0;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`Failed to record hook status for "${hook}": ${msg}`);
     }
   }
 }

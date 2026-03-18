@@ -72,7 +72,7 @@ export interface FunctionRegistryEntry {
 export interface ChatRequest {
   message: string;
   sessionId?: string;
-  modelId?: string;
+  modelId: string;
   systemPrompt?: string;
   stream?: boolean;
   /** 可选：线程类型（不再按日期分组） */
@@ -97,9 +97,9 @@ export class ChatRequestDto implements ChatRequest {
   @IsString()
   sessionId?: string;
 
-  @IsOptional()
   @IsString()
-  modelId?: string;
+  @IsNotEmpty()
+  modelId!: string;
 
   @IsOptional()
   @IsString()
@@ -141,9 +141,9 @@ export class ThreadChatStartDto {
   @IsString()
   sessionId?: string;
 
-  @IsOptional()
   @IsString()
-  modelId?: string;
+  @IsNotEmpty()
+  modelId!: string;
 
   @IsOptional()
   @IsString()

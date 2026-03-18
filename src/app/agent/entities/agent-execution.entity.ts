@@ -10,6 +10,7 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Entity('agent_executions')
 @Index(['agentId'])
 @Index(['contextMessageId'])
+@Index(['runnerId'])
 export class AgentExecutionEntity extends BaseAuditedEntity {
   /** 引用的 Agent ID */
   @Column({ name: 'agent_id', type: 'char', length: 36 })
@@ -35,6 +36,10 @@ export class AgentExecutionEntity extends BaseAuditedEntity {
     nullable: true,
   })
   contextMessageId!: string | null;
+
+  /** 关联 Runner ID（用于执行来源归属） */
+  @Column({ name: 'runner_id', type: 'char', length: 36, nullable: true })
+  runnerId!: string | null;
 
   /** 是否启用 */
   @Column({ name: 'active', type: 'boolean', default: true })

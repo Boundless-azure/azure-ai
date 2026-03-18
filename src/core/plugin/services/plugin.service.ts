@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
 import * as os from 'os';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { pathToFileURL } from 'url';
 import { AppEntity } from '../entities/plugin.entity';
 import { PluginKeywordsService } from './plugin.keywords.service';
@@ -34,13 +34,18 @@ export class PluginService {
    * @param filter 可选过滤条件
    * @returns 应用实体数组（按 updatedAt 倒序）
    */
-  async list(filter?: { sessionId?: string }): Promise<AppEntity[]> {
+  async list(filter?: {
+    sessionId?: string;
+    runnerId?: string;
+  }): Promise<AppEntity[]> {
     const sessionId = filter?.sessionId;
+    const runnerId = filter?.runnerId;
     if (this.useMongo()) {
       const col = this.pluginCollection();
       if (!col) return [];
       const where: Record<string, unknown> = { isDelete: { $ne: true } };
       if (sessionId) where['sessionId'] = sessionId;
+      if (runnerId) where['runnerId'] = runnerId;
       const docs = await col
         .find(where)
         .sort({ updatedAt: -1 })
@@ -50,6 +55,7 @@ export class PluginService {
     }
     const where: Record<string, unknown> = { isDelete: false };
     if (sessionId) where['sessionId'] = sessionId;
+    if (runnerId) where['runnerId'] = runnerId;
     return this.repo.find({ where, order: { updatedAt: 'DESC' } });
   }
 
@@ -62,10 +68,7 @@ export class PluginService {
     if (this.useMongo()) {
       const col = this.pluginCollection();
       if (!col) return null;
-      const doc = await col.findOne({ _id: id } as unknown as Record<
-        string,
-        unknown
-      >);
+      const doc = await col.findOne({ _id: id } as Record<string, unknown>);
       return doc ? this.toEntity(doc) : null;
     }
     return this.repo.findOne({ where: { id } });
@@ -79,7 +82,7 @@ export class PluginService {
     if (this.useMongo()) {
       const col = this.pluginCollection();
       if (!col) return;
-      await col.updateOne({ _id: id } as unknown as Record<string, unknown>, {
+      await col.updateOne({ _id: id } as Record<string, unknown>, {
         $set: { isDelete: true, updatedAt: new Date() },
       });
       return;
@@ -92,7 +95,7 @@ export class PluginService {
    */
   async registerByDir(
     pluginDir: string,
-    opts?: { sessionId?: string },
+    opts?: { sessionId?: string; runnerId?: string },
   ): Promise<AppEntity> {
     if (!opts?.sessionId) {
       throw new Error('sessionId is required');
@@ -107,6 +110,7 @@ export class PluginService {
       if (!col) throw new Error('MongoDB not available');
       const now = new Date();
       const doc: PluginDoc = {
+        runnerId: opts.runnerId ?? null,
         sessionId: opts.sessionId,
         name: conf.name,
         version: conf.version,
@@ -137,6 +141,7 @@ export class PluginService {
     });
 
     const entityData: Partial<AppEntity> = {
+      runnerId: opts.runnerId ?? null,
       sessionId: opts.sessionId,
       name: conf.name,
       version: conf.version,
@@ -180,13 +185,10 @@ export class PluginService {
         ...updates,
         updatedAt: new Date(),
       };
-      await col.updateOne({ _id: id } as unknown as Record<string, unknown>, {
+      await col.updateOne({ _id: id } as Record<string, unknown>, {
         $set: patch,
       });
-      const saved = await col.findOne({ _id: id } as unknown as Record<
-        string,
-        unknown
-      >);
+      const saved = await col.findOne({ _id: id } as Record<string, unknown>);
       if (!saved) throw new Error('Plugin update failed');
       return this.toEntity(saved);
     }
@@ -235,7 +237,7 @@ export class PluginService {
       .slice(0, 8);
     const tempFile = path.join(
       os.tmpdir(),
-      `azureai-plugin-conf-${hash}-${Date.now()}.cjs`,
+      `azureai-plugin-conf-${hash}-${randomUUID()}.cjs`,
     );
     fs.writeFileSync(tempFile, code, 'utf-8');
 
@@ -274,9 +276,10 @@ export class PluginService {
 
   private toEntity(doc: PluginDoc): AppEntity {
     const e = new AppEntity();
-    (e as unknown as { id?: string }).id =
-      doc._id ?? `${doc.name}:${doc.version}`;
+    // BaseAuditedEntity fields
+    e.id = doc._id ?? `${doc.name}:${doc.version}`;
     e.sessionId = doc.sessionId ?? null;
+    e.runnerId = doc.runnerId ?? null;
     e.name = doc.name;
     e.version = doc.version;
     e.description = doc.description;
@@ -287,11 +290,10 @@ export class PluginService {
     e.keywordsEn = doc.keywordsEn ?? null;
     e.pluginDir = doc.pluginDir;
     e.registered = doc.registered;
-    (e as unknown as { createdAt?: Date }).createdAt =
-      doc.createdAt ?? new Date();
-    (e as unknown as { updatedAt?: Date }).updatedAt =
-      doc.updatedAt ?? new Date();
-    (e as unknown as { isDelete?: boolean }).isDelete = doc.isDelete ?? false;
+    // BaseAuditedEntity timestamp fields
+    e.createdAt = doc.createdAt ?? new Date();
+    e.updatedAt = doc.updatedAt ?? new Date();
+    e.isDelete = doc.isDelete ?? false;
     return e;
   }
 }
