@@ -10,10 +10,41 @@
     "comments": "off",
     "strings": "on"
   },
+  // ESLint 配置
   "eslint.useFlatConfig": true,
-  "eslint.experimental.useFlatConfig": true,
-  "eslint.validate": ["typescript", "javascript", "typescriptreact", "javascriptreact"],
+  "eslint.validate": [
+    "typescript",
+    "javascript",
+    "typescriptreact",
+    "javascriptreact"
+  ],
+  "eslint.probe": [
+    "typescript",
+    "javascript",
+    "typescriptreact",
+    "javascriptreact"
+  ],
+  "eslint.run": "onType",
   "eslint.workingDirectories": [
-    { "directory": ".", "exclude": ["node_modules"] }
-  ]
+    {
+      "directory": ".",
+      "changeProcessCWD": true
+    }
+  ],
+  // 保存时自动格式化
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "eslint.options": {
+    "overrideConfigFile": "eslint.config.mjs"
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true
+  }
 }

@@ -490,7 +490,9 @@ export class AIModelService implements OnModuleInit {
             break;
           }
           case 'on_tool_end': {
-            const output = data?.output as { tool_call_id?: string; content?: unknown } | undefined;
+            const output = data?.output as
+              | { tool_call_id?: string; content?: unknown }
+              | undefined;
             const toolId = output?.tool_call_id;
             const rid = toolId ? runIdToToolId.get(toolId) : undefined;
             yield {

@@ -18,6 +18,7 @@ import type {
   CreateSessionResponse,
   GetHistoryResponse,
 } from '@/app/conversation/types/conversation.types';
+
 @Injectable()
 /**
  * 会话服务：封装 AI 对话与流式输出，仅负责上下文写入与内容返回。
