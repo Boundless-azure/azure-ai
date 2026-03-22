@@ -53,9 +53,9 @@
 
         <!-- Subject List -->
         <div class="flex-1 overflow-y-auto px-3 md:px-6 py-4 md:py-6 bg-white space-y-6 md:space-y-8">
-          <div v-if="subjectCards.length > 0" class="w-full">
+          <div v-if="paginatedCards.length > 0" class="w-full">
             <article
-              v-for="card in subjectCards"
+              v-for="card in paginatedCards"
               :key="card.id"
               class="group/card w-full border-b border-gray-100 pb-8 last:border-0 last:pb-0"
             >
@@ -128,6 +128,28 @@
               </div>
             </div>
           </article>
+
+          <!-- Pagination (Client-side) -->
+          <div class="pt-6 border-t border-gray-100 flex items-center justify-between" v-if="subjectCards.length > 0">
+            <span class="text-sm text-gray-500">共 {{ subjectCards.length }} 个 Subject</span>
+            <div class="flex items-center gap-2">
+              <button 
+                class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                :disabled="page <= 1"
+                @click="page--"
+              >
+                上一页
+              </button>
+              <span class="text-sm text-gray-700 font-medium px-2">{{ page }} / {{ Math.ceil(subjectCards.length / limit) || 1 }}</span>
+              <button 
+                class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                :disabled="page * limit >= subjectCards.length"
+                @click="page++"
+              >
+                下一页
+              </button>
+            </div>
+          </div>
         </div>
 
           <div
@@ -444,12 +466,21 @@ const subjectCards = computed(() => {
   }));
 });
 
+const page = ref(1);
+const limit = ref(10);
+
+const paginatedCards = computed(() => {
+  const start = (page.value - 1) * limit.value;
+  return subjectCards.value.slice(start, start + limit.value);
+});
+
 onMounted(() => {
   loadData();
 });
 
 function switchType(type: PermissionDefinitionType) {
   activeType.value = type;
+  page.value = 1;
 }
 
 function getTypeCount(type: PermissionDefinitionType): number {

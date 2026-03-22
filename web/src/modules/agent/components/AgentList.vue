@@ -46,14 +46,14 @@
     </div>
 
     <!-- Content -->
-    <div class="flex-1 overflow-y-auto min-h-0">
-      <div v-if="loading" class="flex justify-center items-center h-64">
+    <div class="flex-1 min-h-0 flex flex-col bg-transparent">
+      <div v-if="loading" class="flex-1 flex justify-center items-center">
         <i class="fa-solid fa-spinner fa-spin text-3xl text-gray-400"></i>
       </div>
 
       <div
         v-else-if="filteredAgents.length === 0"
-        class="flex flex-col items-center justify-center h-64 text-gray-400"
+        class="flex-1 flex flex-col items-center justify-center text-gray-400"
       >
         <div
           class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4"
@@ -63,9 +63,11 @@
         <p>{{ t('agent.search') }} - No results</p>
       </div>
 
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-        <div
-          v-for="agent in filteredAgents"
+      <div v-else class="flex-1 flex flex-col min-h-0">
+        <div class="flex-1 overflow-y-auto pb-4 pr-1">
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+            <div
+              v-for="agent in paginatedAgents"
           :key="agent.id"
           class="bg-white rounded-2xl border border-gray-200 p-4 md:p-6 hover:shadow-lg hover:border-gray-300 transition-all group relative flex flex-col"
           :class="isUpdating ? 'animate-pulse' : ''"
@@ -149,6 +151,30 @@
               </span>
             </span>
             <span>{{ formatDate(agent.createdAt) }}</span>
+          </div>
+        </div>
+          </div>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pt-4 border-t border-gray-100 flex items-center justify-between shrink-0">
+          <span class="text-sm text-gray-500">共 {{ filteredAgents.length }} {{ t('common.items') || '项' }}</span>
+          <div class="flex items-center gap-2">
+            <button 
+              class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="page <= 1"
+              @click="page--"
+            >
+              {{ t('common.prev') || '上一页' }}
+            </button>
+            <span class="text-sm text-gray-700 font-medium px-2">{{ page }} / {{ Math.ceil(filteredAgents.length / limit) || 1 }}</span>
+            <button 
+              class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="page * limit >= filteredAgents.length"
+              @click="page++"
+            >
+              {{ t('common.next') || '下一页' }}
+            </button>
           </div>
         </div>
       </div>
@@ -333,7 +359,7 @@
  * @keywords-cn 代理列表, 代理管理, 搜索, 编辑, 删除
  * @keywords-en agent-list, agent-management, search, edit, delete
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useI18n } from '../composables/useI18n';
 import type { Agent, UpdateAgentRequest } from '../types/agent.types';
 import { useAgents } from '../hooks/useAgents';
@@ -409,6 +435,19 @@ const filteredAgents = computed(() => {
       a.nickname.toLowerCase().includes(q) ||
       a.purpose.toLowerCase().includes(q),
   );
+});
+
+// Pagination
+const page = ref(1);
+const limit = ref(12);
+
+watch(searchQuery, () => {
+  page.value = 1;
+});
+
+const paginatedAgents = computed(() => {
+  const start = (page.value - 1) * limit.value;
+  return filteredAgents.value.slice(start, start + limit.value);
 });
 
 const selectedIds = ref<Set<string>>(new Set());

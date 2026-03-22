@@ -2,7 +2,7 @@ import {
   IsEnum,
   IsOptional,
   IsString,
-  Length,
+  IsArray,
   IsObject,
 } from 'class-validator';
 import { TodoStatus } from '../enums/todo.enums';
@@ -16,29 +16,26 @@ import { BindDataPermissionNode } from '@core/data-permission/decorators/data-pe
  */
 export class CreateTodoDto {
   @IsString()
-  @Length(1, 36)
   initiatorId!: string;
 
   @IsString()
-  @Length(1, 255)
   title!: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(1, 36)
-  pluginId?: string;
 
   @IsOptional()
   @IsString()
   description?: string;
 
   @IsOptional()
-  @IsObject()
-  action?: Record<string, unknown>;
-
   @IsString()
-  @Length(1, 36)
-  recipientId!: string;
+  content?: string;
+
+  @IsOptional()
+  @IsArray()
+  followerIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  statusColor?: string;
 
   @IsOptional()
   @IsEnum(TodoStatus)
@@ -52,26 +49,34 @@ export class CreateTodoDto {
 
 /**
  * @title 待办更新请求
- * @description 更新待办状态、说明、action 与回执结果。
- * @keywords-cn 待办更新, 状态, 回执
- * @keywords-en todo-update, status, receipt
+ * @description 更新待办名称、描述、内容、跟进人、状态等。
+ * @keywords-cn 待办更新, 状态, 跟进人
+ * @keywords-en todo-update, status, follower
  */
 export class UpdateTodoDto {
   @IsOptional()
-  @IsEnum(TodoStatus)
-  status?: TodoStatus;
+  @IsString()
+  title?: string;
 
   @IsOptional()
   @IsString()
   description?: string;
 
   @IsOptional()
-  @IsObject()
-  action?: Record<string, unknown>;
+  @IsString()
+  content?: string;
 
   @IsOptional()
-  @IsObject()
-  receipt?: Record<string, unknown>;
+  @IsArray()
+  followerIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  statusColor?: string;
+
+  @IsOptional()
+  @IsEnum(TodoStatus)
+  status?: TodoStatus;
 
   @BindDataPermissionNode('todo:update-only-myself')
   dataPermissionNodeUpdateOnlyMyself(): string {
@@ -81,7 +86,7 @@ export class UpdateTodoDto {
 
 /**
  * @title 待办查询参数
- * @description 支持按状态、接收人与插件过滤。
+ * @description 支持按状态、跟进人ID过滤。
  * @keywords-cn 待办查询, 过滤, 状态
  * @keywords-en todo-query, filter, status
  */
@@ -92,14 +97,64 @@ export class QueryTodoDto {
 
   @IsOptional()
   @IsString()
-  recipientId?: string;
+  followerId?: string;
 
   @IsOptional()
   @IsString()
-  pluginId?: string;
+  initiatorId?: string;
+
+  @IsOptional()
+  @IsString()
+  q?: string;
 
   @BindDataPermissionNode('todo:read-only-myself')
   dataPermissionNodeReadOnlyMyself(): string {
     return 'todo:read-only-myself';
   }
+}
+
+/**
+ * @title 跟进记录创建请求
+ * @description 创建待办跟进记录。
+ * @keywords-cn 跟进记录创建, DTO
+ * @keywords-en followup-create, dto
+ */
+export class CreateFollowupDto {
+  @IsString()
+  followerId!: string;
+
+  @IsString()
+  followerName!: string;
+
+  @IsOptional()
+  @IsString()
+  followerAvatar?: string;
+
+  @IsString()
+  status!: string;
+
+  @IsOptional()
+  @IsString()
+  content?: string;
+}
+
+/**
+ * @title 评论创建请求
+ * @description 创建跟进记录评论。
+ * @keywords-cn 评论创建, DTO
+ * @keywords-en comment-create, dto
+ */
+export class CreateCommentDto {
+  @IsString()
+  userId!: string;
+
+  @IsString()
+  userName!: string;
+
+  @IsOptional()
+  @IsString()
+  userAvatar?: string;
+
+  @IsString()
+  content!: string;
 }

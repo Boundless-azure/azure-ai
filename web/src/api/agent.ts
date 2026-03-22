@@ -377,7 +377,7 @@ export const agentApi = {
   listPrincipals: (params?: {
     q?: string;
     type?:
-      | 'user_enterprise'
+      | 'user'
       | 'user_consumer'
       | 'official_account'
       | 'agent'
@@ -398,14 +398,14 @@ export const agentApi = {
 
   /**
    * Identity: List Users Only
-   * @param params Query params: q/type(user_enterprise|user_consumer)/tenantId
+   * @param params Query params: q/type(user|user_consumer)/tenantId
    * @keywords-cn 用户列表, 企业用户, 消费者
    * @keywords-en list-users, enterprise-user, consumer
    */
   listUsers: (params?: {
     q?: string;
     tenantId?: string;
-    type?: 'user_enterprise' | 'user_consumer' | 'system';
+    type?: 'user' | 'user_consumer' | 'system';
   }) => {
     const parsed = params
       ? QueryUsersSchema.safeParse(params)
@@ -418,7 +418,7 @@ export const agentApi = {
 
   createUser: (data: {
     displayName: string;
-    principalType: 'user_enterprise' | 'user_consumer' | 'system';
+    principalType: 'user' | 'user_consumer' | 'system';
     email: string;
     password?: string;
     phone?: string | null;
@@ -451,7 +451,7 @@ export const agentApi = {
   createPrincipal: (data: {
     displayName: string;
     principalType:
-      | 'user_enterprise'
+      | 'user'
       | 'user_consumer'
       | 'official_account'
       | 'agent'

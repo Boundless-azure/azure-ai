@@ -29,7 +29,7 @@
             class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
           >
             <option value="">所有类型</option>
-            <option value="user_enterprise">企业用户</option>
+            <option value="user">企业用户</option>
             <option value="user_consumer">消费者</option>
             <option value="system">系统</option>
           </select>
@@ -371,7 +371,7 @@
               class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
               :disabled="isEdit"
             >
-              <option value="user_enterprise">企业用户</option>
+              <option value="user">企业用户</option>
               <option value="user_consumer">消费者</option>
             </select>
           </div>
@@ -595,7 +595,7 @@ const showAvatarModal = ref(false);
 const form = reactive({
   id: '',
   displayName: '',
-  principalType: 'user_enterprise' as UserPrincipalType,
+  principalType: 'user' as UserPrincipalType,
   email: '',
   password: '',
   phone: '',
@@ -643,7 +643,7 @@ function handleSearch() {
 
 function formatType(type: string) {
   const map: Record<string, string> = {
-    user_enterprise: '企业用户',
+    user: '企业用户',
     user_consumer: '消费者',
     official_account: '官方账号',
     agent: 'Agent',
@@ -660,7 +660,7 @@ function formatDate(dateStr?: string) {
 function openCreateModal() {
   isEdit.value = false;
   form.displayName = '';
-  form.principalType = 'user_enterprise';
+  form.principalType = 'user';
   form.email = '';
   form.password = '';
   form.phone = '';
@@ -689,13 +689,13 @@ async function onAvatarConfirm(file: File) {
 
 function toUserPrincipalType(type: string): UserPrincipalType {
   if (
-    type === 'user_enterprise' ||
+    type === 'user' ||
     type === 'user_consumer' ||
     type === 'system'
   ) {
     return type;
   }
-  return 'user_enterprise';
+  return 'user';
 }
 
 function generatePassword() {

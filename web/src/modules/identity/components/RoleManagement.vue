@@ -62,7 +62,7 @@
           </thead>
           <tbody class="divide-y divide-gray-100">
             <tr
-              v-for="role in filteredRoles"
+              v-for="role in paginatedRoles"
               :key="role.id"
               class="hover:bg-gray-50/50 transition-colors"
             >
@@ -118,7 +118,7 @@
                 </div>
               </td>
             </tr>
-            <tr v-if="filteredRoles.length === 0">
+            <tr v-if="paginatedRoles.length === 0">
               <td colspan="5" class="px-6 py-8 text-center text-gray-500">
                 暂无数据
               </td>
@@ -126,19 +126,33 @@
           </tbody>
         </table>
       </div>
-      <!-- Simple Pagination (Client-side) -->
-      <div
-        class="px-6 py-4 border-t border-gray-100 flex items-center justify-between"
-        v-if="roles.length > 0"
-      >
-        <span class="text-sm text-gray-500">共 {{ roles.length }} 条记录</span>
+      <!-- Pagination (Client-side) -->
+      <div class="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+        <span class="text-sm text-gray-500">共 {{ filteredRoles.length }} 条记录</span>
+        <div class="flex items-center gap-2" v-if="filteredRoles.length > 0">
+          <button 
+            class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="page <= 1"
+            @click="page--"
+          >
+            上一页
+          </button>
+          <span class="text-sm text-gray-700 font-medium px-2">{{ page }} / {{ Math.ceil(filteredRoles.length / limit) || 1 }}</span>
+          <button 
+            class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="page * limit >= filteredRoles.length"
+            @click="page++"
+          >
+            下一页
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- Role List (Mobile Cards) -->
     <div class="md:hidden space-y-3">
       <div
-        v-for="role in filteredRoles"
+        v-for="role in paginatedRoles"
         :key="role.id"
         class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"
       >
@@ -193,18 +207,32 @@
       </div>
 
       <div
-        v-if="filteredRoles.length === 0"
+        v-if="paginatedRoles.length === 0"
         class="bg-white p-8 rounded-xl border border-gray-100 text-center text-gray-500"
       >
         暂无数据
       </div>
 
       <!-- Mobile Pagination Info -->
-      <div
-        class="flex justify-between items-center pt-2 px-2"
-        v-if="roles.length > 0"
-      >
-        <span class="text-xs text-gray-500">共 {{ roles.length }} 条记录</span>
+      <div class="flex justify-between items-center pt-2 px-2" v-if="filteredRoles.length > 0">
+        <span class="text-xs text-gray-500">共 {{ filteredRoles.length }} 条</span>
+        <div class="flex gap-2">
+          <button 
+            class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white disabled:opacity-50"
+            :disabled="page <= 1"
+            @click="page--"
+          >
+            上一页
+          </button>
+          <span class="text-xs flex items-center bg-white px-2 rounded-lg border border-gray-200">{{ page }} / {{ Math.ceil(filteredRoles.length / limit) || 1 }}</span>
+          <button 
+            class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white disabled:opacity-50"
+            :disabled="page * limit >= filteredRoles.length"
+            @click="page++"
+          >
+            下一页
+          </button>
+        </div>
       </div>
     </div>
 
@@ -350,6 +378,14 @@ const filteredRoles = computed(() => {
   );
 });
 
+const page = ref(1);
+const limit = ref(10);
+
+const paginatedRoles = computed(() => {
+  const start = (page.value - 1) * limit.value;
+  return filteredRoles.value.slice(start, start + limit.value);
+});
+
 const form = reactive({
   id: '',
   name: '',
@@ -361,7 +397,7 @@ const showPermModal = ref(false);
 const currentRole = ref<RoleItem | null>(null);
 
 function handleSearch() {
-  // Client side filtering is automatic
+  page.value = 1;
 }
 
 const { list, create, update, remove } = useRoles();

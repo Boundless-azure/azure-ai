@@ -20,7 +20,7 @@ export const IDENTITY_DEFAULTS = {
 export type IdentityEventName = keyof typeof IDENTITY_EVENT_NAMES;
 
 export const PrincipalTypes = {
-  UserEnterprise: 'user_enterprise',
+  User: 'user',
   UserConsumer: 'user_consumer',
   OfficialAccount: 'official_account',
   Agent: 'agent',

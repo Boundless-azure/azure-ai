@@ -5,10 +5,10 @@
  * @keywords-en todo-status, enum
  */
 export enum TodoStatus {
-  Unread = 'unread',
-  Read = 'read',
-  Completed = 'completed',
-  Rejected = 'rejected',
+  Pending = 'pending',
+  InProgress = 'in_progress',
   Failed = 'failed',
+  WaitingAcceptance = 'waiting_acceptance',
+  Completed = 'completed',
 }
 

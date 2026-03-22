@@ -77,74 +77,88 @@
         </div>
 
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-8">
-          <!-- Left Column: Quick Access & Todos -->
+          <!-- Left Column: Recent Resources & Pending Todos -->
           <div class="col-span-1 xl:col-span-2 space-y-6 md:space-y-8">
-            <!-- Quick Access -->
+            <!-- Recent Resources -->
             <section
               class="bg-white p-4 md:p-6 rounded-2xl border border-gray-200 shadow-sm"
             >
               <h3
                 class="text-sm font-bold text-gray-900 mb-6 flex items-center uppercase tracking-wide border-b border-gray-100 pb-4"
               >
-                <i class="fa-solid fa-bolt text-yellow-500 mr-3"></i
-                >{{ t('dashboard.quickAccess') }}
+                <i class="fa-solid fa-folder-open text-blue-500 mr-3"></i
+                >{{ t('dashboard.recentResources') }}
               </h3>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <!-- 有数据 -->
+              <div v-if="recentResources.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div
-                  v-for="item in resourceItems"
+                  v-for="item in recentResources"
                   :key="item.id"
-                  class="p-5 rounded-xl border border-gray-100 hover:border-gray-300 hover:bg-gray-50 cursor-pointer transition-all group"
+                  class="p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:bg-gray-50 cursor-pointer transition-all group"
                 >
-                  <div class="flex flex-col items-center text-center space-y-3">
+                  <div class="flex items-start space-x-3">
                     <div
-                      class="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-black group-hover:text-white transition-all duration-300 shadow-sm"
+                      class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors"
+                      :class="item.iconBg"
                     >
                       <i
-                        class="fa-solid text-xl"
-                        :class="`fa-${item.icon}`"
+                        class="fa-solid text-lg"
+                        :class="`fa-${item.icon} ${item.iconColor}`"
                       ></i>
                     </div>
-                    <span
-                      class="text-sm font-medium text-gray-700 group-hover:text-gray-900"
-                      >{{ item.title }}</span
-                    >
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-medium text-gray-700 group-hover:text-gray-900 truncate">{{ item.name }}</p>
+                      <p class="text-xs text-gray-400 mt-1">{{ item.time }}</p>
+                    </div>
                   </div>
                 </div>
               </div>
+              <!-- 空状态 -->
+              <div v-else class="py-12 flex flex-col items-center justify-center text-gray-400">
+                <i class="fa-solid fa-folder-open text-4xl mb-3"></i>
+                <p class="text-sm">{{ t('dashboard.noRecentResources') }}</p>
+              </div>
             </section>
 
-            <!-- Recent Activity/Todos -->
+            <!-- Pending Todos -->
             <section
               class="bg-white p-4 md:p-6 rounded-2xl border border-gray-200 shadow-sm"
             >
               <h3
                 class="text-sm font-bold text-gray-900 mb-6 flex items-center uppercase tracking-wide border-b border-gray-100 pb-4"
               >
-                <i class="fa-solid fa-list-check text-blue-500 mr-3"></i
-                >{{ t('dashboard.tasksActivity') }}
+                <i class="fa-solid fa-list-check text-orange-500 mr-3"></i
+                >{{ t('dashboard.pendingTodos') }}
               </h3>
-              <div class="space-y-2">
+              <!-- 有数据 -->
+              <div v-if="pendingTodos.length > 0" class="space-y-2">
                 <div
-                  v-for="(item, idx) in todoItems"
+                  v-for="item in pendingTodos"
                   :key="item.id"
                   class="flex items-center p-3 md:p-4 hover:bg-gray-50 rounded-xl transition-colors border border-transparent hover:border-gray-200 group"
                 >
                   <div
-                    class="w-6 h-6 rounded-full border-2 border-gray-300 mr-4 cursor-pointer hover:border-black flex items-center justify-center transition-colors"
+                    class="w-6 h-6 rounded-full border-2 border-gray-300 mr-4 cursor-pointer hover:border-black flex items-center justify-center transition-colors flex-shrink-0"
                   >
                     <div
                       class="w-3 h-3 bg-black rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                     ></div>
                   </div>
+                  <div class="flex-1 min-w-0">
+                    <span class="text-sm text-gray-700 font-medium flex-1 group-hover:text-gray-900 block truncate">{{ item.title }}</span>
+                    <span class="text-xs text-gray-400">{{ item.assignee }}</span>
+                  </div>
                   <span
-                    class="text-sm text-gray-700 font-medium flex-1 group-hover:text-gray-900"
-                    >{{ item.title }}</span
-                  >
-                  <span
-                    class="text-xs font-bold text-gray-400 bg-gray-100 px-3 py-1 rounded-full"
-                    >{{ t('dashboard.today') }}</span
+                    class="text-xs font-bold px-3 py-1 rounded-full flex-shrink-0"
+                    :class="item.priorityClass"
+                    >{{ item.priority }}</span
                   >
                 </div>
+              </div>
+              <!-- 空状态 -->
+              <div v-else class="py-12 flex flex-col items-center justify-center text-gray-400">
+                <i class="fa-solid fa-check-circle text-4xl mb-3"></i>
+                <p class="text-sm">{{ t('dashboard.noPendingTodos') }}</p>
               </div>
             </section>
           </div>
@@ -159,46 +173,63 @@
                 class="text-sm font-bold text-gray-900 mb-6 flex items-center uppercase tracking-wide border-b border-gray-100 pb-4"
               >
                 <i class="fa-solid fa-bell text-red-500 mr-3"></i
-                >{{ t('dashboard.systemNotifications') }}
+                >{{ t('dashboard.notificationCenter') }}
               </h3>
-              <div class="space-y-4">
-                <div
-                  v-for="item in pluginNotifications"
-                  :key="item.id"
-                  class="p-4 bg-gray-50 border border-gray-100 rounded-xl hover:bg-white hover:shadow-md hover:border-gray-200 transition-all cursor-pointer group"
-                >
-                  <div class="flex items-start">
-                    <div
-                      class="w-10 h-10 rounded-lg flex items-center justify-center mr-4 flex-shrink-0 transition-colors"
-                      :class="item.iconBg"
-                    >
-                      <i
-                        class="fa-solid text-lg"
-                        :class="`fa-${item.icon} ${item.iconColor}`"
-                      ></i>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <div class="flex justify-between items-center mb-1">
-                        <p
-                          class="text-xs font-bold text-gray-500 uppercase tracking-wide"
-                        >
-                          {{ t(item.pluginNameKey) }}
-                        </p>
-                        <span class="text-[10px] text-gray-400">{{
-                          t('dashboard.justNow')
-                        }}</span>
-                      </div>
-                      <p class="text-sm font-bold text-gray-900 mb-1 truncate">
-                        {{ t(item.titleKey) }}
-                      </p>
-                      <p
-                        class="text-xs text-gray-500 line-clamp-2 leading-relaxed group-hover:text-gray-700"
+              <!-- 通知列表 - 固定高度滚动区域 -->
+              <div class="space-y-4 max-h-[400px] overflow-y-auto pr-1 scrollbar-hide">
+                <template v-if="displayedNotifications.length > 0">
+                  <div
+                    v-for="item in displayedNotifications"
+                    :key="item.id"
+                    class="p-4 bg-gray-50 border border-gray-100 rounded-xl hover:bg-white hover:shadow-md hover:border-gray-200 transition-all cursor-pointer group"
+                  >
+                    <div class="flex items-start">
+                      <div
+                        class="w-10 h-10 rounded-lg flex items-center justify-center mr-4 flex-shrink-0 transition-colors"
+                        :class="item.iconBg"
                       >
-                        {{ t(item.contentKey) }}
-                      </p>
+                        <i
+                          class="fa-solid text-lg"
+                          :class="`fa-${item.icon} ${item.iconColor}`"
+                        ></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex justify-between items-center mb-1">
+                          <p
+                            class="text-xs font-bold text-gray-500 uppercase tracking-wide"
+                          >
+                            {{ t(item.pluginNameKey) }}
+                          </p>
+                          <span class="text-[10px] text-gray-400">{{
+                            formatTimeAgo(item.createdAt)
+                          }}</span>
+                        </div>
+                        <p class="text-sm font-bold text-gray-900 mb-1 truncate">
+                          {{ item.titleKey }}
+                        </p>
+                        <p
+                          class="text-xs text-gray-500 line-clamp-2 leading-relaxed group-hover:text-gray-700"
+                        >
+                          {{ item.contentKey }}
+                        </p>
+                      </div>
                     </div>
                   </div>
+                </template>
+                <!-- 空状态 -->
+                <div v-else class="py-12 flex flex-col items-center justify-center text-gray-400">
+                  <i class="fa-solid fa-bell-slash text-4xl mb-3"></i>
+                  <p class="text-sm">{{ t('dashboard.noNotifications') }}</p>
                 </div>
+              </div>
+              <!-- Show More Button -->
+              <div v-if="hasMoreNotifications" class="mt-4 pt-4 border-t border-gray-100">
+                <button
+                  @click="showAllNotifications = !showAllNotifications"
+                  class="w-full py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                >
+                  {{ showAllNotifications ? t('dashboard.showLess') : t('dashboard.showMore') }}
+                </button>
               </div>
             </section>
           </div>
@@ -288,10 +319,13 @@ import {
 } from 'vue';
 import { storeToRefs } from 'pinia';
 import { tabRegistry } from '../config/tab.registry';
-import type { QuickItem } from '../types/agent.types';
 import { useI18n } from '../composables/useI18n';
-import { useAgentQuickItems } from '../hooks/useAgentQuickItems';
 import { useRightPanelStore } from '../store/right-panel.store';
+import { agentApi } from '../../../api/agent';
+import { runnerApi } from '../../../api/runner';
+import { todoApi } from '../../../api/todo';
+import { imApi } from '../../../api/im';
+import type { ImMessageInfo } from '../../../api/im';
 
 const props = defineProps<{
   activeView: string;
@@ -358,70 +392,240 @@ const closeTab = (tabId: string) => {
   storeCloseTab(tabId);
 };
 
-const { items: quickItems } = useAgentQuickItems();
+// ========== Dashboard Real Data ==========
 
-const stats = [
+// Stats data
+const statsData = ref({
+  workflows: 0,
+  activeAgents: 0,
+  tasksPending: 0,
+  runnerCount: 0,
+});
+
+const stats = computed(() => [
+  {
+    labelKey: 'dashboard.workflows',
+    value: String(statsData.value.workflows),
+    icon: 'diagram-project',
+    bgClass: 'bg-purple-50',
+    textClass: 'text-purple-600',
+  },
   {
     labelKey: 'dashboard.activeAgents',
-    value: '3',
+    value: String(statsData.value.activeAgents),
     icon: 'robot',
     bgClass: 'bg-blue-50',
     textClass: 'text-blue-600',
   },
   {
     labelKey: 'dashboard.tasksPending',
-    value: '12',
+    value: String(statsData.value.tasksPending),
     icon: 'list-check',
     bgClass: 'bg-orange-50',
     textClass: 'text-orange-600',
   },
   {
-    labelKey: 'dashboard.workflows',
-    value: '8',
-    icon: 'diagram-project',
-    bgClass: 'bg-purple-50',
-    textClass: 'text-purple-600',
-  },
-  {
-    labelKey: 'dashboard.errors',
-    value: '0',
-    icon: 'triangle-exclamation',
+    labelKey: 'dashboard.runnerCount',
+    value: String(statsData.value.runnerCount),
+    icon: 'server',
     bgClass: 'bg-green-50',
     textClass: 'text-green-600',
   },
-];
+]);
 
-onMounted(() => {
-  // Store handles loading state
+// Recent Resources data
+interface RecentResource {
+  id: string;
+  name: string;
+  time: string;
+  icon: string;
+  iconBg: string;
+  iconColor: string;
+}
+
+const recentResources = ref<RecentResource[]>([]);
+
+// Pending Todos data
+interface PendingTodo {
+  id: string;
+  title: string;
+  assignee: string;
+  priority: string;
+  priorityClass: string;
+}
+
+const pendingTodos = ref<PendingTodo[]>([]);
+
+// System Notifications from ai-notify session
+interface SystemNotification {
+  id: string;
+  pluginNameKey: string;
+  titleKey: string;
+  contentKey: string;
+  icon: string;
+  iconBg: string;
+  iconColor: string;
+  createdAt: string;
+}
+
+const systemNotifications = ref<SystemNotification[]>([]);
+
+// Fetch Dashboard Data
+async function fetchDashboardData() {
+  try {
+    // Fetch agents count
+    const agentsRes = await agentApi.getAgents();
+    statsData.value.activeAgents = Array.isArray(agentsRes.data) ? agentsRes.data.length : 0;
+
+    // Fetch runners count
+    const runnersRes = await runnerApi.list();
+    statsData.value.runnerCount = Array.isArray(runnersRes.data) ? runnersRes.data.length : 0;
+
+    // Fetch pending todos (status not completed)
+    const todosRes = await todoApi.list({ status: 'pending' });
+    const todos = Array.isArray(todosRes.data) ? todosRes.data : [];
+    statsData.value.tasksPending = todos.length;
+
+    // Map todos to pendingTodos
+    pendingTodos.value = todos.slice(0, 5).map((todo: any) => {
+      let priority = '中';
+      let priorityClass = 'bg-yellow-100 text-yellow-600';
+      if (todo.priority === 'high' || todo.priority === '高') {
+        priority = '高';
+        priorityClass = 'bg-red-100 text-red-600';
+      } else if (todo.priority === 'low' || todo.priority === '低') {
+        priority = '低';
+        priorityClass = 'bg-green-100 text-green-600';
+      }
+      return {
+        id: todo.id,
+        title: todo.title || todo.content || '待办事项',
+        assignee: todo.initiatorName || todo.initiator?.displayName || '-',
+        priority,
+        priorityClass,
+      };
+    });
+
+    // Fetch recent resources from storage (latest 6)
+    try {
+      const storageRes = await fetch('/api/storage/nodes?limit=20', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
+      if (storageRes.ok) {
+        const storageData = await storageRes.json();
+        const items = storageData.data?.data || storageData.data?.items || storageData.data || [];
+        // Sort by createdAt descending and take latest 6
+        const sortedItems = [...items].sort((a: any, b: any) => {
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        }).slice(0, 6);
+
+        recentResources.value = sortedItems.map((item: any) => {
+          const iconMap: Record<string, { icon: string; iconBg: string; iconColor: string }> = {
+            'application/pdf': { icon: 'file-pdf', iconBg: 'bg-red-50', iconColor: 'text-red-500' },
+            'application/zip': { icon: 'file-zip', iconBg: 'bg-yellow-50', iconColor: 'text-yellow-600' },
+            'image/': { icon: 'image', iconBg: 'bg-purple-50', iconColor: 'text-purple-500' },
+          };
+          const mimeType = item.mimeType || '';
+          let iconInfo = { icon: 'file', iconBg: 'bg-gray-50', iconColor: 'text-gray-500' };
+          for (const [key, val] of Object.entries(iconMap)) {
+            if (mimeType.includes(key)) {
+              iconInfo = val;
+              break;
+            }
+          }
+          return {
+            id: item.id,
+            name: item.name || '未命名文件',
+            time: formatTimeAgo(item.createdAt),
+            ...iconInfo,
+          };
+        });
+      }
+    } catch {
+      // Storage API might not exist or return error, use empty array
+      recentResources.value = [];
+    }
+  } catch (err) {
+    console.error('Failed to fetch dashboard data:', err);
+  }
+}
+
+// Fetch System Notifications from ai-notify session
+async function fetchSystemNotifications() {
+  try {
+    // First ensure the ai-notify session exists
+    const sessionsRes = await imApi.getSessions({ limit: 100 });
+    const sessions = sessionsRes.data?.items || [];
+    const aiNotifySession = sessions.find((s: any) => s.sessionId === 'ai-notify' || s.name === '系统通知');
+
+    if (!aiNotifySession) {
+      systemNotifications.value = [];
+      return;
+    }
+
+    // Get messages from the ai-notify session
+    const messagesRes = await imApi.getMessages(aiNotifySession.sessionId, { limit: 20 });
+    const messages: ImMessageInfo[] = messagesRes.data?.items || [];
+
+    // Filter system messages and map to notifications
+    systemNotifications.value = messages
+      .filter((msg) => msg.messageType === 'system')
+      .slice(0, 10)
+      .map((msg) => ({
+        id: msg.id,
+        pluginNameKey: 'dashboard.systemNotification',
+        titleKey: 'dashboard.systemMessage',
+        contentKey: msg.content,
+        icon: 'bell',
+        iconBg: 'bg-blue-50',
+        iconColor: 'text-blue-500',
+        createdAt: msg.createdAt,
+      }));
+  } catch (err) {
+    console.error('Failed to fetch system notifications:', err);
+    systemNotifications.value = [];
+  }
+}
+
+// Format time ago
+function formatTimeAgo(isoDate: string | undefined): string {
+  if (!isoDate) return '-';
+  const date = new Date(isoDate);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return '刚刚';
+  if (diffMins < 60) return `${diffMins} 分钟前`;
+  if (diffHours < 24) return `${diffHours} 小时前`;
+  if (diffDays < 7) return `${diffDays} 天前`;
+  return date.toLocaleDateString('zh-CN');
+}
+
+// Notifications - Show More/Less Logic
+const showAllNotifications = ref(false);
+const MAX_VISIBLE_NOTIFICATIONS = 6;
+
+const displayedNotifications = computed(() => {
+  if (showAllNotifications.value) {
+    return systemNotifications.value;
+  }
+  return systemNotifications.value.slice(0, MAX_VISIBLE_NOTIFICATIONS);
 });
 
-const resourceItems = computed(() =>
-  quickItems.value.filter((i) => i.type === 'resource' || !i.type),
-);
-const todoItems = computed(() =>
-  quickItems.value.filter((i) => i.type === 'todo'),
-);
+const hasMoreNotifications = computed(() => {
+  return systemNotifications.value.length > MAX_VISIBLE_NOTIFICATIONS;
+});
 
-const pluginNotifications = [
-  {
-    id: 'email-1',
-    pluginNameKey: 'dashboard.emailPlugin',
-    titleKey: 'dashboard.newEmail',
-    contentKey: 'dashboard.emailContent',
-    icon: 'envelope',
-    iconBg: 'bg-blue-50',
-    iconColor: 'text-blue-500',
-  },
-  {
-    id: 'taxi-1',
-    pluginNameKey: 'dashboard.taxiPlugin',
-    titleKey: 'dashboard.taxiArriving',
-    contentKey: 'dashboard.taxiContent',
-    icon: 'taxi',
-    iconBg: 'bg-yellow-50',
-    iconColor: 'text-yellow-600',
-  },
-];
+onMounted(async () => {
+  await Promise.all([fetchDashboardData(), fetchSystemNotifications()]);
+});
 
 // Context Menu Logic
 const showContextMenu = ref(false);

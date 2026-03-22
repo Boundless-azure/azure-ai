@@ -12,7 +12,7 @@ import {
 } from '../constants/identity.constants';
 
 export type PrincipalType =
-  | 'user_enterprise'
+  | 'user'
   | 'user_consumer'
   | 'official_account'
   | 'agent'
@@ -45,7 +45,7 @@ export interface QueryPrincipalDto {
  * @keywords-cn 用户查询, 企业用户, 消费者
  * @keywords-en query-users-dto, enterprise-user, consumer
  */
-export type UserPrincipalType = 'user_enterprise' | 'user_consumer' | 'system';
+export type UserPrincipalType = 'user' | 'user_consumer' | 'system';
 
 export interface QueryUsersDto {
   q?: string;
@@ -176,7 +176,7 @@ export type PermissionDefinitionType = 'management' | 'data' | 'menu';
  * @keywords-en principal-type-schema, zod
  */
 export const PrincipalTypeSchema = z.union([
-  z.literal(PrincipalTypes.UserEnterprise),
+  z.literal(PrincipalTypes.User),
   z.literal(PrincipalTypes.UserConsumer),
   z.literal(PrincipalTypes.OfficialAccount),
   z.literal(PrincipalTypes.Agent),
@@ -206,7 +206,7 @@ export const QueryUsersSchema = z.object({
   tenantId: z.string().optional(),
   type: z
     .union([
-      z.literal('user_enterprise'),
+      z.literal('user'),
       z.literal('user_consumer'),
       z.literal('system'),
     ])
@@ -231,7 +231,7 @@ export const CreatePrincipalSchema = z.object({
 export const CreateUserSchema = z.object({
   displayName: z.string().min(1),
   principalType: z.union([
-    z.literal('user_enterprise'),
+    z.literal('user'),
     z.literal('user_consumer'),
     z.literal('system'),
   ]),

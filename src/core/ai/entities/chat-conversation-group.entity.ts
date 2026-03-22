@@ -55,7 +55,7 @@ export class ChatConversationGroupEntity extends BaseAuditedEntity {
     id: string;
     name?: string;
     principalType?:
-      | 'user_enterprise'
+      | 'user'
       | 'user_consumer'
       | 'official_account'
       | 'agent'

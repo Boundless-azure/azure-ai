@@ -5,7 +5,7 @@
   >
     <!-- Chat Item (Always First) -->
     <div
-      class="rounded-xl flex items-center cursor-pointer transition-all duration-300 relative group mb-6 border border-transparent overflow-hidden"
+      class="rounded-xl flex items-center cursor-pointer transition-all duration-300 relative group mb-6 border border-transparent"
       :class="[
         activeView === 'chat'
           ? 'bg-white text-gray-900 shadow-lg shadow-white/10 scale-[1.02]'
@@ -34,14 +34,6 @@
         {{ t('sidebar.chat') }}
       </span>
 
-      <!-- Tooltip (Collapsed Only) -->
-      <div
-        v-if="!isExpanded"
-        class="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border border-gray-700"
-      >
-        {{ t('sidebar.chat') }}
-      </div>
-
       <span
         v-if="hasUnread && !isExpanded"
         class="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full"
@@ -68,7 +60,7 @@
       <div
         v-for="item in menuItems"
         :key="item.id"
-        class="group relative flex items-center cursor-pointer transition-all duration-300 border border-transparent flex-shrink-0 overflow-hidden"
+        class="group relative flex items-center cursor-pointer transition-all duration-300 border border-transparent flex-shrink-0"
         :class="[
           activeView === item.id
             ? 'bg-white text-gray-900 shadow-md scale-[1.02]'
@@ -95,13 +87,6 @@
           {{ t(`sidebar.${item.id}`) }}
         </span>
 
-        <!-- Tooltip (Collapsed Only) -->
-        <div
-          v-if="!isExpanded"
-          class="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 border border-gray-700"
-        >
-          {{ t(`sidebar.${item.id}`) }}
-        </div>
       </div>
     </div>
 
@@ -112,7 +97,7 @@
     >
       <!-- Language Switcher -->
       <div
-        class="group relative flex items-center cursor-pointer transition-all duration-300 overflow-hidden"
+        class="group relative flex items-center cursor-pointer transition-all duration-300"
         :class="[
           isExpanded
             ? 'h-12 pl-4 pr-4 rounded-lg w-full justify-start text-gray-400 hover:text-white hover:bg-gray-800'
@@ -139,7 +124,7 @@
 
       <!-- Settings -->
       <div
-        class="group relative flex items-center cursor-pointer transition-all duration-300 overflow-hidden"
+        class="group relative flex items-center cursor-pointer transition-all duration-300"
         :class="[
           isExpanded
             ? 'h-12 pl-4 pr-4 rounded-lg w-full justify-start text-gray-400 hover:text-white hover:bg-gray-800'
@@ -280,9 +265,9 @@ const menuItems = [
   { id: 'roles', icon: 'user-tag' },
   { id: 'perms', icon: 'shield-halved' },
   { id: 'aiProviders', icon: 'server' },
-  { id: 'resources', icon: 'folder-open' },
+  { id: 'storage', icon: 'folder-open' },
   { id: 'database', icon: 'database' },
-  { id: 'plugins', icon: 'plug' },
+  { id: 'solutions', icon: 'box-open' },
   { id: 'agents', icon: 'robot' },
   { id: 'runners', icon: 'play' },
   { id: 'todos', icon: 'list-check' },

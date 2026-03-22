@@ -18,6 +18,7 @@ import { RunnerDbMigrationService } from './modules/runner-db/services/runner-db
 import { RunnerDbService } from './modules/runner-db/services/runner-db.service';
 import { UnitCoreService } from './unit-core/services/unit-core.service';
 import { registerWebMcpRoutes } from './modules/webmcp/routes/webmcp.routes';
+import { registerSolutionRoutes } from './modules/solution/routes/solution.routes';
 
 /**
  * @title 创建 Runner 应用
@@ -58,8 +59,11 @@ export async function createRunnerApp() {
   await registerHookBusRoutes(app, hookBus);
   await registerDataAuthRoutes(app);
   await registerWebMcpRoutes(app, webmcpService);
+  await registerSolutionRoutes(app, mongoClient, redisClient);
 
-  app.get('/health', async () => ({ ok: true }));
+  app.get('/health', () => ({ ok: true }));
+
+  // Socket.IO 配置与连接处理
 
   const io = new Server(app.server, {
     cors: { origin: '*' },
@@ -80,7 +84,10 @@ export async function createRunnerApp() {
   await unitCore.init();
   unitCore.registerToHookBus(hookBus);
   if (cfg.mongoUri) {
-    const db = await mongoClient.connect(cfg.mongoUri, cfg.runnerDbName || 'runner');
+    const db = await mongoClient.connect(
+      cfg.mongoUri,
+      cfg.runnerDbName || 'runner',
+    );
     const migration = new RunnerDbMigrationService();
     await migration.run(db);
     const runnerDb = new RunnerDbService(db);

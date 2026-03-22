@@ -108,7 +108,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
-              <tr v-for="item in items" :key="item.id" class="hover:bg-gray-50">
+              <tr v-for="item in paginatedItems" :key="item.id" class="hover:bg-gray-50">
                 <td class="px-6 py-3 font-mono text-xs text-gray-700">
                   {{ item.name }}
                 </td>
@@ -162,7 +162,7 @@
                   </div>
                 </td>
               </tr>
-              <tr v-if="items.length === 0">
+              <tr v-if="paginatedItems.length === 0">
                 <td colspan="9" class="px-6 py-10 text-center text-gray-400">
                   暂无模型配置
                 </td>
@@ -171,9 +171,31 @@
           </table>
         </div>
 
+        <!-- Pagination (Desktop) -->
+        <div class="hidden md:flex px-6 py-4 border-t border-gray-100 items-center justify-between" v-if="items.length > 0">
+          <span class="text-sm text-gray-500">共 {{ items.length }} 条配置</span>
+          <div class="flex items-center gap-2">
+            <button 
+              class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="page <= 1"
+              @click="page--"
+            >
+              上一页
+            </button>
+            <span class="text-sm text-gray-700 font-medium px-2">{{ page }} / {{ Math.ceil(items.length / limit) || 1 }}</span>
+            <button 
+              class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="page * limit >= items.length"
+              @click="page++"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+
         <!-- Mobile Cards -->
         <div class="md:hidden p-4 space-y-4">
-          <div v-for="item in items" :key="item.id" class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+          <div v-for="item in paginatedItems" :key="item.id" class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
             <div class="flex justify-between items-start mb-3">
               <div>
                 <div class="font-medium text-gray-900">{{ item.displayName || item.name }}</div>
@@ -222,8 +244,30 @@
               </button>
             </div>
           </div>
-          <div v-if="items.length === 0" class="text-center text-gray-400 py-8">
+          <div v-if="paginatedItems.length === 0" class="text-center text-gray-400 py-8">
             暂无模型配置
+          </div>
+
+          <!-- Mobile Pagination Info -->
+          <div class="flex justify-between items-center pt-2 px-2" v-if="items.length > 0">
+            <span class="text-xs text-gray-500">共 {{ items.length }} 条</span>
+            <div class="flex gap-2">
+              <button 
+                class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white disabled:opacity-50"
+                :disabled="page <= 1"
+                @click="page--"
+              >
+                上一页
+              </button>
+              <span class="text-xs flex items-center bg-white px-2 rounded-lg border border-gray-200">{{ page }} / {{ Math.ceil(items.length / limit) || 1 }}</span>
+              <button 
+                class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white disabled:opacity-50"
+                :disabled="page * limit >= items.length"
+                @click="page++"
+              >
+                下一页
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -438,6 +482,14 @@ const form = reactive({
 const testingConnection = ref(false);
 const testResult = ref<{ ok: boolean; message: string } | null>(null);
 
+const page = ref(1);
+const limit = ref(10);
+
+const paginatedItems = computed(() => {
+  const start = (page.value - 1) * limit.value;
+  return items.value?.slice(start, start + limit.value) || [];
+});
+
 const providerOptions = AI_PROVIDER_OPTIONS;
 const protocolOptions = AI_PROTOCOL_OPTIONS;
 const typeOptions = AI_MODEL_TYPE_OPTIONS;
@@ -487,6 +539,7 @@ function statusClass(value: string) {
 }
 
 async function fetchData() {
+  page.value = 1;
   await list({
     q: query.q || undefined,
     provider: query.provider || undefined,

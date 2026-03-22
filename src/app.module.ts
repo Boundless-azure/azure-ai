@@ -17,6 +17,9 @@ import { AiModelsModule } from './app/ai-models/ai-models.module';
 import { IdentityModule } from '@/app/identity/identity.module';
 import { ResourceModule } from '@/app/resource/resource.module';
 import { RunnerModule } from '@/app/runner/runner.module';
+import { StorageModule } from '@/app/storage/storage.module';
+import { MongoExplorerModule } from '@/app/mongo-explorer/mongo-explorer.module';
+import { SolutionModule } from '@/app/solution/solution.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from '@/core/auth/guards/jwt-auth.guard';
 import { AbilityGuard } from '@/app/identity/guards/ability.guard';
@@ -92,6 +95,9 @@ import type { DatabaseConfig } from './config/types';
     MongoModule.forRoot({}),
     PluginModule,
     RunnerModule,
+    StorageModule,
+    MongoExplorerModule,
+    SolutionModule,
     AuthModule,
     IdentityModule,
     ResourceModule,

@@ -5,7 +5,7 @@
  * @keywords-en principal-type, membership-role
  */
 export enum PrincipalType {
-  UserEnterprise = 'user_enterprise',
+  User = 'user',
   UserConsumer = 'user_consumer',
   OfficialAccount = 'official_account',
   Agent = 'agent',

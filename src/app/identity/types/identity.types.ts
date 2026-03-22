@@ -8,24 +8,19 @@ import { PermissionDefinitionType } from '../enums/permission.enums';
 
 export interface QueryPrincipalDto {
   q?: string;
-  type?:
-    | 'user_enterprise'
-    | 'user_consumer'
-    | 'official_account'
-    | 'agent'
-    | 'system';
+  type?: 'user' | 'user_consumer' | 'official_account' | 'agent' | 'system';
   tenantId?: string;
 }
 
 export interface QueryUsersDto {
   q?: string;
   tenantId?: string;
-  type?: 'user_enterprise' | 'user_consumer' | 'system';
+  type?: 'user' | 'user_consumer' | 'system';
 }
 
 export interface CreateUserDto {
   displayName: string;
-  principalType: 'user_enterprise' | 'user_consumer' | 'system';
+  principalType: 'user' | 'user_consumer' | 'system';
   email: string;
   password?: string;
   phone?: string | null;
@@ -43,7 +38,7 @@ export interface UpdateUserDto {
 export interface CreatePrincipalDto {
   displayName: string;
   principalType:
-    | 'user_enterprise'
+    | 'user'
     | 'user_consumer'
     | 'official_account'
     | 'agent'

@@ -57,7 +57,7 @@ export class RunnerService {
     const keyHash = this.hashKey(key);
     const principal = await this.principalService.create({
       displayName: dto.principalDisplayName ?? dto.alias,
-      principalType: 'agent',
+      principalType: 'system',
       avatarUrl: null,
       email: null,
       phone: null,

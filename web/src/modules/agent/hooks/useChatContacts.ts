@@ -23,7 +23,12 @@ export function useChatContacts() {
     try {
       const principals = await listPrincipals();
       const nowIso = new Date().toISOString();
-      const mapped = (principals || []).map((p) => {
+      // Filter: only show principal_type of official, user, agent
+      const allowedTypes = ['official', 'user', 'agent'];
+      const filtered = (principals || []).filter(
+        (p) => allowedTypes.includes(p.principalType),
+      );
+      const mapped = filtered.map((p) => {
         const isAgent = p.principalType === 'agent';
         const item: SessionListItem = {
           id: `contact:${p.id}`,

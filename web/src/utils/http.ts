@@ -44,12 +44,6 @@ export class HttpClient {
     const fullUrl = url.startsWith('http') ? url : `${this.baseUrl}${url}`;
 
     try {
-      if (url.includes('/im/sessions')) {
-        console.log('[HTTP] /im/sessions request:', {
-          url: fullUrl,
-          method: finalConfig.method || 'GET',
-        });
-      }
       let response = await fetch(fullUrl, finalConfig);
 
       // Apply response interceptors
@@ -67,15 +61,6 @@ export class HttpClient {
         typeof json === 'object' &&
         'data' in json &&
         'code' in json;
-
-      if (url.includes('/im/sessions')) {
-        console.log('[HTTP] /im/sessions response:', {
-          url: fullUrl,
-          hasAuth: !!finalConfig.headers?.['Authorization'],
-          isWrapped,
-          json,
-        });
-      }
 
       if (isWrapped) {
         return json as BaseResponse<T>;
@@ -152,8 +137,16 @@ export class HttpClient {
     });
   }
 
-  public delete<T>(url: string, config?: RequestInit) {
-    return this.request<T>(url, { ...config, method: 'DELETE' });
+  public delete<T>(url: string, data?: any, config?: RequestInit) {
+    return this.request<T>(url, {
+      ...config,
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...config?.headers,
+      },
+      body: data ? JSON.stringify(data) : undefined,
+    });
   }
 }
 

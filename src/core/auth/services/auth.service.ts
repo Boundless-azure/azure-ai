@@ -143,7 +143,13 @@ export class AuthService {
     user.lockedUntil = null;
     await this.userRepo.save(user);
 
-    const payload = { id: principal.id, type: principal.principalType };
+    const payload: { id: string; type: string; tenantId?: string } = {
+      id: principal.id,
+      type: principal.principalType,
+    };
+    if (principal.tenantId) {
+      payload.tenantId = principal.tenantId;
+    }
     const jwtSvc: { sign: (p: typeof payload) => string } = this.jwt;
     const token = jwtSvc.sign(payload);
 

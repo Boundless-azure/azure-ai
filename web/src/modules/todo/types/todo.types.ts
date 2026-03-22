@@ -11,30 +11,69 @@ export interface TodoItem {
   id: string;
   initiatorId: string;
   title: string;
-  pluginId: string | null;
   description: string | null;
-  action: Record<string, unknown> | null;
-  recipientId: string;
+  content: string | null;
+  followerIds: string[] | null;
+  statusColor: string | null;
   status: TodoStatus;
-  receipt: Record<string, unknown> | null;
   createdAt?: string | Date;
+  updatedAt?: string | Date;
+}
+
+export interface TodoFollowup {
+  id: string;
+  todoId: string;
+  followerId: string;
+  followerName: string | null;
+  followerAvatar: string | null;
+  status: string;
+  content: string | null;
+  createdAt: string | Date;
+  comments: TodoFollowupComment[];
+}
+
+export interface TodoFollowupComment {
+  id: string;
+  followupId: string;
+  userId: string;
+  userName: string | null;
+  userAvatar: string | null;
+  content: string;
+  createdAt: string | Date;
 }
 
 export interface CreateTodoRequest {
   initiatorId: string;
   title: string;
-  pluginId?: string;
   description?: string;
-  action?: Record<string, unknown>;
-  recipientId: string;
+  content?: string;
+  followerIds?: string[];
+  statusColor?: string;
   status?: TodoStatus;
 }
 
 export interface UpdateTodoRequest {
-  status?: TodoStatus;
+  title?: string;
   description?: string;
-  action?: Record<string, unknown>;
-  receipt?: Record<string, unknown>;
+  content?: string;
+  followerIds?: string[];
+  statusColor?: string;
+  status?: TodoStatus;
+}
+
+export interface CreateFollowupRequest {
+  followerId: string;
+  followerName: string;
+  followerAvatar?: string;
+  status: string;
+  content?: string;
+}
+
+export interface CreateCommentRequest {
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  content: string;
 }
 
 /**
@@ -46,22 +85,40 @@ export interface UpdateTodoRequest {
 export const CreateTodoRequestSchema = z.object({
   initiatorId: z.string().min(1),
   title: z.string().min(1),
-  pluginId: z.string().optional(),
   description: z.string().optional(),
-  action: z.record(z.any()).optional(),
-  recipientId: z.string().min(1),
+  content: z.string().optional(),
+  followerIds: z.array(z.string()).optional(),
+  statusColor: z.string().optional(),
   status: z.string().optional(),
 });
 
 export const UpdateTodoRequestSchema = z.object({
-  status: z.string().optional(),
+  title: z.string().optional(),
   description: z.string().optional(),
-  action: z.record(z.any()).optional(),
-  receipt: z.record(z.any()).optional(),
+  content: z.string().optional(),
+  followerIds: z.array(z.string()).optional(),
+  statusColor: z.string().optional(),
+  status: z.string().optional(),
+});
+
+export const CreateFollowupRequestSchema = z.object({
+  followerId: z.string().min(1),
+  followerName: z.string().min(1),
+  followerAvatar: z.string().optional(),
+  status: z.string().min(1),
+  content: z.string().optional(),
+});
+
+export const CreateCommentRequestSchema = z.object({
+  userId: z.string().min(1),
+  userName: z.string().min(1),
+  userAvatar: z.string().optional(),
+  content: z.string().min(1),
 });
 
 export const ListTodoQuerySchema = z.object({
   status: z.string().optional(),
-  recipientId: z.string().optional(),
-  pluginId: z.string().optional(),
+  followerId: z.string().optional(),
+  initiatorId: z.string().optional(),
+  q: z.string().optional(),
 });

@@ -54,6 +54,21 @@ export const tabRegistry: Record<string, TabRegistryEntry> = {
     file: 'src/modules/runner/components/RunnerManagement.vue',
     loader: () => import('../../runner/components/RunnerManagement.vue'),
   },
+  storage: {
+    name: '资源库',
+    file: 'src/modules/storage/components/StorageManagement.vue',
+    loader: () => import('../../storage/components/StorageManagement.vue'),
+  },
+  database: {
+    name: '数据库',
+    file: 'src/modules/mongo-explorer/components/MongoExplorer.vue',
+    loader: () => import('../../mongo-explorer/components/MongoExplorer.vue'),
+  },
+  solutions: {
+    name: '解决方案',
+    file: 'src/modules/solution/components/SolutionManagement.vue',
+    loader: () => import('../../solution/components/SolutionManagement.vue'),
+  },
   'chat-detail': {
     name: '聊天信息',
     file: 'src/modules/agent/components/ChatDetail.vue',

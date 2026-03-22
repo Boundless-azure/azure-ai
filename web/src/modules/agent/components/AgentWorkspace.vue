@@ -30,30 +30,22 @@
 
       <!-- Left Sidebar (Responsive Wrapper) -->
       <div
-        class="h-full flex-shrink-0 transition-transform duration-300 z-50 absolute md:relative"
-        :class="[
-          isMobileSidebarOpen
-            ? 'translate-x-0'
-            : '-translate-x-full md:translate-x-0',
-          isMobileSidebarOpen
-            ? 'w-[280px] bg-gray-900 shadow-2xl'
-            : ['chat', 'more'].includes(activeView)
-              ? 'w-auto'
-              : 'w-full',
-        ]"
+        class="h-full flex-shrink-0 transition-all duration-300 z-50"
+        :class="sidebarWrapperCls"
+        @mouseenter="isSidebarHovered = true"
+        @mouseleave="isSidebarHovered = false"
       >
         <Sidebar
           :activeView="activeView"
-          :isExpanded="
-            isMobileSidebarOpen || !['chat', 'more'].includes(activeView)
-          "
+          :isExpanded="isSidebarExpanded"
           @change="handleSidebarChange"
         />
       </div>
 
       <!-- Panel Container (Chat or More) -->
       <div
-        class="flex-1 h-full min-w-0 flex flex-col bg-gray-900 overflow-hidden relative"
+        class="flex-1 h-full min-w-0 flex flex-col bg-gray-900 overflow-hidden relative transition-all duration-300"
+        :class="isSidebarExpanded && !isSidebarPinned ? 'opacity-0 pointer-events-none w-0' : ''"
       >
         <Transition name="fade" mode="out-in">
           <KeepAlive>
@@ -125,6 +117,47 @@ const activeView = ref('chat');
 const showLeftPanel = ref(true);
 // Mobile Sidebar state (toggle visibility of the Sidebar icons strip)
 const isMobileSidebarOpen = ref(false);
+
+/**
+ * @description 侧边栏 hover 状态，鼠标移入时临时展开
+ * @keyword-en sidebar-hover
+ */
+const isSidebarHovered = ref(false);
+
+/**
+ * @description 侧边栏是否常驻（非 chat/more 视图或移动端抽屉打开）
+ * @keyword-en sidebar-pinned
+ */
+const isSidebarPinned = computed(
+  () => isMobileSidebarOpen.value || !['chat', 'more'].includes(activeView.value),
+);
+
+/**
+ * @description 侧边栏是否展开（常驻或 hover）
+ * @keyword-en sidebar-expanded
+ */
+const isSidebarExpanded = computed(() => isSidebarPinned.value || isSidebarHovered.value);
+
+/**
+ * @description 侧边栏包裹层动态 class：hover 时以 absolute 叠加方式展开，pin 时占位展开
+ * @keyword-en sidebar-wrapper-class
+ */
+const sidebarWrapperCls = computed(() => {
+  // 移动端抽屉打开：drawer
+  if (isMobileSidebarOpen.value) {
+    return 'absolute translate-x-0 w-[280px] bg-gray-900 shadow-2xl';
+  }
+  // 桌面端 hover（非常驻）：absolute 叠加显示，不推开内容
+  if (!isSidebarPinned.value && isSidebarHovered.value) {
+    return 'w-0 md:w-full overflow-hidden md:overflow-visible -translate-x-full md:translate-x-0 absolute md:relative';
+  }
+  // 桌面端常驻（非 chat/more ）：relative 占位
+  if (isSidebarPinned.value) {
+    return 'w-0 md:w-full overflow-hidden md:overflow-visible -translate-x-full md:translate-x-0 absolute md:relative';
+  }
+  // 默认折叠：relative，icon 条宽度
+  return 'w-0 md:w-auto overflow-hidden md:overflow-visible -translate-x-full md:translate-x-0 absolute md:relative';
+});
 
 const handleSidebarChange = (view: string) => {
   activeView.value = view;

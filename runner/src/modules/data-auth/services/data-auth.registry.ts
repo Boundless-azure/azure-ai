@@ -12,7 +12,10 @@ import type {
 export class DataAuthRegistry {
   private tableDtoMap = new Map<string, DataAuthDtoSpec[]>();
   private dtoNodeMap = new Map<string, string[]>();
-  private nodeHandlerMap = new Map<string, DataAuthNodeHandler<Record<string, unknown>>>();
+  private nodeHandlerMap = new Map<
+    string,
+    DataAuthNodeHandler<Record<string, unknown>>
+  >();
 
   registerTableDtos(table: string, dtos: DataAuthDtoSpec[]): void {
     this.tableDtoMap.set(table, dtos);
@@ -33,7 +36,9 @@ export class DataAuthRegistry {
     return this.dtoNodeMap.get(dtoName) ?? [];
   }
 
-  getNodeHandler(nodeKey: string): DataAuthNodeHandler<Record<string, unknown>> | undefined {
+  getNodeHandler(
+    nodeKey: string,
+  ): DataAuthNodeHandler<Record<string, unknown>> | undefined {
     return this.nodeHandlerMap.get(nodeKey);
   }
 

@@ -52,6 +52,7 @@ export interface LoginResponse {
 export interface JwtPayload {
   id: string;
   type: string;
+  tenantId?: string;
 }
 
 /**

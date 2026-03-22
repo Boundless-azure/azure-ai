@@ -265,7 +265,7 @@ export interface IdentityPrincipalItem {
   id: string;
   displayName: string;
   principalType:
-    | 'user_enterprise'
+    | 'user'
     | 'user_consumer'
     | 'official_account'
     | 'agent'

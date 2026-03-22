@@ -80,7 +80,7 @@
             </thead>
             <tbody class="divide-y divide-gray-100">
               <tr
-                v-for="item in items"
+                v-for="item in paginatedItems"
                 :key="item.id"
                 class="hover:bg-gray-50"
               >
@@ -139,7 +139,7 @@
                   </div>
                 </td>
               </tr>
-              <tr v-if="items.length === 0">
+              <tr v-if="paginatedItems.length === 0">
                 <td colspan="8" class="px-6 py-10 text-center text-gray-400">
                   暂无 Runner
                 </td>
@@ -148,9 +148,31 @@
           </table>
         </div>
 
+        <!-- Pagination (Desktop) -->
+        <div class="hidden md:flex px-6 py-4 border-t border-gray-100 items-center justify-between" v-if="items.length > 0">
+          <span class="text-sm text-gray-500">共 {{ items.length }} 条记录</span>
+          <div class="flex items-center gap-2">
+            <button 
+              class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="page <= 1"
+              @click="page--"
+            >
+              上一页
+            </button>
+            <span class="text-sm text-gray-700 font-medium px-2">{{ page }} / {{ Math.ceil(items.length / limit) || 1 }}</span>
+            <button 
+              class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="page * limit >= items.length"
+              @click="page++"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
+
         <div class="md:hidden p-4 space-y-4">
           <div
-            v-for="item in items"
+            v-for="item in paginatedItems"
             :key="item.id"
             class="bg-white p-4 rounded-xl border border-gray-100 shadow-sm"
           >
@@ -197,8 +219,30 @@
               </button>
             </div>
           </div>
-          <div v-if="items.length === 0" class="text-center text-gray-400 py-8">
+          <div v-if="paginatedItems.length === 0" class="text-center text-gray-400 py-8">
             暂无 Runner
+          </div>
+
+          <!-- Mobile Pagination Info -->
+          <div class="flex justify-between items-center pt-2 px-2" v-if="items.length > 0">
+            <span class="text-xs text-gray-500">共 {{ items.length }} 条</span>
+            <div class="flex gap-2">
+              <button 
+                class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white disabled:opacity-50"
+                :disabled="page <= 1"
+                @click="page--"
+              >
+                上一页
+              </button>
+              <span class="text-xs flex items-center bg-white px-2 rounded-lg border border-gray-200">{{ page }} / {{ Math.ceil(items.length / limit) || 1 }}</span>
+              <button 
+                class="px-3 py-1.5 rounded-lg border border-gray-200 text-xs bg-white disabled:opacity-50"
+                :disabled="page * limit >= items.length"
+                @click="page++"
+              >
+                下一页
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -357,6 +401,14 @@ const keyDialogAlias = ref('');
 const keyVisible = ref(false);
 const copyNotice = ref('');
 
+const page = ref(1);
+const limit = ref(10);
+
+const paginatedItems = computed(() => {
+  const start = (page.value - 1) * limit.value;
+  return items.value?.slice(start, start + limit.value) || [];
+});
+
 const form = reactive<{
   alias: string;
   description: string;
@@ -382,6 +434,7 @@ const statusClass = (statusValue: RunnerItem['status']) => {
 };
 
 const reload = async () => {
+  page.value = 1;
   await list({ q: keyword.value || undefined, status: status.value || undefined });
 };
 

@@ -92,7 +92,7 @@ export class PrincipalService {
       const userCol = this.userCollection();
       if (!col || !userCol) return [];
       const allowed = [
-        PrincipalType.UserEnterprise,
+        PrincipalType.User,
         PrincipalType.UserConsumer,
         PrincipalType.System,
       ];
@@ -179,7 +179,7 @@ export class PrincipalService {
     const salt = password ? this.generateSalt() : null;
     const hash = password && salt ? this.hashPassword(password, salt) : null;
     const allowedTypes: CreateUserDto['principalType'][] = [
-      PrincipalType.UserEnterprise,
+      PrincipalType.User,
       PrincipalType.UserConsumer,
       PrincipalType.System,
     ];
@@ -407,7 +407,7 @@ export class PrincipalService {
   async create(dto: CreatePrincipalDto): Promise<PrincipalEntity> {
     const typeMap: Record<CreatePrincipalDto['principalType'], PrincipalType> =
       {
-        user_enterprise: PrincipalType.UserEnterprise,
+        user: PrincipalType.User,
         user_consumer: PrincipalType.UserConsumer,
         official_account: PrincipalType.OfficialAccount,
         agent: PrincipalType.Agent,
@@ -524,7 +524,7 @@ export class PrincipalService {
    */
   private toDbPrincipalType(tp: string): string {
     const map: Record<string, string> = {
-      user_enterprise: 'enterprise',
+      user: 'user',
       user_consumer: 'consumer',
       official_account: 'official',
       agent: 'agent',
@@ -538,16 +538,12 @@ export class PrincipalService {
    */
   private fromDbPrincipalType(tp: string): PrincipalType {
     const map: Record<string, PrincipalType> = {
-      enterprise: PrincipalType.UserEnterprise,
+      user: PrincipalType.User,
       consumer: PrincipalType.UserConsumer,
       official: PrincipalType.OfficialAccount,
       agent: PrincipalType.Agent,
       system: PrincipalType.System,
-      user: PrincipalType.UserConsumer,
-      [PrincipalType.UserEnterprise]: PrincipalType.UserEnterprise,
-      [PrincipalType.UserConsumer]: PrincipalType.UserConsumer,
-      [PrincipalType.OfficialAccount]: PrincipalType.OfficialAccount,
     };
-    return map[tp] ?? PrincipalType.UserConsumer;
+    return map[tp] ?? PrincipalType.User;
   }
 }

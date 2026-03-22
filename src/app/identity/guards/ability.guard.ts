@@ -32,7 +32,9 @@ export class AbilityGuard implements CanActivate {
       CHECK_ABILITY_KEY,
       context.getHandler(),
     );
-    if (!required) return true;
+    if (!required) {
+      return true;
+    }
 
     const req = context
       .switchToHttp()

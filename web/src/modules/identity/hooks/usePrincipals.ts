@@ -47,7 +47,7 @@ export function usePrincipals() {
   async function listUsers(params?: {
     q?: string;
     tenantId?: string;
-    type?: 'user_enterprise' | 'user_consumer' | 'system';
+    type?: 'user' | 'user_consumer' | 'system';
   }) {
     loading.value = true;
     error.value = null;
