@@ -1,10 +1,10 @@
 <template>
-  <!-- 添加跟进记录弹窗 -->
+  <!-- 编辑跟进记录弹窗 -->
   <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" @click.self="emit('close')">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
       <!-- 头部 -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-        <h3 class="text-lg font-bold text-gray-900">{{ t('todo.followup.add') }}</h3>
+        <h3 class="text-lg font-bold text-gray-900">{{ t('todo.followup.edit') }}</h3>
         <button
           @click="emit('close')"
           class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
@@ -19,7 +19,6 @@
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
             {{ t('todo.followers') }} <span class="text-red-500">*</span>
-            <span v-if="!isAdmin" class="text-xs text-gray-400 font-normal">({{ t('todo.followup.restrictedFollower') }})</span>
           </label>
           <select
             v-model="form.followerId"
@@ -86,110 +85,61 @@
 
 <script setup lang="ts">
 /**
- * @title AddFollowupModal Component
- * @description 添加跟进记录弹窗
- * @keywords-cn 添加跟进, 弹窗
- * @keywords-en add-followup, modal
+ * @title EditFollowupModal Component
+ * @description 编辑跟进记录弹窗
+ * @keywords-cn 编辑跟进, 弹窗
+ * @keywords-en edit-followup, modal
  */
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive } from 'vue';
 import { useI18n } from '../../agent/composables/useI18n';
 import { useTodos } from '../hooks/useTodos';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';
-import { useMemberships } from '../../identity/hooks/useMemberships';
+import type { TodoFollowup } from '../types/todo.types';
 
 const { t } = useI18n();
 const props = defineProps<{
-  todoId: string;
-  followerIds: string[];
+  followup: TodoFollowup;
 }>();
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'added'): void;
+  (e: 'updated'): void;
 }>();
 
-const { createFollowup } = useTodos();
+const { updateFollowup } = useTodos();
 const { list: listPrincipals } = usePrincipals();
-const { list: listMemberships } = useMemberships();
 const submitting = ref(false);
-const isAdmin = ref(false);
 
 // 跟进人选项 - 从API获取
 interface FollowerOption {
   id: string;
   label: string;
   icon: string;
-  avatarUrl?: string;
 }
 
 const followerOptions = ref<FollowerOption[]>([]);
-const principalMap = ref<Record<string, any>>({});
 
 async function loadFollowerOptions() {
   try {
     const principals = await listPrincipals();
-    const pMap: Record<string, any> = {};
-    (principals || []).forEach((p: any) => {
-      pMap[p.id] = p;
-    });
-    principalMap.value = pMap;
-
-    const allOptions = (principals || [])
+    followerOptions.value = (principals || [])
       .filter((p: any) => ['user', 'agent'].includes(p.principalType))
       .map((p: any) => ({
         id: p.id,
         label: p.displayName || p.name || p.id,
         icon: p.principalType === 'agent' ? 'fa-solid fa-robot' : 'fa-solid fa-user',
-        avatarUrl: p.avatarUrl,
       }));
-
-    // 非管理员只能选择todo指定的跟进人
-    if (!isAdmin.value) {
-      followerOptions.value = allOptions.filter(opt => props.followerIds.includes(opt.id));
-    } else {
-      followerOptions.value = allOptions;
-    }
   } catch {
     followerOptions.value = [];
   }
 }
 
-// 获取当前用户
-function getCurrentUserId(): string {
-  try {
-    const principalRaw = localStorage.getItem('principal');
-    if (principalRaw) {
-      const parsed = JSON.parse(principalRaw);
-      return parsed.id || '';
-    }
-  } catch {
-    // ignore
-  }
-  return '';
-}
-
-// 检查当前用户是否是管理员
-async function checkAdmin() {
-  const userId = getCurrentUserId();
-  if (!userId) return;
-
-  try {
-    const memberships = await listMemberships({ principalId: userId });
-    isAdmin.value = memberships.some(m => m.role === 'admin' || m.role === 'owner');
-  } catch {
-    isAdmin.value = false;
-  }
-}
-
-onMounted(async () => {
-  await checkAdmin();
-  await loadFollowerOptions();
-});
+loadFollowerOptions();
 
 const form = reactive({
-  followerId: '',
-  status: 'in_progress',
-  content: '',
+  followerId: props.followup.followerId,
+  status: props.followup.status,
+  content: props.followup.content || '',
 });
 
 const handleSubmit = async () => {
@@ -198,13 +148,13 @@ const handleSubmit = async () => {
   submitting.value = true;
   try {
     const selectedFollower = followerOptions.value.find(f => f.id === form.followerId);
-    await createFollowup(props.todoId, {
+    await updateFollowup(props.followup.id, {
       followerId: form.followerId,
       followerName: selectedFollower?.label || form.followerId,
       status: form.status,
       content: form.content || undefined,
-    });
-    emit('added');
+    }, props.followup.todoId);
+    emit('updated');
   } finally {
     submitting.value = false;
   }

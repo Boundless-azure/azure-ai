@@ -14,6 +14,7 @@ import type {
   CreateFollowupRequest,
   TodoFollowupComment,
   CreateCommentRequest,
+  UpdateFollowupRequest,
 } from '../types/todo.types';
 import { TODO_EVENT_NAMES } from '../constants/todo.constants';
 
@@ -98,6 +99,13 @@ export function useTodos() {
     return res;
   }
 
+  // 更新跟进记录
+  async function updateFollowup(followupId: string, data: UpdateFollowupRequest, todoId: string) {
+    const res = await todoApi.updateFollowup(followupId, data);
+    await listFollowups(todoId);
+    return res;
+  }
+
   // ==================== 评论 ====================
 
   const commentsLoading = ref(false);
@@ -145,6 +153,7 @@ export function useTodos() {
     createFollowup,
     listFollowups,
     removeFollowup,
+    updateFollowup,
     createComment,
     listComments,
     removeComment,

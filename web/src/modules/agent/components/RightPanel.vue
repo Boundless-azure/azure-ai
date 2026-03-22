@@ -11,7 +11,7 @@
         @contextmenu.prevent="handleContextMenu($event, tab.id)"
       >
         <button
-          @click="currentTab = tab.id"
+          @click="handleTabClick(tab.id)"
           class="w-full px-4 py-3 text-sm font-medium transition-all flex items-center justify-between border-r border-gray-200 last:border-r-0"
           :class="
             currentTab === tab.id
@@ -22,7 +22,7 @@
           <span class="truncate mr-2">{{
             tab.id === 'dashboard'
               ? t('tabs.dashboard')
-              : (tabRegistry[tab.id]?.name ?? tab.label)
+              : t(`sidebar.${tab.id}`)
           }}</span>
 
           <!-- Close Icon (Not for Dashboard) -->
@@ -131,28 +131,42 @@
                 >{{ t('dashboard.pendingTodos') }}
               </h3>
               <!-- 有数据 -->
-              <div v-if="pendingTodos.length > 0" class="space-y-2">
+              <div v-if="pendingTodos.length > 0" class="space-y-3">
                 <div
                   v-for="item in pendingTodos"
                   :key="item.id"
-                  class="flex items-center p-3 md:p-4 hover:bg-gray-50 rounded-xl transition-colors border border-transparent hover:border-gray-200 group"
+                  class="flex items-start p-3 md:p-4 hover:bg-gray-50 rounded-xl transition-colors border border-transparent hover:border-gray-200 group cursor-pointer"
+                  @click="openTodoDetail(item)"
                 >
+                  <!-- 状态 dot -->
                   <div
-                    class="w-6 h-6 rounded-full border-2 border-gray-300 mr-4 cursor-pointer hover:border-black flex items-center justify-center transition-colors flex-shrink-0"
-                  >
-                    <div
-                      class="w-3 h-3 bg-black rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    ></div>
-                  </div>
+                    class="w-5 h-5 rounded-full mt-0.5 mr-3 flex-shrink-0 cursor-pointer hover:scale-110 transition-transform"
+                    :style="{ backgroundColor: item.statusColor || '#6B7280' }"
+                  ></div>
                   <div class="flex-1 min-w-0">
+                    <!-- 标题 -->
                     <span class="text-sm text-gray-700 font-medium flex-1 group-hover:text-gray-900 block truncate">{{ item.title }}</span>
-                    <span class="text-xs text-gray-400">{{ item.assignee }}</span>
+                    <!-- 简述 -->
+                    <span v-if="item.description" class="text-xs text-gray-400 mt-1 block truncate">{{ item.description }}</span>
+                    <!-- 跟进人头像 -->
+                    <div v-if="item.followerIds && item.followerIds.length > 0" class="flex items-center -space-x-2 mt-2">
+                      <div
+                        v-for="(followerId, idx) in item.followerIds.slice(0, 3)"
+                        :key="followerId"
+                        class="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-600 overflow-hidden"
+                        :title="getFollowerName(followerId)"
+                      >
+                        <img v-if="getFollowerAvatar(followerId)" :src="getFollowerAvatar(followerId)" class="w-full h-full object-cover" />
+                        <span v-else>{{ getFollowerInitials(followerId) }}</span>
+                      </div>
+                      <span
+                        v-if="item.followerIds.length > 3"
+                        class="w-6 h-6 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-500"
+                      >
+                        +{{ item.followerIds.length - 3 }}
+                      </span>
+                    </div>
                   </div>
-                  <span
-                    class="text-xs font-bold px-3 py-1 rounded-full flex-shrink-0"
-                    :class="item.priorityClass"
-                    >{{ item.priority }}</span
-                  >
                 </div>
               </div>
               <!-- 空状态 -->
@@ -299,6 +313,80 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Todo Detail Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showTodoModal && selectedTodoDetail"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        @click.self="closeTodoModal"
+      >
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+          <!-- 头部 -->
+          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <span
+                class="w-4 h-4 rounded-full flex-shrink-0"
+                :style="{ backgroundColor: selectedTodoDetail.statusColor || '#6B7280' }"
+              ></span>
+              {{ selectedTodoDetail.title }}
+            </h3>
+            <button
+              @click="closeTodoModal"
+              class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <!-- 内容 -->
+          <div class="p-6 space-y-4">
+            <!-- 简述 -->
+            <div v-if="selectedTodoDetail.description">
+              <label class="block text-sm font-medium text-gray-500 mb-1">描述</label>
+              <p class="text-sm text-gray-700">{{ selectedTodoDetail.description }}</p>
+            </div>
+
+            <!-- 跟进人 -->
+            <div v-if="selectedTodoDetail.followerIds && selectedTodoDetail.followerIds.length > 0">
+              <label class="block text-sm font-medium text-gray-500 mb-2">跟进人</label>
+              <div class="flex items-center gap-2 flex-wrap">
+                <div
+                  v-for="followerId in selectedTodoDetail.followerIds"
+                  :key="followerId"
+                  class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-100"
+                >
+                  <div
+                    class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium text-gray-600 overflow-hidden flex-shrink-0"
+                  >
+                    <img v-if="getFollowerAvatar(followerId)" :src="getFollowerAvatar(followerId)" class="w-full h-full object-cover" />
+                    <span v-else>{{ getFollowerInitials(followerId) }}</span>
+                  </div>
+                  <span class="text-sm text-gray-700">{{ getFollowerName(followerId) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 底部按钮 -->
+          <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <button
+              @click="closeTodoModal"
+              class="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              {{ t('common.cancel') }}
+            </button>
+            <button
+              @click="goToTodoEdit"
+              class="px-4 py-2 text-sm font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center gap-2"
+            >
+              <i class="fa-solid fa-pen"></i>
+              {{ t('todo.edit') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -321,6 +409,8 @@ import { storeToRefs } from 'pinia';
 import { tabRegistry } from '../config/tab.registry';
 import { useI18n } from '../composables/useI18n';
 import { useRightPanelStore } from '../store/right-panel.store';
+import { usePrincipals } from '../../identity/hooks/usePrincipals';
+import { resolveResourceUrl } from '../../../utils/http';
 import { agentApi } from '../../../api/agent';
 import { runnerApi } from '../../../api/runner';
 import { todoApi } from '../../../api/todo';
@@ -331,8 +421,14 @@ const props = defineProps<{
   activeView: string;
 }>();
 
+const emit = defineEmits<{
+  (e: 'change', view: string): void;
+}>();
+
 const { t } = useI18n();
 const rightPanelStore = useRightPanelStore();
+const { list: listPrincipals } = usePrincipals();
+const principalMap = ref<Record<string, any>>({});
 const {
   currentTabId: currentTab,
   tabs,
@@ -374,6 +470,18 @@ const currentAsyncComponent = computed(() => {
   ensureComponent(currentTab.value);
   return asyncComponents.get(currentTab.value) ?? null;
 });
+
+/**
+ * @description RightPanel tab 点击处理：更新 currentTabId 并向上 emit 同步 sidebar 高亮
+ * chat 视图权重最高，处于 chat 时不同步 sidebar
+ * @keyword-en tab-click, emit-change, sidebar-sync
+ */
+const handleTabClick = (tabId: string) => {
+  currentTab.value = tabId;
+  if (tabId !== props.activeView && props.activeView !== 'chat') {
+    emit('change', tabId);
+  }
+};
 
 // Watch for sidebar changes to update tabs
 watch(
@@ -449,9 +557,9 @@ const recentResources = ref<RecentResource[]>([]);
 interface PendingTodo {
   id: string;
   title: string;
-  assignee: string;
-  priority: string;
-  priorityClass: string;
+  description: string;
+  followerIds: string[];
+  statusColor: string;
 }
 
 const pendingTodos = ref<PendingTodo[]>([]);
@@ -470,6 +578,10 @@ interface SystemNotification {
 
 const systemNotifications = ref<SystemNotification[]>([]);
 
+// Todo Detail Modal State
+const showTodoModal = ref(false);
+const selectedTodoDetail = ref<PendingTodo | null>(null);
+
 // Fetch Dashboard Data
 async function fetchDashboardData() {
   try {
@@ -481,30 +593,31 @@ async function fetchDashboardData() {
     const runnersRes = await runnerApi.list();
     statsData.value.runnerCount = Array.isArray(runnersRes.data) ? runnersRes.data.length : 0;
 
+    // Fetch principals for avatar resolution
+    try {
+      const principals = await listPrincipals();
+      const pMap: Record<string, any> = {};
+      (principals || []).forEach((p: any) => {
+        pMap[p.id] = p;
+      });
+      principalMap.value = pMap;
+    } catch (e) {
+      console.error('Failed to load principals', e);
+    }
+
     // Fetch pending todos (status not completed)
     const todosRes = await todoApi.list({ status: 'pending' });
     const todos = Array.isArray(todosRes.data) ? todosRes.data : [];
     statsData.value.tasksPending = todos.length;
 
     // Map todos to pendingTodos
-    pendingTodos.value = todos.slice(0, 5).map((todo: any) => {
-      let priority = '中';
-      let priorityClass = 'bg-yellow-100 text-yellow-600';
-      if (todo.priority === 'high' || todo.priority === '高') {
-        priority = '高';
-        priorityClass = 'bg-red-100 text-red-600';
-      } else if (todo.priority === 'low' || todo.priority === '低') {
-        priority = '低';
-        priorityClass = 'bg-green-100 text-green-600';
-      }
-      return {
-        id: todo.id,
-        title: todo.title || todo.content || '待办事项',
-        assignee: todo.initiatorName || todo.initiator?.displayName || '-',
-        priority,
-        priorityClass,
-      };
-    });
+    pendingTodos.value = todos.slice(0, 5).map((todo: any) => ({
+      id: todo.id,
+      title: todo.title || todo.content || '待办事项',
+      description: todo.description || todo.content || '',
+      followerIds: todo.followerIds || [],
+      statusColor: todo.statusColor || '#6B7280',
+    }));
 
     // Fetch recent resources from storage (latest 6)
     try {
@@ -607,6 +720,57 @@ function formatTimeAgo(isoDate: string | undefined): string {
   if (diffDays < 7) return `${diffDays} 天前`;
   return date.toLocaleDateString('zh-CN');
 }
+
+// Follower avatar helpers
+const getFollowerName = (id: string) => {
+  if (!id) return '';
+  const p = principalMap.value[id];
+  return p ? (p.displayName || p.name || id) : id;
+};
+
+const getFollowerAvatar = (id: string) => {
+  const p = principalMap.value[id];
+  return p?.avatarUrl ? resolveResourceUrl(p.avatarUrl) : '';
+};
+
+const getFollowerInitials = (id: string) => {
+  const name = getFollowerName(id);
+  if (!name) return '?';
+  if (name.startsWith('user-') || name.startsWith('agent-')) {
+    return name.split('-').pop()?.slice(0, 2).toUpperCase() || '?';
+  }
+  return name.slice(0, 2).toUpperCase();
+};
+
+// Todo Detail Modal Functions
+const openTodoDetail = (todo: PendingTodo) => {
+  selectedTodoDetail.value = todo;
+  showTodoModal.value = true;
+};
+
+const closeTodoModal = () => {
+  showTodoModal.value = false;
+  selectedTodoDetail.value = null;
+};
+
+const goToTodoEdit = () => {
+  if (selectedTodoDetail.value) {
+    const todoId = selectedTodoDetail.value.id;
+    closeTodoModal();
+
+    // If already on todos tab, just update the props
+    if (currentTab.value === 'todos') {
+      rightPanelStore.setTabProps('todos', { selectedTodoId: todoId });
+    } else {
+      // Otherwise emit to switch tabs
+      emit('change', 'todos');
+      // Also directly set the props on the tab after emit
+      setTimeout(() => {
+        rightPanelStore.setTabProps('todos', { selectedTodoId: todoId });
+      }, 0);
+    }
+  }
+};
 
 // Notifications - Show More/Less Logic
 const showAllNotifications = ref(false);

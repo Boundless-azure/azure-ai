@@ -81,25 +81,27 @@
             <!-- 卡片底部 -->
             <div class="px-4 pb-4 pt-2 border-t border-gray-50">
               <div class="flex items-center justify-between">
-                <!-- 跟进人头像 -->
+                <!-- 跟进人头像（仅头像 + tooltip） -->
                 <div class="flex items-center -space-x-2">
                   <template v-if="item.followerIds && item.followerIds.length > 0">
                     <div
                       v-for="(followerId, idx) in item.followerIds.slice(0, 3)"
                       :key="followerId"
-                      class="w-7 h-7 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-600"
-                      :title="`Follower ${followerId}`"
+                      class="w-7 h-7 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-600 overflow-hidden cursor-help"
+                      :title="getNickname(followerId)"
                     >
-                      {{ getInitials(followerId) }}
+                      <img v-if="getAvatarUrl(followerId)" :src="getAvatarUrl(followerId)" class="w-full h-full object-cover" />
+                      <span v-else>{{ getInitials(getNickname(followerId)) }}</span>
                     </div>
                     <span
                       v-if="item.followerIds.length > 3"
                       class="w-7 h-7 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-500"
+                      :title="item.followerIds.slice(3).map(id => getNickname(id)).join(', ')"
                     >
                       +{{ item.followerIds.length - 3 }}
                     </span>
                   </template>
-                  <span v-else class="text-xs text-gray-400">{{ t('todo.followers') }}: -</span>
+                  <span v-else class="text-xs text-gray-400">-</span>
                 </div>
 
                 <!-- 状态标签 -->
@@ -111,9 +113,8 @@
                 </span>
               </div>
 
-              <!-- 发起人和时间 -->
-              <div class="flex items-center justify-between mt-3 text-xs text-gray-400">
-                <span>{{ t('todo.initiator') }}: {{ item.initiatorId }}</span>
+              <!-- 发起时间和状态 -->
+              <div class="flex items-center justify-end mt-3 text-xs text-gray-400">
                 <span>{{ formatDate(item.createdAt) }}</span>
               </div>
             </div>
@@ -168,20 +169,59 @@
  * @keywords-cn 待办列表, 卡片, 状态dot, 头像
  * @keywords-en todo-list, cards, status-dot, avatar
  */
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useI18n } from '../../agent/composables/useI18n';
 import type { TodoItem } from '../types/todo.types';
 import { useTodos } from '../hooks/useTodos';
+import { usePrincipals } from '../../identity/hooks/usePrincipals';
+import { resolveResourceUrl } from '../../../utils/http';
 import CreateTodoModal from './CreateTodoModal.vue';
 import TodoDetail from './TodoDetail.vue';
 
+const props = defineProps<{
+  selectedTodoId?: string;
+}>();
+
 const { t } = useI18n();
 const { loading, items, list } = useTodos();
+const { list: listPrincipals } = usePrincipals();
 
 const selectedStatus = ref('');
 const searchQuery = ref('');
 const showCreateModal = ref(false);
 const selectedTodo = ref<TodoItem | null>(null);
+const principalMap = ref<Record<string, any>>({});
+
+// Watch for external selectedTodoId prop
+watch(() => props.selectedTodoId, (newId) => {
+  if (newId) {
+    // Try to find the todo immediately or wait for items to load
+    const findAndSet = () => {
+      const todo = items.value.find((item) => item.id === newId);
+      if (todo) {
+        selectedTodo.value = todo;
+      }
+    };
+    findAndSet();
+    // If items not loaded yet, trigger a refresh
+    if (items.value.length === 0) {
+      list().then(findAndSet);
+    }
+  } else {
+    // Clear selection if selectedTodoId is cleared
+    selectedTodo.value = null;
+  }
+}, { immediate: true });
+
+// Also watch items to update selectedTodo when items load
+watch(items, (newItems) => {
+  if (props.selectedTodoId && newItems.length > 0) {
+    const todo = newItems.find((item) => item.id === props.selectedTodoId);
+    if (todo) {
+      selectedTodo.value = todo;
+    }
+  }
+});
 
 // 分页逻辑
 const currentPage = ref(1);
@@ -243,11 +283,22 @@ const statusClass = (status: string): string => {
   return classes[status] || 'bg-gray-100 text-gray-600';
 };
 
+const getAvatarUrl = (id: string) => {
+  const p = principalMap.value[id];
+  return p?.avatarUrl ? resolveResourceUrl(p.avatarUrl) : '';
+};
+
+const getNickname = (id: string) => {
+  if (!id) return '';
+  const p = principalMap.value[id];
+  return p ? (p.displayName || p.name || id) : id;
+};
+
 const getInitials = (name: string): string => {
   if (!name) return '?';
-  // 如果是 user-xxx 或 agent-xxx 格式
+  // 如果是 user-xxx 或 agent-xxx 格式，截取最后几位或者直接用前两位
   if (name.startsWith('user-') || name.startsWith('agent-')) {
-    return name.slice(-2).toUpperCase();
+    return name.split('-').pop()?.slice(0, 2).toUpperCase() || '?';
   }
   return name.slice(0, 2).toUpperCase();
 };
@@ -258,7 +309,19 @@ const formatDate = (date: string | Date | undefined): string => {
   return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 };
 
-onMounted(handleRefresh);
+onMounted(async () => {
+  handleRefresh();
+  try {
+    const principals = await listPrincipals();
+    const pMap: Record<string, any> = {};
+    (principals || []).forEach((p: any) => {
+      pMap[p.id] = p;
+    });
+    principalMap.value = pMap;
+  } catch (e) {
+    console.error('Failed to load principals', e);
+  }
+});
 </script>
 
 <style scoped>

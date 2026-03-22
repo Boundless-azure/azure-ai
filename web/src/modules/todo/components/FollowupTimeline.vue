@@ -27,20 +27,31 @@
           <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
             <div class="flex items-center gap-2">
               <!-- 跟进人头像 -->
-              <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-600">
-                {{ getInitials(followup.followerName || followup.followerId) }}
+              <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-600 overflow-hidden cursor-help" :title="followup.followerName || followup.followerId">
+                <img v-if="followup.followerAvatar" :src="resolveResourceUrl(followup.followerAvatar)" class="w-full h-full object-cover" />
+                <span v-else>{{ getInitials(followup.followerName || followup.followerId) }}</span>
               </div>
               <div>
                 <p class="text-sm font-medium text-gray-900">{{ followup.followerName || followup.followerId }}</p>
                 <p class="text-xs text-gray-400">{{ formatDate(followup.createdAt) }}</p>
               </div>
             </div>
-            <span
-              class="px-2 py-0.5 rounded-full text-xs font-medium"
-              :class="statusClass(followup.status)"
-            >
-              {{ t(`todo.status.${followup.status}`) }}
-            </span>
+            <div class="flex items-center gap-2">
+              <span
+                class="px-2 py-0.5 rounded-full text-xs font-medium"
+                :class="statusClass(followup.status)"
+              >
+                {{ t(`todo.status.${followup.status}`) }}
+              </span>
+              <!-- 编辑按钮 -->
+              <button
+                @click="emit('edit', followup)"
+                class="w-7 h-7 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+                :title="t('common.edit')"
+              >
+                <i class="fa-solid fa-pen-to-square text-sm"></i>
+              </button>
+            </div>
           </div>
 
           <!-- 跟进内容 -->
@@ -93,6 +104,7 @@ defineProps<{
 
 const emit = defineEmits<{
   (e: 'add-comment', followupId: string): void;
+  (e: 'edit', followup: TodoFollowup): void;
 }>();
 
 const expandedComments = ref(new Set<string>());

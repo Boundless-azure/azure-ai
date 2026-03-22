@@ -29,11 +29,11 @@ export class TodoEntity extends BaseAuditedEntity {
   content!: string | null;
 
   /** 跟进人ID列表 (JSON数组) */
-  @Column({ name: 'followerIds', type: 'json', nullable: true })
+  @Column({ name: 'followerids', type: 'json', nullable: true })
   followerIds!: string[] | null;
 
   /** 状态dot颜色 */
-  @Column({ name: 'statusColor', type: 'varchar', length: 16, nullable: true })
+  @Column({ name: 'statuscolor', type: 'varchar', length: 16, nullable: true })
   statusColor!: string | null;
 
   /** 待办状态 */

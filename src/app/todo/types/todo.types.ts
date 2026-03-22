@@ -158,3 +158,31 @@ export class CreateCommentDto {
   @IsString()
   content!: string;
 }
+
+/**
+ * @title 跟进记录更新请求
+ * @description 更新跟进记录，主要是编辑跟进人、状态和内容。
+ * @keywords-cn 跟进记录更新, DTO, 编辑跟进人
+ * @keywords-en followup-update, dto, edit-follower
+ */
+export class UpdateFollowupDto {
+  @IsOptional()
+  @IsString()
+  followerId?: string;
+
+  @IsOptional()
+  @IsString()
+  followerName?: string;
+
+  @IsOptional()
+  @IsString()
+  followerAvatar?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsString()
+  content?: string;
+}

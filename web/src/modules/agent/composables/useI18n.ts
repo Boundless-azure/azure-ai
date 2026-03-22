@@ -172,6 +172,7 @@ const translations = {
         add: 'Add Follow-up',
         placeholder: 'Enter follow-up content...',
         noRecords: 'No follow-up records',
+        restrictedFollower: '(select from assigned followers)',
       },
       comment: {
         title: 'Comments',
@@ -189,6 +190,7 @@ const translations = {
         followers: 'Select Followers',
         initiator: 'Initiator',
         status: 'Status',
+        statusColor: 'Status Color',
         save: 'Save',
         cancel: 'Cancel',
       },
@@ -493,6 +495,7 @@ const translations = {
         add: '添加跟进',
         placeholder: '输入跟进内容...',
         noRecords: '暂无跟进记录',
+        restrictedFollower: '（仅可选择指定的跟进人）',
       },
       comment: {
         title: '评论',
@@ -510,6 +513,7 @@ const translations = {
         followers: '选择跟进人',
         initiator: '发起人',
         status: '状态',
+        statusColor: '状态颜色',
         save: '保存',
         cancel: '取消',
       },

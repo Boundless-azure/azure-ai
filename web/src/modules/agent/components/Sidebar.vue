@@ -206,7 +206,7 @@
  * @keywords-cn 侧边栏, 响应式导航, 国际化, 白色主题
  * @keywords-en sidebar, responsive-navigation, i18n, white-theme
  */
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useI18n } from '../composables/useI18n';
 import LanguageModal from './LanguageModal.vue';
@@ -214,6 +214,7 @@ import { useAgentSessionStore } from '../store/session.store';
 import { useAuthStore } from '../../auth/store/auth.store';
 import { resolveResourceUrl } from '../../../utils/http';
 import AccountProfileModal from './AccountProfileModal.vue';
+import { useRightPanelStore } from '../store/right-panel.store';
 
 const props = defineProps<{
   activeView: string;
@@ -230,6 +231,24 @@ const showProfileModal = ref(false);
 
 const sessionStore = useAgentSessionStore();
 const { sessions } = storeToRefs(sessionStore);
+const rightPanelStore = useRightPanelStore();
+const { currentTabId } = storeToRefs(rightPanelStore);
+
+/**
+ * @description 监听 RightPanel tab 变化，不一致时反向同步 sidebar 高亮
+ * chat 视图权重最高，处于 chat 时不响应 tab 变化
+ * @keyword-en tab-watch, sidebar-sync, reverse-sync
+ */
+watch(currentTabId, (newTabId) => {
+  if (
+    props.activeView !== 'chat' &&
+    newTabId !== 'dashboard' &&
+    !newTabId.startsWith('chat-detail-') &&
+    newTabId !== props.activeView
+  ) {
+    emit('change', newTabId);
+  }
+}, { immediate: true });
 const authStore = useAuthStore();
 
 const displayName = computed(() => authStore.principal?.displayName || 'User');
@@ -274,6 +293,10 @@ const menuItems = [
   { id: 'more', icon: 'ellipsis' },
 ];
 
+/**
+ * @description 触发菜单切换，同时检测 tab 与目标菜单是否一致
+ * @keyword-en emit-change, tab-consistency
+ */
 const emitChange = (view: string) => {
   emit('change', view);
 };

@@ -84,7 +84,7 @@
         <i class="fa-solid fa-bars"></i>
       </button>
 
-      <RightPanel :activeView="activeView" />
+      <RightPanel :activeView="activeView" @change="handleSidebarChange" />
     </div>
   </div>
 </template>
@@ -105,6 +105,7 @@ import MorePanel from './MorePanel.vue';
 import RightPanel from './RightPanel.vue';
 import ToastContainer from './ToastContainer.vue';
 import { useAgentSessionStore } from '../store/session.store';
+import { useI18n } from '../composables/useI18n';
 
 // Initialize Pinia
 const pinia = createPinia();
@@ -159,8 +160,11 @@ const sidebarWrapperCls = computed(() => {
   return 'w-0 md:w-auto overflow-hidden md:overflow-visible -translate-x-full md:translate-x-0 absolute md:relative';
 });
 
+const { t } = useI18n();
+
 const handleSidebarChange = (view: string) => {
   activeView.value = view;
+
   // Close mobile sidebar on selection
   if (window.innerWidth < 768) {
     isMobileSidebarOpen.value = false;
@@ -175,6 +179,11 @@ const handleSidebarChange = (view: string) => {
   } else {
     showLeftPanel.value = true;
   }
+
+  // Update document title based on current view
+  const titleKey = `sidebar.${view}`;
+  const title = t(titleKey);
+  document.title = title ? `${title} - Azure AI` : 'Azure AI';
 };
 
 const toggleMobileView = () => {

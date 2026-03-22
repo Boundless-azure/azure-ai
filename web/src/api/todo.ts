@@ -13,6 +13,7 @@ import type {
   CreateFollowupRequest,
   TodoFollowupComment,
   CreateCommentRequest,
+  UpdateFollowupRequest,
 } from '../modules/todo/types/todo.types';
 import {
   CreateTodoRequestSchema,
@@ -20,6 +21,7 @@ import {
   ListTodoQuerySchema,
   CreateFollowupRequestSchema,
   CreateCommentRequestSchema,
+  UpdateFollowupRequestSchema,
 } from '../modules/todo/types/todo.types';
 
 export const todoApi = {
@@ -64,6 +66,13 @@ export const todoApi = {
 
   // 删除跟进记录
   deleteFollowup: (followupId: string) => http.delete<{ ok: boolean }>(`/todo/followups/${followupId}`),
+
+  // 更新跟进记录
+  updateFollowup: (followupId: string, data: UpdateFollowupRequest) => {
+    const parsed = UpdateFollowupRequestSchema.safeParse(data);
+    if (!parsed.success) throw new Error('Invalid update followup payload');
+    return http.put<TodoFollowup>(`/todo/followups/${followupId}`, parsed.data);
+  },
 
   // ==================== 评论 ====================
 

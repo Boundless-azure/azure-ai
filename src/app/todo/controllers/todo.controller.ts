@@ -18,6 +18,7 @@ import {
   UpdateTodoDto,
   CreateFollowupDto,
   CreateCommentDto,
+  UpdateFollowupDto,
 } from '../types/todo.types';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import { CurrentPrincipal } from '@/core/auth/decorators/current-principal.decorator';
@@ -126,6 +127,16 @@ export class TodoController {
   async deleteFollowup(@Param('followupId') id: string): Promise<{ ok: boolean }> {
     await this.service.deleteFollowup(id);
     return { ok: true };
+  }
+
+  @Put('followups/:followupId')
+  @CheckAbility('update', 'todo')
+  async updateFollowup(
+    @Param('followupId') id: string,
+    @Body() dto: UpdateFollowupDto,
+    @CurrentPrincipal() principal?: JwtPayload,
+  ): Promise<TodoFollowupEntity> {
+    return await this.service.updateFollowup(id, dto, principal?.id ?? 'system');
   }
 
   // ==================== 评论接口 ====================

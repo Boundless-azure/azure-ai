@@ -130,9 +130,11 @@
 import { ref, reactive } from 'vue';
 import { useI18n } from '../../agent/composables/useI18n';
 import { useTodos } from '../hooks/useTodos';
+import { usePrincipals } from '../../identity/hooks/usePrincipals';
 
 const { t } = useI18n();
 const { create } = useTodos();
+const { list: listPrincipals } = usePrincipals();
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -179,20 +181,14 @@ const followerOptions = ref<FollowerOption[]>([]);
 
 async function loadFollowerOptions() {
   try {
-    const usersRes = await fetch('/api/identity/users', {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-      },
-    });
-    if (usersRes.ok) {
-      const usersData = await usersRes.json();
-      const users = usersData.data || [];
-      followerOptions.value = users.map((u: any) => ({
-        id: u.id,
-        label: u.displayName || u.name || u.id,
-        icon: 'fa-solid fa-user',
+    const principals = await listPrincipals();
+    followerOptions.value = (principals || [])
+      .filter((p: any) => ['user', 'agent'].includes(p.principalType))
+      .map((p: any) => ({
+        id: p.id,
+        label: p.displayName || p.name || p.id,
+        icon: p.principalType === 'agent' ? 'fa-solid fa-robot' : 'fa-solid fa-user',
       }));
-    }
   } catch {
     followerOptions.value = [];
   }

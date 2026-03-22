@@ -55,7 +55,15 @@
                 <i class="fa-solid fa-user text-[13px] w-4 text-center"></i>
                 <span class="text-xs font-medium">{{ t('todo.initiator') }}</span>
               </div>
-              <p class="text-[13px] md:text-sm text-gray-900 pl-[22px]">{{ todo.initiatorId }}</p>
+              <div class="flex items-center gap-2 pl-[22px]">
+                <div
+                  class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden cursor-help"
+                  :title="getNickname(todo.initiatorId)"
+                >
+                  <img v-if="getAvatarUrl(todo.initiatorId)" :src="getAvatarUrl(todo.initiatorId)" class="w-full h-full object-cover" />
+                  <span v-else class="text-xs text-gray-600">{{ getInitials(getNickname(todo.initiatorId)) }}</span>
+                </div>
+              </div>
             </div>
 
             <div class="space-y-1">
@@ -72,17 +80,19 @@
                 <i class="fa-solid fa-users text-[13px] w-4 text-center"></i>
                 <span class="text-xs font-medium">{{ t('todo.followers') }}</span>
               </div>
-              <div class="flex flex-wrap gap-1.5 pl-[22px]">
+              <div class="flex flex-wrap gap-2 pl-[22px]">
                 <template v-if="todo.followerIds && todo.followerIds.length > 0">
-                  <span
+                  <div
                     v-for="followerId in todo.followerIds"
                     :key="followerId"
-                    class="px-2 py-0.5 bg-gray-100 rounded text-xs text-gray-600"
+                    class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden cursor-help hover:bg-gray-300 transition-colors"
+                    :title="getNickname(followerId)"
                   >
-                    {{ followerId }}
-                  </span>
+                    <img v-if="getAvatarUrl(followerId)" :src="getAvatarUrl(followerId)" class="w-full h-full object-cover" />
+                    <span v-else class="text-[10px] text-gray-600">{{ getInitials(getNickname(followerId)) }}</span>
+                  </div>
                 </template>
-                <span v-else class="text-xs text-gray-400 pl-[22px]">-</span>
+                <span v-else class="text-xs text-gray-400">-</span>
               </div>
             </div>
           </div>
@@ -159,13 +169,17 @@
                   v-for="option in followerOptions"
                   :key="option.id"
                   @click="toggleFollower(option.id)"
-                  class="px-3 py-1.5 rounded-lg text-sm border transition-colors"
+                  class="px-3 py-1.5 rounded-lg text-sm border transition-colors flex items-center gap-2"
                   :class="editForm.followerIds.includes(option.id)
                     ? 'bg-gray-900 text-white border-gray-900'
                     : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'"
+                  :title="option.label"
                 >
-                  <i :class="option.icon" class="mr-1"></i>
-                  {{ option.label }}
+                  <div class="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <img v-if="getAvatarUrl(option.id)" :src="getAvatarUrl(option.id)" class="w-full h-full object-cover" />
+                    <span v-else class="text-[10px]">{{ getInitials(option.label) }}</span>
+                  </div>
+                  <span>{{ option.label }}</span>
                 </button>
               </div>
             </div>
@@ -185,6 +199,29 @@
                 <option value="waiting_acceptance">{{ t('todo.status.waitingAcceptance') }}</option>
                 <option value="completed">{{ t('todo.status.completed') }}</option>
               </select>
+            </div>
+
+            <!-- 状态颜色 -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">
+                {{ t('todo.form.statusColor') }}
+              </label>
+              <div class="flex items-center gap-3">
+                <button
+                  v-for="color in statusColors"
+                  :key="color.value"
+                  @click="editForm.statusColor = color.value"
+                  class="w-8 h-8 rounded-full border-2 transition-transform"
+                  :class="editForm.statusColor === color.value ? 'border-gray-900 scale-110' : 'border-transparent'"
+                  :style="{ backgroundColor: color.value }"
+                  :title="color.label"
+                ></button>
+                <input
+                  type="color"
+                  v-model="editForm.statusColor"
+                  class="w-8 h-8 rounded cursor-pointer"
+                />
+              </div>
             </div>
 
             <!-- 保存按钮 -->
@@ -224,6 +261,7 @@
               v-if="followups.length > 0"
               :followups="followups"
               @add-comment="handleAddComment"
+              @edit="handleEditFollowup"
             />
 
             <!-- 空状态 -->
@@ -236,8 +274,17 @@
             <AddFollowupModal
               v-if="showAddFollowup"
               :todo-id="todo.id"
+              :follower-ids="todo.followerIds || []"
               @close="showAddFollowup = false"
               @added="handleFollowupAdded"
+            />
+
+            <!-- 编辑跟进弹窗 -->
+            <EditFollowupModal
+              v-if="showEditFollowup && editingFollowup"
+              :followup="editingFollowup"
+              @close="showEditFollowup = false"
+              @updated="handleFollowupUpdated"
             />
           </div>
         </div>
@@ -253,14 +300,17 @@
  * @keywords-cn 待办详情, 面包屑, Tab切换, 左右分栏
  * @keywords-en todo-detail, breadcrumb, tabs, split-layout
  */
-import { ref, reactive, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useI18n } from '../../agent/composables/useI18n';
-import type { TodoItem } from '../types/todo.types';
+import type { TodoItem, TodoFollowup } from '../types/todo.types';
 import { useTodos } from '../hooks/useTodos';
+import { usePrincipals } from '../../identity/hooks/usePrincipals';
+import { resolveResourceUrl } from '../../../utils/http';
 import FollowupTimeline from './FollowupTimeline.vue';
 import AddFollowupModal from './AddFollowupModal.vue';
+import EditFollowupModal from './EditFollowupModal.vue';
 
-const { t } = useI18n();
+const { t, currentLocale } = useI18n();
 const props = defineProps<{
   todo: TodoItem;
 }>();
@@ -271,15 +321,22 @@ const emit = defineEmits<{
 }>();
 
 const { update, listFollowups, followups, createFollowup } = useTodos();
+const { list: listPrincipals } = usePrincipals();
 
 const activeTab = ref('edit');
 const saving = ref(false);
 const showAddFollowup = ref(false);
+const showEditFollowup = ref(false);
+const editingFollowup = ref<TodoFollowup | null>(null);
 
-const tabs = [
-  { id: 'edit', label: 'todo.detail.editInfo', icon: 'fa-solid fa-pen' },
-  { id: 'followups', label: 'todo.detail.followupRecords', icon: 'fa-solid fa-clock-rotate-left' },
-];
+const tabs = computed(() => {
+  // Access currentLocale to make computed reactive to locale changes
+  currentLocale.value;
+  return [
+    { id: 'edit', label: t('todo.detail.editInfo'), icon: 'fa-solid fa-pen' },
+    { id: 'followups', label: t('todo.detail.followupRecords'), icon: 'fa-solid fa-clock-rotate-left' },
+  ];
+});
 
 // 跟进人选项 - 从API获取
 interface FollowerOption {
@@ -289,30 +346,53 @@ interface FollowerOption {
 }
 
 const followerOptions = ref<FollowerOption[]>([]);
+const principalMap = ref<Record<string, any>>({});
 
 async function loadFollowerOptions() {
   try {
-    // 获取用户列表
-    const usersRes = await fetch('/api/identity/users', {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-      },
+    const principals = await listPrincipals();
+    const pMap: Record<string, any> = {};
+    const options: FollowerOption[] = (principals || [])
+      .filter((p: any) => ['user', 'agent'].includes(p.principalType))
+      .map((p: any) => {
+        pMap[p.id] = p;
+        return {
+          id: p.id,
+          label: p.displayName || p.name || p.id,
+          icon: p.principalType === 'agent' ? 'fa-solid fa-robot' : 'fa-solid fa-user',
+        };
+      });
+    
+    // Fill the rest into map
+    (principals || []).forEach((p: any) => {
+      pMap[p.id] = p;
     });
-    if (usersRes.ok) {
-      const usersData = await usersRes.json();
-      const users = usersData.data || [];
-      const options: FollowerOption[] = users.map((u: any) => ({
-        id: u.id,
-        label: u.displayName || u.name || u.id,
-        icon: 'fa-solid fa-user',
-      }));
-      followerOptions.value = options;
-    }
+
+    principalMap.value = pMap;
+    followerOptions.value = options;
   } catch {
-    // 如果API失败，使用空数组
     followerOptions.value = [];
   }
 }
+
+const getAvatarUrl = (id: string) => {
+  const p = principalMap.value[id];
+  return p?.avatarUrl ? resolveResourceUrl(p.avatarUrl) : '';
+};
+
+const getNickname = (id: string) => {
+  if (!id) return '';
+  const p = principalMap.value[id];
+  return p ? (p.displayName || p.name || id) : id;
+};
+
+const getInitials = (name: string): string => {
+  if (!name) return '?';
+  if (name.startsWith('user-') || name.startsWith('agent-')) {
+    return name.split('-').pop()?.slice(0, 2).toUpperCase() || '?';
+  }
+  return name.slice(0, 2).toUpperCase();
+};
 
 // 编辑表单
 const editForm = reactive({
@@ -321,6 +401,7 @@ const editForm = reactive({
   content: props.todo.content || '',
   followerIds: [...(props.todo.followerIds || [])],
   status: props.todo.status,
+  statusColor: props.todo.statusColor || '#6B7280',
 });
 
 // 监听props.todo变化
@@ -330,6 +411,7 @@ watch(() => props.todo, (newTodo) => {
   editForm.content = newTodo.content || '';
   editForm.followerIds = [...(newTodo.followerIds || [])];
   editForm.status = newTodo.status;
+  editForm.statusColor = newTodo.statusColor || '#6B7280';
 }, { deep: true });
 
 const toggleFollower = (id: string) => {
@@ -350,6 +432,7 @@ const handleSave = async () => {
       content: editForm.content || undefined,
       followerIds: editForm.followerIds,
       status: editForm.status as any,
+      statusColor: editForm.statusColor,
     });
     emit('updated');
   } finally {
@@ -369,6 +452,26 @@ const loadFollowups = async () => {
 const handleAddComment = (followupId: string) => {
   // 评论功能由FollowupTimeline内部处理
 };
+
+const handleEditFollowup = (followup: TodoFollowup) => {
+  editingFollowup.value = followup;
+  showEditFollowup.value = true;
+};
+
+const handleFollowupUpdated = async () => {
+  showEditFollowup.value = false;
+  editingFollowup.value = null;
+  await loadFollowups();
+};
+
+// 状态颜色选项
+const statusColors = [
+  { value: '#6B7280', label: '灰色' },
+  { value: '#3B82F6', label: '蓝色' },
+  { value: '#10B981', label: '绿色' },
+  { value: '#F59E0B', label: '橙色' },
+  { value: '#EF4444', label: '红色' },
+];
 
 const getStatusColor = (status: string): string => {
   const colors: Record<string, string> = {

@@ -76,6 +76,14 @@ export interface CreateCommentRequest {
   content: string;
 }
 
+export interface UpdateFollowupRequest {
+  followerId?: string;
+  followerName?: string;
+  followerAvatar?: string;
+  status?: string;
+  content?: string;
+}
+
 /**
  * @title Todo Zod Schemas
  * @description 前端待办请求的 Zod 参数校验。
@@ -114,6 +122,14 @@ export const CreateCommentRequestSchema = z.object({
   userName: z.string().min(1),
   userAvatar: z.string().optional(),
   content: z.string().min(1),
+});
+
+export const UpdateFollowupRequestSchema = z.object({
+  followerId: z.string().optional(),
+  followerName: z.string().optional(),
+  followerAvatar: z.string().optional(),
+  status: z.string().optional(),
+  content: z.string().optional(),
 });
 
 export const ListTodoQuerySchema = z.object({

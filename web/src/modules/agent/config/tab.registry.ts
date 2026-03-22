@@ -8,7 +8,7 @@
 export interface TabRegistryEntry {
   name: string;
   file: string;
-  loader: () => Promise<unknown>;
+  loader: () => Promise<{ default: object }>;
 }
 
 export const tabRegistry: Record<string, TabRegistryEntry> = {

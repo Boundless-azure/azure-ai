@@ -14,6 +14,7 @@ web/src/modules/todo/
 │   ├── TodoCard.vue             # 待办卡片组件
 │   ├── CreateTodoModal.vue      # 新建待办弹窗
 │   ├── AddFollowupModal.vue     # 添加跟进弹窗
+│   ├── EditFollowupModal.vue    # 编辑跟进弹窗
 │   ├── FollowupTimeline.vue     # 跟进时间轴组件
 │   └── CommentList.vue          # 评论列表组件
 ├── constants/
@@ -41,6 +42,7 @@ web/src/modules/todo/
 | `createFollowup` | 创建跟进记录 |
 | `listFollowups` | 获取跟进记录列表 |
 | `removeFollowup` | 删除跟进记录 |
+| `updateFollowup` | 更新跟进记录 |
 | `createComment` | 创建评论 |
 | `listComments` | 获取评论列表 |
 | `removeComment` | 删除评论 |

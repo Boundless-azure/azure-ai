@@ -95,7 +95,7 @@ export class SeedData1737200000008 implements MigrationInterface {
       [
         adminPrincipalId,
         'Administrator',
-        'system',
+        'user',
         'admin@example.com',
         orgId,
         true,

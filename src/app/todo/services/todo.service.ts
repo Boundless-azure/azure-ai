@@ -11,6 +11,7 @@ import {
   UpdateTodoDto,
   CreateFollowupDto,
   CreateCommentDto,
+  UpdateFollowupDto,
 } from '../types/todo.types';
 import { TodoStatus } from '../enums/todo.enums';
 import {
@@ -114,7 +115,7 @@ export class TodoService {
       title: dto.title,
       description: dto.description ?? null,
       content: dto.content ?? null,
-      followerIds: dto.followerIds ?? null,
+      followerIds: dto.followerIds ?? (principal?.id ? [principal.id] : null),
       statusColor: dto.statusColor ?? null,
       status: dto.status ?? TodoStatus.Pending,
       active: true,
@@ -208,6 +209,25 @@ export class TodoService {
   async deleteFollowup(id: string): Promise<void> {
     const entity = await this.followupRepo.findOneOrFail({ where: { id } });
     await this.followupRepo.remove(entity);
+  }
+
+  /**
+   * @title 更新跟进记录
+   * @description 更新跟进人、状态、内容等信息
+   */
+  async updateFollowup(
+    id: string,
+    dto: UpdateFollowupDto,
+    userId: string,
+  ): Promise<TodoFollowupEntity> {
+    const entity = await this.followupRepo.findOneOrFail({ where: { id } });
+    if (dto.followerId !== undefined) entity.followerId = dto.followerId;
+    if (dto.followerName !== undefined) entity.followerName = dto.followerName;
+    if (dto.followerAvatar !== undefined) entity.followerAvatar = dto.followerAvatar;
+    if (dto.status !== undefined) entity.status = dto.status;
+    if (dto.content !== undefined) entity.content = dto.content;
+    entity.updateUser = userId;
+    return await this.followupRepo.save(entity);
   }
 
   // ==================== 评论管理 ====================
