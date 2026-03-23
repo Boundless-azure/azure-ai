@@ -54,6 +54,11 @@ export const tabRegistry: Record<string, TabRegistryEntry> = {
     file: 'src/modules/runner/components/RunnerManagement.vue',
     loader: () => import('../../runner/components/RunnerManagement.vue'),
   },
+  'runner-proxy': {
+    name: 'Runner 控制面板',
+    file: 'src/modules/runner/pages/RunnerProxyPage.vue',
+    loader: () => import('../../runner/pages/RunnerProxyPage.vue'),
+  },
   storage: {
     name: '资源库',
     file: 'src/modules/storage/components/StorageManagement.vue',

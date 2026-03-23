@@ -19,6 +19,8 @@ import { RunnerDbService } from './modules/runner-db/services/runner-db.service'
 import { UnitCoreService } from './unit-core/services/unit-core.service';
 import { registerWebMcpRoutes } from './modules/webmcp/routes/webmcp.routes';
 import { registerSolutionRoutes } from './modules/solution/routes/solution.routes';
+import { registerProxyRoutes } from './modules/proxy/proxy.routes';
+import { registerFrpcRoutes } from './modules/frpc/routes/frpc.routes';
 
 /**
  * @title 创建 Runner 应用
@@ -60,6 +62,18 @@ export async function createRunnerApp() {
   await registerDataAuthRoutes(app);
   await registerWebMcpRoutes(app, webmcpService);
   await registerSolutionRoutes(app, mongoClient, redisClient);
+
+  // Runner 代理路由和 FRPC 路由（在 MongoDB 初始化后注册）
+  if (cfg.mongoUri) {
+    const db = await mongoClient.connect(
+      cfg.mongoUri,
+      cfg.runnerDbName || 'runner',
+    );
+    await registerProxyRoutes(app, db);
+  }
+
+  // FRPC 路由
+  await registerFrpcRoutes(app);
 
   app.get('/health', () => ({ ok: true }));
 

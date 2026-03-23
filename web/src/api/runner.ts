@@ -32,3 +32,23 @@ export const runnerApi = {
   },
   delete: (id: string) => http.delete<{ ok: boolean }>(`/runner/${id}`),
 };
+
+// Runner FRPC API (供 Runner 控制面板使用)
+export const runnerFrpcApi = {
+  status: () => http.get<{ code: number; data: { running: boolean } }>('/frpc/status'),
+  start: (config: {
+    serverAddr: string;
+    serverPort: number;
+    authMethod: string;
+    token: string;
+    proxies: Array<{
+      name: string;
+      type: string;
+      localIp: string;
+      localPort: number;
+      customDomains: string[];
+    }>;
+  }) => http.post<{ code: number; message: string }>('/frpc/start', config),
+  stop: () => http.post<{ code: number; message: string }>('/frpc/stop'),
+  reload: () => http.post<{ code: number; message: string }>('/frpc/reload'),
+};

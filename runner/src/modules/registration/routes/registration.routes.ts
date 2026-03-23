@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { RunnerRegistrationService } from '../services/registration.service';
+import { FrpcService } from '../../frpc/services/frpc.service';
 
 /**
  * @title Runner 注册路由
@@ -12,6 +13,8 @@ export async function registerRunnerRegistrationRoutes(
   app: FastifyInstance,
   registrationService: RunnerRegistrationService,
 ): Promise<void> {
+  const frpcService = new FrpcService();
+
   const TestRunnerKeySchema = z.object({
     saasSocketUrl: z.string().optional(),
     runnerKey: z.string().optional(),
@@ -35,6 +38,21 @@ export async function registerRunnerRegistrationRoutes(
 
   app.post('/registration/register', async () => {
     const result = await registrationService.registerNow();
+
+    // 注册成功后自动启动 FRPC
+    if (result.ok) {
+      const frpcConfig = registrationService.getFrpcConfig();
+      if (frpcConfig) {
+        try {
+          await frpcService.generateConfig(frpcConfig);
+          await frpcService.start();
+          console.log('[registration] FRPC started after registration');
+        } catch (err) {
+          console.error('[registration] Failed to start FRPC:', err);
+        }
+      }
+    }
+
     return result;
   });
 }

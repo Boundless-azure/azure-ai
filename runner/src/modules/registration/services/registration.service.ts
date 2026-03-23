@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import { getRunnerConfig, saveRunnerConfig } from '../../../config/store';
+import type { FrpcConfig } from '../../frpc/types/frpc.types';
 
 /**
  * @title Runner 注册服务
@@ -11,6 +12,7 @@ export class RunnerRegistrationService {
   private socket?: Socket;
   private lastStatus: 'idle' | 'connected' | 'registered' | 'failed' = 'idle';
   private lastError: string | null = null;
+  private frpcConfig: FrpcConfig | null = null;
 
   status() {
     return {
@@ -18,6 +20,16 @@ export class RunnerRegistrationService {
       error: this.lastError,
       connected: Boolean(this.socket?.connected),
     };
+  }
+
+  /**
+   * @title 获取 FRPC 配置
+   * @description 返回当前保存的 FRPC 配置。
+   * @keywords-cn FRPC配置, 获取配置
+   * @keywords-en frpc-config, get-config
+   */
+  getFrpcConfig(): FrpcConfig | null {
+    return this.frpcConfig;
   }
 
   async testRunnerKey(input?: {
@@ -68,7 +80,7 @@ export class RunnerRegistrationService {
     runnerKey: string;
     runnerId?: string;
     persistRunnerId?: boolean;
-  }): Promise<{ ok: boolean; message: string; runnerId?: string }> {
+  }): Promise<{ ok: boolean; message: string; runnerId?: string; admissionPort?: number; frpsHost?: string; frpsPort?: number }> {
     if (this.socket?.connected) {
       this.socket.disconnect();
     }
@@ -87,17 +99,32 @@ export class RunnerRegistrationService {
         socket.emit(
           'runner/register',
           { runnerId: input.runnerId, key: input.runnerKey },
-          (resp: { ok?: boolean; error?: string; runnerId?: string }) => {
+          (resp: { ok?: boolean; error?: string; runnerId?: string; admissionPort?: number; frpsHost?: string; frpsPort?: number }) => {
             if (resp?.ok) {
               this.lastStatus = 'registered';
               this.lastError = null;
               if (resp.runnerId && input.persistRunnerId) {
                 saveRunnerConfig({ runnerId: resp.runnerId });
               }
+
+              // 保存 FRPC 配置
+              if (resp.admissionPort && resp.frpsHost) {
+                this.frpcConfig = {
+                  serverAddr: resp.frpsHost,
+                  serverPort: resp.frpsPort || 7000,
+                  authMethod: 'token',
+                  token: input.runnerKey,
+                  proxies: [],
+                };
+              }
+
               resolve({
                 ok: true,
                 message: 'runner registered',
                 runnerId: resp.runnerId,
+                admissionPort: resp.admissionPort,
+                frpsHost: resp.frpsHost,
+                frpsPort: resp.frpsPort,
               });
               return;
             }

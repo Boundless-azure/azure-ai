@@ -6,5 +6,6 @@
   "hookbusDebugEnabled": true,
   "mongoUri": "",
   "mongoDbName": "",
+  "runnerDbName": "runner",
   "redisUri": ""
 }

@@ -1,0 +1,21 @@
+# Runner Caddy 配置
+# 接收请求并转发到 Runner 内部服务
+
+{
+  admin off
+}
+
+:80, :443 {
+    # HTTP/HTTPS 接收
+    tls internal
+
+    # 转发所有请求到 Runner 内部代理接口
+    handle /internal/forward* {
+        reverse_proxy localhost:4310
+    }
+
+    # 其他请求也转发到 Runner
+    handle {
+        reverse_proxy localhost:4310
+    }
+}

@@ -47,6 +47,7 @@ export class RunnerDbMigrationService {
       this.ensureCollection(db, RunnerDbCollection.WebMcp),
       this.ensureCollection(db, RunnerDbCollection.Mcp),
       this.ensureCollection(db, RunnerDbCollection.Skill),
+      this.ensureCollection(db, RunnerDbCollection.AppDomains),
     ]);
 
     await db
@@ -69,6 +70,10 @@ export class RunnerDbMigrationService {
       .createIndex({ domain: 1 }, { unique: true });
     await db.collection(RunnerDbCollection.Mcp).createIndex({ name: 1 });
     await db.collection(RunnerDbCollection.Skill).createIndex({ name: 1 });
+    await db
+      .collection(RunnerDbCollection.AppDomains)
+      .createIndex({ appId: 1, domain: 1 }, { unique: true });
+    await db.collection(RunnerDbCollection.AppDomains).createIndex({ domain: 1 });
   }
 
   /**

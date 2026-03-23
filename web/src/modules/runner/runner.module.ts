@@ -7,6 +7,7 @@
 import * as RunnerConstants from './constants/runner.constants';
 import { useRunners } from './hooks/useRunners';
 import RunnerPage from './pages/RunnerPage.vue';
+import RunnerProxyPanel from './components/RunnerProxyPanel.vue';
 
 export * from './types/runner.types';
 
@@ -14,5 +15,5 @@ export const RunnerModule = {
   name: 'RunnerModule',
   constants: RunnerConstants,
   hooks: { useRunners },
-  pages: { RunnerPage },
+  pages: { RunnerPage, RunnerProxyPanel },
 };

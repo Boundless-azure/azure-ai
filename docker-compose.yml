@@ -37,10 +37,45 @@ services:
       timeout: 10s
       retries: 3
 
+  # SaaS Caddy (HTTPS 终止 + 转发)
+  saas-caddy:
+    image: caddy:2-alpine
+    container_name: azure-ai-saas-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/saas/Caddyfile:/etc/caddy/Caddyfile:ro
+      - saas_caddy_data:/data
+    networks:
+      - azure-ai-network
+
+  # SaaS FRP Server
+  saas-frp:
+    image: snowdreamtech/frps:latest
+    container_name: azure-ai-saas-frp
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "7000:7000"
+      - "7001:7001/udp"
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./docker/saas/frps.ini:/etc/frp/frps.ini:ro
+      - saas_frp_logs:/var/log/frp
+    networks:
+      - azure-ai-network
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  saas_caddy_data:
+    driver: local
+  saas_frp_logs:
     driver: local
 
 networks:

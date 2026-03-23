@@ -41,4 +41,10 @@ export class RunnerEntity extends BaseAuditedEntity {
 
   @Column({ name: 'active', type: 'boolean', default: true })
   active!: boolean;
+
+  @Column({ name: 'frp_port', type: 'int', nullable: true })
+  frpPort!: number | null;
+
+  @Column({ name: 'frp_enabled', type: 'boolean', default: false })
+  frpEnabled!: boolean;
 }

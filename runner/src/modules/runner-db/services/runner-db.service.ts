@@ -1,6 +1,14 @@
-import type { Collection, Db, Document, Filter, OptionalUnlessRequiredId } from 'mongodb';
+import type {
+  Collection,
+  Db,
+  Document,
+  Filter,
+  OptionalUnlessRequiredId,
+} from 'mongodb';
 import { RunnerDbCollection } from '../enums/runner-db.enums';
 import type {
+  RunnerAppDomain,
+  RunnerAppManagement,
   RunnerCapabilityManagement,
   RunnerConnectionHistory,
   RunnerHookFailure,
@@ -38,9 +46,9 @@ export class RunnerDbService {
   async recordConnectionHistory(
     payload: OptionalUnlessRequiredId<RunnerConnectionHistory>,
   ): Promise<void> {
-    await this.getCollection<RunnerConnectionHistory>(RunnerDbCollection.ConnectionHistory).insertOne(
-      payload,
-    );
+    await this.getCollection<RunnerConnectionHistory>(
+      RunnerDbCollection.ConnectionHistory,
+    ).insertOne(payload);
   }
 
   /**
@@ -52,9 +60,9 @@ export class RunnerDbService {
   async recordHookFailure(
     payload: OptionalUnlessRequiredId<RunnerHookFailure>,
   ): Promise<void> {
-    await this.getCollection<RunnerHookFailure>(RunnerDbCollection.HookFailure).insertOne(
-      payload,
-    );
+    await this.getCollection<RunnerHookFailure>(
+      RunnerDbCollection.HookFailure,
+    ).insertOne(payload);
   }
 
   /**
@@ -72,7 +80,9 @@ export class RunnerDbService {
     );
     const operations = items.map((item) => ({
       updateOne: {
-        filter: { capabilityId: item.capabilityId } as Filter<RunnerCapabilityManagement>,
+        filter: {
+          capabilityId: item.capabilityId,
+        } as Filter<RunnerCapabilityManagement>,
         update: { $set: item },
         upsert: true,
       },
@@ -86,8 +96,12 @@ export class RunnerDbService {
    * @keywords-cn WebMCP, 域名映射, 写入
    * @keywords-en webmcp, domain-map, insert
    */
-  async recordWebMcp(payload: OptionalUnlessRequiredId<RunnerWebMcpRecord>): Promise<void> {
-    await this.getCollection<RunnerWebMcpRecord>(RunnerDbCollection.WebMcp).insertOne(payload);
+  async recordWebMcp(
+    payload: OptionalUnlessRequiredId<RunnerWebMcpRecord>,
+  ): Promise<void> {
+    await this.getCollection<RunnerWebMcpRecord>(
+      RunnerDbCollection.WebMcp,
+    ).insertOne(payload);
   }
 
   /**
@@ -96,8 +110,12 @@ export class RunnerDbService {
    * @keywords-cn MCP, 能力记录, 写入
    * @keywords-en mcp, capability-record, insert
    */
-  async recordMcp(payload: OptionalUnlessRequiredId<RunnerMcpRecord>): Promise<void> {
-    await this.getCollection<RunnerMcpRecord>(RunnerDbCollection.Mcp).insertOne(payload);
+  async recordMcp(
+    payload: OptionalUnlessRequiredId<RunnerMcpRecord>,
+  ): Promise<void> {
+    await this.getCollection<RunnerMcpRecord>(RunnerDbCollection.Mcp).insertOne(
+      payload,
+    );
   }
 
   /**
@@ -106,8 +124,12 @@ export class RunnerDbService {
    * @keywords-cn Skill, 能力记录, 写入
    * @keywords-en skill, capability-record, insert
    */
-  async recordSkill(payload: OptionalUnlessRequiredId<RunnerSkillRecord>): Promise<void> {
-    await this.getCollection<RunnerSkillRecord>(RunnerDbCollection.Skill).insertOne(payload);
+  async recordSkill(
+    payload: OptionalUnlessRequiredId<RunnerSkillRecord>,
+  ): Promise<void> {
+    await this.getCollection<RunnerSkillRecord>(
+      RunnerDbCollection.Skill,
+    ).insertOne(payload);
   }
 
   /**
@@ -116,9 +138,114 @@ export class RunnerDbService {
    * @keywords-cn 资源库, 资源记录, 写入
    * @keywords-en resource-library, resource-record, insert
    */
-  async recordResource(payload: OptionalUnlessRequiredId<RunnerResourceLibrary>): Promise<void> {
-    await this.getCollection<RunnerResourceLibrary>(RunnerDbCollection.ResourceLibrary).insertOne(
-      payload,
+  async recordResource(
+    payload: OptionalUnlessRequiredId<RunnerResourceLibrary>,
+  ): Promise<void> {
+    await this.getCollection<RunnerResourceLibrary>(
+      RunnerDbCollection.ResourceLibrary,
+    ).insertOne(payload);
+  }
+
+  /**
+   * @title Upsert 应用
+   * @description 创建或更新应用记录。
+   * @keywords-cn 应用, upsert, 创建更新
+   * @keywords-en app-upsert, create-update, runner-db
+   */
+  async upsertApp(
+    payload: OptionalUnlessRequiredId<RunnerAppManagement>,
+  ): Promise<void> {
+    const collection = this.getCollection<RunnerAppManagement>(
+      RunnerDbCollection.AppManagement,
     );
+    await collection.updateOne(
+      { appId: payload.appId } as Filter<RunnerAppManagement>,
+      { $set: payload },
+      { upsert: true },
+    );
+  }
+
+  /**
+   * @title 获取应用列表
+   * @description 查询所有应用记录。
+   * @keywords-cn 应用列表, 查询, runner-db
+   * @keywords-en app-list, find, runner-db
+   */
+  async findApps(): Promise<RunnerAppManagement[]> {
+    return this.getCollection<RunnerAppManagement>(
+      RunnerDbCollection.AppManagement,
+    )
+      .find({})
+      .toArray();
+  }
+
+  /**
+   * @title 删除应用
+   * @description 根据 appId 删除应用记录。
+   * @keywords-cn 删除应用, appId, runner-db
+   * @keywords-en delete-app, appId, runner-db
+   */
+  async deleteApp(appId: string): Promise<void> {
+    await this.getCollection<RunnerAppManagement>(
+      RunnerDbCollection.AppManagement,
+    ).deleteOne({ appId } as Filter<RunnerAppManagement>);
+  }
+
+  /**
+   * @title Upsert 应用域名绑定
+   * @description 创建或更新应用域名绑定记录。
+   * @keywords-cn 应用域名, upsert, 绑定
+   * @keywords-en app-domain-upsert, binding, runner-db
+   */
+  async upsertAppDomain(
+    payload: OptionalUnlessRequiredId<RunnerAppDomain>,
+  ): Promise<void> {
+    const collection = this.getCollection<RunnerAppDomain>(
+      RunnerDbCollection.AppDomains,
+    );
+    await collection.updateOne(
+      {
+        appId: payload.appId,
+        domain: payload.domain,
+      } as Filter<RunnerAppDomain>,
+      { $set: payload },
+      { upsert: true },
+    );
+  }
+
+  /**
+   * @title 获取应用域名绑定列表
+   * @description 查询所有应用域名绑定记录。
+   * @keywords-cn 应用域名列表, 查询, runner-db
+   * @keywords-en app-domain-list, find, runner-db
+   */
+  async findAppDomains(): Promise<RunnerAppDomain[]> {
+    return this.getCollection<RunnerAppDomain>(RunnerDbCollection.AppDomains)
+      .find({})
+      .toArray();
+  }
+
+  /**
+   * @title 删除应用域名绑定
+   * @description 根据 appId 删除应用域名绑定记录。
+   * @keywords-cn 删除应用域名, appId, runner-db
+   * @keywords-en delete-app-domain, appId, runner-db
+   */
+  async deleteAppDomainsByAppId(appId: string): Promise<void> {
+    await this.getCollection<RunnerAppDomain>(
+      RunnerDbCollection.AppDomains,
+    ).deleteMany({ appId } as Filter<RunnerAppDomain>);
+  }
+
+  /**
+   * @title 根据域名查询应用域名绑定
+   * @description 通过域名查找对应的应用域名绑定记录。
+   * @keywords-cn 域名查询, 应用域名, runner-db
+   * @keywords-en find-by-domain, app-domain, runner-db
+   */
+  async findAppDomainByDomain(domain: string): Promise<RunnerAppDomain | null> {
+    return this.getCollection<RunnerAppDomain>(
+      RunnerDbCollection.AppDomains,
+    ).findOne({ domain } as Filter<RunnerAppDomain>);
   }
 }

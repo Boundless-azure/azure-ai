@@ -33,6 +33,19 @@ export interface RunnerAppManagement extends RunnerBaseRecord {
   version?: string;
   description?: string;
   keywords?: string[];
+  solutionId?: string;
+  solutionName?: string;
+  appPort: number;
+  status: 'running' | 'stopped';
+}
+
+export interface RunnerAppDomain extends RunnerBaseRecord {
+  appId: string;
+  domain: string;
+  pathPattern?: string;
+  targetHost: string;
+  targetPort: number;
+  status: 'active' | 'inactive' | 'error';
 }
 
 export interface RunnerCapabilityManagement extends RunnerBaseRecord {

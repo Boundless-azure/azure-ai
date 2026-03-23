@@ -2,9 +2,14 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IdentityModule } from '@/app/identity/identity.module';
 import { RunnerEntity } from './entities/runner.entity';
+import { FrpRecordEntity } from './entities/frp-record.entity';
+import { DomainBindingEntity } from './entities/domain-binding.entity';
 import { RunnerController } from './controllers/runner.controller';
+import { RunnerProxyController } from './controllers/runner.proxy.controller';
 import { RunnerGateway } from './controllers/runner.gateway';
 import { RunnerService } from './services/runner.service';
+import { RunnerFrpService } from './services/runner-frp.service';
+import { RunnerDomainService } from './services/runner-domain.service';
 import { RunnerHookRegisterService } from './services/runner-hook-register.service';
 
 /**
@@ -14,9 +19,9 @@ import { RunnerHookRegisterService } from './services/runner-hook-register.servi
  * @keywords-en runner-module, crud, register-gateway, hook-registration
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([RunnerEntity]), IdentityModule],
-  controllers: [RunnerController],
-  providers: [RunnerService, RunnerGateway, RunnerHookRegisterService],
-  exports: [RunnerService],
+  imports: [TypeOrmModule.forFeature([RunnerEntity, FrpRecordEntity, DomainBindingEntity]), IdentityModule],
+  controllers: [RunnerController, RunnerProxyController],
+  providers: [RunnerService, RunnerFrpService, RunnerDomainService, RunnerGateway, RunnerHookRegisterService],
+  exports: [RunnerService, RunnerFrpService, RunnerDomainService],
 })
 export class RunnerModule {}

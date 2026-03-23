@@ -1,5 +1,9 @@
 <template>
-  <div class="space-y-4 h-full flex flex-col">
+  <!-- Runner 控制面板 -->
+  <RunnerProxyPage v-if="viewRef === 'proxy'" :runner-id="props.runnerId" :on-back="handleBack" />
+
+  <!-- Runner 管理列表 -->
+  <div v-else class="space-y-4 h-full flex flex-col">
     <div class="pt-8 pb-6">
       <h2 class="text-2xl font-bold text-gray-900">Runner 管理</h2>
       <p class="text-sm text-gray-500 mt-1">管理 Runner 实例、绑定主体与在线状态</p>
@@ -136,6 +140,13 @@
                     >
                       <i class="fa-solid fa-trash"></i>
                     </button>
+                    <button
+                      class="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                      title="控制面板"
+                      @click="openProxyPanel(item)"
+                    >
+                      <i class="fa-solid fa-gears"></i>
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -216,6 +227,12 @@
                 @click="removeItem(item.id)"
               >
                 删除
+              </button>
+              <button
+                class="px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 rounded-lg"
+                @click="openProxyPanel(item)"
+              >
+                控制面板
               </button>
             </div>
           </div>
@@ -384,10 +401,17 @@
  * @keywords-cn Runner管理, CRUD, Key展示
  * @keywords-en runner-management, crud, key-display
  */
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { RUNNER_STATUS_LABEL } from '../constants/runner.constants';
 import { useRunners } from '../hooks/useRunners';
+import { useRightPanelStore } from '../../agent/store/right-panel.store';
 import type { RunnerItem } from '../types/runner.types';
+import RunnerProxyPage from '../pages/RunnerProxyPage.vue';
+
+const props = defineProps<{
+  subView?: 'proxy';
+  runnerId?: string;
+}>();
 
 const { items, loading, latestCreatedKey, list, create, update, remove } = useRunners();
 
@@ -400,9 +424,18 @@ const keyDialogValue = ref('');
 const keyDialogAlias = ref('');
 const keyVisible = ref(false);
 const copyNotice = ref('');
+const rightPanelStore = useRightPanelStore();
 
 const page = ref(1);
 const limit = ref(10);
+
+// 内部视图状态：'list' | 'proxy'
+const viewRef = ref<'list' | 'proxy'>(props.subView === 'proxy' ? 'proxy' : 'list');
+
+// 监听外部 subView 变化（如通过 openTab 传入新 props）
+watch(() => props.subView, (val) => {
+  viewRef.value = val === 'proxy' ? 'proxy' : 'list';
+});
 
 const paginatedItems = computed(() => {
   const start = (page.value - 1) * limit.value;
@@ -511,6 +544,14 @@ const submit = async () => {
 
 const removeItem = async (id: string) => {
   await remove(id);
+};
+
+const openProxyPanel = (item: RunnerItem) => {
+  viewRef.value = 'proxy';
+};
+
+const handleBack = () => {
+  viewRef.value = 'list';
 };
 
 onMounted(async () => {

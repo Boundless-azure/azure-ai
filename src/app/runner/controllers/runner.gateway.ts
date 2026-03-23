@@ -7,6 +7,7 @@ import {
 } from '@nestjs/websockets';
 import type { Socket } from 'socket.io';
 import { RunnerService } from '../services/runner.service';
+import { RunnerFrpService } from '../services/runner-frp.service';
 import {
   RUNNER_NAMESPACE,
   RunnerStatus,
@@ -31,14 +32,17 @@ import { RunnerRegisterDto } from '../types/runner.types';
 export class RunnerGateway implements OnGatewayDisconnect {
   private readonly socketRunnerMap = new Map<string, string>();
 
-  constructor(private readonly runnerService: RunnerService) {}
+  constructor(
+    private readonly runnerService: RunnerService,
+    private readonly runnerFrpService: RunnerFrpService,
+  ) {}
 
   @SubscribeMessage(RunnerWsEvent.Register)
   async onRegister(
     @MessageBody() payload: RunnerRegisterDto,
     @ConnectedSocket() client: Socket,
   ): Promise<
-    | { ok: boolean; runnerId: string; status: RunnerStatus }
+    | { ok: boolean; runnerId: string; status: RunnerStatus; admissionPort?: number; frpsHost?: string; frpsPort?: number }
     | { ok: false; error: string }
   > {
     const runner = await this.runnerService.verifyRegistration(
@@ -48,9 +52,26 @@ export class RunnerGateway implements OnGatewayDisconnect {
     if (!runner) {
       return { ok: false, error: 'invalid runnerId or key' };
     }
+
+    // 分配 FRP 端口
+    let admissionPort: number | undefined;
+    try {
+      admissionPort = await this.runnerFrpService.allocatePort(runner.id, `runner-${runner.id}`);
+    } catch (err) {
+      console.error('[RunnerGateway] Failed to allocate FRP port:', err);
+    }
+
     this.socketRunnerMap.set(client.id, runner.id);
     await this.runnerService.markStatus(runner.id, RunnerStatus.Mounted);
-    return { ok: true, runnerId: runner.id, status: RunnerStatus.Mounted };
+
+    return {
+      ok: true,
+      runnerId: runner.id,
+      status: RunnerStatus.Mounted,
+      admissionPort,
+      frpsHost: process.env.FRPS_HOST || 'localhost',
+      frpsPort: 7000,
+    };
   }
 
   async handleDisconnect(client: Socket): Promise<void> {

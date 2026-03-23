@@ -14,4 +14,5 @@ export enum RunnerDbCollection {
   Mcp = 'runner_mcp',
   Skill = 'runner_skills',
   Migration = 'runner_migrations',
+  AppDomains = 'runner_app_domains',
 }

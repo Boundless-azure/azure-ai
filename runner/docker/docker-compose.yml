@@ -1,0 +1,73 @@
+version: "3.8"
+
+services:
+  runner-mongo:
+    image: mongo:7
+    container_name: azure-ai-runner-mongo
+    restart: unless-stopped
+    ports:
+      - "27027:27017"
+    volumes:
+      - runner_mongo_data:/data/db
+    networks:
+      - runner-network
+
+  runner-redis:
+    image: redis:7-alpine
+    container_name: azure-ai-runner-redis
+    restart: unless-stopped
+    ports:
+      - "6389:6379"
+    volumes:
+      - runner_redis_data:/data
+    networks:
+      - runner-network
+
+  # Runner Caddy (接收请求转发到 Runner :4310)
+  runner-caddy:
+    image: caddy:2-alpine
+    container_name: azure-ai-runner-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - runner_caddy_data:/data
+    networks:
+      - runner-network
+    depends_on:
+      - runner-redis
+
+  # Runner 应用 (预装 FRPC)
+  runner-app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: azure-ai-runner-app
+    restart: unless-stopped
+    ports:
+      - "4310:4310"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - runner_data:/app/runner.data
+    networks:
+      - runner-network
+    depends_on:
+      - runner-mongo
+      - runner-redis
+
+volumes:
+  runner_mongo_data:
+    driver: local
+  runner_redis_data:
+    driver: local
+  runner_caddy_data:
+    driver: local
+  runner_data:
+    driver: local
+
+networks:
+  runner-network:
+    driver: bridge
