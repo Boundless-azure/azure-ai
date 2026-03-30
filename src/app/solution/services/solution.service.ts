@@ -13,7 +13,11 @@ import {
   TagResponse,
   SolutionPurchaseResponse,
 } from '../types/solution.types';
-import { PluginStatus, SolutionSource, SolutionInclude } from '../enums/solution.enums';
+import {
+  PluginStatus,
+  SolutionSource,
+  SolutionInclude,
+} from '../enums/solution.enums';
 
 /**
  * @title Solution Service
@@ -106,7 +110,11 @@ export class SolutionService {
       source: SolutionSource.MARKETPLACE,
       location: null,
       images: null,
-      includes: [SolutionInclude.APP, SolutionInclude.UNIT, SolutionInclude.AGENT],
+      includes: [
+        SolutionInclude.APP,
+        SolutionInclude.UNIT,
+        SolutionInclude.AGENT,
+      ],
       createdAt: new Date('2025-01-20'),
       updatedAt: new Date('2025-03-15'),
     },
@@ -162,7 +170,10 @@ export class SolutionService {
    * @param userId 用户 ID
    * @param data 创建数据
    */
-  async create(userId: string, data: CreateSolutionRequest): Promise<SolutionEntity> {
+  async create(
+    userId: string,
+    data: CreateSolutionRequest,
+  ): Promise<SolutionEntity> {
     const solution = this.solutionRepo.create({
       id: uuidv7(),
       runnerIds: data.runnerIds ?? null,
@@ -216,14 +227,19 @@ export class SolutionService {
    * @param userId 用户 ID
    * @param data 更新数据
    */
-  async update(id: string, userId: string, data: UpdateSolutionRequest): Promise<SolutionEntity> {
+  async update(
+    id: string,
+    userId: string,
+    data: UpdateSolutionRequest,
+  ): Promise<SolutionEntity> {
     const solution = await this.getById(id);
 
     if (data.summary !== undefined) solution.summary = data.summary;
     if (data.description !== undefined) solution.description = data.description;
     if (data.iconUrl !== undefined) solution.iconUrl = data.iconUrl;
     if (data.tags !== undefined) solution.tags = data.tags;
-    if (data.markdownContent !== undefined) solution.markdownContent = data.markdownContent;
+    if (data.markdownContent !== undefined)
+      solution.markdownContent = data.markdownContent;
     if (data.status !== undefined) solution.status = data.status;
     if (data.isPublished !== undefined) solution.isPublished = data.isPublished;
     if (data.source !== undefined) solution.source = data.source;
@@ -252,7 +268,7 @@ export class SolutionService {
    * @description 分页查询 Solution 列表
    * @param query 查询参数
    */
-  async list(query: ListSolutionsQuery): Promise<PaginatedSolutionsResponse> {
+  list(query: ListSolutionsQuery): PaginatedSolutionsResponse {
     const { page, pageSize, tag, q, isInstalled, source, runnerId } = query;
     const skip = (page - 1) * pageSize;
 
@@ -260,7 +276,9 @@ export class SolutionService {
 
     // Filter by isInstalled
     if (isInstalled !== undefined) {
-      filteredSolutions = filteredSolutions.filter((s) => s.isInstalled === isInstalled);
+      filteredSolutions = filteredSolutions.filter(
+        (s) => s.isInstalled === isInstalled,
+      );
     }
 
     // Filter by source
@@ -270,12 +288,16 @@ export class SolutionService {
 
     // Filter by runnerId
     if (runnerId !== undefined) {
-      filteredSolutions = filteredSolutions.filter((s) => s.runnerIds.includes(runnerId));
+      filteredSolutions = filteredSolutions.filter((s) =>
+        s.runnerIds.includes(runnerId),
+      );
     }
 
     // Filter by tag
     if (tag) {
-      filteredSolutions = filteredSolutions.filter((s) => s.tags?.includes(tag));
+      filteredSolutions = filteredSolutions.filter((s) =>
+        s.tags?.includes(tag),
+      );
     }
 
     // Filter by search query
@@ -306,7 +328,7 @@ export class SolutionService {
    * @description 分页查询已发布的 Solution 列表
    * @param query 查询参数
    */
-  async listMarketplace(query: ListSolutionsQuery): Promise<PaginatedSolutionsResponse> {
+  listMarketplace(query: ListSolutionsQuery): PaginatedSolutionsResponse {
     const { page, pageSize, tag, q, source } = query;
     const skip = (page - 1) * pageSize;
 
@@ -319,7 +341,9 @@ export class SolutionService {
 
     // Filter by tag
     if (tag) {
-      filteredSolutions = filteredSolutions.filter((s) => s.tags?.includes(tag));
+      filteredSolutions = filteredSolutions.filter((s) =>
+        s.tags?.includes(tag),
+      );
     }
 
     // Filter by search query
@@ -375,7 +399,11 @@ export class SolutionService {
    * @param runnerIds Runner ID 列表
    * @param userId 用户 ID
    */
-  uninstall(id: string, runnerIds: string[], _userId: string): SolutionResponse {
+  uninstall(
+    id: string,
+    runnerIds: string[],
+    _userId: string,
+  ): SolutionResponse {
     const solution = this.mockSolutions.find((s) => s.id === id);
     if (!solution) {
       throw new NotFoundException('Solution not found');
@@ -393,7 +421,7 @@ export class SolutionService {
    * @title 获取所有标签
    * @description 获取所有已发布 Solution 的标签及数量
    */
-  async getTags(): Promise<TagResponse[]> {
+  getTags(): TagResponse[] {
     return this.mockTags;
   }
 
@@ -401,7 +429,7 @@ export class SolutionService {
    * @title 获取所有 Runner
    * @description 获取所有可用的 Runner 列表
    */
-  async getRunners(): Promise<{ id: string; alias: string; status: string }[]> {
+  getRunners(): { id: string; alias: string; status: string }[] {
     return this.mockRunners;
   }
 
@@ -410,7 +438,7 @@ export class SolutionService {
    * @description 获取当前用户的购买记录
    * @param userId 用户 ID
    */
-  async getPurchases(userId: string): Promise<SolutionPurchaseResponse[]> {
+  getPurchases(userId: string): SolutionPurchaseResponse[] {
     // Mock purchase data
     const mockPurchases: SolutionPurchaseResponse[] = [
       {

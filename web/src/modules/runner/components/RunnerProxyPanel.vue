@@ -27,19 +27,19 @@
     <!-- Tab 内容 -->
     <div class="flex-1 overflow-y-auto p-2 md:p-4">
       <!-- 性能面板 -->
-      <PerformanceTab v-if="activeTab === 'performance'" />
+      <PerformanceTab v-if="activeTab === 'performance'" :runner-id="runnerId" />
 
       <!-- 域名管理 -->
-      <DomainTab v-if="activeTab === 'domains'" />
+      <DomainTab v-if="activeTab === 'domains'" :runner-id="runnerId" />
 
       <!-- 应用域名管理 -->
-      <AppDomainTab v-if="activeTab === 'app-domains'" />
+      <AppDomainTab v-if="activeTab === 'app-domains'" :runner-id="runnerId" />
 
       <!-- 应用管理 -->
-      <AppTab v-if="activeTab === 'apps'" />
+      <AppTab v-if="activeTab === 'apps'" :runner-id="runnerId" />
 
       <!-- Solution 管理 -->
-      <SolutionTab v-if="activeTab === 'solutions'" />
+      <SolutionTab v-if="activeTab === 'solutions'" :runner-id="runnerId" />
     </div>
   </div>
 </template>
@@ -58,6 +58,11 @@ import AppDomainTab from './tabs/AppDomainTab.vue';
 import AppTab from './tabs/AppTab.vue';
 import SolutionTab from './tabs/SolutionTab.vue';
 
+const props = defineProps<{
+  runnerId: string;
+}>();
+
+const runnerId = props.runnerId;
 const activeTab = ref('performance');
 
 const tabs = [

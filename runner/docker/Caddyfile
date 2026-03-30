@@ -1,21 +1,18 @@
 # Runner Caddy 配置
-# 接收请求并转发到 Runner 内部服务
+# 上游地址通过环境变量 RUNNER_UPSTREAM 注入：
+#   Docker 模式： RUNNER_UPSTREAM=runner-app:4310
+#   宿主机模式： RUNNER_UPSTREAM=host.docker.internal:4310
 
 {
-  admin off
+  # 开启 Caddy admin API
+  admin 0.0.0.0:2019
 }
 
-:80, :443 {
-    # HTTP/HTTPS 接收
-    tls internal
-
-    # 转发所有请求到 Runner 内部代理接口
-    handle /internal/forward* {
-        reverse_proxy localhost:4310
-    }
-
-    # 其他请求也转发到 Runner
-    handle {
-        reverse_proxy localhost:4310
-    }
+# 默认 HTTP 入口：接收来自 frpc 穿透的外部流量
+:80 {
+  reverse_proxy {env.RUNNER_UPSTREAM} {
+    header_up Host {host}
+    header_up X-Forwarded-Proto {scheme}
+    header_up X-Real-IP {remote_host}
+  }
 }

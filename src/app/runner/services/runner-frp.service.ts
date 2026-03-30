@@ -11,13 +11,23 @@ import { FrpRecordEntity } from '../entities/frp-record.entity';
  */
 @Injectable()
 export class RunnerFrpService {
-  private readonly frpPortRange = { start: 27001, end: 28000 };
-  private usedPorts = new Set<number>();
+  private readonly frpPortRange = { start: 20000, end: 30000 };
+  private usedPortsLoaded = false;
+  private _usedPorts = new Set<number>();
 
   constructor(
     @InjectRepository(FrpRecordEntity)
     private readonly frpRepo: Repository<FrpRecordEntity>,
   ) {}
+
+  private async ensureUsedPortsLoaded(): Promise<void> {
+    if (this.usedPortsLoaded) return;
+    const records = await this.frpRepo.find({ where: { active: true } });
+    for (const r of records) {
+      this._usedPorts.add(r.port);
+    }
+    this.usedPortsLoaded = true;
+  }
 
   /**
    * @title 分配 FRP 端口
@@ -29,8 +39,9 @@ export class RunnerFrpService {
    * @keywords-en allocate-port, frp-port, runner
    */
   async allocatePort(runnerId: string, domain: string): Promise<number> {
+    await this.ensureUsedPortsLoaded();
     const port = this.findAvailablePort();
-    this.usedPorts.add(port);
+    this._usedPorts.add(port);
 
     const record = this.frpRepo.create({
       runnerId,
@@ -76,7 +87,13 @@ export class RunnerFrpService {
    * @keywords-en release-port, frp-port
    */
   async releasePort(runnerId: string): Promise<void> {
+    const records = await this.frpRepo.find({
+      where: { runnerId, active: true },
+    });
     await this.frpRepo.update({ runnerId }, { active: false });
+    for (const r of records) {
+      this._usedPorts.delete(r.port);
+    }
   }
 
   private findAvailablePort(): number {
@@ -85,7 +102,7 @@ export class RunnerFrpService {
       port <= this.frpPortRange.end;
       port++
     ) {
-      if (!this.usedPorts.has(port)) {
+      if (!this._usedPorts.has(port)) {
         return port;
       }
     }

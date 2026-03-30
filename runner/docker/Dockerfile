@@ -10,7 +10,7 @@ RUN apk add --no-cache curl ca-certificates \
     && ln -s /opt/frp/frps /usr/local/bin/frps
 
 WORKDIR /app
-COPY package*.json ./
+COPY package.json ./
 RUN npm install -g pnpm && pnpm install
 COPY . .
 RUN pnpm build

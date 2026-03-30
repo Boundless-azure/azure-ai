@@ -37,7 +37,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # SaaS Caddy (HTTPS 终止 + 转发)
+  # SaaS Caddy: HTTPS 终止 + 反代到宿主机 NestJS (host.docker.internal:3000)
   saas-caddy:
     image: caddy:2-alpine
     container_name: azure-ai-saas-caddy
@@ -51,20 +51,25 @@ services:
     networks:
       - azure-ai-network
 
-  # SaaS FRP Server
+  # SaaS FRP Server: 端口范围 20000-30000, HTTP plugin 鉴权
   saas-frp:
-    image: snowdreamtech/frps:latest
+    image: snowdreamtech/frps:0.61.1
     container_name: azure-ai-saas-frp
     restart: unless-stopped
-    privileged: true
+    environment:
+      # 需与 frp_nodes.token 保持一致，生产环境必须覆盖
+      FRP_AUTH_TOKEN: ${FRP_AUTH_TOKEN:-frps-default-token-change-in-production}
     ports:
-      - "7000:7000"
-      - "7001:7001/udp"
-      - "8080:80"
-      - "8443:443"
+      - "7000:7000"       # frpc 连接端口
+      - "7500:7500"       # frps admin webUI
+      - "20000-20099:20000-20099"  # runner 穿透端口（dev 用 100 个即可）
     volumes:
-      - ./docker/saas/frps.ini:/etc/frp/frps.ini:ro
+      - ./docker/saas/frps.toml:/etc/frp/frps.toml:ro
       - saas_frp_logs:/var/log/frp
+    command: ["-c", "/etc/frp/frps.toml"]
+    # 允许容器访问宿主机（Linux 需要 host-gateway）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - azure-ai-network
 
@@ -81,3 +86,4 @@ volumes:
 networks:
   azure-ai-network:
     driver: bridge
+

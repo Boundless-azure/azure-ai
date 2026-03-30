@@ -1,21 +1,18 @@
 # SaaS Caddy 配置
-# HTTPS 终止并转发请求到 NestJS
+# HTTPS 终止并直接反代到 NestJS :3000
 
 {
   admin off
 }
 
-# 外部请求到达时，根据 Host 头转发到 /proxy/forward
 :80, :443 {
-    # HTTPS 终止
-    tls internal
+  tls internal
 
-    # 统一转发：把请求转发到 NestJS 的 /proxy/forward
-    # 保留原始 Host 头供后端识别域名
-    handle {
-        reverse_proxy localhost:3000 {
-            header_up X-Forwarded-Domain {host}
-            header_up X-Forwarded-Proto https
-        }
-    }
+  # 所有请求直接转发到 NestJS 后端
+  # 携带原始 Host 头，供 404 转发过滤器识别域名
+  reverse_proxy saas-backend:3000 {
+    header_up Host {host}
+    header_up X-Forwarded-Proto {scheme}
+    header_up X-Real-IP {remote_host}
+  }
 }

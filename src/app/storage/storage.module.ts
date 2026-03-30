@@ -12,10 +12,7 @@ import { ResourceModule } from '../resource/resource.module';
  * @keywords-en storage-module, resource-library, directory-management, share
  */
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([StorageNodeEntity]),
-    ResourceModule,
-  ],
+  imports: [TypeOrmModule.forFeature([StorageNodeEntity]), ResourceModule],
   providers: [StorageService],
   controllers: [StorageController],
   exports: [StorageService],

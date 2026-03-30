@@ -16,7 +16,11 @@ import { CreateTodoDto, QueryTodoDto, UpdateTodoDto } from './types/todo.types';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TodoEntity, TodoFollowupEntity, TodoFollowupCommentEntity]),
+    TypeOrmModule.forFeature([
+      TodoEntity,
+      TodoFollowupEntity,
+      TodoFollowupCommentEntity,
+    ]),
     DataPermissionModule.forRoot({
       tableDtoMap: {
         todos: [QueryTodoDto, CreateTodoDto, UpdateTodoDto],

@@ -12,6 +12,7 @@ import {
 } from '../types/runner.types';
 import { RunnerStatus } from '../enums/runner.enums';
 import { PrincipalService } from '@/app/identity/services/principal.service';
+import { DomainAllocationService } from './domain-allocation.service';
 
 /**
  * @title Runner 服务
@@ -25,6 +26,7 @@ export class RunnerService {
     @InjectRepository(RunnerEntity)
     private readonly repo: Repository<RunnerEntity>,
     private readonly principalService: PrincipalService,
+    private readonly domainAllocationService: DomainAllocationService,
   ) {}
 
   async list(query: QueryRunnerDto): Promise<RunnerView[]> {
@@ -75,6 +77,11 @@ export class RunnerService {
       isDelete: false,
     });
     const saved = await this.repo.save(entity);
+    // 分配默认域名（localhost:3001 + runnerId 作为 pathPattern）
+    await this.domainAllocationService.allocateDefaultDomain(
+      saved.id,
+      principal.id,
+    );
     return {
       id: saved.id,
       alias: saved.alias,

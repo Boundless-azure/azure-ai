@@ -14,15 +14,17 @@ export class DropAppsAndAppUnits1773970000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS app_units`);
 
     // 2. 检查 apps 表是否存在
-    const appsTableExists = await queryRunner.query(`
-      SELECT to_regclass('public.apps') AS exists
-    `);
+    const appsTableExists: Array<{ exists: string | null }> =
+      await queryRunner.query(`
+        SELECT to_regclass('public.apps') AS exists
+      `);
 
     if (appsTableExists[0]?.exists) {
       // 检查 plugins 表是否已存在（可能被重命名过）
-      const pluginsTableExists = await queryRunner.query(`
-        SELECT to_regclass('public.plugins') AS exists
-      `);
+      const pluginsTableExists: Array<{ exists: string | null }> =
+        await queryRunner.query(`
+          SELECT to_regclass('public.plugins') AS exists
+        `);
 
       if (pluginsTableExists[0]?.exists) {
         // 如果 plugins 也存在，直接删除 apps
@@ -41,7 +43,7 @@ export class DropAppsAndAppUnits1773970000000 implements MigrationInterface {
     }
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
+  public async down(_queryRunner: QueryRunner): Promise<void> {
     // 此迁移不可逆，不提供回滚
     // 如需回滚，请手动恢复表结构
   }

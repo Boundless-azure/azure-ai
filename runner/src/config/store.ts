@@ -17,6 +17,14 @@ export interface RunnerLocalConfig {
   mongoDbName: string;
   runnerDbName: string;
   redisUri: string;
+  /** frpc 二进制文件路径，Unix 默认 /usr/local/bin/frpc，Windows 默认 frpc（需在 PATH 中） */
+  frpcBinPath: string;
+  /**
+   * frpc 本地监听端口（即 frpc.toml 的 localPort）
+   * - Docker 模式： 80（Caddy 内网）
+   * - 宿主机模式： 4310（直接指向 runner app）
+   */
+  frpcLocalPort: number;
 }
 
 const defaultConfig: RunnerLocalConfig = {
@@ -29,6 +37,13 @@ const defaultConfig: RunnerLocalConfig = {
   mongoDbName: '',
   runnerDbName: 'runner',
   redisUri: '',
+  /** Unix 用 /usr/local/bin/frpc，Windows 用 frpc（需在 PATH 中） */
+  frpcBinPath: process.platform === 'win32' ? 'frpc' : '/usr/local/bin/frpc',
+  /**
+   * 宿主机运行时默认直接指向 runner；
+   * Docker 模式下通过 UI 或配置文件改为 80 (Caddy)
+   */
+  frpcLocalPort: process.platform === 'win32' ? 4310 : 80,
 };
 
 const configPath = join(process.cwd(), 'runner.data', 'config.json');
@@ -46,7 +61,9 @@ export function getRunnerConfig(): RunnerLocalConfig {
   }
 }
 
-export function saveRunnerConfig(patch: Partial<RunnerLocalConfig>): RunnerLocalConfig {
+export function saveRunnerConfig(
+  patch: Partial<RunnerLocalConfig>,
+): RunnerLocalConfig {
   const next = { ...getRunnerConfig(), ...patch };
   mkdirSync(dirname(configPath), { recursive: true });
   writeFileSync(configPath, JSON.stringify(next, null, 2), 'utf8');

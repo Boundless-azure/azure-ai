@@ -65,7 +65,11 @@ export class AddRunnerProxyTables1774000000000 implements MigrationInterface {
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS "domain_bindings"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "frp_records"`);
-    await queryRunner.query(`ALTER TABLE "runners" DROP COLUMN IF EXISTS "frp_port"`);
-    await queryRunner.query(`ALTER TABLE "runners" DROP COLUMN IF EXISTS "frp_enabled"`);
+    await queryRunner.query(
+      `ALTER TABLE "runners" DROP COLUMN IF EXISTS "frp_port"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "runners" DROP COLUMN IF EXISTS "frp_enabled"`,
+    );
   }
 }

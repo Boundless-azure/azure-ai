@@ -1,0 +1,281 @@
+2026-03-29 23:10:31.006 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:10:31.284 [I] [client/service.go:335] try to connect to server...
+2026-03-29 23:10:31.284 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-29 23:10:32.248 [E] [client/service.go:320] token in login doesn't match token from configuration
+2026-03-29 23:10:32.269 [W] [client/service.go:338] connect to server error: token in login doesn't match token from configuration
+2026-03-29 23:10:32.269 [I] [sub/root.go:178] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:23:09.326 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:23:09.361 [I] [client/service.go:335] try to connect to server...
+2026-03-29 23:23:09.361 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-29 23:23:09.372 [E] [client/service.go:320] token in login doesn't match token from configuration
+2026-03-29 23:23:09.373 [W] [client/service.go:338] connect to server error: token in login doesn't match token from configuration
+2026-03-29 23:23:09.373 [I] [sub/root.go:178] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:23:09.361 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:23:09.444 [I] [client/service.go:335] try to connect to server...
+2026-03-29 23:23:09.444 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-29 23:23:09.455 [E] [client/service.go:320] token in login doesn't match token from configuration
+2026-03-29 23:23:09.456 [W] [client/service.go:338] connect to server error: token in login doesn't match token from configuration
+2026-03-29 23:23:09.456 [I] [sub/root.go:178] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:36:53.532 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:36:53.566 [I] [client/service.go:335] try to connect to server...
+2026-03-29 23:36:53.566 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-29 23:36:53.540 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:36:53.572 [I] [sub/root.go:170] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:36:54.705 [W] [client/service.go:338] connect to server error: session shutdown
+2026-03-29 23:36:54.705 [I] [sub/root.go:178] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:41:38.493 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:41:38.493 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:41:38.537 [I] [sub/root.go:170] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:41:38.538 [I] [client/service.go:335] try to connect to server...
+2026-03-29 23:41:38.538 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-29 23:41:39.567 [W] [client/service.go:338] connect to server error: session shutdown
+2026-03-29 23:41:39.567 [I] [sub/root.go:178] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:44:02.507 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:44:02.545 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-29 23:44:02.546 [I] [client/service.go:335] try to connect to server...
+2026-03-29 23:44:03.612 [W] [client/service.go:338] connect to server error: session shutdown
+2026-03-29 23:44:03.612 [I] [sub/root.go:178] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:54:06.593 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:54:06.682 [I] [client/service.go:335] try to connect to server...
+2026-03-29 23:54:06.682 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-29 23:54:07.913 [W] [client/service.go:338] connect to server error: session shutdown
+2026-03-29 23:54:07.913 [I] [sub/root.go:178] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:54:25.297 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:54:25.353 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-29 23:54:25.353 [I] [client/service.go:335] try to connect to server...
+2026-03-29 23:54:26.359 [W] [client/service.go:338] connect to server error: session shutdown
+2026-03-29 23:54:26.359 [I] [sub/root.go:178] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:56:22.509 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:56:22.557 [I] [client/service.go:335] try to connect to server...
+2026-03-29 23:56:22.557 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-29 23:56:23.561 [W] [client/service.go:338] connect to server error: session shutdown
+2026-03-29 23:56:23.561 [I] [sub/root.go:178] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-29 23:58:00.533 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-29 23:58:00.611 [I] [client/service.go:335] try to connect to server...
+2026-03-29 23:58:00.611 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-29 23:58:01.717 [W] [client/service.go:338] connect to server error: session shutdown
+2026-03-29 23:58:01.718 [I] [sub/root.go:178] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-30 00:06:37.960 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:06:37.991 [I] [client/service.go:335] try to connect to server...
+2026-03-30 00:06:37.991 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 00:06:38.016 [I] [client/service.go:327] [d03950825b1c2b89] login to server success, get run id [d03950825b1c2b89]
+2026-03-30 00:06:38.261 [I] [proxy/proxy_manager.go:180] [d03950825b1c2b89] proxy added: [runner-tunnel]
+2026-03-30 00:06:38.965 [I] [client/control.go:172] [d03950825b1c2b89] [runner-tunnel] start proxy success
+2026-03-30 00:09:52.970 [I] [http/middleware.go:35] http request: [/]
+2026-03-30 00:09:52.971 [I] [http/middleware.go:38] http response [/]: code [301]
+2026-03-30 00:09:52.991 [I] [http/middleware.go:35] http request: [/static/]
+2026-03-30 00:09:53.223 [I] [http/middleware.go:38] http response [/static/]: code [200]
+2026-03-30 00:09:53.271 [I] [http/middleware.go:35] http request: [/static/index-CGnWaidp.css]
+2026-03-30 00:09:53.272 [I] [http/middleware.go:35] http request: [/static/index-CQqZ7dz0.js]
+2026-03-30 00:09:53.293 [I] [http/middleware.go:38] http response [/static/index-CGnWaidp.css]: code [200]
+2026-03-30 00:09:53.317 [I] [http/middleware.go:38] http response [/static/index-CQqZ7dz0.js]: code [200]
+2026-03-30 00:09:53.565 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:09:53.569 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:09:53.832 [I] [http/middleware.go:35] http request: [/favicon.ico]
+2026-03-30 00:09:53.834 [I] [http/middleware.go:38] http response [/favicon.ico]: code [200]
+2026-03-30 00:09:56.673 [I] [http/middleware.go:35] http request: [/api/config]
+2026-03-30 00:09:56.673 [I] [http/middleware.go:38] http response [/api/config]: code [200]
+2026-03-30 00:10:05.100 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:10:05.100 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:15:36.096 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:15:36.133 [I] [sub/root.go:170] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-30 00:15:52.599 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:15:52.636 [I] [sub/root.go:170] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-30 00:16:01.750 [I] [http/middleware.go:35] http request: [/static/]
+2026-03-30 00:16:01.751 [I] [http/middleware.go:38] http response [/static/]: code [200]
+2026-03-30 00:16:01.813 [I] [http/middleware.go:35] http request: [/static/index-CQqZ7dz0.js]
+2026-03-30 00:16:01.813 [I] [http/middleware.go:35] http request: [/static/index-CGnWaidp.css]
+2026-03-30 00:16:01.820 [I] [http/middleware.go:38] http response [/static/index-CGnWaidp.css]: code [200]
+2026-03-30 00:16:01.839 [I] [http/middleware.go:38] http response [/static/index-CQqZ7dz0.js]: code [200]
+2026-03-30 00:16:02.048 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:16:02.048 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:16:02.198 [I] [http/middleware.go:35] http request: [/favicon.ico]
+2026-03-30 00:16:02.199 [I] [http/middleware.go:38] http response [/favicon.ico]: code [200]
+2026-03-30 00:16:06.194 [I] [http/middleware.go:35] http request: [/api/config]
+2026-03-30 00:16:06.194 [I] [http/middleware.go:38] http response [/api/config]: code [200]
+2026-03-30 00:16:48.868 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:16:48.868 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:16:59.706 [I] [http/middleware.go:35] http request: [/api/config]
+2026-03-30 00:16:59.706 [I] [http/middleware.go:38] http response [/api/config]: code [200]
+2026-03-30 00:17:01.010 [I] [http/middleware.go:35] http request: [/api/config]
+2026-03-30 00:17:01.010 [I] [http/middleware.go:38] http response [/api/config]: code [200]
+2026-03-30 00:17:03.410 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:17:03.410 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:19:09.221 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:19:09.256 [I] [client/service.go:335] try to connect to server...
+2026-03-30 00:19:09.256 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 00:19:09.268 [I] [client/service.go:327] [85c8455043f5be06] login to server success, get run id [85c8455043f5be06]
+2026-03-30 00:19:09.268 [I] [proxy/proxy_manager.go:180] [85c8455043f5be06] proxy added: [runner-tunnel]
+2026-03-30 00:19:09.300 [I] [client/control.go:172] [85c8455043f5be06] [runner-tunnel] start proxy success
+2026-03-30 00:19:33.308 [I] [http/middleware.go:35] http request: [/static/]
+2026-03-30 00:19:33.484 [I] [http/middleware.go:38] http response [/static/]: code [200]
+2026-03-30 00:19:33.544 [I] [http/middleware.go:35] http request: [/static/index-CGnWaidp.css]
+2026-03-30 00:19:33.545 [I] [http/middleware.go:35] http request: [/static/index-CQqZ7dz0.js]
+2026-03-30 00:19:33.552 [I] [http/middleware.go:38] http response [/static/index-CGnWaidp.css]: code [200]
+2026-03-30 00:19:33.573 [I] [http/middleware.go:38] http response [/static/index-CQqZ7dz0.js]: code [200]
+2026-03-30 00:19:33.645 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:19:33.645 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:19:33.706 [I] [http/middleware.go:35] http request: [/favicon.ico]
+2026-03-30 00:19:33.706 [I] [http/middleware.go:38] http response [/favicon.ico]: code [200]
+2026-03-30 00:23:30.323 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:23:30.360 [I] [sub/root.go:170] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-30 00:25:32.051 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:25:32.090 [I] [sub/root.go:170] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-30 00:31:10.429 [I] [http/middleware.go:35] http request: [/static/]
+2026-03-30 00:31:10.430 [I] [http/middleware.go:38] http response [/static/]: code [200]
+2026-03-30 00:31:10.481 [I] [http/middleware.go:35] http request: [/static/index-CGnWaidp.css]
+2026-03-30 00:31:10.484 [I] [http/middleware.go:35] http request: [/static/index-CQqZ7dz0.js]
+2026-03-30 00:31:10.492 [I] [http/middleware.go:38] http response [/static/index-CGnWaidp.css]: code [200]
+2026-03-30 00:31:10.510 [I] [http/middleware.go:38] http response [/static/index-CQqZ7dz0.js]: code [200]
+2026-03-30 00:31:10.735 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:31:10.735 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:31:10.917 [I] [http/middleware.go:35] http request: [/favicon.ico]
+2026-03-30 00:31:10.917 [I] [http/middleware.go:38] http response [/favicon.ico]: code [200]
+2026-03-30 00:31:24.026 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:31:24.060 [I] [client/service.go:335] try to connect to server...
+2026-03-30 00:31:24.060 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 00:31:24.070 [I] [client/service.go:327] [326a3fcf36af3b5a] login to server success, get run id [326a3fcf36af3b5a]
+2026-03-30 00:31:24.070 [I] [proxy/proxy_manager.go:180] [326a3fcf36af3b5a] proxy added: [runner-tunnel]
+2026-03-30 00:31:24.122 [I] [client/control.go:172] [326a3fcf36af3b5a] [runner-tunnel] start proxy success
+2026-03-30 00:31:25.801 [I] [http/middleware.go:35] http request: [/static/]
+2026-03-30 00:31:26.009 [I] [http/middleware.go:38] http response [/static/]: code [200]
+2026-03-30 00:31:26.035 [I] [http/middleware.go:35] http request: [/static/index-CGnWaidp.css]
+2026-03-30 00:31:26.035 [I] [http/middleware.go:35] http request: [/static/index-CQqZ7dz0.js]
+2026-03-30 00:31:26.043 [I] [http/middleware.go:38] http response [/static/index-CGnWaidp.css]: code [200]
+2026-03-30 00:31:26.063 [I] [http/middleware.go:38] http response [/static/index-CQqZ7dz0.js]: code [200]
+2026-03-30 00:31:26.327 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:31:26.327 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:31:26.578 [I] [http/middleware.go:35] http request: [/favicon.ico]
+2026-03-30 00:31:26.581 [I] [http/middleware.go:38] http response [/favicon.ico]: code [200]
+2026-03-30 00:33:11.344 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:33:11.376 [I] [sub/root.go:170] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-30 00:33:24.345 [I] [http/middleware.go:35] http request: [/static/]
+2026-03-30 00:33:24.347 [I] [http/middleware.go:38] http response [/static/]: code [200]
+2026-03-30 00:33:24.405 [I] [http/middleware.go:35] http request: [/static/index-CGnWaidp.css]
+2026-03-30 00:33:24.405 [I] [http/middleware.go:35] http request: [/static/index-CQqZ7dz0.js]
+2026-03-30 00:33:24.416 [I] [http/middleware.go:38] http response [/static/index-CGnWaidp.css]: code [200]
+2026-03-30 00:33:24.435 [I] [http/middleware.go:38] http response [/static/index-CQqZ7dz0.js]: code [200]
+2026-03-30 00:33:24.502 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:33:24.502 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:33:24.563 [I] [http/middleware.go:35] http request: [/favicon.ico]
+2026-03-30 00:33:24.563 [I] [http/middleware.go:38] http response [/favicon.ico]: code [200]
+2026-03-30 00:50:13.618 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:50:13.651 [I] [sub/root.go:170] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-30 00:50:18.663 [I] [http/middleware.go:35] http request: [/static/]
+2026-03-30 00:50:18.664 [I] [http/middleware.go:38] http response [/static/]: code [200]
+2026-03-30 00:50:18.731 [I] [http/middleware.go:35] http request: [/static/index-CGnWaidp.css]
+2026-03-30 00:50:18.737 [I] [http/middleware.go:35] http request: [/static/index-CQqZ7dz0.js]
+2026-03-30 00:50:18.741 [I] [http/middleware.go:38] http response [/static/index-CGnWaidp.css]: code [200]
+2026-03-30 00:50:18.758 [I] [http/middleware.go:38] http response [/static/index-CQqZ7dz0.js]: code [200]
+2026-03-30 00:50:18.995 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:50:18.995 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:50:19.216 [I] [http/middleware.go:35] http request: [/favicon.ico]
+2026-03-30 00:50:19.216 [I] [http/middleware.go:38] http response [/favicon.ico]: code [200]
+2026-03-30 00:51:51.377 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:51:51.412 [I] [sub/root.go:170] frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml] stopped
+2026-03-30 00:53:30.414 [I] [http/middleware.go:35] http request: [/static/]
+2026-03-30 00:53:30.415 [I] [http/middleware.go:38] http response [/static/]: code [200]
+2026-03-30 00:53:30.466 [I] [http/middleware.go:35] http request: [/static/index-CQqZ7dz0.js]
+2026-03-30 00:53:30.472 [I] [http/middleware.go:35] http request: [/static/index-CGnWaidp.css]
+2026-03-30 00:53:30.499 [I] [http/middleware.go:38] http response [/static/index-CGnWaidp.css]: code [200]
+2026-03-30 00:53:30.512 [I] [http/middleware.go:38] http response [/static/index-CQqZ7dz0.js]: code [200]
+2026-03-30 00:53:30.582 [I] [http/middleware.go:35] http request: [/api/status]
+2026-03-30 00:53:30.582 [I] [http/middleware.go:38] http response [/api/status]: code [200]
+2026-03-30 00:53:30.650 [I] [http/middleware.go:35] http request: [/favicon.ico]
+2026-03-30 00:53:30.650 [I] [http/middleware.go:38] http response [/favicon.ico]: code [200]
+2026-03-30 00:53:59.493 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 00:53:59.526 [I] [client/service.go:335] try to connect to server...
+2026-03-30 00:53:59.526 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 00:53:59.537 [I] [client/service.go:327] [1609c4879329530e] login to server success, get run id [1609c4879329530e]
+2026-03-30 00:53:59.537 [I] [proxy/proxy_manager.go:180] [1609c4879329530e] proxy added: [runner-tunnel]
+2026-03-30 00:53:59.568 [I] [client/control.go:172] [1609c4879329530e] [runner-tunnel] start proxy success
+2026-03-30 01:15:32.663 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 01:15:32.712 [I] [client/service.go:335] try to connect to server...
+2026-03-30 01:15:32.712 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 01:15:32.782 [I] [client/service.go:327] [82e7c1d3eec2e53d] login to server success, get run id [82e7c1d3eec2e53d]
+2026-03-30 01:15:32.784 [I] [proxy/proxy_manager.go:180] [82e7c1d3eec2e53d] proxy added: [runner-tunnel]
+2026-03-30 01:15:32.835 [I] [client/control.go:172] [82e7c1d3eec2e53d] [runner-tunnel] start proxy success
+2026-03-30 16:24:34.085 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 16:24:34.145 [I] [client/service.go:335] try to connect to server...
+2026-03-30 16:24:34.145 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 16:24:34.679 [I] [client/service.go:327] [760051bae6567918] login to server success, get run id [760051bae6567918]
+2026-03-30 16:24:34.679 [I] [proxy/proxy_manager.go:180] [760051bae6567918] proxy added: [runner-tunnel]
+2026-03-30 16:24:35.500 [I] [client/control.go:172] [760051bae6567918] [runner-tunnel] start proxy success
+2026-03-30 16:25:06.101 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 16:25:06.137 [I] [client/service.go:335] try to connect to server...
+2026-03-30 16:25:06.138 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 16:25:06.195 [I] [client/service.go:327] [c6e62b7a41f98bb2] login to server success, get run id [c6e62b7a41f98bb2]
+2026-03-30 16:25:06.196 [I] [proxy/proxy_manager.go:180] [c6e62b7a41f98bb2] proxy added: [runner-tunnel]
+2026-03-30 16:25:06.222 [I] [client/control.go:172] [c6e62b7a41f98bb2] [runner-tunnel] start proxy success
+2026-03-30 16:25:44.695 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 16:25:44.725 [I] [client/service.go:335] try to connect to server...
+2026-03-30 16:25:44.725 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 16:25:44.736 [I] [client/service.go:327] [a885d9e8b3ebc384] login to server success, get run id [a885d9e8b3ebc384]
+2026-03-30 16:25:44.736 [I] [proxy/proxy_manager.go:180] [a885d9e8b3ebc384] proxy added: [runner-tunnel]
+2026-03-30 16:25:44.755 [I] [client/control.go:172] [a885d9e8b3ebc384] [runner-tunnel] start proxy success
+2026-03-30 18:56:16.952 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 18:56:16.986 [I] [client/service.go:335] try to connect to server...
+2026-03-30 18:56:16.986 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 18:56:17.051 [I] [client/service.go:327] [ff01c4ac9114c345] login to server success, get run id [ff01c4ac9114c345]
+2026-03-30 18:56:17.052 [I] [proxy/proxy_manager.go:180] [ff01c4ac9114c345] proxy added: [runner-tunnel]
+2026-03-30 18:56:17.357 [I] [client/control.go:172] [ff01c4ac9114c345] [runner-tunnel] start proxy success
+2026-03-30 18:57:48.648 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 18:57:48.683 [I] [client/service.go:335] try to connect to server...
+2026-03-30 18:57:48.683 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 18:57:48.717 [I] [client/service.go:327] [7bda4fc42b39008a] login to server success, get run id [7bda4fc42b39008a]
+2026-03-30 18:57:48.717 [I] [proxy/proxy_manager.go:180] [7bda4fc42b39008a] proxy added: [runner-tunnel]
+2026-03-30 18:57:48.768 [I] [client/control.go:172] [7bda4fc42b39008a] [runner-tunnel] start proxy success
+2026-03-30 18:58:04.942 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 18:58:04.999 [I] [client/service.go:335] try to connect to server...
+2026-03-30 18:58:04.999 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 18:58:05.011 [I] [client/service.go:327] [69152162aa3d670d] login to server success, get run id [69152162aa3d670d]
+2026-03-30 18:58:05.012 [I] [proxy/proxy_manager.go:180] [69152162aa3d670d] proxy added: [runner-tunnel]
+2026-03-30 18:58:05.057 [I] [client/control.go:172] [69152162aa3d670d] [runner-tunnel] start proxy success
+2026-03-30 18:58:27.193 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 18:58:27.278 [I] [client/service.go:335] try to connect to server...
+2026-03-30 18:58:27.278 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 18:58:27.478 [I] [client/service.go:327] [dc82a7d271e230e7] login to server success, get run id [dc82a7d271e230e7]
+2026-03-30 18:58:27.478 [I] [proxy/proxy_manager.go:180] [dc82a7d271e230e7] proxy added: [runner-tunnel]
+2026-03-30 18:58:27.600 [I] [client/control.go:172] [dc82a7d271e230e7] [runner-tunnel] start proxy success
+2026-03-30 18:59:33.637 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 18:59:33.671 [I] [client/service.go:335] try to connect to server...
+2026-03-30 18:59:33.682 [I] [client/service.go:327] [8365e8a157eb8ebc] login to server success, get run id [8365e8a157eb8ebc]
+2026-03-30 18:59:33.682 [I] [proxy/proxy_manager.go:180] [8365e8a157eb8ebc] proxy added: [runner-tunnel]
+2026-03-30 18:59:33.672 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 18:59:33.742 [I] [client/control.go:172] [8365e8a157eb8ebc] [runner-tunnel] start proxy success
+2026-03-30 18:59:52.841 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 18:59:52.961 [I] [client/service.go:335] try to connect to server...
+2026-03-30 18:59:52.962 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 18:59:53.053 [I] [client/service.go:327] [fca835a2a691c3b0] login to server success, get run id [fca835a2a691c3b0]
+2026-03-30 18:59:53.053 [I] [proxy/proxy_manager.go:180] [fca835a2a691c3b0] proxy added: [runner-tunnel]
+2026-03-30 18:59:53.102 [I] [client/control.go:172] [fca835a2a691c3b0] [runner-tunnel] start proxy success
+2026-03-30 19:00:19.621 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 19:00:19.652 [I] [client/service.go:335] try to connect to server...
+2026-03-30 19:00:19.652 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 19:00:19.661 [I] [client/service.go:327] [4ae490b4982158d0] login to server success, get run id [4ae490b4982158d0]
+2026-03-30 19:00:19.662 [I] [proxy/proxy_manager.go:180] [4ae490b4982158d0] proxy added: [runner-tunnel]
+2026-03-30 19:00:19.702 [I] [client/control.go:172] [4ae490b4982158d0] [runner-tunnel] start proxy success
+2026-03-30 19:00:54.399 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 19:00:54.431 [I] [client/service.go:335] try to connect to server...
+2026-03-30 19:00:54.431 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 19:00:54.441 [I] [client/service.go:327] [ff7502f446aed246] login to server success, get run id [ff7502f446aed246]
+2026-03-30 19:00:54.441 [I] [proxy/proxy_manager.go:180] [ff7502f446aed246] proxy added: [runner-tunnel]
+2026-03-30 19:00:54.482 [I] [client/control.go:172] [ff7502f446aed246] [runner-tunnel] start proxy success
+2026-03-30 19:01:28.682 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 19:01:28.719 [I] [client/service.go:335] try to connect to server...
+2026-03-30 19:01:28.719 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 19:01:28.730 [I] [client/service.go:327] [1a2d602fb19327fc] login to server success, get run id [1a2d602fb19327fc]
+2026-03-30 19:01:28.730 [I] [proxy/proxy_manager.go:180] [1a2d602fb19327fc] proxy added: [runner-tunnel]
+2026-03-30 19:01:28.769 [I] [client/control.go:172] [1a2d602fb19327fc] [runner-tunnel] start proxy success
+2026-03-30 19:18:57.734 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 19:18:57.794 [I] [client/service.go:335] try to connect to server...
+2026-03-30 19:18:57.794 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 19:18:57.810 [I] [client/service.go:327] [19db75f3f0b389ea] login to server success, get run id [19db75f3f0b389ea]
+2026-03-30 19:18:57.810 [I] [proxy/proxy_manager.go:180] [19db75f3f0b389ea] proxy added: [runner-tunnel]
+2026-03-30 19:18:57.899 [I] [client/control.go:172] [19db75f3f0b389ea] [runner-tunnel] start proxy success
+2026-03-30 19:19:35.421 [I] [sub/root.go:159] start frpc service for config file [E:\project\azure-ai\runner\runner.data\frp\frpc.toml]
+2026-03-30 19:19:35.450 [I] [client/service.go:335] try to connect to server...
+2026-03-30 19:19:35.450 [I] [client/service.go:210] admin server listen on 127.0.0.1:7400
+2026-03-30 19:19:35.459 [I] [client/service.go:327] [e14fa44ab2bbedc9] login to server success, get run id [e14fa44ab2bbedc9]
+2026-03-30 19:19:35.459 [I] [proxy/proxy_manager.go:180] [e14fa44ab2bbedc9] proxy added: [runner-tunnel]
+2026-03-30 19:19:35.494 [I] [client/control.go:172] [e14fa44ab2bbedc9] [runner-tunnel] start proxy success

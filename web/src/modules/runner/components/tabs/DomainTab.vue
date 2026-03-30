@@ -7,7 +7,17 @@
 <template>
   <div class="space-y-4">
     <!-- 操作栏 -->
-    <div class="flex justify-end">
+    <div class="flex justify-end gap-3">
+      <button
+        v-if="!freeDomainClaimed"
+        @click="handleClaimFreeDomain"
+        :disabled="claiming"
+        class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+      >
+        <i class="fa-solid fa-gift"></i>
+        <span v-if="claiming"><i class="fa-solid fa-spinner fa-spin mr-1"></i>领取中...</span>
+        <span v-else>领取免费域名</span>
+      </button>
       <button
         @click="showAddModal = true"
         class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors flex items-center gap-2"
@@ -23,7 +33,7 @@
         <thead class="bg-gray-50">
           <tr>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">域名</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">解析数量</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">路径规则</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
           </tr>
@@ -31,7 +41,7 @@
         <tbody class="divide-y divide-gray-200">
           <tr v-for="domain in domains" :key="domain.id">
             <td class="px-4 py-3 text-sm text-gray-900">{{ domain.domain }}</td>
-            <td class="px-4 py-3 text-sm text-gray-500">{{ domain.resolveCount }}</td>
+            <td class="px-4 py-3 text-xs text-gray-500 font-mono">{{ domain.pathPattern }}</td>
             <td class="px-4 py-3 text-sm">
               <span
                 class="px-2 py-1 rounded-full text-xs font-medium"
@@ -86,9 +96,11 @@
           </button>
           <button
             @click="handleAdd"
-            class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
+            :disabled="adding"
+            class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
           >
-            添加
+            <span v-if="adding"><i class="fa-solid fa-spinner fa-spin mr-1"></i>添加中...</span>
+            <span v-else>添加</span>
           </button>
         </div>
       </div>
@@ -97,34 +109,76 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+/**
+ * @title DomainTab
+ * @description Runner 域名管理表格，提供域名的增删查能力。
+ * @keywords-cn 域名管理, 表格, 域名列表
+ * @keywords-en domain-tab, table, domain-list
+ */
+import { ref, onMounted } from 'vue';
+import { runnerPanelApi, type RunnerDomain } from '../../../../api/runner';
 
-interface DomainItem {
-  id: string;
-  domain: string;
-  resolveCount: number;
-  active: boolean;
-}
+const props = defineProps<{
+  runnerId: string;
+}>();
 
-const domains = ref<DomainItem[]>([]);
+const domains = ref<RunnerDomain[]>([]);
 const showAddModal = ref(false);
 const newDomain = ref('');
+const adding = ref(false);
+const freeDomainClaimed = ref(false);
+const claiming = ref(false);
 
-const handleAdd = async () => {
+async function loadDomains() {
+  try {
+    const res = await runnerPanelApi.listDomains(props.runnerId);
+    domains.value = res.data;
+    const claimRes = await runnerPanelApi.checkFreeDomainClaimed(props.runnerId);
+    freeDomainClaimed.value = claimRes.data.exists;
+  } catch (err) {
+    console.error('Failed to load domains:', err);
+  }
+}
+
+async function handleClaimFreeDomain() {
+  claiming.value = true;
+  try {
+    await runnerPanelApi.claimFreeDomain(props.runnerId);
+    freeDomainClaimed.value = true;
+    await loadDomains();
+  } catch (err: any) {
+    alert(err?.message || '领取失败');
+  } finally {
+    claiming.value = false;
+  }
+}
+
+async function handleAdd() {
   if (!newDomain.value.trim()) return;
-  // TODO: 调用 API 添加域名
-  domains.value.push({
-    id: Date.now().toString(),
-    domain: newDomain.value,
-    resolveCount: 0,
-    active: true,
-  });
-  showAddModal.value = false;
-  newDomain.value = '';
-};
+  adding.value = true;
+  try {
+    await runnerPanelApi.createDomain(props.runnerId, newDomain.value.trim());
+    showAddModal.value = false;
+    newDomain.value = '';
+    await loadDomains();
+  } catch (err) {
+    console.error('Failed to create domain:', err);
+  } finally {
+    adding.value = false;
+  }
+}
 
-const handleDelete = async (domain: DomainItem) => {
-  // TODO: 调用 API 删除域名
-  domains.value = domains.value.filter(d => d.id !== domain.id);
-};
+async function handleDelete(domain: RunnerDomain) {
+  if (!confirm(`确定删除域名 "${domain.domain}" 吗？`)) return;
+  try {
+    await runnerPanelApi.deleteDomain(props.runnerId, domain.id);
+    await loadDomains();
+  } catch (err) {
+    console.error('Failed to delete domain:', err);
+  }
+}
+
+onMounted(async () => {
+  await loadDomains();
+});
 </script>

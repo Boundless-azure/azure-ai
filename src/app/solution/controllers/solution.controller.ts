@@ -89,9 +89,9 @@ export class SolutionController {
    */
   @Get()
   @CheckAbility('read', 'solution')
-  async list(@Query() query: ListSolutionsQuery, @Req() req: AuthedReq) {
+  list(@Query() query: ListSolutionsQuery, @Req() req: AuthedReq) {
     const tenantId = req.user?.tenantId ?? req.user?.id ?? null;
-    const result = await this.solutionService.list({
+    const result = this.solutionService.list({
       ...query,
       isInstalled: query.isInstalled ?? (tenantId ? true : undefined),
     });
@@ -103,8 +103,8 @@ export class SolutionController {
    * @description 分页查询已发布的 Solution 列表
    */
   @Get('marketplace/list')
-  async listMarketplace(@Query() query: ListSolutionsQuery) {
-    const result = await this.solutionService.listMarketplace(query);
+  listMarketplace(@Query() query: ListSolutionsQuery) {
+    const result = this.solutionService.listMarketplace(query);
     return { success: true, data: result };
   }
 
@@ -114,13 +114,13 @@ export class SolutionController {
    */
   @Post(':id/install')
   @CheckAbility('install', 'solution')
-  async install(
+  install(
     @Param('id') id: string,
     @Body() body: InstallSolutionRequest,
     @Req() req: AuthedReq,
   ) {
     const userId = req.user?.id ?? 'system';
-    const solution = await this.solutionService.install(id, body.runnerIds, userId);
+    const solution = this.solutionService.install(id, body.runnerIds, userId);
     return { success: true, data: solution };
   }
 
@@ -130,13 +130,13 @@ export class SolutionController {
    */
   @Delete(':id/install')
   @CheckAbility('uninstall', 'solution')
-  async uninstall(
+  uninstall(
     @Param('id') id: string,
     @Body() body: UninstallSolutionRequest,
     @Req() req: AuthedReq,
   ) {
     const userId = req.user?.id ?? 'system';
-    const solution = await this.solutionService.uninstall(id, body.runnerIds, userId);
+    const solution = this.solutionService.uninstall(id, body.runnerIds, userId);
     return { success: true, data: solution };
   }
 
@@ -145,9 +145,9 @@ export class SolutionController {
    * @description 获取当前用户的购买记录
    */
   @Get('purchases/list')
-  async getPurchases(@Req() req: AuthedReq) {
+  getPurchases(@Req() req: AuthedReq) {
     const userId = req.user?.id ?? 'system';
-    const purchases = await this.solutionService.getPurchases(userId);
+    const purchases = this.solutionService.getPurchases(userId);
     return { success: true, data: purchases };
   }
 
@@ -173,8 +173,8 @@ export class SolutionController {
    * @description 获取所有可用的 Runner 列表
    */
   @Get('runners')
-  async getRunners() {
-    const runners = await this.solutionService.getRunners();
+  getRunners() {
+    const runners = this.solutionService.getRunners();
     return { success: true, data: runners };
   }
 
@@ -183,8 +183,8 @@ export class SolutionController {
    * @description 获取所有已发布 Solution 的标签及数量
    */
   @Get('tags/list')
-  async getTags() {
-    const tags = await this.solutionService.getTags();
+  getTags() {
+    const tags = this.solutionService.getTags();
     return { success: true, data: tags };
   }
 }

@@ -1,0 +1,37 @@
+# frps 服务端配置 (TOML 格式, frp v0.50+)
+# 端口范围限定 20000-30000，启用 HTTP 插件进行连接鉴权
+
+bindAddr = "0.0.0.0"
+bindPort = 7000
+
+[auth]
+method = "token"
+# dev 默认 token，生产环境必须修改（同步修改 frp_nodes 表 token 字段）
+token = "frps-default-token-change-in-production"
+
+[webServer]
+addr = "0.0.0.0"
+port = 7500
+
+[log]
+to = "./logs/frps.log"
+level = "info"
+maxDays = 3
+
+# 限制客户端每个连接可用端口数
+[transport]
+maxPoolCount = 100
+
+# 允许穿透端口范围（dev: 100 个就够，和 docker-compose 保持一致）
+[[allowPorts]]
+start = 20000
+end = 20099
+
+# HTTP 服务插件：验证 runner key 与分配端口
+[[httpPlugins]]
+name = "runner-auth"
+# 宿主机本地运行的 NestJS (dev: host.docker.internal, prod: 替换为实际域名)
+addr = "http://host.docker.internal:3000"
+path = "/runner/frp/plugin"
+# 仅校验 NewProxy（端口归属），Login 由 token 鉴权保证，无需插件
+ops = ["NewProxy"]

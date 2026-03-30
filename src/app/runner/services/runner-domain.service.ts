@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DomainBindingEntity } from '../entities/domain-binding.entity';
@@ -34,7 +38,6 @@ export class RunnerDomainService {
    * @param runnerId Runner ID
    * @param tenantId 租户 ID
    * @param domain 域名
-   * @param appId 应用 ID（可选）
    * @param pathPattern 路径匹配模式
    * @returns 创建的域名绑定记录
    * @keywords-cn 创建域名, 绑定, Runner
@@ -44,10 +47,11 @@ export class RunnerDomainService {
     runnerId: string,
     tenantId: string,
     domain: string,
-    appId?: string,
     pathPattern = '.*',
   ): Promise<DomainBindingEntity> {
-    const existing = await this.repo.findOne({ where: { domain, active: true } });
+    const existing = await this.repo.findOne({
+      where: { domain, active: true },
+    });
     if (existing) {
       throw new ConflictException('Domain already exists');
     }
@@ -56,7 +60,6 @@ export class RunnerDomainService {
       runnerId,
       tenantId,
       domain,
-      appId: appId ?? null,
       pathPattern,
       active: true,
     });

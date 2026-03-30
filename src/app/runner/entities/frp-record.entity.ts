@@ -17,7 +17,12 @@ export class FrpRecordEntity extends BaseAuditedEntity {
   @Column({ name: 'domain', type: 'varchar', length: 255 })
   domain!: string;
 
-  @Column({ name: 'frp_node_addr', type: 'varchar', length: 255, default: 'default' })
+  @Column({
+    name: 'frp_node_addr',
+    type: 'varchar',
+    length: 255,
+    default: 'default',
+  })
   frpNodeAddr!: string;
 
   @Column({ name: 'port', type: 'int', unique: true })

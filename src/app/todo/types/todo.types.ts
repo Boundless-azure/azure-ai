@@ -1,10 +1,4 @@
-import {
-  IsEnum,
-  IsOptional,
-  IsString,
-  IsArray,
-  IsObject,
-} from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsArray } from 'class-validator';
 import { TodoStatus } from '../enums/todo.enums';
 import { BindDataPermissionNode } from '@core/data-permission/decorators/data-permission-node.decorator';
 

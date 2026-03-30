@@ -1,0 +1,32 @@
+# frpc 配置 (自动生成, 请勿手动修改)
+serverAddr = "127.0.0.1"
+serverPort = 7000
+
+[auth]
+method = "token"
+token = "frps-default-token-change-in-production"
+
+# metadata 传递 runner key，frps server plugin 用于鉴权
+[metadatas]
+runner_key = "fa6553c69b5cec15ac0e306e9587ca6dee6776665a83ec87"
+
+[log]
+to = "E:/project/azure-ai/runner/runner.data/frp/logs/frpc.log"
+level = "info"
+maxDays = 3
+
+[transport]
+poolCount = 5
+
+# frpc 管理 API（用于动态代理控制）
+[webServer]
+addr = "127.0.0.1"
+port = 7400
+
+# 默认穿透代理：本地 Caddy → frps 分配端口
+[[proxies]]
+name = "runner-tunnel"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 4310
+remotePort = 20000

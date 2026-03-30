@@ -72,10 +72,15 @@ export async function createRunnerApp() {
     await registerProxyRoutes(app, db);
   }
 
-  // FRPC 路由
   await registerFrpcRoutes(app);
 
   app.get('/health', () => ({ ok: true }));
+
+  /**
+   * ping 接口：判断 runner 映射路径是否就绪
+   * @keyword-en ping, runner-ready
+   */
+  app.get('/ping', () => ({ ok: true, message: 'runner ready and ok' }));
 
   // Socket.IO 配置与连接处理
 

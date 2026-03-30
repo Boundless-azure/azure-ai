@@ -37,6 +37,10 @@ export function useRunners() {
   async function create(data: CreateRunnerRequest): Promise<CreateRunnerResult> {
     const res = await runnerApi.create(data);
     latestCreatedKey.value = res.data.runnerKey;
+    // 持久化 runnerKey 到 localStorage
+    if (res.data.runnerKey && res.data.runnerKey !== '-') {
+      localStorage.setItem(`runner_key_${res.data.id}`, res.data.runnerKey);
+    }
     await list();
     return res.data;
   }

@@ -23,31 +23,15 @@ services:
     networks:
       - runner-network
 
-  # Runner Caddy (接收请求转发到 Runner :4310)
-  runner-caddy:
-    image: caddy:2-alpine
-    container_name: azure-ai-runner-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - runner_caddy_data:/data
-    networks:
-      - runner-network
-    depends_on:
-      - runner-redis
-
-  # Runner 应用 (预装 FRPC)
+  # Runner 应用（预装 FRPC，直接连接 frps 建立穿透）
   runner-app:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: azure-ai-runner-app
     restart: unless-stopped
-    ports:
-      - "4310:4310"
+    expose:
+      - "4310"
     environment:
       - NODE_ENV=production
     volumes:
@@ -57,6 +41,26 @@ services:
     depends_on:
       - runner-mongo
       - runner-redis
+
+  # Runner Caddy: 接收 frpc 穿透流量 → 转发到 runner-app:4310
+  # 对外暴露 :80（frpc 本地端口指向此处）
+  runner-caddy:
+    image: caddy:2-alpine
+    container_name: azure-ai-runner-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"        # frpc localPort 指向此端口
+      - "2019:2019"    # Caddy admin API    environment:
+      # Docker 模式： runner-app:4310；宿主机模式： host.docker.internal:4310
+      RUNNER_UPSTREAM: ${RUNNER_UPSTREAM:-runner-app:4310}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - runner_caddy_data:/data
+    networks:
+      - runner-network
+    depends_on:
+      - runner-app
 
 volumes:
   runner_mongo_data:
@@ -71,3 +75,4 @@ volumes:
 networks:
   runner-network:
     driver: bridge
+

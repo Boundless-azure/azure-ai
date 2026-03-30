@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { PluginStatus, SolutionSource, SolutionInclude } from '../enums/solution.enums';
+import {
+  PluginStatus,
+  SolutionSource,
+  SolutionInclude,
+} from '../enums/solution.enums';
 
 // 创建 Solution 请求
 export const CreateSolutionSchema = z.object({
@@ -14,7 +18,10 @@ export const CreateSolutionSchema = z.object({
   markdownContent: z.string().optional().nullable(),
   pluginDir: z.string().optional().nullable(),
   isPublished: z.boolean().optional().default(false),
-  source: z.nativeEnum(SolutionSource).optional().default(SolutionSource.SELF_DEVELOPED),
+  source: z
+    .nativeEnum(SolutionSource)
+    .optional()
+    .default(SolutionSource.SELF_DEVELOPED),
   location: z.string().optional().nullable(),
   images: z.array(z.string()).optional().nullable(),
   includes: z.array(z.nativeEnum(SolutionInclude)).optional().nullable(),

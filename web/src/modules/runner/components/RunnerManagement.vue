@@ -1,6 +1,6 @@
 <template>
   <!-- Runner 控制面板 -->
-  <RunnerProxyPage v-if="viewRef === 'proxy'" :runner-id="props.runnerId" :on-back="handleBack" />
+  <RunnerProxyPage v-if="viewRef === 'proxy'" :runner-id="selectedRunnerId" :on-back="handleBack" />
 
   <!-- Runner 管理列表 -->
   <div v-else class="space-y-4 h-full flex flex-col">
@@ -428,6 +428,7 @@ const rightPanelStore = useRightPanelStore();
 
 const page = ref(1);
 const limit = ref(10);
+const selectedRunnerId = ref('');
 
 // 内部视图状态：'list' | 'proxy'
 const viewRef = ref<'list' | 'proxy'>(props.subView === 'proxy' ? 'proxy' : 'list');
@@ -547,10 +548,12 @@ const removeItem = async (id: string) => {
 };
 
 const openProxyPanel = (item: RunnerItem) => {
+  selectedRunnerId.value = item.id;
   viewRef.value = 'proxy';
 };
 
 const handleBack = () => {
+  selectedRunnerId.value = '';
   viewRef.value = 'list';
 };
 

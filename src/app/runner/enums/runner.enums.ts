@@ -13,6 +13,9 @@ export enum RunnerWsEvent {
   Register = 'runner/register',
   Registered = 'runner/registered',
   Status = 'runner/status',
+  FrpStart = 'runner/frp:start',
+  FrpStop = 'runner/frp:stop',
+  FrpReload = 'runner/frp:reload',
 }
 
 export const RUNNER_NAMESPACE = '/runner/ws';

@@ -24,6 +24,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from '@/core/auth/guards/jwt-auth.guard';
 import { AbilityGuard } from '@/app/identity/guards/ability.guard';
 import { AuthModule } from '@/core/auth/auth.module';
+import { CoreMiddlewareModule } from '@/core/middleware/core-middleware.module';
 // 直接从具体配置文件导入，避免 Barrel 导出解析异常
 import {
   loadDatabaseConfigFromEnv,
@@ -99,6 +100,7 @@ import type { DatabaseConfig } from './config/types';
     MongoExplorerModule,
     SolutionModule,
     AuthModule,
+    CoreMiddlewareModule,
     IdentityModule,
     ResourceModule,
     ConversationModule,

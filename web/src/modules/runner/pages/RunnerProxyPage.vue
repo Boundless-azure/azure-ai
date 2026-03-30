@@ -19,7 +19,7 @@
 
     <!-- Tab 内容 -->
     <div class="flex-1 overflow-hidden">
-      <RunnerProxyPanel />
+      <RunnerProxyPanel :runner-id="runnerId" />
     </div>
   </div>
 </template>

@@ -43,24 +43,35 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * @title SolutionTab
+ * @description Runner Solution 管理表格，显示已安装的 Solution 列表。
+ * @keywords-cn Solution管理, 表格, Solution列表
+ * @keywords-en solution-tab, table, solution-list
+ */
 import { ref, onMounted } from 'vue';
+import { runnerPanelApi, type RunnerSolution } from '../../../../api/runner';
 
-interface SolutionItem {
-  id: string;
-  name: string;
-  version: string;
-  appCount: number;
-  installed: boolean;
+const props = defineProps<{
+  runnerId: string;
+}>();
+
+const solutions = ref<RunnerSolution[]>([]);
+const loading = ref(false);
+
+async function loadSolutions() {
+  loading.value = true;
+  try {
+    const res = await runnerPanelApi.listSolutions(props.runnerId);
+    solutions.value = res.data;
+  } catch (err) {
+    console.error('Failed to load solutions:', err);
+  } finally {
+    loading.value = false;
+  }
 }
 
-const solutions = ref<SolutionItem[]>([]);
-
 onMounted(async () => {
-  // TODO: 从 Runner API 获取 Solution 列表
-  // 暂时使用模拟数据
-  solutions.value = [
-    { id: '1', name: 'AI Chat Solution', version: '1.0.0', appCount: 3, installed: true },
-    { id: '2', name: 'Data Processing', version: '2.1.0', appCount: 1, installed: true },
-  ];
+  await loadSolutions();
 });
 </script>

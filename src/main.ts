@@ -3,7 +3,6 @@ import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { ValidationPipe } from '@nestjs/common';
-import { HttpWsExceptionFilter } from './core/common/filters/http-ws-exception.filter';
 
 declare const module: any;
 
@@ -23,7 +22,8 @@ async function bootstrap() {
     }),
   );
 
-  app.useGlobalFilters(new HttpWsExceptionFilter());
+  // HttpWsExceptionFilter 通过 CoreMiddlewareModule APP_FILTER 注册
+  // 与 ForwardingMiddleware 在同一过滤器池，NestJS 按 @Catch 特异性排序
 
   await app.listen(process.env.PORT ?? 3000);
 

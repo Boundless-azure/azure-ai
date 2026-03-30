@@ -19,11 +19,21 @@ export class TodoFollowupEntity extends BaseAuditedEntity {
   followerId!: string;
 
   /** 跟进人名称 */
-  @Column({ name: 'followername', type: 'varchar', length: 128, nullable: true })
+  @Column({
+    name: 'followername',
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+  })
   followerName!: string | null;
 
   /** 跟进人头像 */
-  @Column({ name: 'followeravatar', type: 'varchar', length: 512, nullable: true })
+  @Column({
+    name: 'followeravatar',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
   followerAvatar!: string | null;
 
   /** 跟进时状态 */

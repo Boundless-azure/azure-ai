@@ -223,7 +223,8 @@ export class TodoService {
     const entity = await this.followupRepo.findOneOrFail({ where: { id } });
     if (dto.followerId !== undefined) entity.followerId = dto.followerId;
     if (dto.followerName !== undefined) entity.followerName = dto.followerName;
-    if (dto.followerAvatar !== undefined) entity.followerAvatar = dto.followerAvatar;
+    if (dto.followerAvatar !== undefined)
+      entity.followerAvatar = dto.followerAvatar;
     if (dto.status !== undefined) entity.status = dto.status;
     if (dto.content !== undefined) entity.content = dto.content;
     entity.updateUser = userId;
@@ -272,4 +273,3 @@ export class TodoService {
     await this.commentRepo.remove(entity);
   }
 }
-

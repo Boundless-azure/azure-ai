@@ -7,5 +7,7 @@
   "mongoUri": "",
   "mongoDbName": "",
   "runnerDbName": "runner",
-  "redisUri": ""
+  "redisUri": "",
+  "frpcBinPath": "frpc",
+  "frpcLocalPort": 4310
 }

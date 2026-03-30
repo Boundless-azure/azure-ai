@@ -3,14 +3,13 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 
 /**
  * @title 域名绑定实体
- * @description 存储域名与 Runner、应用的绑定关系。
- * @keywords-cn 域名绑定, 路由映射, 应用域名
- * @keywords-en domain-binding, route-mapping, app-domain
+ * @description 存储域名与 Runner、应用的绑定关系。同一域名可配置多条不同 pathPattern 路由记录。
+ * @keywords-cn 域名绑定, 路由映射, 应用域名, 多路径
+ * @keywords-en domain-binding, route-mapping, app-domain, multi-path
  */
 @Entity('domain_bindings')
-@Unique(['domain'])
+@Unique(['domain', 'pathPattern'])
 @Index(['runnerId'])
-@Index(['appId'])
 export class DomainBindingEntity extends BaseAuditedEntity {
   @Column({ name: 'domain', type: 'varchar', length: 255 })
   domain!: string;
@@ -20,9 +19,6 @@ export class DomainBindingEntity extends BaseAuditedEntity {
 
   @Column({ name: 'tenant_id', type: 'char', length: 36 })
   tenantId!: string;
-
-  @Column({ name: 'app_id', type: 'varchar', length: 128, nullable: true })
-  appId!: string | null;
 
   @Column({ name: 'path_pattern', type: 'varchar', length: 500, default: '.*' })
   pathPattern!: string;

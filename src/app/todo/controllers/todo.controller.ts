@@ -113,7 +113,11 @@ export class TodoController {
     @Body() dto: CreateFollowupDto,
     @CurrentPrincipal() principal?: JwtPayload,
   ): Promise<TodoFollowupEntity> {
-    return await this.service.createFollowup(id, dto, principal?.id ?? 'system');
+    return await this.service.createFollowup(
+      id,
+      dto,
+      principal?.id ?? 'system',
+    );
   }
 
   @Get(':id/followups')
@@ -124,7 +128,9 @@ export class TodoController {
 
   @Delete('followups/:followupId')
   @CheckAbility('delete', 'todo')
-  async deleteFollowup(@Param('followupId') id: string): Promise<{ ok: boolean }> {
+  async deleteFollowup(
+    @Param('followupId') id: string,
+  ): Promise<{ ok: boolean }> {
     await this.service.deleteFollowup(id);
     return { ok: true };
   }
@@ -136,7 +142,11 @@ export class TodoController {
     @Body() dto: UpdateFollowupDto,
     @CurrentPrincipal() principal?: JwtPayload,
   ): Promise<TodoFollowupEntity> {
-    return await this.service.updateFollowup(id, dto, principal?.id ?? 'system');
+    return await this.service.updateFollowup(
+      id,
+      dto,
+      principal?.id ?? 'system',
+    );
   }
 
   // ==================== 评论接口 ====================
@@ -148,18 +158,26 @@ export class TodoController {
     @Body() dto: CreateCommentDto,
     @CurrentPrincipal() principal?: JwtPayload,
   ): Promise<TodoFollowupCommentEntity> {
-    return await this.service.createComment(followupId, dto, principal?.id ?? 'system');
+    return await this.service.createComment(
+      followupId,
+      dto,
+      principal?.id ?? 'system',
+    );
   }
 
   @Get('followups/:followupId/comments')
   @CheckAbility('read', 'todo')
-  async listComments(@Param('followupId') followupId: string): Promise<TodoFollowupCommentEntity[]> {
+  async listComments(
+    @Param('followupId') followupId: string,
+  ): Promise<TodoFollowupCommentEntity[]> {
     return await this.service.listComments(followupId);
   }
 
   @Delete('comments/:commentId')
   @CheckAbility('delete', 'todo')
-  async deleteComment(@Param('commentId') id: string): Promise<{ ok: boolean }> {
+  async deleteComment(
+    @Param('commentId') id: string,
+  ): Promise<{ ok: boolean }> {
     await this.service.deleteComment(id);
     return { ok: true };
   }

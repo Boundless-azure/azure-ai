@@ -23,7 +23,6 @@
         <thead class="bg-gray-50">
           <tr>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">应用名称</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">绑定 Solution</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">应用端口</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">描述</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">状态</th>
@@ -33,7 +32,6 @@
         <tbody class="divide-y divide-gray-200">
           <tr v-for="app in apps" :key="app.appId">
             <td class="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{{ app.name }}</td>
-            <td class="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{{ app.solutionName || '-' }}</td>
             <td class="px-4 py-3 text-sm text-gray-500 font-mono whitespace-nowrap">{{ app.appPort }}</td>
             <td class="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{{ app.description || '-' }}</td>
             <td class="px-4 py-3 text-sm whitespace-nowrap">
@@ -54,7 +52,7 @@
             </td>
           </tr>
           <tr v-if="apps.length === 0">
-            <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+            <td colspan="5" class="px-4 py-8 text-center text-gray-500">
               暂无应用配置
             </td>
           </tr>
@@ -90,18 +88,6 @@
             />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">绑定 Solution</label>
-            <select
-              v-model="newApp.solutionId"
-              class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-            >
-              <option value="">不绑定</option>
-              <option v-for="sol in solutions" :key="sol.id" :value="sol.id">
-                {{ sol.name }} ({{ sol.version }})
-              </option>
-            </select>
-          </div>
-          <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">描述</label>
             <textarea
               v-model="newApp.description"
@@ -120,9 +106,11 @@
           </button>
           <button
             @click="handleAdd"
-            class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
+            :disabled="adding"
+            class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
           >
-            添加
+            <span v-if="adding"><i class="fa-solid fa-spinner fa-spin mr-1"></i>添加中...</span>
+            <span v-else>添加</span>
           </button>
         </div>
       </div>
@@ -131,57 +119,74 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+/**
+ * @title AppTab
+ * @description Runner 应用管理表格，提供应用列表展示与添加能力。
+ * @keywords-cn 应用管理, 表格, 应用列表
+ * @keywords-en app-tab, table, app-list
+ */
+import { ref, onMounted } from 'vue';
+import { runnerPanelApi, type RunnerApp } from '../../../../api/runner';
 
-interface AppItem {
-  appId: string;
-  name: string;
-  solutionId?: string;
-  solutionName?: string;
-  appPort: number;
-  description?: string;
-  status: 'running' | 'stopped';
-}
+const props = defineProps<{
+  runnerId: string;
+}>();
 
-interface SolutionItem {
-  id: string;
-  name: string;
-  version: string;
-}
-
-const apps = ref<AppItem[]>([]);
-const solutions = ref<SolutionItem[]>([]);
+const apps = ref<RunnerApp[]>([]);
+const solutions = ref<Array<{ id: string; name: string; version: string }>>([]);
 const showAddModal = ref(false);
+const adding = ref(false);
 const newApp = ref({
   name: '',
   appPort: 3000,
-  solutionId: '',
   description: '',
 });
 
-const handleAdd = async () => {
-  if (!newApp.value.name || !newApp.value.appPort) return;
-  const solution = solutions.value.find(s => s.id === newApp.value.solutionId);
-  const app: AppItem = {
-    appId: Date.now().toString(),
-    name: newApp.value.name,
-    appPort: newApp.value.appPort,
-    solutionId: newApp.value.solutionId || undefined,
-    solutionName: solution?.name,
-    description: newApp.value.description,
-    status: 'running',
-  };
-  // TODO: 调用 API 创建应用，同时删除应用域名绑定
-  apps.value.push(app);
-  showAddModal.value = false;
-  newApp.value = { name: '', appPort: 3000, solutionId: '', description: '' };
-};
-
-const handleDelete = async (app: AppItem) => {
-  if (!confirm(`确定删除应用 "${app.name}" 吗？\n这将同时删除该应用的所有域名绑定。`)) {
-    return;
+async function loadApps() {
+  try {
+    const res = await runnerPanelApi.listApps(props.runnerId);
+    apps.value = res.data;
+  } catch (err) {
+    console.error('Failed to load apps:', err);
   }
-  // TODO: 调用 API 删除应用，会同步删除应用域名绑定
-  apps.value = apps.value.filter(a => a.appId !== app.appId);
-};
+}
+
+async function loadSolutions() {
+  try {
+    const res = await runnerPanelApi.listSolutions(props.runnerId);
+    solutions.value = res.data;
+  } catch (err) {
+    console.error('Failed to load solutions:', err);
+  }
+}
+
+async function handleAdd() {
+  if (!newApp.value.name || !newApp.value.appPort) return;
+  adding.value = true;
+  try {
+    // TODO: 调用 API 创建应用（后端 app 管理未完成）
+    // await runnerPanelApi.createApp(props.runnerId, newApp.value);
+    showAddModal.value = false;
+    newApp.value = { name: '', appPort: 3000, description: '' };
+    await loadApps();
+  } catch (err) {
+    console.error('Failed to add app:', err);
+  } finally {
+    adding.value = false;
+  }
+}
+
+async function handleDelete(app: RunnerApp) {
+  if (!confirm(`确定删除应用 "${app.name}" 吗？`)) return;
+  try {
+    // TODO: 调用 API 删除应用（后端 app 管理未完成）
+    await loadApps();
+  } catch (err) {
+    console.error('Failed to delete app:', err);
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([loadApps(), loadSolutions()]);
+});
 </script>
