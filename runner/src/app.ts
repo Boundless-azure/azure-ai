@@ -57,7 +57,7 @@ export async function createRunnerApp() {
   });
 
   await registerConfigurationRoutes(app, mongoClient, redisClient);
-  await registerRunnerRegistrationRoutes(app, registrationService);
+  registerRunnerRegistrationRoutes(app, registrationService);
   await registerHookBusRoutes(app, hookBus);
   await registerDataAuthRoutes(app);
   await registerWebMcpRoutes(app, webmcpService);
