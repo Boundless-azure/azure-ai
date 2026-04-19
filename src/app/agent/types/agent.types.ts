@@ -27,6 +27,9 @@ export class UpdateAgentDto {
   @IsArray()
   @IsString({ each: true })
   aiModelIds?: string[];
+
+  @IsOptional()
+  proactiveChatEnabled?: boolean;
 }
 
 /**

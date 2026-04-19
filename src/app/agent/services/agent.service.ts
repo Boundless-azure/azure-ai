@@ -218,6 +218,9 @@ export class AgentService {
     if (Array.isArray(dto.aiModelIds)) {
       current.aiModelIds = dto.aiModelIds.map((item) => item.trim());
     }
+    if (typeof dto.proactiveChatEnabled === 'boolean') {
+      current.proactiveChatEnabled = dto.proactiveChatEnabled;
+    }
     return await this.repo.save(current);
   }
 

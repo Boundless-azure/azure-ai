@@ -89,27 +89,21 @@
       </header>
 
       <section class="p-6 flex-1 min-h-0 overflow-auto space-y-4">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium mb-1">Hook 选择</label>
-            <select
-              v-model="selectedHook"
-              class="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-            >
-              <option value="">请选择 Hook</option>
-              <option v-for="opt in hookOptions" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </option>
-            </select>
-          </div>
-          <div class="flex items-end">
-            <button
-              class="px-4 py-2 rounded bg-black text-white text-sm hover:bg-gray-800"
-              @click="sendDebug"
-            >
-              发送调试请求
-            </button>
-          </div>
+        <!-- Hook 选择区域 hook-select-bar -->
+        <div class="flex items-center gap-3">
+          <button
+            class="flex-1 text-left px-3 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50 truncate"
+            @click="showHooksModal = true"
+          >
+            <span v-if="selectedHook" class="font-mono">{{ selectedHook }}</span>
+            <span v-else class="text-gray-400">点击选择 Hook...</span>
+          </button>
+          <button
+            class="px-4 py-2 rounded bg-black text-white text-sm hover:bg-gray-800 shrink-0"
+            @click="sendDebug"
+          >
+            发送调试请求
+          </button>
         </div>
 
         <div>
@@ -131,33 +125,52 @@
       </section>
     </main>
 
+    <!-- Hook 选择弹窗 hook-picker-modal -->
     <div
       v-if="showHooksModal"
       class="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center"
       @click.self="showHooksModal = false"
     >
-      <div class="bg-white w-[760px] max-w-[95vw] max-h-[80vh] overflow-auto rounded-xl border border-gray-200">
-        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-          <div class="font-semibold">所有 Hook</div>
+      <div class="bg-white w-[860px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-xl border border-gray-200">
+        <!-- 弹窗标题栏 -->
+        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between shrink-0">
+          <div class="font-semibold">选择 Hook（{{ hooks.length }}）</div>
           <button class="text-gray-500 hover:text-gray-900" @click="showHooksModal = false">
             <i class="fa-solid fa-xmark"></i>
           </button>
         </div>
-        <div class="p-4 space-y-2">
-          <div
-            v-for="item in hooks"
-            :key="item.name"
-            class="rounded-lg border border-gray-200 p-3"
-          >
-            <div class="font-mono text-sm">{{ item.name }}</div>
-            <div class="text-xs text-gray-500 mt-1">
-              {{ item.metadata?.pluginName || '-' }}
-            </div>
-            <div class="text-xs text-gray-500 mt-1">
-              {{ (item.metadata?.tags || []).join(', ') || '-' }}
-            </div>
+        <!-- Hook 宫格列表 -->
+        <div class="flex-1 overflow-auto p-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <button
+              v-for="item in hooks"
+              :key="item.name"
+              class="text-left rounded-lg border p-3 hover:bg-gray-50 transition-colors"
+              :class="selectedHook === item.name ? 'border-gray-900 bg-gray-50 ring-1 ring-gray-900' : 'border-gray-200'"
+              @click="selectedHook = item.name; showHooksModal = false"
+            >
+              <!-- hook 编码 -->
+              <div class="font-mono text-sm font-medium truncate">{{ item.name }}</div>
+              <!-- hook 描述 -->
+              <div class="text-xs text-gray-500 mt-1 line-clamp-2">
+                {{ item.metadata?.description || item.metadata?.pluginName || '暂无描述' }}
+              </div>
+              <!-- 来源插件 / 标签 -->
+              <div v-if="item.metadata?.pluginName" class="mt-2 flex flex-wrap gap-1">
+                <span class="text-[10px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">
+                  {{ item.metadata.pluginName }}
+                </span>
+                <span
+                  v-for="tag in item.metadata?.tags ?? []"
+                  :key="tag"
+                  class="text-[10px] bg-blue-50 text-blue-500 rounded px-1.5 py-0.5"
+                >
+                  {{ tag }}
+                </span>
+              </div>
+            </button>
           </div>
-          <div v-if="hooks.length === 0" class="text-sm text-gray-400">暂无 hook</div>
+          <div v-if="hooks.length === 0" class="text-sm text-gray-400 py-8 text-center">暂无 hook</div>
         </div>
       </div>
     </div>
@@ -189,7 +202,6 @@ const {
   gatewayEnabled,
   gatewayUpdating,
   hookCount,
-  hookOptions,
   history,
   connect,
   disconnect,

@@ -200,7 +200,7 @@ export class ImGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   public broadcastUserNotify(
     recipientId: string,
-    payload: { sessionId: string },
+    payload: { sessionId: string; mentionText?: string },
   ): void {
     this.server
       .to(this.notifyRoom(recipientId))

@@ -286,6 +286,7 @@ const menuItems = [
   { id: 'aiProviders', icon: 'server' },
   { id: 'storage', icon: 'folder-open' },
   { id: 'database', icon: 'database' },
+  { id: 'knowledge', icon: 'book' },
   { id: 'solutions', icon: 'box-open' },
   { id: 'agents', icon: 'robot' },
   { id: 'runners', icon: 'play' },

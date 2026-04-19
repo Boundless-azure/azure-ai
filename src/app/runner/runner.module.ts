@@ -19,6 +19,7 @@ import { RewardRecordService } from './services/reward-record.service';
 import { RunnerHookRegisterService } from './services/runner-hook-register.service';
 import { RunnerProxyService } from './services/runner-proxy.service';
 import { RunnerFrpNodeService } from './services/runner-frp-node.service';
+import { RunnerTokenService } from './services/runner-token.service';
 
 /**
  * @title Runner 模块
@@ -53,6 +54,7 @@ import { RunnerFrpNodeService } from './services/runner-frp-node.service';
     RunnerHookRegisterService,
     RunnerProxyService,
     RunnerFrpNodeService,
+    RunnerTokenService,
   ],
   exports: [
     RunnerService,
@@ -62,6 +64,7 @@ import { RunnerFrpNodeService } from './services/runner-frp-node.service';
     RewardRecordService,
     RunnerProxyService,
     RunnerFrpNodeService,
+    RunnerTokenService,
   ],
 })
 export class RunnerModule {}

@@ -69,8 +69,7 @@
 
 常见问题与解决方案
 - [error] REDIS_CLIENT 不可用（未安装客户端或未提供 Provider）
-  - 解决：安装 ioredis 并在环境中配置 appRedis，或提供兼容客户端；在使用前调用 isAvailable() 进行保
-  .护性检查
+  - 解决：安装 ioredis 并在环境中配置 appRedis，或提供兼容客户端；在使用前调用 isAvailable() 进行保护性检查
 - [error] 连接失败（ECONNREFUSED/ETIMEDOUT）
   - 解决：检查 REDIS_URL/REDIS_HOST/REDIS_PORT/REDIS_PASSWORD/REDIS_DB/TLS 配置与网络连通性（容器网络/安全组）；必要时增加连接/重试参数
 - [warning] 扫描大键空间性能开销高

@@ -194,6 +194,8 @@ export interface AIModelRequest {
   conversationGroupId?: string;
   /** 要开启的函数调用名称列表 */
   openFunction?: string[] | string;
+  /** 额外注入的 LangChain tool 对象列表（优先级高于 openFunction，直接绑定到 agent） */
+  tools?: unknown[];
   /** LangGraph 检查点保存器 (可选) */
   checkpointer?: import('@langchain/langgraph-checkpoint').BaseCheckpointSaver;
 }

@@ -10,11 +10,11 @@ import { RunnerRedisClient } from '../../redis/redis.client';
  * @keywords-cn 配置路由, Mongo检测, Redis检测, 配置写入
  * @keywords-en config-routes, mongo-check, redis-check, config-save
  */
-export async function registerConfigurationRoutes(
+export function registerConfigurationRoutes(
   app: FastifyInstance,
   mongoClient: RunnerMongoClient,
   redisClient: RunnerRedisClient,
-): Promise<void> {
+): void {
   const SaveConfigSchema = z.object({
     saasSocketUrl: z.string().url().optional(),
     runnerKey: z.string().optional(),
@@ -37,7 +37,8 @@ export async function registerConfigurationRoutes(
   app.get('/config/status', async () => {
     const cfg = getRunnerConfig();
     const defaultDb = cfg.runnerDbName || cfg.mongoDbName;
-    const mongoReady = cfg.mongoUri && defaultDb ? await mongoClient.ping(defaultDb) : false;
+    const mongoReady =
+      cfg.mongoUri && defaultDb ? await mongoClient.ping(defaultDb) : false;
     const redisReady = cfg.redisUri ? await redisClient.ping() : false;
     return {
       ok: true,
@@ -60,7 +61,10 @@ export async function registerConfigurationRoutes(
     }
     const next = saveRunnerConfig(parsed.data);
     if (next.mongoUri && (next.runnerDbName || next.mongoDbName)) {
-      await mongoClient.connect(next.mongoUri, next.runnerDbName || next.mongoDbName);
+      await mongoClient.connect(
+        next.mongoUri,
+        next.runnerDbName || next.mongoDbName,
+      );
     }
     if (next.redisUri) {
       await redisClient.connect(next.redisUri);
@@ -78,7 +82,11 @@ export async function registerConfigurationRoutes(
     }
     const cfg = getRunnerConfig();
     const mongoUri = parsed.data.mongoUri ?? cfg.mongoUri;
-    const mongoDbName = parsed.data.runnerDbName ?? parsed.data.mongoDbName ?? cfg.runnerDbName ?? cfg.mongoDbName;
+    const mongoDbName =
+      parsed.data.runnerDbName ??
+      parsed.data.mongoDbName ??
+      cfg.runnerDbName ??
+      cfg.mongoDbName;
     if (!mongoUri || !mongoDbName) {
       return reply
         .status(400)
@@ -87,11 +95,15 @@ export async function registerConfigurationRoutes(
     try {
       await mongoClient.connect(mongoUri, mongoDbName);
       const connected = await mongoClient.ping(mongoDbName);
-      return { ok: connected, message: connected ? 'mongo connected' : 'mongo ping failed' };
+      return {
+        ok: connected,
+        message: connected ? 'mongo connected' : 'mongo ping failed',
+      };
     } catch (error) {
       return reply.status(500).send({
         ok: false,
-        message: error instanceof Error ? error.message : 'mongo connect failed',
+        message:
+          error instanceof Error ? error.message : 'mongo connect failed',
       });
     }
   });
@@ -114,11 +126,15 @@ export async function registerConfigurationRoutes(
     try {
       await redisClient.connect(redisUri);
       const connected = await redisClient.ping();
-      return { ok: connected, message: connected ? 'redis connected' : 'redis ping failed' };
+      return {
+        ok: connected,
+        message: connected ? 'redis connected' : 'redis ping failed',
+      };
     } catch (error) {
       return reply.status(500).send({
         ok: false,
-        message: error instanceof Error ? error.message : 'redis connect failed',
+        message:
+          error instanceof Error ? error.message : 'redis connect failed',
       });
     }
   });

@@ -1,0 +1,10 @@
+---
+import Layout from '../layouts/Layout.astro';
+import WebMCPChildPage from '../modules/webmcp/pages/WebMCPChildPage.vue';
+---
+
+<Layout>
+  <!-- 子页面不需要登录验证，直接嵌入 iframe 使用 -->
+  <script is:inline src="/webmcp-client.sdk.js"></script>
+  <WebMCPChildPage client:only="vue" />
+</Layout>

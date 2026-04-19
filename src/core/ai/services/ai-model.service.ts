@@ -189,9 +189,11 @@ export class AIModelService implements OnModuleInit {
       );
       request.openFunction = request.openFunction ?? '*';
       const openFunction = this.getOpenFunction(request);
+      // 合并外部注入的 tools（来自 agent-runtime 层）和内部注册的函数服务
+      const extraTools = Array.isArray(request.tools) ? request.tools : [];
       const Agent = createAgent({
         model: model,
-        tools: openFunction,
+        tools: [...openFunction, ...extraTools] as Parameters<typeof createAgent>[0]['tools'],
         checkpointer: request.checkpointer,
         systemPrompt: request.systemPrompt,
       });
@@ -413,7 +415,7 @@ export class AIModelService implements OnModuleInit {
       const agent = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
-      const recursionLimit = 16;
+      const recursionLimit = 50;
       const invocationOptions = this.buildInvocationOptions(agent, request);
       const stream = agent.streamEvents(
         {

@@ -68,6 +68,28 @@ src/modules/agent/
 
 ## 核心文件与函数
 
+### pages/chat-panel/ChatMessagesPage.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `sendMessage` | 发送消息（水容乐观发送，fire-and-forget，不锁定输入框） |
+| `scrollToBottom` | 滚动到底部 |
+| `openSessionAndLoadHistory` | 打开会话并加载历史 |
+| `getPrincipalId` | 获取当前用户 principalId |
+| `extractMentions` | 从文本提取 @提及 |
+
+### components/chat/ChatMessageList.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `visibleMessages` | 虚拟窗口切片（最后 WINDOW_SIZE + 展开量） |
+| `topPaddingPx` | 顶部占位高度（隐藏消息的估算高度） |
+| `expandWindow` | 向上展开虚拟窗口并恢复滚动位置 |
+| `setupObserver` | 初始化 IntersectionObserver 监听顶部哨兵 |
+| `renderMarkdown` | 渲染 markdown（带 LRU 缓存，最多200条） |
+| `markNewMessage` | 标记新消息以触发进场动画 |
+| `handleAvatarClick` | 点击头像打开用户信息抽屉 |
+
 ### hooks/useAgentChat.ts
 
 | 函数名 | 关键词描述 |

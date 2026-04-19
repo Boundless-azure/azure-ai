@@ -35,6 +35,13 @@ export interface ChatMessage {
   senderId?: string | null;
   senderName?: string;
   status?: 'sending' | 'sent' | 'error';
+  /** @mention 信息数组 */
+  mentions?: Array<{
+    agentPrincipalId: string;
+    mentionText: string;
+    startIndex: number;
+    endIndex: number;
+  }>;
 }
 
 /**
@@ -399,6 +406,7 @@ export interface Agent {
   isAiGenerated?: boolean;
   nodes: any;
   aiModelIds?: string[] | null;
+  proactiveChatEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -408,6 +416,7 @@ export interface UpdateAgentRequest {
   purpose?: string;
   avatarUrl?: string;
   aiModelIds?: string[];
+  proactiveChatEnabled?: boolean;
 }
 
 export interface ActiveWorkflowCard {
@@ -464,6 +473,7 @@ export const UpdateAgentRequestSchema = z.object({
   purpose: z.string().optional(),
   avatarUrl: z.string().optional(),
   aiModelIds: z.array(z.string()).optional(),
+  proactiveChatEnabled: z.boolean().optional(),
 });
 
 export const ListThreadsParamsSchema = z.object({

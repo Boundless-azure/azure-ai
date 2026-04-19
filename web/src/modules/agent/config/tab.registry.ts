@@ -74,6 +74,11 @@ export const tabRegistry: Record<string, TabRegistryEntry> = {
     file: 'src/modules/solution/components/SolutionManagement.vue',
     loader: () => import('../../solution/components/SolutionManagement.vue'),
   },
+  knowledge: {
+    name: '知识库',
+    file: 'src/modules/knowledge/components/KnowledgeBookshelf.vue',
+    loader: () => import('../../knowledge/components/KnowledgeBookshelf.vue'),
+  },
   'chat-detail': {
     name: '聊天信息',
     file: 'src/modules/agent/components/ChatDetail.vue',

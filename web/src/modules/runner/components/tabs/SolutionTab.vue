@@ -45,27 +45,36 @@
 <script setup lang="ts">
 /**
  * @title SolutionTab
- * @description Runner Solution 管理表格，显示已安装的 Solution 列表。
+ * @description Runner Solution 管理表格，显示已安装的 Solution 列表。使用 runnerControlApi 通过 Runner 域名访问。
  * @keywords-cn Solution管理, 表格, Solution列表
  * @keywords-en solution-tab, table, solution-list
  */
 import { ref, onMounted } from 'vue';
-import { runnerPanelApi, type RunnerSolution } from '../../../../api/runner';
+import { runnerControlApi, type RunnerControlSolution } from '../../../../api/runner-control';
 
-const props = defineProps<{
-  runnerId: string;
-}>();
-
-const solutions = ref<RunnerSolution[]>([]);
+const solutions = ref<RunnerControlSolution[]>([]);
 const loading = ref(false);
+
+/**
+ * @title 获取 API 域名
+ */
+function getDomain(): string {
+  const storedDomain = sessionStorage.getItem('runner_control_domain');
+  return storedDomain || '';
+}
 
 async function loadSolutions() {
   loading.value = true;
   try {
-    const res = await runnerPanelApi.listSolutions(props.runnerId);
-    solutions.value = res.data;
+    const domain = getDomain();
+    if (!domain) {
+      console.warn('[SolutionTab] No domain available');
+      return;
+    }
+    const res = await runnerControlApi.listSolutions(domain);
+    solutions.value = res.data || [];
   } catch (err) {
-    console.error('Failed to load solutions:', err);
+    console.error('[SolutionTab] Failed to load solutions:', err);
   } finally {
     loading.value = false;
   }

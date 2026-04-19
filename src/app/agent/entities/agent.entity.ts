@@ -57,4 +57,11 @@ export class AgentEntity extends BaseAuditedEntity {
 
   @Column({ name: 'ai_model_ids', type: 'json', nullable: true })
   aiModelIds!: string[] | null;
+
+  /**
+   * 是否开启主动对话（默认开启）
+   * 开启后 LLM 具备 send_msg hook 能力，自行决定发送内容与时机
+   */
+  @Column({ name: 'proactive_chat_enabled', type: 'boolean', default: true })
+  proactiveChatEnabled!: boolean;
 }

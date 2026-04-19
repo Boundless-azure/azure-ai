@@ -1,6 +1,7 @@
 <template>
   <!-- 添加跟进记录弹窗 -->
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" @click.self="emit('close')">
+  <Teleport to="body">
+    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" @click.self="emit('close')">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
       <!-- 头部 -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
@@ -82,6 +83,7 @@
       </div>
     </div>
   </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

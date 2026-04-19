@@ -5,6 +5,11 @@ import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint';
 import { AIModelService } from '@core/ai/services/ai-model.service';
 import { AgentLoaderService } from './agent-loader.service';
 import type { LoadedAgent } from '../types/agent-runtime.types';
+import { HookBusService } from '@/core/hookbus/services/hook.bus.service';
+import {
+  buildCallHookTool,
+  buildCallHookAsyncTool,
+} from '../tools/call-hook.tools';
 
 /**
  * @title Agent 运行时服务
@@ -21,13 +26,21 @@ export class AgentRuntimeService {
   constructor(
     private readonly aiModelService: AIModelService,
     private readonly loader: AgentLoaderService,
+    private readonly hookBus: HookBusService,
   ) {}
 
   /**
    * 加载并准备 Agent（描述/工具/对话层）
    */
   async load(inputDir: string): Promise<LoadedAgent> {
-    return await this.loader.loadAll(inputDir);
+    const loaded = await this.loader.loadAll(inputDir);
+    // 总是将 call_hook / call_hook_async 注入到工具集
+    const hookTools = [
+      buildCallHookTool(this.hookBus),
+      buildCallHookAsyncTool(this.hookBus),
+    ];
+    loaded.tools = [...hookTools, ...loaded.tools];
+    return loaded;
   }
 
   /**
@@ -49,32 +62,63 @@ export class AgentRuntimeService {
   async *startDialogue(
     agentDir: string,
     messages: ChatMessage[],
-    options?: { aiModelIds?: string[] },
+    options?: {
+      aiModelIds?: string[];
+      /** 主动对话模式上下文，注入为前置系统提示词（在 aiAdapter 层合并，不影响 agent 定义） */
+      proactiveContext?: {
+        sessionId: string;
+        agentPrincipalId: string;
+        triggerMessageId: string;
+      };
+    },
   ): AsyncGenerator<ModelSseEvent> {
-    const loaded = await this.loader.loadAll(agentDir);
+    const loaded = await this.load(agentDir);
     if (!loaded.dialogues) {
       throw new Error('该 Agent 未提供对话层（dialogues）');
     }
-    loaded.dialogues.handleAiServer(this.buildAiAdapter());
-    loaded.dialogues.setAgentConfig?.({
-      aiModelIds: options?.aiModelIds,
-    });
+    // 在 aiAdapter 层注入 proactiveContext 系统提示，不通过 setAgentConfig 影响 agent 定义
+    // loaded.tools 中的 call_hook 等工具也直接绑定到 LLM，无需 agent 定义感知
+    loaded.dialogues.handleAiServer(
+      this.buildAiAdapter(options?.proactiveContext, loaded.tools),
+    );
+    loaded.dialogues.setAgentConfig?.({ aiModelIds: options?.aiModelIds });
     const gen = loaded.dialogues.handle(messages);
-    // 透传底层生成器（增加类型保护）
     for await (const ev of gen as AsyncGenerator<ModelSseEvent>) {
       yield ev;
     }
   }
 
   /**
-   * 获取工具集合（当没有对话层时，上层可将这些工具作为额外工具参与主对话）
+   * 获取工具集合（包含 call_hook + call_hook_async + Agent 自身工具）
    */
   async getTools(agentDir: string): Promise<unknown[]> {
-    const loaded = await this.loader.loadAll(agentDir);
+    const loaded = await this.load(agentDir);
     return loaded.tools;
   }
 
-  private buildAiAdapter() {
+  private buildAiAdapter(
+    proactiveContext?: {
+      sessionId: string;
+      agentPrincipalId: string;
+      triggerMessageId: string;
+    },
+    tools?: unknown[],
+  ) {
+    // 主动对话模式：前置注入系统提示词，用 [system prompt]...[/system prompt] 包裹
+    const injectedPrefix = proactiveContext
+      ? [
+          '[system prompt]',
+          `你处于主动对话模式。这点最重要,你的回答必须通过调用工具来发送给用户，而不是直接返回，直接返回是无效的。`,
+          `当前 IM 会话 session_id="${proactiveContext.sessionId}"，你的 principal_id="${proactiveContext.agentPrincipalId}"。`,
+          `你可以调用工具 call_hook（hookName="send_msg"，payload={ sessionId="${proactiveContext.sessionId}", senderPrincipalId="${proactiveContext.agentPrincipalId}", content="...", replyToId="${proactiveContext.triggerMessageId}" }）向用户发送消息。其中 replyToId 固定为 "${proactiveContext.triggerMessageId}"，不得修改或编造。`,
+          `根据上下文自主决定是否发送、何时发送、发送什么。在上下文中要结合所有消息来判断决定如何返回,不能出现回答不连贯的问题.`,
+          `有时候用户是发的连贯信息,要结合历史消息来进行综合回复,而不是只针对最后一条消息进行回复。`,
+          `你可以模拟人类情感, 比如长句可以分成多条发送,最多 4 轮, 以表现出思考的过程和情感的表达, 但要注意不要过度发送过多消息导致用户体验变差。`,
+          `你发完就可以结束这轮对话了, 不需要等用户回复, 也不需要等下一轮对话, 只要你觉得发完了就可以结束了。不要那么啰嗦,这一点很重要`,
+          '[/system prompt]',
+        ].join('\n')
+      : null;
+
     const isCheckpointSaver = (x: unknown): x is BaseCheckpointSaver =>
       typeof x === 'object' &&
       x !== null &&
@@ -90,16 +134,29 @@ export class AgentRuntimeService {
         checkpointer?: unknown;
         params?: Record<string, unknown>;
       }) => {
+        // 合并系统提示：前置注入 + agent 自身定义的 systemPrompt
+        const mergedSystemPrompt = injectedPrefix
+          ? [injectedPrefix, req.systemPrompt].filter(Boolean).join('\n')
+          : req.systemPrompt;
+
+        if (injectedPrefix) {
+          this.logger.log(
+            `[startDialogue] merged systemPrompt:\n---\n${mergedSystemPrompt}\n---`,
+          );
+        }
+
         const aiReq: AIModelRequest = {
           modelId: req.modelId,
           messages: req.messages,
-          systemPrompt: req.systemPrompt,
+          systemPrompt: mergedSystemPrompt,
           sessionId: req.sessionId,
           conversationGroupId: req.conversationGroupId,
           checkpointer: isCheckpointSaver(req.checkpointer)
             ? req.checkpointer
             : undefined,
           params: req.params as AIModelRequest['params'],
+          // 注入 agent-runtime 层的工具（call_hook 等），直接绑定到 LLM
+          tools: tools && tools.length > 0 ? tools : undefined,
         };
         return this.aiModelService.chatStream(aiReq);
       },

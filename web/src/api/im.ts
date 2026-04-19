@@ -70,6 +70,13 @@ export interface ImMessageInfo {
   isEdited: boolean;
   isAnnouncement: boolean;
   createdAt: string;
+  /** @mention 信息数组 */
+  mentions?: Array<{
+    agentPrincipalId: string;
+    mentionText: string;
+    startIndex: number;
+    endIndex: number;
+  }>;
 }
 
 export type ImMessageListResponse = ImCursorResult<ImMessageInfo>;
@@ -124,6 +131,17 @@ const SendMessageSchema = z.object({
         url: z.string(),
         name: z.string().optional(),
         size: z.number().optional(),
+      }),
+    )
+    .optional(),
+  /** @mention 信息数组，前端发送消息时附带 */
+  mentions: z
+    .array(
+      z.object({
+        agentPrincipalId: z.string(),
+        mentionText: z.string(),
+        startIndex: z.number(),
+        endIndex: z.number(),
       }),
     )
     .optional(),

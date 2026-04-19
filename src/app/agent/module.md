@@ -66,4 +66,4 @@ Agent表 -> app/agent/entities/agent.entity.ts
 - AgentExecutionController.update(HookLifecycle) -> agent_hook_exec_update_002
 
 模块功能描述（Description）
-本模块提供 Agent 与其执行记录的持久化与接口，仅支持查询、修改（受限字段）与删除。Agent 修改允许更新“昵称”“用途说明”“头像地址”“AI模型ID列表”。执行记录允许更新节点状态、最新返回与上下文关联。
+本模块提供 Agent 与其执行记录的持久化与接口，仅支持查询、修改（受限字段）与删除。Agent 修改允许更新"昵称""用途说明""头像地址""AI模型ID列表"。执行记录允许更新节点状态、最新返回与上下文关联。

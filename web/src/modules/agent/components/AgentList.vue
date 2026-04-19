@@ -326,6 +326,29 @@
           </div>
         </div>
 
+        <!-- 主动对话模式开关区域 | proactive-chat-toggle -->
+        <div class="flex items-center justify-between py-3 border-t border-gray-100 mt-2">
+          <div>
+            <div class="text-sm font-bold text-gray-700">主动对话模式</div>
+            <div class="text-xs text-gray-400 mt-0.5">启用后，LLM 通过 send_msg hook 主动决定何时发送消息</div>
+          </div>
+          <button
+            type="button"
+            :class="[
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+              editForm.proactiveChatEnabled ? 'bg-gray-900' : 'bg-gray-200',
+            ]"
+            @click="editForm.proactiveChatEnabled = !editForm.proactiveChatEnabled"
+          >
+            <span
+              :class="[
+                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                editForm.proactiveChatEnabled ? 'translate-x-6' : 'translate-x-1',
+              ]"
+            />
+          </button>
+        </div>
+
         <div class="flex justify-end space-x-3 mt-10">
           <button
             @click="closeEditModal"
@@ -385,6 +408,7 @@ const editForm = ref<UpdateAgentRequest>({
   purpose: '',
   avatarUrl: '',
   aiModelIds: [],
+  proactiveChatEnabled: true,
 });
 const aiModels = ref<AiModelItem[]>([]);
 const modelOptions = computed(() =>
@@ -494,6 +518,7 @@ const openEditModal = (agent: Agent) => {
     purpose: agent.purpose,
     avatarUrl: getAgentAvatarUrl(agent),
     aiModelIds: Array.isArray(agent.aiModelIds) ? agent.aiModelIds : [],
+    proactiveChatEnabled: agent.proactiveChatEnabled ?? true,
   };
   selectedModelToAdd.value = '';
   showModal.value = true;

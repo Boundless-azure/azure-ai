@@ -21,6 +21,7 @@ import { registerWebMcpRoutes } from './modules/webmcp/routes/webmcp.routes';
 import { registerSolutionRoutes } from './modules/solution/routes/solution.routes';
 import { registerProxyRoutes } from './modules/proxy/proxy.routes';
 import { registerFrpcRoutes } from './modules/frpc/routes/frpc.routes';
+import { registerRunnerControlRoutes } from './modules/runner-control/runner-control.routes';
 
 /**
  * @title 创建 Runner 应用
@@ -64,13 +65,13 @@ export async function createRunnerApp() {
   await registerSolutionRoutes(app, mongoClient, redisClient);
 
   // Runner 代理路由和 FRPC 路由（在 MongoDB 初始化后注册）
+  let db = null;
   if (cfg.mongoUri) {
-    const db = await mongoClient.connect(
-      cfg.mongoUri,
-      cfg.runnerDbName || 'runner',
-    );
+    db = await mongoClient.connect(cfg.mongoUri, cfg.runnerDbName || 'runner');
     await registerProxyRoutes(app, db);
   }
+  // runner-control 路由始终注册，但数据库操作需要 mongoUri
+  await registerRunnerControlRoutes(app, db || undefined);
 
   await registerFrpcRoutes(app);
 

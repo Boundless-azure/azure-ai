@@ -2,6 +2,8 @@ import { io, type Socket } from 'socket.io-client';
 import { getRunnerConfig, saveRunnerConfig } from '../../../config/store';
 import { FrpcService } from '../../frpc/services/frpc.service';
 import type { FrpcConfig } from '../../frpc/types/frpc.types';
+import { RunnerTokenService } from '../../runner-control/services/token.service';
+import { RunnerStatsService } from '../../runner-control/services/stats.service';
 
 /**
  * @title Runner 注册服务
@@ -16,10 +18,12 @@ export class RunnerRegistrationService {
   private lastError: string | null = null;
   private frpcConfig: FrpcConfig | null = null;
   private readonly frpcService: FrpcService;
+  private readonly tokenService: RunnerTokenService;
 
   constructor() {
     const config = getRunnerConfig();
-    this.frpcService = new FrpcService(config.frpcBinPath);
+    this.frpcService = FrpcService.getInstance(config.frpcBinPath);
+    this.tokenService = RunnerTokenService.getInstance();
   }
 
   status() {
@@ -155,6 +159,65 @@ export class RunnerRegistrationService {
             resolve({ ok: true, message: 'runner registered', runnerId: resp.runnerId });
           },
         );
+
+        // 监听 SaaS 请求临时凭证
+        socket.on('runner/request-token', (payload: { runnerId: string }, callback: (data: { token: string; expiresAt: number }) => void) => {
+          const config = getRunnerConfig();
+          if (payload.runnerId !== config.runnerId) {
+            callback({ token: '', expiresAt: 0 });
+            return;
+          }
+          const tokenData = this.tokenService.generateToken(payload.runnerId);
+          console.log(`[Registration] Token generated for runner: ${payload.runnerId}`);
+          callback({ token: tokenData.token, expiresAt: tokenData.expiresAt });
+        });
+
+        // 监听 SaaS 下发 FRP 启动指令
+        socket.on('runner/frp:start', async () => {
+          if (!this.frpcConfig) {
+            console.warn('[Registration] frp:start received but no frpcConfig available');
+            return;
+          }
+          try {
+            await this.frpcService.generateConfig(this.frpcConfig);
+            await this.frpcService.start();
+            console.log('[Registration] frpc restarted via SaaS command');
+          } catch (err) {
+            console.error('[Registration] frpc restart failed:', err);
+          }
+        });
+
+        // 监听 SaaS 下发 FRP 停止指令
+        socket.on('runner/frp:stop', async (callback: (data: { ok: boolean; message: string }) => void) => {
+          try {
+            await this.frpcService.stop();
+            console.log('[Registration] frpc stopped via SaaS command');
+            callback({ ok: true, message: 'FRPC stopped' });
+          } catch (err) {
+            callback({ ok: false, message: String(err) });
+          }
+        });
+
+        // 监听 SaaS 下发 FRP 重载指令
+        socket.on('runner/frp:reload', async (callback: (data: { ok: boolean; message: string }) => void) => {
+          try {
+            await this.frpcService.reloadViaApi();
+            console.log('[Registration] frpc reloaded via SaaS command');
+            callback({ ok: true, message: 'FRPC reloaded' });
+          } catch (err) {
+            callback({ ok: false, message: String(err) });
+          }
+        });
+
+        // 监听 SaaS 请求性能统计
+        socket.on('runner/stats:get', (callback: (data: { cpuUsage: number; memoryUsage: number; frpcRunning: boolean }) => void) => {
+          const sysStats = RunnerStatsService.getInstance().getStats();
+          callback({
+            cpuUsage: sysStats.cpuUsage,
+            memoryUsage: sysStats.memoryUsage,
+            frpcRunning: this.frpcService.isRunning(),
+          });
+        });
       });
       socket.on('connect_error', (error: Error) => {
         this.lastStatus = 'failed';

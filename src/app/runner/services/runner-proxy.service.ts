@@ -5,11 +5,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import type { Server } from 'socket.io';
 import { RunnerEntity } from '../entities/runner.entity';
 import { FrpRecordEntity } from '../entities/frp-record.entity';
 import { DomainBindingEntity } from '../entities/domain-binding.entity';
 import { RewardRecordEntity } from '../entities/reward-record.entity';
 import { RewardType } from '../enums/reward.enums';
+import { RunnerTokenService } from './runner-token.service';
 
 /**
  * @title Runner 代理服务
@@ -28,7 +30,8 @@ export class RunnerProxyService {
     private readonly domainRepo: Repository<DomainBindingEntity>,
     @InjectRepository(RewardRecordEntity)
     private readonly rewardRepo: Repository<RewardRecordEntity>,
-  ) {}
+    private readonly tokenService: RunnerTokenService,
+  ) { }
 
   /**
    * @title 获取 Runner 基础信息
@@ -49,12 +52,17 @@ export class RunnerProxyService {
   /**
    * @title 获取 Runner 性能统计
    * @description 返回 Runner 的 CPU、内存、FRP 状态与核心数量统计。
+   *              实时状态（CPU/内存/frpcRunning）通过 WS 向 Runner 请求，计数类从本地 DB 查询。
+   * @param io Socket.IO Server 实例
    * @param runnerId Runner ID
    * @returns 性能统计数据
    * @keywords-cn 性能统计, CPU, 内存, FRP状态
    * @keywords-en performance-stats, cpu, memory, frp-status
    */
-  async getStats(runnerId: string): Promise<{
+  async getStats(
+    io: Server,
+    runnerId: string,
+  ): Promise<{
     cpuUsage: number;
     memoryUsage: number;
     frpcRunning: boolean;
@@ -65,15 +73,19 @@ export class RunnerProxyService {
   }> {
     await this.getRunner(runnerId);
 
-    const domainBindings = await this.domainRepo.count({
-      where: { runnerId, active: true },
-    });
-    const frpcRunning = true; // TODO: 实际查询 Runner 的 FRP 进程状态
+    const [domainBindings, runtimeStats] = await Promise.all([
+      this.domainRepo.count({ where: { runnerId, active: true } }),
+      this.tokenService.requestFromRunner<{
+        cpuUsage: number;
+        memoryUsage: number;
+        frpcRunning: boolean;
+      }>(io, runnerId, 'runner/stats:get'),
+    ]);
 
     return {
-      cpuUsage: 0,
-      memoryUsage: 0,
-      frpcRunning,
+      cpuUsage: runtimeStats?.cpuUsage ?? 0,
+      memoryUsage: runtimeStats?.memoryUsage ?? 0,
+      frpcRunning: runtimeStats?.frpcRunning ?? false,
       solutions: 0,
       domainBindings,
       apps: 0,
@@ -230,41 +242,76 @@ export class RunnerProxyService {
 
   /**
    * @title 启动 FRP
-   * @description 在 Runner 端启动 FRP 进程。
+   * @description 通过 WS 向 Runner 发送启动指令。
+   * @param io Socket.IO Server 实例
    * @param runnerId Runner ID
-   * @keywords-cn 启动FRP, FRP进程
-   * @keywords-en start-frp, frp-process
+   * @keywords-cn 启动FRP, FRP进程, WS中继
+   * @keywords-en start-frp, frp-process, ws-relay
    */
-  async startFrp(runnerId: string): Promise<{ ok: boolean; message: string }> {
+  async startFrp(
+    io: Server,
+    runnerId: string,
+  ): Promise<{ ok: boolean; message: string }> {
     await this.getRunner(runnerId);
-    // TODO: 通过 WS 向 Runner 发送启动指令
-    return { ok: true, message: 'FRP start command sent' };
+    const sent = this.tokenService.sendToRunner(
+      io,
+      runnerId,
+      'runner/frp:start',
+    );
+    return {
+      ok: sent,
+      message: sent ? 'FRP start command sent' : 'runner not connected',
+    };
   }
 
   /**
    * @title 停止 FRP
-   * @description 在 Runner 端停止 FRP 进程。
+   * @description 通过 WS 向 Runner 发送停止指令。
+   * @param io Socket.IO Server 实例
    * @param runnerId Runner ID
-   * @keywords-cn 停止FRP, FRP进程
-   * @keywords-en stop-frp, frp-process
+   * @keywords-cn 停止FRP, WS中继
+   * @keywords-en stop-frp, ws-relay
    */
-  async stopFrp(runnerId: string): Promise<{ ok: boolean; message: string }> {
+  async stopFrp(
+    io: Server,
+    runnerId: string,
+  ): Promise<{ ok: boolean; message: string }> {
     await this.getRunner(runnerId);
-    // TODO: 通过 WS 向 Runner 发送停止指令
-    return { ok: true, message: 'FRP stop command sent' };
+    const result = await this.tokenService.requestFromRunner<{
+      ok: boolean;
+      message: string;
+    }>(io, runnerId, 'runner/frp:stop');
+    return (
+      result ?? {
+        ok: false,
+        message: 'runner not connected or request timeout',
+      }
+    );
   }
 
   /**
    * @title 重载 FRP
-   * @description 在 Runner 端重载 FRP 配置。
+   * @description 通过 WS 向 Runner 发送重载配置指令。
+   * @param io Socket.IO Server 实例
    * @param runnerId Runner ID
-   * @keywords-cn 重载FRP, FRP配置
-   * @keywords-en reload-frp, frp-config
+   * @keywords-cn 重载FRP, WS中继
+   * @keywords-en reload-frp, ws-relay
    */
-  async reloadFrp(runnerId: string): Promise<{ ok: boolean; message: string }> {
+  async reloadFrp(
+    io: Server,
+    runnerId: string,
+  ): Promise<{ ok: boolean; message: string }> {
     await this.getRunner(runnerId);
-    // TODO: 通过 WS 向 Runner 发送重载指令
-    return { ok: true, message: 'FRP reload command sent' };
+    const result = await this.tokenService.requestFromRunner<{
+      ok: boolean;
+      message: string;
+    }>(io, runnerId, 'runner/frp:reload');
+    return (
+      result ?? {
+        ok: false,
+        message: 'runner not connected or request timeout',
+      }
+    );
   }
 
   /**
@@ -292,7 +339,7 @@ export class RunnerProxyService {
     }
 
     // 创建域名绑定
-    const domain = '127.0.0.1:3000';
+    const domain = '127.0.0.1';
     const pathPattern = runnerId;
     const existingDomain = await this.domainRepo.findOne({
       where: { domain, pathPattern, active: true },

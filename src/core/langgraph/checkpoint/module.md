@@ -24,4 +24,4 @@
 
 模块功能描述
 - 提供自定义 BaseCheckpointSaver 的 TypeORM 实现，兼容 LangGraph v1 的持久化接口：put/getTuple/list/putWrites/deleteThread；采用 JSON+base64 存储 Typed 序列化值，支持 MySQL/Postgres/SQLite。
-- 额外集成：在 putWrites 中将 channel 为“消息”的写入持久化到 chat_session_messages；并按配置的轮次（默认20）调用 AI 生成会话总结，写入 summary_table，且每次总结包含上一阶段的历史总结。
+- 额外集成：在 putWrites 中将 channel 为"消息"的写入持久化到 chat_session_messages；并按配置的轮次（默认20）调用 AI 生成会话总结，写入 summary_table，且每次总结包含上一阶段的历史总结。

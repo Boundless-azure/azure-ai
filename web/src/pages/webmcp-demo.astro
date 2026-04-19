@@ -1,0 +1,15 @@
+---
+import Layout from '../layouts/Layout.astro';
+import WebMCPDemoPage from '../modules/webmcp/pages/WebMCPDemoPage.vue';
+---
+
+<Layout>
+  <script is:inline slot="head">
+    if (!localStorage.getItem('token')) {
+      window.location.href = '/login';
+    }
+  </script>
+  <!-- 提前加载 SDK，确保 Vue 组件 onMounted 时 window.WebMCP 已就绪 -->
+  <script is:inline src="/webmcp-client.sdk.js"></script>
+  <WebMCPDemoPage client:only="vue" />
+</Layout>

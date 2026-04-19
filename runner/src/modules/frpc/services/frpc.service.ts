@@ -9,7 +9,7 @@ import type { FrpcConfig } from '../types/frpc.types';
 const DEFAULT_ADMIN_PORT = 7400;
 
 /**
- * @title FRPC 服务
+ * @title FRPC 服务（单例）
  * @description 管理 FRP Client (v0.50+) 的 TOML 配置生成、进程生命周期与管理 API 调用。
  *              frpc 启动时携带 metadata.runner_key，供 frps server plugin 鉴权；
  *              通过 admin API (localhost:adminPort) 进行动态代理管理，无需重启进程。
@@ -18,13 +18,25 @@ const DEFAULT_ADMIN_PORT = 7400;
  * @keywords-en frpc-service, toml-config, process-lifecycle, admin-api, metadata
  */
 export class FrpcService {
+  private static _instance: FrpcService | null = null;
   private frpcProcess: ChildProcess | null = null;
   private configDir = join(process.cwd(), 'runner.data', 'frp');
   private configFile = join(this.configDir, 'frpc.toml');
   private pidFile = join(process.cwd(), 'runner.data', 'frp', 'frpc.pid');
   private adminPort = DEFAULT_ADMIN_PORT;
 
-  constructor(private readonly frpcBinPath = '/usr/local/bin/frpc') {}
+  /**
+   * @title 获取单例实例
+   * @description 整个进程生命周期只存在一个 FrpcService 实例。
+   */
+  static getInstance(frpcBinPath = '/usr/local/bin/frpc'): FrpcService {
+    if (!FrpcService._instance) {
+      FrpcService._instance = new FrpcService(frpcBinPath);
+    }
+    return FrpcService._instance;
+  }
+
+  private constructor(private readonly frpcBinPath = '/usr/local/bin/frpc') {}
 
   /**
    * @title 生成 FRPC TOML 配置文件

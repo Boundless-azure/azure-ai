@@ -15,7 +15,12 @@
     ></div>
 
     <div v-else-if="mode === 'chat'">
-      <template v-for="msg in messages" :key="msg.id">
+      <!-- 虚拟滑动占位 + 顶部哨兵 top-padding-sentinel keyword: virtual-scroll-sentinel -->
+      <div :style="{ height: topPaddingPx + 'px' }" class="relative">
+        <div ref="topSentinel" class="absolute bottom-0 w-full h-px"></div>
+      </div>
+
+      <template v-for="msg in visibleMessages" :key="msg.id">
         <div
           v-if="msg.role === ChatRole.System"
           class="px-2 my-4 w-full"
@@ -70,12 +75,22 @@
             class="flex flex-col min-w-0 max-w-[85%]"
             :class="msg.senderId === selfId ? 'items-end' : 'items-start'"
           >
-            <!-- Nickname -->
+            <!-- Nickname + Mentions -->
             <span
               v-if="sessionType === 'group' && msg.senderId !== selfId"
               class="text-xs text-gray-500 mb-1 select-none ml-1"
             >
               {{ displayNameById[msg.senderId || ''] || msg.senderName }}
+              <!-- @mention 列表 -->
+              <template v-if="msg.mentions && msg.mentions.length > 0">
+                <span
+                  v-for="mention in msg.mentions"
+                  :key="mention.agentPrincipalId"
+                  class="text-blue-500 font-medium"
+                >
+                  {{ ' ' + mention.mentionText }}
+                </span>
+              </template>
             </span>
 
             <!-- Message Bubble Row -->
@@ -230,11 +245,11 @@
 <script setup lang="ts">
 /**
  * @title Chat Message List
- * @description 聊天消息气泡与工具调用展示区域。
- * @keywords-cn 消息列表, 工具调用, 聊天内容
- * @keywords-en message-list, tool-calls, chat-content
+ * @description 聊天消息气泡与工具调用展示区域。支持虚拟窗口渲染（只渲染可见的消息）和 markdown 缓存。
+ * @keywords-cn 消息列表, 工具调用, 聊天内容, 虚拟滑动
+ * @keywords-en message-list, tool-calls, chat-content, virtual-scroll
  */
-import { computed, watch, ref, onUnmounted } from 'vue';
+import { computed, watch, ref, onUnmounted, onMounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import type { ChatMessage } from '../../types/agent.types';
 import { ChatRole, ToolCallStatus } from '../../enums/agent.enums';
@@ -259,6 +274,14 @@ interface Props {
     avatarUrl?: string | null;
   }>;
   sessionType?: string;
+  /** 用于 IntersectionObserver root（滚动容器元素）
+   * @keyword-en scroll-container-el virtual-scroll
+   */
+  scrollContainerEl?: HTMLElement | null;
+  /** 会话 ID，切换时重置虚拟窗口
+   * @keyword-en session-id window-reset
+   */
+  sessionId?: string;
 }
 
 const props = defineProps<Props>();
@@ -271,6 +294,92 @@ const { activeSession } = storeToRefs(imStore);
 const { t } = useI18n();
 const panelStore = usePanelStore();
 const previewUrl = ref<string | null>(null);
+
+// ===== 虚拟窗口 virtual-window =====
+/** 默认每次渲染的最大条数 */
+const WINDOW_SIZE = 30;
+/** 每次向上展开的条数 */
+const EXPAND_STEP = 20;
+/** 每条消息预估高度（px），仅用于占位 */
+const ESTIMATED_MSG_HEIGHT = 80;
+
+const windowExpand = ref(0);
+const isExpanding = ref(false);
+const topSentinel = ref<HTMLElement | null>(null);
+
+/**
+ * 切换 session 时重置虚拟窗口
+ * @keyword-en reset-virtual-window on-session-change
+ */
+watch(() => props.sessionId, () => {
+  windowExpand.value = 0;
+});
+
+/**
+ * 可见消息切片（尾部 WINDOW_SIZE + 展开量）
+ * @keyword-en visible-messages virtual-window-slice
+ */
+const visibleMessages = computed(() => {
+  const total = props.messages.length;
+  const start = Math.max(0, total - WINDOW_SIZE - windowExpand.value);
+  return props.messages.slice(start);
+});
+
+/**
+ * 隐藏消息的顶部占位高度
+ * @keyword-en top-padding-height virtual-spacer
+ */
+const topPaddingPx = computed(() => {
+  const total = props.messages.length;
+  const hidden = Math.max(0, total - WINDOW_SIZE - windowExpand.value);
+  return hidden * ESTIMATED_MSG_HEIGHT;
+});
+
+/**
+ * 向上展开虚拟窗口，并恢复滚动位置防止跳动
+ * @keyword-en expand-virtual-window restore-scroll
+ */
+const expandWindow = async () => {
+  if (isExpanding.value) return;
+  const total = props.messages.length;
+  if (windowExpand.value + WINDOW_SIZE >= total) return;
+
+  const scrollEl = props.scrollContainerEl;
+  const prevScrollHeight = scrollEl?.scrollHeight ?? 0;
+  const prevScrollTop = scrollEl?.scrollTop ?? 0;
+
+  isExpanding.value = true;
+  windowExpand.value = Math.min(windowExpand.value + EXPAND_STEP, total - WINDOW_SIZE);
+
+  await nextTick();
+
+  if (scrollEl) {
+    scrollEl.scrollTop = prevScrollTop + (scrollEl.scrollHeight - prevScrollHeight);
+  }
+  isExpanding.value = false;
+};
+
+/** IntersectionObserver实例 @keyword-en intersection-observer-instance */
+let intersectionObserver: IntersectionObserver | null = null;
+
+/**
+ * 初始化顶部哨兵的 IntersectionObserver
+ * @keyword-en setup-intersection-observer virtual-scroll-trigger
+ */
+const setupObserver = () => {
+  intersectionObserver?.disconnect();
+  if (!topSentinel.value) return;
+  intersectionObserver = new IntersectionObserver(
+    ([entry]) => {
+      if (entry.isIntersecting) void expandWindow();
+    },
+    { root: props.scrollContainerEl ?? null, threshold: 0.1 },
+  );
+  intersectionObserver.observe(topSentinel.value);
+};
+
+watch([topSentinel, () => props.scrollContainerEl], setupObserver);
+onMounted(setupObserver);
 
 const selfId = computed(() => (props.selfPrincipalId || '').trim());
 
@@ -346,6 +455,11 @@ const isNewMessage = (id: string) => {
   return newMessageIds.value.has(id);
 };
 
+// ===== markdown 缓存 markdown-cache =====
+/** LRU 简化版：最多缓存 200 条渲染结果 */
+const markdownCache = new Map<string, string>();
+const MAX_CACHE_SIZE = 200;
+
 const md = new MarkdownIt({
   html: true,
   linkify: true,
@@ -409,17 +523,15 @@ const handleMessageClick = (e: MouseEvent) => {
   }
 };
 
-const messageIds = computed(() => {
-  return props.messages.map((m) => m.id);
-});
-
+// ===== 消息进场动画：只对最近 3s 内新到的消息播放，防止虚拟窗口展开时说历史消息重播 message-enter-animation =====
 watch(
-  messageIds,
-  (ids, prevIds) => {
-    const prev = new Set(prevIds || []);
-    for (const id of ids) {
-      if (!prev.has(id)) {
-        markNewMessage(id);
+  () => visibleMessages.value,
+  (msgs, prevMsgs) => {
+    const prev = new Set((prevMsgs ?? []).map((m) => m.id));
+    const recentCutoff = Date.now() - 3000;
+    for (const msg of msgs) {
+      if (!prev.has(msg.id) && msg.timestamp > recentCutoff) {
+        markNewMessage(msg.id);
       }
     }
   },
@@ -427,6 +539,7 @@ watch(
 );
 
 onUnmounted(() => {
+  intersectionObserver?.disconnect();
   for (const t of newMessageTimeoutById.values()) {
     window.clearTimeout(t);
   }
@@ -463,8 +576,20 @@ const handleAvatarClick = (msg: ChatMessage) => {
   panelStore.openDrawer('profile', { user });
 };
 
-const renderMarkdown = (content: string) => {
-  return md.render(content);
+/**
+ * 渲染 markdown，结果缓存避免重复计算
+ * @keyword-en render-markdown markdown-cache
+ */
+const renderMarkdown = (content: string): string => {
+  const cached = markdownCache.get(content);
+  if (cached !== undefined) return cached;
+  const result = md.render(content);
+  if (markdownCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = markdownCache.keys().next().value;
+    if (firstKey !== undefined) markdownCache.delete(firstKey);
+  }
+  markdownCache.set(content, result);
+  return result;
 };
 </script>
 

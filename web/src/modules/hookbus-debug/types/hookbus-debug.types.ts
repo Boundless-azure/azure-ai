@@ -13,6 +13,7 @@ export const HookBusRegistrationSchema = z.object({
       pluginId: z.string().optional(),
       pluginName: z.string().optional(),
       tags: z.array(z.string()).optional(),
+      description: z.string().optional(),
     })
     .nullable()
     .optional(),

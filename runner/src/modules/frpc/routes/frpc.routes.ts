@@ -12,7 +12,7 @@ import { getRunnerConfig } from '../../../config/store';
  */
 export async function registerFrpcRoutes(app: FastifyInstance): Promise<void> {
   const cfg = getRunnerConfig();
-  const frpcService = new FrpcService(cfg.frpcBinPath);
+  const frpcService = FrpcService.getInstance(cfg.frpcBinPath);
 
   /**
    * @title 获取 FRPC 状态

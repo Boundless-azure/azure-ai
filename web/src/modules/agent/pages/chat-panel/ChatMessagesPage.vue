@@ -13,6 +13,8 @@
         :selfPrincipalId="selfPrincipalId"
         :sessionMembers="currentSessionMembers"
         :sessionType="currentSession?.threadType"
+        :scrollContainerEl="chatContainer"
+        :sessionId="currentSessionId ?? undefined"
       />
     </div>
 
@@ -39,9 +41,9 @@
 <script setup lang="ts">
 /**
  * @title Chat Messages Page
- * @description 会话内聊天记录页面：历史加载、实时同步与消息发送。
+ * @description 会话内聊天记录页面：历史加载、实时同步与消息发送。发送均为水容第一时间展示，后台异步处理接口。
  * @keywords-cn 会话内聊天记录, 消息发送, 历史加载, 实时同步
- * @keywords-en chat-messages, send-message, history-load, realtime-sync
+ * @keywords-en chat-messages, send-message, history-load, realtime-sync, optimistic-send
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
@@ -302,7 +304,7 @@ const extractMentions = (text: string): string[] => {
   return Array.from(new Set(out.map((s) => s.toLowerCase())));
 };
 
-const sendMessage = async (payload: {
+const sendMessage = (payload: {
   text: string;
   attachments: Attachment[];
 }) => {
@@ -370,17 +372,14 @@ const sendMessage = async (payload: {
   }
 
   const sessionId = sessionIds[0];
-  try {
-    isProcessing.value = true;
-    await imStore.sendMessageOptimistic(sessionId, combinedContent);
-  } catch {
-    ui.showToast('发送失败', 'error');
-  } finally {
-    isProcessing.value = false;
-  }
 
+  // 水容发送：立即展示 temp 消息动画，接口异步处理，输入框不锁定
   isPinnedToBottom.value = true;
   scrollToBottom();
+
+  void imStore.sendMessageOptimistic(sessionId, combinedContent).catch(() => {
+    ui.showToast('发送失败', 'error');
+  });
 };
 </script>
 

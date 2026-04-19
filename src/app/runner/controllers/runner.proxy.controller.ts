@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { RunnerProxyService } from '../services/runner-proxy.service';
+import { RunnerTokenService } from '../services/runner-token.service';
+import { RunnerGateway } from './runner.gateway';
 
 /**
  * @title Runner 代理控制器
@@ -9,7 +11,11 @@ import { RunnerProxyService } from '../services/runner-proxy.service';
  */
 @Controller('runner/:runnerId')
 export class RunnerProxyController {
-  constructor(private readonly service: RunnerProxyService) {}
+  constructor(
+    private readonly service: RunnerProxyService,
+    private readonly tokenService: RunnerTokenService,
+    private readonly gateway: RunnerGateway,
+  ) {}
 
   /**
    * @title 获取性能统计
@@ -21,7 +27,7 @@ export class RunnerProxyController {
    */
   @Get('stats')
   async getStats(@Param('runnerId') runnerId: string) {
-    return this.service.getStats(runnerId);
+    return this.service.getStats(this.gateway.ioServer, runnerId);
   }
 
   /**
@@ -113,38 +119,38 @@ export class RunnerProxyController {
 
   /**
    * @title 启动 FRP
-   * @description 在 Runner 端启动 FRP 进程。
+   * @description 通过 SaaS WS 向 Runner 下发启动指令。
    * @param runnerId Runner ID
-   * @keywords-cn 启动FRP, FRP进程
-   * @keywords-en start-frp, frp-process
+   * @keywords-cn 启动FRP, WS中继
+   * @keywords-en start-frp, ws-relay
    */
   @Post('frp/start')
   async startFrp(@Param('runnerId') runnerId: string) {
-    return this.service.startFrp(runnerId);
+    return this.service.startFrp(this.gateway.ioServer, runnerId);
   }
 
   /**
    * @title 停止 FRP
-   * @description 在 Runner 端停止 FRP 进程。
+   * @description 通过 SaaS WS 向 Runner 下发停止指令。
    * @param runnerId Runner ID
-   * @keywords-cn 停止FRP, FRP进程
-   * @keywords-en stop-frp, frp-process
+   * @keywords-cn 停止FRP, WS中继
+   * @keywords-en stop-frp, ws-relay
    */
   @Post('frp/stop')
   async stopFrp(@Param('runnerId') runnerId: string) {
-    return this.service.stopFrp(runnerId);
+    return this.service.stopFrp(this.gateway.ioServer, runnerId);
   }
 
   /**
    * @title 重载 FRP
-   * @description 在 Runner 端重载 FRP 配置。
+   * @description 通过 SaaS WS 向 Runner 下发重载配置指令。
    * @param runnerId Runner ID
-   * @keywords-cn 重载FRP, FRP配置
-   * @keywords-en reload-frp, frp-config
+   * @keywords-cn 重载FRP, WS中继
+   * @keywords-en reload-frp, ws-relay
    */
   @Post('frp/reload')
   async reloadFrp(@Param('runnerId') runnerId: string) {
-    return this.service.reloadFrp(runnerId);
+    return this.service.reloadFrp(this.gateway.ioServer, runnerId);
   }
 
   /**
@@ -158,5 +164,25 @@ export class RunnerProxyController {
   @Post('claim-free-domain')
   async claimFreeDomain(@Param('runnerId') runnerId: string) {
     return this.service.claimFreeDomain(runnerId);
+  }
+
+  /**
+   * @title 请求临时凭证
+   * @description 通过 Socket.IO 向 Runner 请求临时访问凭证，有效期 1 小时。
+   * @param runnerId Runner ID
+   * @returns Token 数据
+   * @keywords-cn 临时凭证, Token请求
+   * @keywords-en request-token, temp-credential
+   */
+  @Post('request-token')
+  async requestToken(@Param('runnerId') runnerId: string) {
+    const result = await this.tokenService.requestToken(
+      this.gateway.ioServer,
+      runnerId,
+    );
+    if (!result) {
+      return { ok: false, error: 'runner not connected or request timeout' };
+    }
+    return { ok: true, token: result.token, expiresAt: result.expiresAt };
   }
 }

@@ -4,10 +4,12 @@ import {
   OnGatewayDisconnect,
   SubscribeMessage,
   WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
-import type { Socket } from 'socket.io';
+import type { Server, Socket } from 'socket.io';
 import { RunnerService } from '../services/runner.service';
 import { RunnerFrpNodeService } from '../services/runner-frp-node.service';
+import { RunnerTokenService } from '../services/runner-token.service';
 import {
   RUNNER_NAMESPACE,
   RunnerStatus,
@@ -19,7 +21,7 @@ import { RunnerRegisterDto } from '../types/runner.types';
 
 /**
  * @title Runner 网关
- * @description 处理 Runner 注册握手、维护在线离线状态，并提供 FRP 控制指令下发能力。
+ * @description 处理 Runner 注册握手，维护在线离线状态，并提供 FRP 控制指令下发能力。
  * @keywords-cn Runner网关, 注册握手, 在线状态, FRP控制
  * @keywords-en runner-gateway, register-handshake, online-status, frp-control
  */
@@ -30,12 +32,65 @@ import { RunnerRegisterDto } from '../types/runner.types';
   pingTimeout: RUNNER_WS_PING_TIMEOUT_MS,
 })
 export class RunnerGateway implements OnGatewayDisconnect {
+  @WebSocketServer()
+  ioServer!: Server;
+
   private readonly socketRunnerMap = new Map<string, string>();
-  private readonly runnerSocketMap = new Map<string, string>();
+
+  /**
+   * @title 获取所有在线 Runner ID 列表
+   * @description 返回当前 WebSocket 活跃的所有 Runner ID，用于同步状态。
+   *        遍历 socketRunnerMap 并检查每个 socket 是否真的连接（Socket.IO 自带连接池管理）。
+   * @returns 在线 Runner ID 数组
+   * @keyword-cn 获取在线Runner, ID列表
+   * @keyword-en get-online-runners, id-list
+   */
+  getOnlineRunnerIds(): string[] {
+    const onlineRunnerIds: string[] = [];
+    // @ts-expect-error - sockets 是 socket.io 内部属性
+    if (!this.ioServer?.sockets) return onlineRunnerIds;
+    for (const [socketId, runnerId] of this.socketRunnerMap) {
+      // @ts-expect-error - sockets 是 Map 类型
+      const socket = (this.ioServer.sockets as Map<string, Socket>).get(
+        socketId,
+      );
+      // @ts-expect-error - 检查 Socket 连接状态
+      if (socket && socket.connected) {
+        onlineRunnerIds.push(runnerId);
+      }
+    }
+    return onlineRunnerIds;
+  }
+
+  /**
+   * @title 检查单个 Runner 是否在线
+   * @description 根据 runnerId 判断其 WebSocket 连接是否存活。
+   * @param runnerId Runner ID
+   * @returns 是否在线
+   * @keyword-cn Runner在线, 单个检查
+   * @keyword-en runner-online, single-check
+   */
+  isRunnerOnline(runnerId: string): boolean {
+    // @ts-expect-error - sockets 是 socket.io 内部属性
+    if (!this.ioServer?.sockets) return false;
+    for (const [socketId, mappedRunnerId] of this.socketRunnerMap) {
+      if (mappedRunnerId !== runnerId) continue;
+      // @ts-expect-error - sockets 是 Map 类型
+      const socket = (this.ioServer.sockets as Map<string, Socket>).get(
+        socketId,
+      );
+      // @ts-expect-error - 检查 Socket 连接状态
+      if (socket && socket.connected) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   constructor(
     private readonly runnerService: RunnerService,
     private readonly runnerFrpNodeService: RunnerFrpNodeService,
+    private readonly tokenService: RunnerTokenService,
   ) {}
 
   @SubscribeMessage(RunnerWsEvent.Register)
@@ -83,7 +138,7 @@ export class RunnerGateway implements OnGatewayDisconnect {
     }
 
     this.socketRunnerMap.set(client.id, runner.id);
-    this.runnerSocketMap.set(runner.id, client.id);
+    this.tokenService.registerRunner(runner.id, client.id);
     await this.runnerService.markStatus(runner.id, RunnerStatus.Mounted);
 
     console.log(
@@ -115,16 +170,9 @@ export class RunnerGateway implements OnGatewayDisconnect {
       return { ok: false, message: 'unauthorized' };
     }
 
-    // 转发给 Runner 客户端
-    const runnerSocketId = this.runnerSocketMap.get(payload.runnerId);
-    if (runnerSocketId) {
-      // 向 Runner 客户端发送 FRP 启动指令
-      // 实际通过 Socket.io emit 到客户端
-      console.log(
-        `[RunnerGateway] FRP start command sent to runner: ${payload.runnerId}`,
-      );
-    }
-
+    console.log(
+      `[RunnerGateway] FRP start command sent to runner: ${payload.runnerId}`,
+    );
     return { ok: true, message: 'FRP start command sent' };
   }
 
@@ -160,11 +208,31 @@ export class RunnerGateway implements OnGatewayDisconnect {
     return { ok: true, message: 'FRP reload command sent' };
   }
 
+  @SubscribeMessage('runner/request-token')
+  async onRequestToken(
+    @MessageBody() payload: { runnerId: string },
+    @ConnectedSocket() _client: Socket,
+  ): Promise<{
+    ok: boolean;
+    token?: string;
+    expiresAt?: number;
+    error?: string;
+  }> {
+    const result = await this.tokenService.requestToken(
+      this.ioServer,
+      payload.runnerId,
+    );
+    if (!result) {
+      return { ok: false, error: 'runner not connected or request timeout' };
+    }
+    return { ok: true, token: result.token, expiresAt: result.expiresAt };
+  }
+
   async handleDisconnect(client: Socket): Promise<void> {
     const runnerId = this.socketRunnerMap.get(client.id);
     if (!runnerId) return;
     this.socketRunnerMap.delete(client.id);
-    this.runnerSocketMap.delete(runnerId);
+    this.tokenService.unregisterRunner(runnerId);
     await this.runnerService.markStatus(runnerId, RunnerStatus.Offline);
     // 释放 frp_record 并清 Redis 缓存，防止端口池泄漏
     await this.runnerFrpNodeService

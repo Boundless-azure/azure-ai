@@ -8,14 +8,19 @@ import { ConversationController } from './controllers/conversation.controller';
 import { ConversationService } from './services/conversation.service';
 import { ImController } from './controllers/im.controller';
 import { ImGateway } from './controllers/im.gateway';
+import { WebMcpGateway } from './controllers/webmcp.gateway';
 import { ImSessionService } from './services/im-session.service';
 import { ImMessageService } from './services/im-message.service';
 import { ImContactGroupController } from './controllers/im-contact-group.controller';
 import { ImContactGroupService } from './services/im-contact-group.service';
+import { WebMcpSessionDataService } from './services/webmcp-session-data.service';
+import { WebMcpHookHandlersService } from './services/webmcp.hook-handlers.service';
+import { SendMsgHookHandlerService } from './services/send-msg.hook-handler.service';
 import { ImContactGroupEntity } from './entities/im-contact-group.entity';
 import { ImContactGroupMemberEntity } from './entities/im-contact-group-member.entity';
 import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
 import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
+import { ChatSessionDataEntity } from '@core/ai/entities/chat-session-data.entity';
 import { ChatSessionMemberEntity } from '@core/ai/entities/chat-session-member.entity';
 import { LGCheckpointEntity } from '@core/langgraph/checkpoint/entities/lg-checkpoint.entity';
 import { LGWriteEntity } from '@core/langgraph/checkpoint/entities/lg-write.entity';
@@ -49,6 +54,7 @@ import { AuthModule } from '@/core/auth/auth.module';
     TypeOrmModule.forFeature([
       ChatMessageEntity,
       ChatSessionEntity,
+      ChatSessionDataEntity,
       ChatSessionMemberEntity,
       ChatSessionMemberEntity,
       LGCheckpointEntity,
@@ -70,10 +76,14 @@ import { AuthModule } from '@/core/auth/auth.module';
   providers: [
     ConversationService,
     ImGateway,
+    WebMcpGateway,
     ImSessionService,
     ImMessageService,
     ImContactGroupService,
+    WebMcpSessionDataService,
+    WebMcpHookHandlersService,
+    SendMsgHookHandlerService,
   ],
-  exports: [ConversationService, ImSessionService, ImMessageService],
+  exports: [ConversationService, ImSessionService, ImMessageService, WebMcpGateway, WebMcpSessionDataService],
 })
 export class ConversationModule {}

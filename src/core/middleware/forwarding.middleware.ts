@@ -52,7 +52,6 @@ export class ForwardingMiddleware implements ExceptionFilter {
     private readonly runnerRepo: Repository<RunnerEntity>,
     private readonly redis: CommonRedisService,
   ) {}
-
   /**
    * 核心过滤方法：仅处理 HTTP 请求的 NotFoundException，执行域名/路径匹配并代理转发
    * @keyword-en exception-catch, request-forward, proxy

@@ -45,17 +45,11 @@
           >
             {{ frpcRunning ? '运行中' : '已停止' }}
           </span>
-          <span v-if="wsConnected" class="text-xs text-green-600">
-            <i class="fa-solid fa-wifi mr-1"></i>WebSocket 已连接
-          </span>
-          <span v-else class="text-xs text-gray-400">
-            <i class="fa-solid fa-wifi mr-1"></i>WebSocket 未连接
-          </span>
         </div>
         <div class="flex flex-wrap gap-2">
           <button
             @click="handleReload"
-            :disabled="loading || !frpcRunning || !wsConnected"
+            :disabled="loading || !frpcRunning"
             class="px-3 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50"
           >
             <i class="fa-solid fa-rotate mr-1"></i>
@@ -64,7 +58,7 @@
           <button
             v-if="!frpcRunning"
             @click="handleStart"
-            :disabled="loading || !wsConnected"
+            :disabled="loading"
             class="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
           >
             <i class="fa-solid fa-play mr-1"></i>
@@ -73,7 +67,7 @@
           <button
             v-else
             @click="handleStop"
-            :disabled="loading || !wsConnected"
+            :disabled="loading"
             class="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
           >
             <i class="fa-solid fa-stop mr-1"></i>
@@ -85,13 +79,13 @@
         <i class="fa-solid fa-spinner fa-spin mr-1"></i>
         处理中...
       </div>
-      <div v-if="wsError" class="text-sm text-red-500 mt-2">
-        {{ wsError }}
+      <div v-if="frpcError" class="text-sm text-red-500 mt-2">
+        {{ frpcError }}
       </div>
     </div>
 
     <!-- 统计数字 -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
       <div class="bg-gray-50 rounded-lg p-3 md:p-4 text-center">
         <div class="text-3xl font-bold text-gray-900">{{ stats.solutions }}</div>
         <div class="text-sm text-gray-500 mt-1">Solution 数量</div>
@@ -104,10 +98,6 @@
         <div class="text-3xl font-bold text-gray-900">{{ stats.apps }}</div>
         <div class="text-sm text-gray-500 mt-1">应用数量</div>
       </div>
-      <div class="bg-gray-50 rounded-lg p-3 md:p-4 text-center">
-        <div class="text-3xl font-bold text-gray-900">{{ stats.runners }}</div>
-        <div class="text-sm text-gray-500 mt-1">在线 Runner</div>
-      </div>
     </div>
   </div>
 </template>
@@ -115,13 +105,12 @@
 <script setup lang="ts">
 /**
  * @title PerformanceTab
- * @description Runner 性能面板，显示 CPU、内存、统计数字和 FRPC 状态。通过 WebSocket 控制 FRP。
- * @keywords-cn 性能面板, CPU, 内存, 统计, FRPC, WebSocket
- * @keywords-en performance-tab, cpu, memory, stats, frpc, websocket
+ * @description Runner 性能面板，显示 CPU、内存、统计数字和 FRPC 状态。
+ * @keywords-cn 性能面板, CPU, 内存, 统计, FRPC
+ * @keywords-en performance-tab, cpu, memory, stats, frpc
  */
 import { ref, onMounted, onUnmounted } from 'vue';
-import { runnerPanelApi, runnerApi } from '../../../../api/runner';
-import { runnerSocketService } from '../../services/runner-ws.service';
+import { runnerPanelApi } from '../../../../api/runner';
 
 const props = defineProps<{
   runnerId: string;
@@ -131,44 +120,21 @@ const cpuUsage = ref(0);
 const memoryUsage = ref(0);
 const frpcRunning = ref(false);
 const loading = ref(false);
-const wsConnected = ref(false);
-const wsError = ref('');
+const frpcError = ref('');
 const stats = ref({
   solutions: 0,
   domainBindings: 0,
   apps: 0,
-  runners: 0,
 });
 
-// Runner 注册信息
-let runnerKey = '';
+// 定时刷新任务 ID
+let statsInterval: ReturnType<typeof setInterval> | null = null;
 
-async function loadRunnerKey() {
-  try {
-    const res = await runnerApi.get(props.runnerId);
-    // runnerKey 应该在创建时显示的 key，需要从后端获取或前端存储
-    // 暂时从 localStorage 获取
-    runnerKey = localStorage.getItem(`runner_key_${props.runnerId}`) || '';
-  } catch (err) {
-    console.error('Failed to load runner key:', err);
-  }
-}
-
-async function connectWs() {
-  try {
-    await loadRunnerKey();
-    if (!runnerKey) {
-      wsError.value = 'Runner Key 未找到，请重新创建 Runner';
-      return;
-    }
-    await runnerSocketService.connect(props.runnerId, runnerKey);
-    wsConnected.value = runnerSocketService.connected.value;
-  } catch (err) {
-    wsError.value = err instanceof Error ? err.message : 'WebSocket 连接失败';
-    wsConnected.value = false;
-  }
-}
-
+/**
+ * @title 加载性能统计数据
+ * @description 通过 SaaS 接口（WS 中继）获取 CPU、内存、FRPC 状态和统计数字。
+ * @keywords-en load-stats, saas-relay
+ */
 async function loadStats() {
   try {
     const res = await runnerPanelApi.getStats(props.runnerId);
@@ -180,67 +146,79 @@ async function loadStats() {
       solutions: data.solutions,
       domainBindings: data.domainBindings,
       apps: data.apps,
-      runners: data.runners,
     };
   } catch (err) {
     console.error('Failed to load stats:', err);
   }
 }
 
-async function loadFrpStatus() {
-  try {
-    const res = await runnerPanelApi.getFrpStatus(props.runnerId);
-    frpcRunning.value = res.data?.running ?? false;
-  } catch (err) {
-    console.error('Failed to load FRPC status:', err);
-  }
-}
-
+/**
+ * @title 启动 FRPC
+ * @description 通过 SaaS 后端 WS 中继向 Runner 发送启动指令（FRPC 停止时域名不可达，需走 SaaS WS）。
+ * @keywords-en handle-start, frpc-start, saas-relay
+ */
 async function handleStart() {
   loading.value = true;
-  wsError.value = '';
+  frpcError.value = '';
   try {
-    await runnerSocketService.startFrp();
+    await runnerPanelApi.startFrp(props.runnerId);
     frpcRunning.value = true;
   } catch (err) {
-    wsError.value = err instanceof Error ? err.message : '启动 FRP 失败';
+    frpcError.value = err instanceof Error ? err.message : '启动 FRP 失败';
   } finally {
     loading.value = false;
   }
 }
 
+/**
+ * @title 停止 FRPC
+ * @description 通过 SaaS 接口（WS 中继）向 Runner 发送停止指令。
+ * @keywords-en handle-stop, saas-relay
+ */
 async function handleStop() {
   loading.value = true;
-  wsError.value = '';
+  frpcError.value = '';
   try {
-    await runnerSocketService.stopFrp();
+    await runnerPanelApi.stopFrp(props.runnerId);
     frpcRunning.value = false;
   } catch (err) {
-    wsError.value = err instanceof Error ? err.message : '停止 FRP 失败';
+    frpcError.value = err instanceof Error ? err.message : '停止 FRP 失败';
   } finally {
     loading.value = false;
   }
 }
 
+/**
+ * @title 重载 FRPC
+ * @description 通过 SaaS 接口（WS 中继）向 Runner 发送重载配置指令。
+ * @keywords-en handle-reload, saas-relay
+ */
 async function handleReload() {
   loading.value = true;
-  wsError.value = '';
+  frpcError.value = '';
   try {
-    await runnerSocketService.reloadFrp();
+    await runnerPanelApi.reloadFrp(props.runnerId);
   } catch (err) {
-    wsError.value = err instanceof Error ? err.message : '重载 FRP 失败';
+    frpcError.value = err instanceof Error ? err.message : '重载 FRP 失败';
   } finally {
     loading.value = false;
   }
 }
 
 onMounted(async () => {
-  await Promise.all([loadStats(), loadFrpStatus()]);
-  // 尝试 WebSocket 连接（需要 runnerKey）
-  await connectWs();
+  // 预热 CPU 采样（首次调用返回 0）
+  await loadStats();
+  // 立即再次获取以获得真实 CPU 使用率
+  await loadStats();
+  // 每 3 秒定时刷新性能数据
+  statsInterval = setInterval(loadStats, 3000);
 });
 
 onUnmounted(() => {
-  runnerSocketService.disconnect();
+  // 清除定时任务
+  if (statsInterval) {
+    clearInterval(statsInterval);
+    statsInterval = null;
+  }
 });
 </script>

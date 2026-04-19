@@ -7,7 +7,24 @@
  - GET  /conversation/sessions/:sessionId/history（会话历史）
  - GET  /conversation/checkpoints/:threadId（检查点列表）
   - GET  /conversation/checkpoints/:threadId/:checkpointId（检查点详情/历史片段）
-  - 对话组接口：
+  - 对话组接口：……
+- WebMCP Socket.IO 端点（namespace: /webmcp）：
+  - 鉴权：handshake.auth.token + handshake.auth.sessionId
+  - 事件：webmcp:register（前端注册 Schema）→ 存 chat_sessions_data
+  - 事件：webmcp:call（后端→前端，下发 data/emit 调用）
+
+新增服务/文件
+- controllers/webmcp.gateway.ts：WebMCP Socket.IO 网关（namespace /webmcp）
+- services/webmcp-session-data.service.ts：会话扩展数据 CRUD
+- services/webmcp.hook-handlers.service.ts：WebMCP Hook 处理器
+- services/send-msg.hook-handler.service.ts：IM send_msg Hook 处理器（主动对话模式）
+
+Hook 注册（由 HookDecoratorExplorerService 自动发现）
+- web_control         — 向前端发送 data/emit 调用
+- web_control_pageinfo — 获取最新注册页面信息（Schema）
+- web_control_data    — 请求前端实时返回指定 data key 值
+- web_control_status  — 查询 MCP 连接状态
+- send_msg            — 主动对话：LLM 通过 call_hook('send_msg', {sessionId,content,senderPrincipalId}) 发消息
     - GET  /conversation/groups（分页：page/pageSize；每组附带 latestMessage；不支持日期筛选）
     - GET  /conversation/groups/:groupId（组详情）
     - POST /conversation/groups（创建组，入参：date 或 dayGroupId）

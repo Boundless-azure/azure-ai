@@ -1,7 +1,7 @@
 模块名称：app/resource（统一资源上传与访问模块）
 
 概述
-- 提供统一资源上传接口：限制 500MB、计算文件 MD5 和 SHA256（支持大文件抽样计算）、重复文件视为”假上传”，仅新增记录并复用存储路径。
+- 提供统一资源上传接口：限制 500MB、计算文件 MD5 和 SHA256（支持大文件抽样计算）、重复文件视为"假上传"，仅新增记录并复用存储路径。
 - 提供分片上传接口：支持大文件分片上传（2MB/片）、断点续传、查询缺失分片。
 - 提供统一资源访问接口：按资源表 id 进行流式返回，支持 Range、ETag 与缓存头，尽可能接近 Nginx 静态文件能力。
 - 提供批量复制接口：支持通过资源 ID 列表批量复制资源（粘贴功能）。
@@ -47,10 +47,10 @@ SHA256去重 -> app/resource/services/resource.service.ts
 断点续传 -> app/resource/services/resource.service.ts
 
 快速检索映射（Keywords -> Files）
-- “ResourceEntity” -> app/resource/entities/resource.entity.ts
-- “ResourceService” -> app/resource/services/resource.service.ts
-- “ResourceController” -> app/resource/controllers/resource.controller.ts
-- “ResourceModule” -> app/resource/resource.module.ts
+- "ResourceEntity" -> app/resource/entities/resource.entity.ts
+- "ResourceService" -> app/resource/services/resource.service.ts
+- "ResourceController" -> app/resource/controllers/resource.controller.ts
+- "ResourceModule" -> app/resource/resource.module.ts
 
 关键词到文件函数哈希映射（Keywords -> Function Hash）
 - ResourceService.upload -> res_upload_001

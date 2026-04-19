@@ -5,18 +5,10 @@ import { DomainBindingEntity } from '../entities/domain-binding.entity';
 
 /**
  * @title 域名分配服务
- * @description 提供 Runner 默认域名分配能力。
+ * @description 提供 Runner 域名分配能力，支持默认域名和自定义域名。
  *
- * TODO: 当前仅支持单一域名模式（127.0.0.1:3000 + runnerId 作为 pathPattern）。
- *       后续扩展方向：
- *       - 支持自定义域名（用户携带自己的域名）
- *       - 支持多域名匹配规则（不同 pathPattern 对应不同后端服务）
- *       - pathPattern 规则引擎化（支持正则、精确匹配、前缀匹配等）
- *       - 域名配额管理（每个 runner 可分配的域名数量限制）
- *       - 域名 SSL 证书自动绑定
- *
- * @keywords-cn 域名分配, 默认域名, runner域名
- * @keywords-en domain-allocation, default-domain, runner-domain
+ * @keywords-cn 域名分配, 默认域名, 自定义域名, runner域名
+ * @keywords-en domain-allocation, default-domain, custom-domain, runner-domain
  */
 @Injectable()
 export class DomainAllocationService {
@@ -50,6 +42,33 @@ export class DomainAllocationService {
       tenantId,
       domain,
       pathPattern,
+      active: true,
+    });
+    return this.domainRepo.save(record);
+  }
+
+  /**
+   * @title 分配自定义域名
+   * @description 为 Runner 分配自定义域名。
+   * @param runnerId Runner ID
+   * @param tenantId 租户 ID
+   * @param domain 自定义域名（不含协议）
+   * @param pathPattern 路径规则（默认 runnerId）
+   * @returns 创建的域名绑定记录
+   * @keywords-cn 自定义域名, runner域名
+   * @keywords-en allocate-custom-domain, runner-domain
+   */
+  async allocateCustomDomain(
+    runnerId: string,
+    tenantId: string,
+    domain: string,
+    pathPattern?: string,
+  ): Promise<DomainBindingEntity> {
+    const record = this.domainRepo.create({
+      runnerId,
+      tenantId,
+      domain: domain.replace(/^https?:\/\//, ''), // 去除协议
+      pathPattern: pathPattern ?? runnerId,
       active: true,
     });
     return this.domainRepo.save(record);

@@ -9,6 +9,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { RunnerService } from '../services/runner.service';
+import { RunnerGateway } from './runner.gateway';
 import {
   CreateRunnerDto,
   QueryRunnerDto,
@@ -16,6 +17,7 @@ import {
   RunnerView,
   UpdateRunnerDto,
 } from '../types/runner.types';
+import { RunnerStatus } from '../enums/runner.enums';
 
 /**
  * @title Runner 控制器
@@ -25,16 +27,38 @@ import {
  */
 @Controller('runner')
 export class RunnerController {
-  constructor(private readonly service: RunnerService) {}
+  constructor(
+    private readonly service: RunnerService,
+    private readonly gateway: RunnerGateway,
+  ) {}
 
   @Get()
   async list(@Query() query: QueryRunnerDto): Promise<RunnerView[]> {
-    return await this.service.list(query);
+    const runners = await this.service.list(query);
+    // 数据库状态为 Mounted 时，通过 gateway 二次确认离线则更新数据库
+    for (const runner of runners) {
+      if (runner.status === RunnerStatus.Mounted) {
+        if (!this.gateway.isRunnerOnline(runner.id)) {
+          await this.service.markStatus(runner.id, RunnerStatus.Offline);
+          runner.status = RunnerStatus.Offline;
+        }
+      }
+    }
+    return runners;
   }
 
   @Get(':id')
   async get(@Param('id') id: string): Promise<RunnerView | null> {
-    return await this.service.get(id);
+    const runner = await this.service.get(id);
+    if (!runner) return null;
+    // 数据库状态为 Mounted 时，通过 gateway 二次确认离线则更新数据库
+    if (runner.status === RunnerStatus.Mounted) {
+      if (!this.gateway.isRunnerOnline(id)) {
+        await this.service.markStatus(id, RunnerStatus.Offline);
+        runner.status = RunnerStatus.Offline;
+      }
+    }
+    return runner;
   }
 
   @Post()

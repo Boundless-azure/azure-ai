@@ -195,6 +195,11 @@ export class SendMessageDto {
   @ValidateNested({ each: true })
   @Type(() => AttachmentDto)
   attachments?: AttachmentDto[];
+
+  /** @mention 信息数组 */
+  @IsOptional()
+  @IsArray()
+  mentions?: MentionInfo[];
 }
 
 /**
@@ -212,6 +217,8 @@ export interface ImMessageInfo {
   isEdited: boolean;
   isAnnouncement: boolean;
   createdAt: Date;
+  /** @mention 信息数组 */
+  mentions?: MentionInfo[];
 }
 
 export type ImMessageListResponse = ImCursorResult<ImMessageInfo>;
@@ -363,8 +370,8 @@ export class ReadReceiptDto {
  * 提取的 @mention 信息
  */
 export interface MentionInfo {
-  /** Agent 的 principal_id */
-  agentPrincipalId: string;
+  /** @mention 的目标 principal_id（agent 或普通用户均可）*/
+  principalId: string;
   /** 原始 @mention 文本 */
   mentionText: string;
   /** 在消息中的位置 */

@@ -36,14 +36,6 @@ export function useHookbusDebug() {
   let socket: Socket | null = null;
 
   const hookCount = computed(() => hooks.value.length);
-  const hookOptions = computed(() =>
-    hooks.value.map((item) => ({
-      value: item.name,
-      label: item.metadata?.pluginName
-        ? `${item.name} (${item.metadata.pluginName})`
-        : item.name,
-    })),
-  );
 
   const disconnect = () => {
     if (!socket) return;
@@ -193,7 +185,6 @@ export function useHookbusDebug() {
     gatewayEnabled,
     gatewayUpdating,
     hookCount,
-    hookOptions,
     history,
     debugLogs,
     connect,

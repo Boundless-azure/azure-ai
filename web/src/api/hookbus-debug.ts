@@ -29,8 +29,10 @@ export const hookbusDebugApi = {
   },
 
   connect(endpoint: string, key?: string): Socket {
-    return io(endpoint, {
-      path: HOOKBUS_DEBUG_SOCKET_PATH,
+    const url = new URL(endpoint);
+    const basePath = url.pathname === '/' ? '' : url.pathname.replace(/\/+$/, '');
+    return io(url.origin, {
+      path: `${basePath}${HOOKBUS_DEBUG_SOCKET_PATH}`,
       transports: ['websocket'],
       withCredentials: true,
       auth: key ? { key } : undefined,

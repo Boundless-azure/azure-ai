@@ -86,3 +86,11 @@ export interface RunnerSkillRecord extends RunnerBaseRecord {
   entry?: string;
   keywords?: string[];
 }
+
+export interface RunnerSolutionRecord extends RunnerBaseRecord {
+  solutionId: string;
+  name: string;
+  version?: string;
+  description?: string;
+  status: 'active' | 'inactive';
+}
