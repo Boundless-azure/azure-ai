@@ -61,7 +61,7 @@ export class ImMessageService {
     @Inject(forwardRef(() => ImGateway))
     private readonly imGateway: ImGateway,
     private readonly agentRuntimeService: AgentRuntimeService,
-  ) {}
+  ) { }
 
   // ===== agent 触发队列：执行锁（运行中保存最新 pending，完成后 5s 防抖再消费）=====
   // key: `${sessionId}:${agentPrincipalId}` — 每个 agent 独立队列，群聊不同 agent 互不干扰
@@ -226,10 +226,10 @@ export class ImMessageService {
       metadata:
         mentions.length > 0
           ? {
-              mentions: mentions.map((m) => ({
-                principalId: m.principalId,
-              })),
-            }
+            mentions: mentions.map((m) => ({
+              principalId: m.principalId,
+            })),
+          }
           : null,
       isAnnouncement: false,
       isEdited: false,
@@ -394,9 +394,9 @@ export class ImMessageService {
     ] as string[];
     const senders = senderIds.length
       ? await this.principalRepo
-          .createQueryBuilder('p')
-          .where('p.id IN (:...ids)', { ids: senderIds })
-          .getMany()
+        .createQueryBuilder('p')
+        .where('p.id IN (:...ids)', { ids: senderIds })
+        .getMany()
       : [];
     const senderMap = new Map(senders.map((s) => [s.id, s.displayName]));
 
@@ -534,9 +534,9 @@ export class ImMessageService {
     ] as string[];
     const senders = senderIds.length
       ? await this.principalRepo
-          .createQueryBuilder('p')
-          .where('p.id IN (:...ids)', { ids: senderIds })
-          .getMany()
+        .createQueryBuilder('p')
+        .where('p.id IN (:...ids)', { ids: senderIds })
+        .getMany()
       : [];
     const senderMap = new Map(senders.map((s) => [s.id, s.displayName]));
 

@@ -370,7 +370,7 @@ export const useImStore = defineStore('im', () => {
       };
       const sc =
         typeof parsed.sessionsCursor === 'string' ||
-        parsed.sessionsCursor === null
+          parsed.sessionsCursor === null
           ? (parsed.sessionsCursor ?? null)
           : null;
       const mc =

@@ -45,7 +45,7 @@ export class ImGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @Inject(forwardRef(() => ImMessageService))
     private readonly messageService: ImMessageService,
     private readonly authService: AuthService,
-  ) {}
+  ) { }
 
   private notifyRoom(principalId: string): string {
     return `${principalId}-notify`;

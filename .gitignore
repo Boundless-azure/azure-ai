@@ -4,3 +4,4 @@ coverage-unit
 tmp-tip-write
 .trae
 .agent
+/runner/runner.data/frp/

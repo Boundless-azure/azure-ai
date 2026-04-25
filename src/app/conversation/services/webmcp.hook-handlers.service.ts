@@ -19,7 +19,7 @@ export class WebMcpHookHandlersService {
   constructor(
     private readonly gateway: WebMcpGateway,
     private readonly dataService: WebMcpSessionDataService,
-  ) {}
+  ) { }
 
   // ----------------------------------------------------------------
   // web_control — 向前端发送 data/emit 调用
@@ -162,8 +162,8 @@ export class WebMcpHookHandlersService {
         sessionId,
         dbLastSocketId: dbStatus.socketId,
         activeSocketId: activeSocketId ?? null,
-        connected:      activeSocketId !== null,
-        hasSchema:      (await this.dataService.getLatestSchema(sessionId)) !== null,
+        connected: activeSocketId !== null,
+        hasSchema: (await this.dataService.getLatestSchema(sessionId)) !== null,
       },
     };
   }

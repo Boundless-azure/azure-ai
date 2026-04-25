@@ -18,7 +18,7 @@ export class SendMsgHookHandlerService {
   constructor(
     @Inject(forwardRef(() => ImMessageService))
     private readonly imMessageService: ImMessageService,
-  ) {}
+  ) { }
 
   /**
    * 通过 HookBus 向指定 IM 会话发送消息

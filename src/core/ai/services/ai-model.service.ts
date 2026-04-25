@@ -69,7 +69,7 @@ export class AIModelService implements OnModuleInit {
     @Inject('AI_CORE_OPTIONS')
     private readonly aiCoreOptions: AICoreModuleOptions,
     private moduleRef: ModuleRef,
-  ) {}
+  ) { }
 
   onModuleInit(): void {
     // Apply proxy configuration via lifecycle hook
@@ -254,9 +254,9 @@ export class AIModelService implements OnModuleInit {
       const responseTo =
         'messages' in (response as Record<string, unknown>)
           ? this.handleMessage(
-              (response as { messages: BaseMessage[] }).messages,
-              'assistant',
-            )
+            (response as { messages: BaseMessage[] }).messages,
+            'assistant',
+          )
           : undefined;
 
       if (responseTo) {
@@ -353,10 +353,10 @@ export class AIModelService implements OnModuleInit {
     const messages =
       typeof windowSize === 'number' && windowSize > 0
         ? await this.contextService.getRecentMessages(
-            sessionId,
-            windowSize,
-            includeSystem,
-          )
+          sessionId,
+          windowSize,
+          includeSystem,
+        )
         : await this.contextService.getAnalysisWindow(sessionId, includeSystem);
 
     return this.chat({ modelId, messages, params, sessionId });
@@ -763,15 +763,15 @@ export class AIModelService implements OnModuleInit {
     request: AIModelRequest,
   ):
     | (ChatOpenAICompletionsCallOptions &
-        ChatOpenAIResponsesCallOptions &
-        ChatAnthropicCallOptions &
-        GoogleGenerativeAIChatCallOptions)
+      ChatOpenAIResponsesCallOptions &
+      ChatAnthropicCallOptions &
+      GoogleGenerativeAIChatCallOptions)
     | undefined {
     const callOptions = request.params
       ? this.applyModelParams(
-          model,
-          request.params as Partial<ModelParameters> & { stop?: string[] },
-        )
+        model,
+        request.params as Partial<ModelParameters> & { stop?: string[] },
+      )
       : {};
     let threadId: string | undefined = request.conversationGroupId;
     if (!threadId && request.sessionId) {
