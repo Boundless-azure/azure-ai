@@ -43,6 +43,35 @@
             <i class="fa-solid fa-circle-exclamation mr-1"></i>{{ t('knowledge.notEmbedded') }}
           </span>
         </div>
+        <!-- tags 编辑行 book-tags-edit keyword: tags -->
+        <div class="flex flex-wrap items-center gap-1 mt-1">
+          <span
+            v-for="(tag, idx) in localTags"
+            :key="idx"
+            class="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full"
+          >
+            {{ tag }}
+            <button type="button" @click="removeTag(idx)" class="text-gray-400 hover:text-red-500 leading-none">&times;</button>
+          </span>
+          <!-- tag 输入框 tag-inline-input -->
+          <input
+            v-if="editingTags"
+            v-model="tagInput"
+            class="text-xs border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-gray-400 w-24"
+            placeholder="输入后 Enter"
+            @keydown.enter.prevent="commitTag"
+            @keydown.,.prevent="commitTag"
+            @blur="commitTagAndClose"
+            ref="tagInputRef"
+          />
+          <button
+            v-else
+            @click="startEditTags"
+            class="px-1.5 py-0.5 text-xs text-gray-400 hover:text-gray-600 border border-dashed border-gray-300 rounded-full transition-colors"
+          >
+            <i class="fa-solid fa-tag mr-0.5"></i>+ tag
+          </button>
+        </div>
       </div>
       <!-- 工具栏 editor-toolbar -->
       <div class="flex items-center gap-2">
@@ -308,6 +337,12 @@ const editingTitle = ref(false);
 const titleDraft = ref(props.book.name);
 const titleInputRef = ref<HTMLInputElement | null>(null);
 
+// tags 编辑
+const localTags = ref<string[]>([...(props.book.tags ?? [])]);
+const editingTags = ref(false);
+const tagInput = ref('');
+const tagInputRef = ref<HTMLInputElement | null>(null);
+
 // 章节管理
 const showAddChapter = ref(false);
 const newChapterTitle = ref('');
@@ -389,6 +424,40 @@ async function toggleLmRequired() {
   currentChapterData.value.isLmRequired = next;
   const chap = chapters.value.find((c) => c.id === selectedChapterId.value);
   if (chap) chap.isLmRequired = next;
+}
+
+/** tags 编辑：打开输入框 */
+function startEditTags() {
+  editingTags.value = true;
+  nextTick(() => tagInputRef.value?.focus());
+}
+
+/** 提交当前 tagInput 内容 */
+async function commitTag() {
+  const tag = tagInput.value.trim().replace(/,+$/, '');
+  if (tag && !localTags.value.includes(tag)) {
+    localTags.value.push(tag);
+    await saveTags();
+  }
+  tagInput.value = '';
+}
+
+/** input blur 时提交并关闭 */
+async function commitTagAndClose() {
+  await commitTag();
+  editingTags.value = false;
+}
+
+/** 删除某个 tag */
+async function removeTag(idx: number) {
+  localTags.value.splice(idx, 1);
+  await saveTags();
+}
+
+/** 保存 tags 到后端 */
+async function saveTags() {
+  await updateBook(props.book.id, { tags: [...localTags.value] });
+  emit('updated', { ...props.book, tags: localTags.value });
 }
 
 /** 构建向量 */

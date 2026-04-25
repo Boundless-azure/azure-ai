@@ -207,6 +207,22 @@ export class ImGateway implements OnGatewayConnection, OnGatewayDisconnect {
       .emit('user-room/notify', payload);
   }
 
+  /**
+   * 向会话广播 typing 状态（用于主动对话等服务端发起的输入中状态）
+   * @keyword-en broadcast-typing
+   */
+  public broadcastTyping(
+    sessionId: string,
+    userId: string,
+    isTyping: boolean,
+  ): void {
+    this.broadcastToSession(sessionId, {
+      type: 'im:typing',
+      data: { userId, isTyping },
+      sessionId,
+    });
+  }
+
   private broadcastToSession(sessionId: string, event: ImWsEvent): void {
     this.server.to(`session:${sessionId}`).emit('im:event', event);
   }

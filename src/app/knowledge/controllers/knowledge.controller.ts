@@ -17,7 +17,6 @@ import type {
   KnowledgeBookInfo,
   KnowledgeChapterToc,
   KnowledgeChapterInfo,
-  KnowledgeMatchResult,
 } from '../types/knowledge.types';
 import {
   CreateKnowledgeBookDto,
@@ -38,7 +37,7 @@ export class KnowledgeController {
   constructor(
     private readonly knowledgeService: KnowledgeService,
     private readonly aiModelService: AIModelService,
-  ) {}
+  ) { }
 
   // ========== 书本管理 ==========
 
@@ -228,16 +227,16 @@ export class KnowledgeController {
   }
 
   /**
-   * 语义向量匹配知识
+   * 按 tag 过滤列举知识书本（最多 100 条）
    * @route POST /knowledge/search
-   * @keyword-en semantic-search
+   * @keyword-en tag-search
    */
   @Post('search')
   async search(
     @Body() dto: KnowledgeSearchDto,
-  ): Promise<KnowledgeMatchResult[]> {
-    const apiKey = await this.pickApiKey();
-    return this.knowledgeService.vectorSearch(dto.query, apiKey, {
+  ): Promise<KnowledgeBookInfo[]> {
+    return this.knowledgeService.listByTags({
+      tags: dto.tags,
       type: dto.type,
       limit: dto.limit,
     });

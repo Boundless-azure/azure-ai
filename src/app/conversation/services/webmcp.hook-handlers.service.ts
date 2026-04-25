@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
-import type { HookContext, HookResult } from '@/core/hookbus/types/hook.types';
+import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
 import { WebMcpGateway } from '../controllers/webmcp.gateway';
 import { WebMcpSessionDataService } from '../services/webmcp-session-data.service';
 
@@ -33,11 +33,12 @@ export class WebMcpHookHandlersService {
   @HookHandler('web_control', {
     pluginName: 'webmcp',
     tags: ['webmcp', 'control', 'call'],
+    description: '向前端页面发送控制指令。payload: { sessionId: string, type: "data" | "emit", payload: unknown, timeout?: number }。sessionId 和 type 必填；type=data 为设置数据，type=emit 为触发事件；timeout 可选（默认 8000ms）。前端需已连接 WebMCP。',
   })
   async handleWebControl(
-    ctx: HookContext<{ sessionId?: string; type?: 'data' | 'emit'; payload?: unknown; timeout?: number }>,
+    event: HookEvent<{ sessionId?: string; type?: 'data' | 'emit'; payload?: unknown; timeout?: number }>,
   ): Promise<HookResult> {
-    const { sessionId, type, payload, timeout } = ctx.event.payload ?? {};
+    const { sessionId, type, payload, timeout } = event.payload ?? {};
 
     if (!sessionId || !type) {
       return { status: HookResultStatus.Error, error: 'sessionId and type are required' };
@@ -77,11 +78,12 @@ export class WebMcpHookHandlersService {
   @HookHandler('web_control_pageinfo', {
     pluginName: 'webmcp',
     tags: ['webmcp', 'page-info'],
+    description: '获取指定 session 当前注册的页面 Schema 信息（组件声明、可操作元素列表）。payload: { sessionId: string }。sessionId 必填。调用前建议先用 web_control_status 确认已连接。',
   })
   async handleWebControlPageInfo(
-    ctx: HookContext<{ sessionId?: string }>,
+    event: HookEvent<{ sessionId?: string }>,
   ): Promise<HookResult> {
-    const { sessionId } = ctx.event.payload ?? {};
+    const { sessionId } = event.payload ?? {};
     if (!sessionId) return { status: HookResultStatus.Error, error: 'sessionId required' };
 
     const schema = await this.dataService.getLatestSchema(sessionId);
@@ -102,11 +104,12 @@ export class WebMcpHookHandlersService {
   @HookHandler('web_control_data', {
     pluginName: 'webmcp',
     tags: ['webmcp', 'data-query'],
+    description: '向前端实时请求指定 data key 的当前值。payload: { sessionId: string, dataKey: string }。sessionId 和 dataKey 必填。返回 { requested: true, dataKey, socketId }，实际值由前端异步推送。',
   })
   async handleWebControlData(
-    ctx: HookContext<{ sessionId?: string; dataKey?: string }>,
+    event: HookEvent<{ sessionId?: string; dataKey?: string }>,
   ): Promise<HookResult> {
-    const { sessionId, dataKey } = ctx.event.payload ?? {};
+    const { sessionId, dataKey } = event.payload ?? {};
     if (!sessionId || !dataKey) {
       return { status: HookResultStatus.Error, error: 'sessionId and dataKey are required' };
     }
@@ -141,11 +144,12 @@ export class WebMcpHookHandlersService {
   @HookHandler('web_control_status', {
     pluginName: 'webmcp',
     tags: ['webmcp', 'status'],
+    description: '查询指定 session 的 WebMCP 连接状态。payload: { sessionId: string }。sessionId 必填。返回 { dbLastSocketId, activeSocketId, connected: boolean }；connected=false 时无法使用 web_control 系列指令。',
   })
   async handleWebControlStatus(
-    ctx: HookContext<{ sessionId?: string }>,
+    event: HookEvent<{ sessionId?: string }>,
   ): Promise<HookResult> {
-    const { sessionId } = ctx.event.payload ?? {};
+    const { sessionId } = event.payload ?? {};
     if (!sessionId) return { status: HookResultStatus.Error, error: 'sessionId required' };
 
     const dbStatus = await this.dataService.getConnStatus(sessionId);

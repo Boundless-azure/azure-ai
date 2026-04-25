@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
-import type { HookContext, HookResult } from '@/core/hookbus/types/hook.types';
+import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
 
 /**
  * @title 鉴权 Hook 处理器
@@ -14,15 +14,16 @@ export class AuthHookHandlersService {
   @HookHandler('onAuthLoginSuccess', {
     pluginName: 'auth',
     tags: ['auth', 'login', 'success'],
+    description: '登录成功事件 Hook（系统触发，非 AI 主动调用）。payload: { principalId: string, userId: string, loginAt?: string }。',
   })
   handleLoginSuccess(
-    ctx: HookContext<{
+    event: HookEvent<{
       principalId?: string;
       userId?: string;
       loginAt?: string;
     }>,
   ): HookResult {
-    const payload = ctx.event.payload ?? {};
+    const payload = event.payload ?? {};
     if (!payload.principalId || !payload.userId) {
       return {
         status: HookResultStatus.Error,
@@ -44,11 +45,12 @@ export class AuthHookHandlersService {
   @HookHandler('onAuthLoginFailed', {
     pluginName: 'auth',
     tags: ['auth', 'login', 'failed'],
+    description: '登录失败事件 Hook（系统触发，非 AI 主动调用）。payload: { identifier: string, reason: string }。',
   })
   handleLoginFailed(
-    ctx: HookContext<{ identifier?: string; reason?: string }>,
+    event: HookEvent<{ identifier?: string; reason?: string }>,
   ): HookResult {
-    const payload = ctx.event.payload ?? {};
+    const payload = event.payload ?? {};
     if (!payload.identifier || !payload.reason) {
       return {
         status: HookResultStatus.Error,
@@ -69,11 +71,12 @@ export class AuthHookHandlersService {
   @HookHandler('onAuthPasswordChanged', {
     pluginName: 'auth',
     tags: ['auth', 'password', 'change'],
+    description: '密码变更事件 Hook（系统触发，非 AI 主动调用）。payload: { principalId: string, ok: boolean }。',
   })
   handlePasswordChanged(
-    ctx: HookContext<{ principalId?: string; ok?: boolean }>,
+    event: HookEvent<{ principalId?: string; ok?: boolean }>,
   ): HookResult {
-    const payload = ctx.event.payload ?? {};
+    const payload = event.payload ?? {};
     if (!payload.principalId) {
       return {
         status: HookResultStatus.Error,

@@ -1,15 +1,14 @@
 /**
  * @title 知识 API
  * @description 知识书本和章节的 API 接口。
- * @keywords-cn 知识API, 书本, 章节, 向量搜索
- * @keywords-en knowledge-api, book, chapter, vector-search
+ * @keywords-cn 知识API, 书本, 章节, tag搜索
+ * @keywords-en knowledge-api, book, chapter, tag-search
  */
 import { http } from '../utils/http';
 import type {
   KnowledgeBookInfo,
   KnowledgeChapterToc,
   KnowledgeChapterInfo,
-  KnowledgeMatchResult,
   CreateBookRequest,
   UpdateBookRequest,
   CreateChapterRequest,
@@ -83,6 +82,6 @@ export const knowledgeApi = {
   batchInfo: (bookIds: string[]) =>
     http.post<KnowledgeBookInfo[]>('/knowledge/info', { bookIds }),
 
-  search: (query: string, type?: string, limit?: number) =>
-    http.post<KnowledgeMatchResult[]>('/knowledge/search', { query, type, limit }),
+  search: (tags?: string[], type?: string, limit?: number) =>
+    http.post<KnowledgeBookInfo[]>('/knowledge/search', { tags, type, limit }),
 };

@@ -41,6 +41,11 @@ export const useImStore = defineStore('im', () => {
 
   const stateByPrincipal = ref<Record<string, PrincipalState>>({});
 
+  /** 每个 session 当前正在输入的用户 id 集合
+   * @keyword-en typing-by-session agent-typing-indicator
+   */
+  const typingBySession = ref<Record<string, Set<string>>>({});
+
   let userNotifyTimeout: number | null = null;
   let sessionsPullTimeout: number | null = null;
 
@@ -1276,7 +1281,18 @@ export const useImStore = defineStore('im', () => {
         }
         callbacks?.onMessage?.(message, sessionId);
       },
-      onTyping: callbacks?.onTyping,
+      onTyping: (userId, isTyping, sessionId) => {
+        const current = typingBySession.value[sessionId]
+          ? new Set(typingBySession.value[sessionId])
+          : new Set<string>();
+        if (isTyping) {
+          current.add(userId);
+        } else {
+          current.delete(userId);
+        }
+        typingBySession.value = { ...typingBySession.value, [sessionId]: current };
+        callbacks?.onTyping?.(userId, isTyping, sessionId);
+      },
       onMemberJoined: callbacks?.onMemberJoined,
       onMemberLeft: callbacks?.onMemberLeft,
       onAiStreamStart: callbacks?.onAiStreamStart,
@@ -1321,6 +1337,7 @@ export const useImStore = defineStore('im', () => {
   return {
     principalId,
     connected,
+    typingBySession,
     error,
     sessions,
     sessionsCursor,

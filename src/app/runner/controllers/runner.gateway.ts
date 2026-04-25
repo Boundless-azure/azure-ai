@@ -1,3 +1,4 @@
+import { OnModuleInit } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -10,6 +11,7 @@ import type { Server, Socket } from 'socket.io';
 import { RunnerService } from '../services/runner.service';
 import { RunnerFrpNodeService } from '../services/runner-frp-node.service';
 import { RunnerTokenService } from '../services/runner-token.service';
+import { RunnerHookRpcService } from '../services/runner-hook-rpc.service';
 import {
   RUNNER_NAMESPACE,
   RunnerStatus,
@@ -17,7 +19,7 @@ import {
   RUNNER_WS_PING_INTERVAL_MS,
   RUNNER_WS_PING_TIMEOUT_MS,
 } from '../enums/runner.enums';
-import { RunnerRegisterDto } from '../types/runner.types';
+import { HookCallReply, RunnerRegisterDto } from '../types/runner.types';
 
 /**
  * @title Runner 网关
@@ -31,11 +33,33 @@ import { RunnerRegisterDto } from '../types/runner.types';
   pingInterval: RUNNER_WS_PING_INTERVAL_MS,
   pingTimeout: RUNNER_WS_PING_TIMEOUT_MS,
 })
-export class RunnerGateway implements OnGatewayDisconnect {
+export class RunnerGateway implements OnGatewayDisconnect, OnModuleInit {
   @WebSocketServer()
   ioServer!: Server;
 
   private readonly socketRunnerMap = new Map<string, string>();
+
+  /**
+   * @title 启动后注入 hook RPC socket 解析器
+   * @description 让 RunnerHookRpcService 能根据 runnerId 找到对应已连接的 Socket。
+   * @keyword-en init-hook-resolver
+   */
+  onModuleInit(): void {
+    this.hookRpc.setSocketResolver((runnerId) => this.findSocket(runnerId));
+  }
+
+  private findSocket(runnerId: string): Socket | undefined {
+    // @ts-expect-error - sockets 是 socket.io 内部属性
+    const sockets = this.ioServer?.sockets as Map<string, Socket> | undefined;
+    if (!sockets) return undefined;
+    for (const [socketId, mapped] of this.socketRunnerMap) {
+      if (mapped !== runnerId) continue;
+      const socket = sockets.get(socketId);
+      // @ts-expect-error - 检查 Socket 连接状态
+      if (socket && socket.connected) return socket;
+    }
+    return undefined;
+  }
 
   /**
    * @title 获取所有在线 Runner ID 列表
@@ -91,6 +115,7 @@ export class RunnerGateway implements OnGatewayDisconnect {
     private readonly runnerService: RunnerService,
     private readonly runnerFrpNodeService: RunnerFrpNodeService,
     private readonly tokenService: RunnerTokenService,
+    private readonly hookRpc: RunnerHookRpcService,
   ) {}
 
   @SubscribeMessage(RunnerWsEvent.Register)
@@ -228,11 +253,52 @@ export class RunnerGateway implements OnGatewayDisconnect {
     return { ok: true, token: result.token, expiresAt: result.expiresAt };
   }
 
+  /**
+   * @title 接收 Runner 回 ack
+   * @description 收到 ack 表示 Runner 已收到 hook:call, in-flight 进入 stale 监控阶段。
+   * @keyword-en on-hook-ack
+   */
+  @SubscribeMessage(RunnerWsEvent.HookAck)
+  onHookAck(@MessageBody() payload: { callId: string }): void {
+    if (!payload?.callId) return;
+    this.hookRpc.handleAck(payload.callId);
+  }
+
+  /**
+   * @title 接收 Runner 进度心跳
+   * @description Runner 每 3s 合并 push in-flight callIds, 续命 stale 截止。
+   * @keyword-en on-hook-progress
+   */
+  @SubscribeMessage(RunnerWsEvent.HookProgress)
+  onHookProgress(
+    @MessageBody() payload: { callIds?: string[]; ts?: number } | null,
+  ): void {
+    if (!payload || !Array.isArray(payload.callIds)) return;
+    this.hookRpc.handleProgress({
+      callIds: payload.callIds,
+      ts: payload.ts ?? Date.now(),
+    });
+  }
+
+  /**
+   * @title 接收 Runner 终态回包
+   * @description 完成对应 callId 的 in-flight, 解锁背压。
+   * @keyword-en on-hook-result
+   */
+  @SubscribeMessage(RunnerWsEvent.HookResult)
+  onHookResult(
+    @MessageBody() payload: { callId: string; reply: HookCallReply },
+  ): void {
+    if (!payload?.callId || !payload?.reply) return;
+    this.hookRpc.handleResult(payload.callId, payload.reply);
+  }
+
   async handleDisconnect(client: Socket): Promise<void> {
     const runnerId = this.socketRunnerMap.get(client.id);
     if (!runnerId) return;
     this.socketRunnerMap.delete(client.id);
     this.tokenService.unregisterRunner(runnerId);
+    this.hookRpc.cleanupRunner(runnerId);
     await this.runnerService.markStatus(runnerId, RunnerStatus.Offline);
     // 释放 frp_record 并清 Redis 缓存，防止端口池泄漏
     await this.runnerFrpNodeService

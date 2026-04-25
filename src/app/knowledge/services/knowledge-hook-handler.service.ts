@@ -1,19 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
-import type { HookContext, HookResult } from '@/core/hookbus/types/hook.types';
+import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
 import { KnowledgeService } from './knowledge.service';
 import { KnowledgeBookType } from '../enums/knowledge.enums';
 
 /**
  * @title 知识 Hook 处理器
- * @description 为 LLM 提供通过 call_hook 读取知识库的能力：目录查询、章节内容获取、语义向量搜索。
- * @keywords-cn 知识Hook, 目录, 章节内容, 语义搜索
- * @keywords-en knowledge-hook, toc, chapter-content, semantic-search
+ * @description 为 LLM 提供通过 call_hook 读取知识库的能力：目录查询、章节内容获取、按标签列举书本。
+ * @keywords-cn 知识Hook, 目录, 章节内容, tag搜索
+ * @keywords-en knowledge-hook, toc, chapter-content, tag-search
  */
 @Injectable()
 export class KnowledgeHookHandlerService {
-  constructor(private readonly knowledgeService: KnowledgeService) {}
+  constructor(private readonly knowledgeService: KnowledgeService) { }
 
   // ----------------------------------------------------------------
   // get_knowledge_toc — 批量获取知识目录
@@ -27,11 +27,13 @@ export class KnowledgeHookHandlerService {
   @HookHandler('get_knowledge_toc', {
     pluginName: 'knowledge',
     tags: ['knowledge', 'toc'],
+    description:
+      '获取指定书本 ID 列表的知识目录（不含章节内容）。payload: { bookIds: string[] }，bookIds 必填。返回每本书的标题、类型、描述和章节列表（无正文）。',
   })
   async handleGetToc(
-    ctx: HookContext<{ bookIds?: string[] }>,
+    event: HookEvent<{ bookIds?: string[] }>,
   ): Promise<HookResult> {
-    const { bookIds } = ctx.event.payload ?? {};
+    const { bookIds } = event.payload ?? {};
     if (!Array.isArray(bookIds) || bookIds.length === 0) {
       return {
         status: HookResultStatus.Error,
@@ -61,11 +63,13 @@ export class KnowledgeHookHandlerService {
   @HookHandler('get_knowledge_chapter', {
     pluginName: 'knowledge',
     tags: ['knowledge', 'chapter'],
+    description:
+      '获取指定书本的章节正文内容。payload: { bookIds: string[], chapterIds?: string[] }。bookIds 必填；chapterIds 可选，不传则返回全部 LM 必读章节；传入则额外返回指定章节内容。',
   })
   async handleGetChapter(
-    ctx: HookContext<{ bookIds?: string[]; chapterIds?: string[] }>,
+    event: HookEvent<{ bookIds?: string[]; chapterIds?: string[] }>,
   ): Promise<HookResult> {
-    const { bookIds, chapterIds } = ctx.event.payload ?? {};
+    const { bookIds, chapterIds } = event.payload ?? {};
     if (!Array.isArray(bookIds) || bookIds.length === 0) {
       return {
         status: HookResultStatus.Error,
@@ -87,35 +91,31 @@ export class KnowledgeHookHandlerService {
   }
 
   // ----------------------------------------------------------------
-  // search_knowledge — 语义向量搜索
+  // search_knowledge — 按 tag 列举知识书本（前 100 条）
   // ----------------------------------------------------------------
 
   /**
-   * 自然语言语义匹配知识书本（向量搜索）
-   * payload: { query: string; apiKey: string; type?: KnowledgeBookType; limit?: number }
-   * @keyword-en hook-search-knowledge
+   * 按可选 tag 过滤返回知识书本列表（最多 100 条），不传 tags 则返回全部前 100 条
+   * payload: { tags?: string[]; type?: KnowledgeBookType; limit?: number }
+   * @keyword-en hook-search-knowledge-by-tag
    */
   @HookHandler('search_knowledge', {
     pluginName: 'knowledge',
-    tags: ['knowledge', 'search', 'vector'],
+    tags: ['knowledge', 'search', 'tag'],
+    description:
+      '按标签列举知识书本，最多返回 100 条。payload: { tags?: string[], type?: string, limit?: number }。tags 可不传，不传时返回前 100 条全部书本；传入则按标签过滤（ILIKE 模糊匹配）；type 可选（如 skill / lore）；limit 可选，默认 100 上限。',
   })
   async handleSearch(
-    ctx: HookContext<{
-      query?: string;
-      apiKey?: string;
+    event: HookEvent<{
+      tags?: string[];
       type?: KnowledgeBookType;
       limit?: number;
     }>,
   ): Promise<HookResult> {
-    const { query, apiKey, type, limit } = ctx.event.payload ?? {};
-    if (!query) {
-      return { status: HookResultStatus.Error, error: 'query 为必填参数' };
-    }
-    if (!apiKey) {
-      return { status: HookResultStatus.Error, error: 'apiKey 为必填参数' };
-    }
+    const { tags, type, limit } = event.payload ?? {};
     try {
-      const data = await this.knowledgeService.vectorSearch(query, apiKey, {
+      const data = await this.knowledgeService.listByTags({
+        tags,
         type,
         limit,
       });

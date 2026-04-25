@@ -415,7 +415,7 @@ export class AIModelService implements OnModuleInit {
       const agent = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
-      const recursionLimit = 50;
+      const recursionLimit = 200;
       const invocationOptions = this.buildInvocationOptions(agent, request);
       const stream = agent.streamEvents(
         {

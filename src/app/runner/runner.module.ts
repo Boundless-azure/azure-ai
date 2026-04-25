@@ -20,6 +20,7 @@ import { RunnerHookRegisterService } from './services/runner-hook-register.servi
 import { RunnerProxyService } from './services/runner-proxy.service';
 import { RunnerFrpNodeService } from './services/runner-frp-node.service';
 import { RunnerTokenService } from './services/runner-token.service';
+import { RunnerHookRpcService } from './services/runner-hook-rpc.service';
 
 /**
  * @title Runner 模块
@@ -55,6 +56,7 @@ import { RunnerTokenService } from './services/runner-token.service';
     RunnerProxyService,
     RunnerFrpNodeService,
     RunnerTokenService,
+    RunnerHookRpcService,
   ],
   exports: [
     RunnerService,
@@ -65,6 +67,7 @@ import { RunnerTokenService } from './services/runner-token.service';
     RunnerProxyService,
     RunnerFrpNodeService,
     RunnerTokenService,
+    RunnerHookRpcService,
   ],
 })
 export class RunnerModule {}

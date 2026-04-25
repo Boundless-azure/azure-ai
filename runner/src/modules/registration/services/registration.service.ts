@@ -19,11 +19,23 @@ export class RunnerRegistrationService {
   private frpcConfig: FrpcConfig | null = null;
   private readonly frpcService: FrpcService;
   private readonly tokenService: RunnerTokenService;
+  private onSocketReady?: (socket: Socket) => void;
 
   constructor() {
     const config = getRunnerConfig();
     this.frpcService = FrpcService.getInstance(config.frpcBinPath);
     this.tokenService = RunnerTokenService.getInstance();
+  }
+
+  /**
+   * @title 注入 socket-ready 回调
+   * @description connect (含每次 reconnect) 完成后立即触发, 用于上层挂载额外协议
+   *              (例如 attachHookRpc 把 hook:call 监听挂上)。回调内部应做幂等。
+   * @keywords-cn socket就绪回调, 协议挂载
+   * @keywords-en socket-ready, protocol-attach
+   */
+  setOnSocketReady(cb: (socket: Socket) => void): void {
+    this.onSocketReady = cb;
   }
 
   status() {
@@ -109,6 +121,11 @@ export class RunnerRegistrationService {
     return await new Promise((resolve) => {
       socket.on('connect', () => {
         this.lastStatus = 'connected';
+        try {
+          this.onSocketReady?.(socket);
+        } catch (err) {
+          console.error('[Registration] onSocketReady callback failed:', err);
+        }
         socket.emit(
           'runner/register',
           { runnerId: input.runnerId, key: input.runnerKey },

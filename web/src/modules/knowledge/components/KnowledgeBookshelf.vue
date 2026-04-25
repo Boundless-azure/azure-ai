@@ -90,6 +90,14 @@
                 <p v-if="book.chapterCount !== undefined" class="text-white/60 text-xs mt-0.5">
                   {{ book.chapterCount }} {{ t('knowledge.chapters') }}
                 </p>
+                <!-- tags显示 book-tags-display -->
+                <div v-if="book.tags && book.tags.length" class="flex flex-wrap gap-1 mt-1">
+                  <span
+                    v-for="tag in book.tags"
+                    :key="tag"
+                    class="px-1.5 py-0.5 text-[10px] rounded bg-white/20 text-white/80 leading-none"
+                  >{{ tag }}</span>
+                </div>
               </div>
             </div>
 
@@ -164,7 +172,7 @@
           </div>
 
           <!-- 书本描述 description-input -->
-          <div class="mb-6">
+          <div class="mb-4">
             <label class="text-sm font-medium text-gray-700 mb-1.5 block">
               {{ t('knowledge.description') }}
               <span class="text-gray-400 font-normal ml-1">{{ t('knowledge.descHint') }}</span>
@@ -174,6 +182,28 @@
               rows="3"
               class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 resize-none"
               :placeholder="t('knowledge.descPlaceholder')"
+            />
+          </div>
+
+          <!-- tags输入 tags-input keyword: tags -->
+          <div class="mb-6">
+            <label class="text-sm font-medium text-gray-700 mb-1.5 block">Tags</label>
+            <div class="flex flex-wrap gap-1.5 mb-1.5">
+              <span
+                v-for="(tag, idx) in createForm.tags"
+                :key="idx"
+                class="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full"
+              >
+                {{ tag }}
+                <button type="button" @click="createForm.tags!.splice(idx, 1)" class="text-gray-400 hover:text-red-500">&times;</button>
+              </span>
+            </div>
+            <input
+              v-model="createTagInput"
+              class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              placeholder="输入 tag 后按 Enter 添加"
+              @keydown.enter.prevent="addCreateTag"
+              @keydown.,.prevent="addCreateTag"
             />
           </div>
 
@@ -223,7 +253,8 @@ const createLoading = ref(false);
 const embeddingId = ref<string | null>(null);
 const selectedType = ref<string>('');
 
-const createForm = ref<CreateBookRequest>({ type: 'skill', name: '', description: '' });
+const createForm = ref<CreateBookRequest>({ type: 'skill', name: '', description: '', tags: [] });
+const createTagInput = ref('');
 
 const typeTabs = [
   { value: '', label: t('knowledge.all'), icon: 'fa-solid fa-layer-group' },
@@ -248,7 +279,17 @@ const typeOptions: { value: KnowledgeBookType; label: string; desc: string; icon
   },
 ];
 
-/** 书本颜色（按类型区分色调） */
+/** 新建弹窗中添加 tag */
+function addCreateTag() {
+  const tag = createTagInput.value.trim().replace(/,+$/, '');
+  if (tag && !createForm.value.tags?.includes(tag)) {
+    if (!createForm.value.tags) createForm.value.tags = [];
+    createForm.value.tags.push(tag);
+  }
+  createTagInput.value = '';
+}
+
+/** 获取书本颜色（按类型区分色调） */
 function getBookColor(type: string): string {
   if (type === 'skill') {
     const palette = ['#6366f1', '#8b5cf6', '#a78bfa', '#818cf8', '#7c3aed'];
@@ -277,7 +318,8 @@ async function handleCreate() {
   try {
     await createBook({ ...createForm.value });
     showCreateModal.value = false;
-    createForm.value = { type: 'skill', name: '', description: '' };
+    createForm.value = { type: 'skill', name: '', description: '', tags: [] };
+    createTagInput.value = '';
     await listBooks(selectedType.value || undefined);
   } finally {
     createLoading.value = false;

@@ -38,6 +38,11 @@ export class CreateKnowledgeBookDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 }
 
 /**
@@ -45,6 +50,11 @@ export class CreateKnowledgeBookDto {
  * @keyword-en update-book
  */
 export class UpdateKnowledgeBookDto {
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
   @IsOptional()
   @IsString()
   @MaxLength(255)
@@ -60,19 +70,21 @@ export class UpdateKnowledgeBookDto {
 }
 
 /**
- * 向量匹配查询请求
- * @keyword-en vector-search-query
+ * 知识列表查询请求（按 tag 过滤）
+ * @keyword-en tag-search-query
  */
 export class KnowledgeSearchDto {
-  @IsString()
-  @IsNotEmpty()
-  query!: string;
+  /** 按标签过滤，不传则返回全部（最多 100 条） */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 
   @IsOptional()
   @IsEnum(KnowledgeBookType)
   type?: KnowledgeBookType;
 
-  /** 返回条数，默认 5 */
+  /** 返回条数，默认 100，最大 100 */
   @IsOptional()
   @IsInt()
   @Min(1)
@@ -140,6 +152,7 @@ export interface KnowledgeBookInfo {
   creatorId: string | null;
   isEmbedded: boolean;
   active: boolean;
+  tags: string[] | null;
   chapterCount?: number;
   createdAt: Date;
   updatedAt: Date;
@@ -200,12 +213,14 @@ export const CreateKnowledgeBookSchema = z.object({
   type: z.nativeEnum(KnowledgeBookType),
   name: z.string().min(1).max(255),
   description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
 });
 
 export const UpdateKnowledgeBookSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional(),
   active: z.boolean().optional(),
+  tags: z.array(z.string()).optional(),
 });
 
 export const CreateKnowledgeChapterSchema = z.object({
@@ -223,7 +238,7 @@ export const UpdateKnowledgeChapterSchema = z.object({
 });
 
 export const KnowledgeSearchSchema = z.object({
-  query: z.string().min(1),
+  tags: z.array(z.string()).optional(),
   type: z.nativeEnum(KnowledgeBookType).optional(),
-  limit: z.number().int().min(1).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
 });

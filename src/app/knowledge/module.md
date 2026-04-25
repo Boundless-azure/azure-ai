@@ -44,10 +44,10 @@ src/app/knowledge/
 
 | 函数名 | 关键词描述 |
 |--------|-----------|
-| `createBook` | 创建知识书本 |
+| `createBook` | 创建知识书本（支持 tags） |
 | `listBooks` | 获取书本列表（含本地预置） |
 | `getBook` | 获取书本详情（含本地预置） |
-| `updateBook` | 更新书本（本地预置不可修改） |
+| `updateBook` | 更新书本（本地预置不可修改，支持 tags） |
 | `deleteBook` | 删除书本（软删，本地预置不可删除） |
 | `createChapter` | 新增章节 |
 | `updateChapter` | 更新章节（本地预置不可修改） |
@@ -55,8 +55,9 @@ src/app/knowledge/
 | `getTocByBookIds` | 批量获取目录（不含内容，含本地预置） |
 | `getChapterContent` | 获取章节内容（含 LM 必读，含本地预置） |
 | `getBookInfoByIds` | 批量获取书本名称和描述（含本地预置） |
+| `listByTags` | 按 tag 过滤返回书本列表（最多 100 条） |
 | `buildEmbedding` | 对描述进行向量化 |
-| `vectorSearch` | 自然语言向量语义匹配 |
+| `vectorSearch` | 自然语言向量语义匹配（内部保留，不再对外 Hook 暴露） |
 
 ### services/knowledge-hook-handler.service.ts
 
@@ -64,7 +65,7 @@ src/app/knowledge/
 |--------|---------|-----------|
 | `handleGetToc` | `get_knowledge_toc` | 通过 bookIds 获取目录 |
 | `handleGetChapter` | `get_knowledge_chapter` | 获取章节内容（含 LM 必读） |
-| `handleSearch` | `search_knowledge` | 向量语义搜索 |
+| `handleSearch` | `search_knowledge` | 按 tag 过滤列举书本（前 100 条） |
 
 ### local/local-knowledge.seed.ts
 
@@ -93,7 +94,7 @@ src/app/knowledge/
 | `POST /knowledge/toc` | batchToc | 批量获取目录（Hook用） |
 | `POST /knowledge/chapters/content` | batchChapterContent | 批量获取章节内容（Hook用） |
 | `POST /knowledge/info` | batchInfo | 批量获取书本名称/描述（Hook用） |
-| `POST /knowledge/search` | search | 语义向量匹配 |
+| `POST /knowledge/search` | search | 按 tag 过滤列举书本（最多 100 条） |
 
 | `KnowledgeService.getTocByBookIds` | `km_toc_09` |
 | `KnowledgeService.getChapterContent` | `km_chap_content_10` |

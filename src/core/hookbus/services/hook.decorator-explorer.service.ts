@@ -5,11 +5,12 @@ import {
   HOOK_HANDLER_METADATA,
   type HookHandlerMeta,
 } from '../decorators/hook-handler.decorator';
-import type { HookContext, HookResult } from '../types/hook.types';
+import type { HookEvent, HookResult } from '../types/hook.types';
 
 /**
  * @title Hook 装饰器扫描服务
- * @description 扫描标注的 Hook 处理器并注册到 HookBus。
+ * @description 启动期扫描 @HookHandler 标注的方法并注册到 HookBus。
+ *              handler 直接接收 event (无 ctx wrapper)。
  * @keywords-cn Hook扫描, 装饰器注册, 自动发现
  * @keywords-en hook-scan, decorator-register, auto-discovery
  */
@@ -35,7 +36,7 @@ export class HookDecoratorExplorerService implements OnModuleInit {
         const handler = instanceRecord[methodName];
         if (typeof handler !== 'function') continue;
         const methodRef = handler as (
-          ctx: HookContext,
+          event: HookEvent,
         ) => HookResult | Promise<HookResult>;
         const meta = this.reflector.get<HookHandlerMeta>(
           HOOK_HANDLER_METADATA,
@@ -44,7 +45,7 @@ export class HookDecoratorExplorerService implements OnModuleInit {
         if (!meta) continue;
         this.hookBus.register(
           meta.name,
-          (ctx) => methodRef.call(instance, ctx),
+          (event) => methodRef.call(instance, event),
           meta.metadata,
         );
       }

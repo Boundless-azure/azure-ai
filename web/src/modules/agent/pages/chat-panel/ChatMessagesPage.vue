@@ -8,7 +8,7 @@
         :mode="'chat'"
         :isLoadingHistory="isLoadingHistory"
         :isHistoryEmpty="isHistoryEmpty"
-        :isProcessing="isProcessing"
+        :isProcessing="isProcessing || isAgentTyping"
         :messages="currentMessages"
         :selfPrincipalId="selfPrincipalId"
         :sessionMembers="currentSessionMembers"
@@ -86,6 +86,7 @@ const {
   activeSession,
   activeLoadingMessages,
   activeSendStatusByMessageId,
+  typingBySession,
 } = storeToRefs(imStore);
 
 const chatContainer = ref<HTMLElement | null>(null);
@@ -101,6 +102,14 @@ const updatePinnedState = () => {
 };
 
 const isProcessing = ref(false);
+
+/** 当前 session 中是否有 agent 正在输入 */
+const isAgentTyping = computed(() => {
+  const sid = currentSessionId.value;
+  if (!sid) return false;
+  const typingSet = typingBySession.value[sid];
+  return !!typingSet && typingSet.size > 0;
+});
 const isTitleLoading = ref(false);
 
 watch(isTitleLoading, (v) => emit('titleLoadingChange', v), {

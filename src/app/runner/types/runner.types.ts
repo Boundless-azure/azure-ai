@@ -102,3 +102,45 @@ export interface RunnerView {
   runnerKey: string;
   lastSeenAt: Date | null;
 }
+
+/**
+ * @title Hook 调用协议外形
+ * @description SaaS↔Runner WS 调用的标准协议体, 与 Runner 内部 HookResult 解耦。
+ *              LLM 拿到的就是 { errorMsg, result, debugLog }, errorMsg 非空即软错。
+ *              context 是与 payload 平行的运行时上下文 (token / principalId / traceId), 透传给 Runner。
+ * @keywords-cn Hook协议, 调用外形, 软错误, 调试日志, 调用上下文
+ * @keywords-en hook-protocol, call-envelope, soft-error, debug-log, invocation-context
+ */
+export interface HookInvocationContextWire {
+  token?: string;
+  principalId?: string;
+  principalType?: string;
+  source?: 'llm' | 'system' | 'http' | 'runner';
+  traceId?: string;
+  runnerId?: string;
+  ts?: number;
+  extras?: Record<string, unknown>;
+}
+
+export interface HookCallEnvelope {
+  callId: string;
+  hookName: string;
+  payload?: unknown;
+  /** 运行时上下文 (LLM 不可见, 由调用入口注入) */
+  context?: HookInvocationContextWire;
+  /** OTel sandbox tracer 开关 */
+  debug?: boolean;
+  /** Mongo 影子集合开关 */
+  debugDb?: boolean;
+}
+
+export interface HookCallReply {
+  errorMsg: string[];
+  result: unknown;
+  debugLog: unknown[];
+}
+
+export interface HookCallProgress {
+  callIds: string[];
+  ts: number;
+}

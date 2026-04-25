@@ -1,324 +1,481 @@
-# 小蓝 (Azure AI)
-
-语言版本：[English](/docs/readme/README.en.md) · [中文](/docs/readme/README.zh-CN.md)
-
-## 🚀 项目定位与愿景
-
-**"小蓝"** 是新一代的 AI 交互入口，旨在通过自然语言替代旧时代的 Web 点击式操作。用户可以直接通过对话进行界面交互、数据管理和业务处理。
-
-核心特性：
-- **自增长能力**：由 AI 自动生成代码插件，回流并接入到本平台，形成持续增强的能力闭环。
-- **可控生成**：通过"生成限定 + 事务总线（HookBus）"机制，确保 AI 产出的代码低依赖、低嵌套、可审计。
-- **AI 执行规范**：标准化的前端组件控制协议，让 AI 精确操控界面。
-
----
-
-## 🏗️ 技术架构
-
-本项目采用 **三端分离架构**：
-
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        小蓝 (Azure AI)                        │
-├─────────────┬─────────────────────┬─────────────────────────┤
-│   Web 前端   │     NestJS 后端      │    Fastify Runner      │
-│  (Astro+Vue) │    (模块化服务)       │    (轻量执行器)         │
-└─────────────┴─────────────────────┴─────────────────────────┘
+   ___  ___  __   __   __   __   ___
+  /   /\  / /__  / /  /__/ /_   /__
+ /___/--\/ /___ / /__/  / /___/___/
+
+     小蓝 (Azure AI)  ::  v0.0.1
+     AI 生成 + 租户自托管 PaaS  ·  面向超级个体
 ```
 
-### 技术栈详情
+> `prod ::` AI 产代码 · 租户自托管运行 · FRP 自动公网化 · 多端天然适配
 
-| 层级 | 技术选型 | 说明 |
-|------|---------|------|
-| **Web 前端** | Astro 5 + Vue 3 + TypeScript | 管理后台，响应式多模块 |
-| **状态管理** | Pinia | 前端状态管理 |
-| **样式** | Tailwind CSS | 原子化 CSS |
-| **后端** | NestJS 11 + TypeScript | 模块化业务服务 |
-| **AI 集成** | LangChain/LangGraph | Agent 运行时 |
-| **AI 模型** | OpenAI / Anthropic / Google GenAI / Azure OpenAI / DeepSeek | 多模型支持 |
-| **数据库** | MySQL (TypeORM) + PostgreSQL (LangGraph Checkpoint) | 业务 + 状态存储 |
-| **缓存** | Redis (ioredis) | 会话与状态缓存 |
-| **数据探索** | MongoDB | Runner 管理与数据浏览 |
-| **实时通信** | Socket.IO | 前端-后端-Runner 三角通信 |
-| **Runner** | Fastify + TypeScript | 轻量级任务执行节点 |
-| **任务执行** | zx (Google Chrome Labs) | 脚本执行 |
-| **验证** | Zod + class-validator | 端到端类型校验 |
+lang :: [English](/docs/readme/README.en.md) · [中文](/docs/readme/README.zh-CN.md)
 
 ---
 
-## 📦 模块总览
+## `# whoami`
 
-### Web 前端模块 (`web/src/modules/`)
+**小蓝** != 聊天机器人 · != 无代码平台 · != 纯开发工具
 
-| 模块 | 路径 | 功能描述 |
-|------|------|----------|
-| [Agent](web/src/modules/agent/) | `modules/agent/` | AI Agent 核心工作区，聊天、对话、线程、会话分组、快捷工具 |
-| [IM](web/src/modules/im/) | `modules/im/` | 即时通讯 Socket 服务，房间管理、输入状态、已读回执 |
-| [Identity](web/src/modules/identity/) | `modules/identity/` | 主体、组织、成员、角色、权限管理 |
-| [Auth](web/src/modules/auth/) | `modules/auth/` | 用户登录/登出，主体会话管理 |
-| [Resource](web/src/modules/resource/) | `modules/resource/` | 统一资源上传，分片上传、断点续传、头像裁剪 |
-| [Storage](web/src/modules/storage/) | `modules/storage/` | 文件/文件夹管理，分享链接（永久/临时/密码）、剪贴板 |
-| [Todo](web/src/modules/todo/) | `modules/todo/` | 待办事项，CRUD、跟进记录、时间轴、评论 |
-| [AI Provider](web/src/modules/ai-provider/) | `modules/ai-provider/` | AI 模型服务商配置，模型列表，连接测试 |
-| [Runner](web/src/modules/runner/) | `modules/runner/` | Runner 执行节点管理，列表、表单 |
-| [Mongo Explorer](web/src/modules/mongo-explorer/) | `modules/mongo-explorer/` | MongoDB 数据浏览，数据库/集合/查询执行 |
-| [WebMCP](web/src/modules/webmcp/) | `modules/webmcp/` | 页面声明、Socket 握手、操作分发 |
-| [HookBus Debug](web/src/modules/hookbus-debug/) | `modules/hookbus-debug/` | Hook 调试工具，连接调试、Payload 编辑、历史记录 |
-| [Plugin](web/src/modules/plugin/) | `modules/plugin/` | 插件管理 |
+是 **"AI 生成应用 → 托管在用户自己机器上运行"** 的 PaaS.
 
-### NestJS 后端模块 (`src/`)
+```
+ target ::
+   超级个体  ( 一人 / 小团队做多个产品的创业者 · 独立开发者 · 内容创作者 )
 
-| 模块 | 路径 | 功能描述 |
-|------|------|----------|
-| **Core: AI** | `core/ai/` | AI 核心能力，LLM 调用、Prompt 工程 |
-| **Core: HookBus** | `core/hookbus/` | 事务总线，生产者-消费者队列 |
-| **Core: Plugin** | `core/plugin/` | 插件编排服务 |
-| **Core: LangGraph** | `core/langgraph/` | 状态机工作流，Checkpoint 持久化 |
-| **Core: Auth** | `core/auth/` | 认证模块，JWT + Passport |
-| App: Agent | `app/agent/` | Agent 创建、编辑、配置管理 |
-| App: Conversation | `app/conversation/` | 会话与 IM 消息 |
-| App: Identity | `app/identity/` | 身份与权限 (RBAC + CASL) |
-| App: AI Models | `app/ai-models/` | AI 模型配置管理 |
-| App: Resource | `app/resource/` | 统一资源管理 |
-| App: Storage | `app/storage/` | 文件存储管理 |
-| App: Todo | `app/todo/` | 待办事项 |
-| App: Runner | `app/runner/` | Runner 注册与管理 |
-| App: Solution | `app/solution/` | 解决方案市场 |
-| App: Mongo Explorer | `app/mongo-explorer/` | MongoDB 探索器 |
-
-### Runner 执行节点模块 (`runner/src/modules/`)
-
-| 模块 | 路径 | 功能描述 |
-|------|------|----------|
-| [Configuration](runner/src/modules/configuration/) | `modules/configuration/` | 配置读取、Mongo/Redis 连接检测 |
-| [Data Auth](runner/src/modules/data-auth/) | `modules/data-auth/` | 数据权限节点解析、Fastify + Zod DTO 验证 |
-| [HookBus](runner/src/modules/hookbus/) | `modules/hookbus/` | Hook 注册与发布 |
-| [Mongo](runner/src/modules/mongo/) | `modules/mongo/` | MongoDB 客户端连接、心跳检测 |
-| [Redis](runner/src/modules/redis/) | `modules/redis/` | Redis 连接、心跳检测 |
-| [Registration](runner/src/modules/registration/) | `modules/registration/` | Runner 注册握手、状态查询 |
-| [Task](runner/src/modules/task/) | `modules/task/` | zx 任务执行器封装 |
-| [WebMCP](runner/src/modules/webmcp/) | `modules/webmcp/` | 页面声明缓存与操作分发 |
-| [Runner-DB](runner/src/modules/runner-db/) | `modules/runner-db/` | Runner Mongo 库访问与迁移 |
-| [Solution](runner/src/modules/solution/) | `modules/solution/` | Runner 本地 Solution 管理 |
+ value-loop ::
+   自然语言/语音描述需求
+        │
+        ▼
+   SaaS 端 AI Agent 团队  ( Design → Dev → QA )  产代码
+        │
+        ▼
+   代码签名下发  →  用户自己的 Runner  ( Docker 一键部署 )
+        │
+        ▼
+   FRP 自动分配子域名  →  公网可达  ( Web / 小程序 / 移动端 )
+        │
+        ▼
+   AI 持续通过 HookBus + WebMCP 操作界面与数据
+```
 
 ---
 
-## ✨ 核心功能特性
+## `# vs`  —  跟业界的差异
 
-### 1. AI 对话与交互
-- 流式响应 (SSE)
-- Markdown 实时渲染
-- 多模态输入（语音、文本、图片、文件）
-- 会话管理与线程分组
-- Agent 快捷工具
-- 检查点管理（Checkpoint）
+| 对手                 | 它们的局限                       | 小蓝的不同                           |
+|----------------------|----------------------------------|--------------------------------------|
+| **Bubble · Webflow** | 无代码 · vendor lock-in · 逃不出来 | 产出**真代码** · 跑在你自己机器      |
+| **Lovable · v0**     | 只生成前端 · 没运行时              | 前后端全栈 + 数据库 + 部署            |
+| **Replit Agents**    | 代码跑在 Replit 云 · 成本高       | 跑在租户 Runner · 成本极低            |
+| **n8n · Zapier**     | 自动化 · 非应用开发                | 能产**完整应用** · 不只是流程         |
+| **传统 SaaS 工具**   | 企业导向 · 超级个体过重           | 专为超级个体 · 轻量                    |
 
-### 2. 即时通讯 (IM)
-- 实时消息推送 (Socket.IO)
-- 输入状态同步
-- 已读回执
-- 增量消息拉取
-- 智能通讯录分组（AI智能体/群聊/联系人）
-- 中文拼音首字母排序
-
-### 3. 身份与权限
-- 多主体 (Principal) 支持
-- 组织层级管理
-- RBAC 角色权限模型
-- CASL 能力控制
-- 成员管理
-
-### 4. 资源管理
-- 统一上传（分片、断点续传、拖拽）
-- 文件夹目录树管理
-- 分享链接（永久/临时/密码）
-- 头像裁剪
-
-### 5. Runner 执行节点
-- WebSocket 注册握手
-- 在线/离线状态管理
-- 插件能力注册
-- Hook 占位处理器
-- zx 脚本任务执行
-
-### 6. AI 模型支持
-- OpenAI (GPT-4, GPT-3.5)
-- Anthropic (Claude)
-- Google GenAI (Gemini)
-- Azure OpenAI
-- DeepSeek
-
-### 7. HookBus 事务总线
-- 生产者-消费者队列
-- 声明式中间件
-- 方法绑定缓存
-- HTTP + Socket.IO 调试入口
-
-### 8. LangGraph 工作流
-- Checkpointed State Machine
-- PostgreSQL 状态持久化
-- 多节点工作流编排
+```
+ moat ::
+   HookBus    (代码白名单)
+ + WebMCP     (前端操作协议)
+ + Runner+FRP (自托管 + 自动公网化)
+ + Knowledge  (AI 可编程记忆)
+```
 
 ---
 
-## 📅 开发进度 (Roadmap)
+## `# arch`  —  三端架构
 
-### ✅ 已完成 (Phase 1: 基础交互与体验)
+```
+ ┌───────────────────────────────────────────────────────────────────┐
+ │                          小蓝 (Azure AI)                           │
+ ├──────────────────┬────────────────────────┬──────────────────────┤
+ │   web/            │     src/                │     runner/           │
+ │   Astro + Vue     │     NestJS 后端         │     Fastify Runner    │
+ │   管理后台        │     (稳定元平台)         │     (租户本机执行)     │
+ │                   │                         │                       │
+ │  > 对话入口        │  > AI Agent 团队         │  > 代码执行沙箱        │
+ │  > 插件市场        │  > HookBus 调度          │  > Unit Core 基座     │
+ │  > SaaS 控制台     │  > Knowledge 记忆         │  > FRP 公网化         │
+ │                   │  > Runner 注册           │  > Docker 一键部署     │
+ └──────────────────┴────────────────────────┴──────────────────────┘
+                         ▲
+                         │  Socket.IO 长连接
+                         │  HTTP + 签名分发
+                         │  FRP 反向代理
+                         ▼
+```
 
-**前端基础**
-- [x] Astro + Vue 3 模块化架构
-- [x] Tailwind CSS 响应式布局
-- [x] Pinia 状态管理
-- [x] Socket.IO 实时通信
-
-**AI 对话**
-- [x] 流式消息渲染、Markdown 支持
-- [x] 会话管理、线程分组
-- [x] Agent 快捷工具
-- [x] 检查点 (Checkpoint) 管理
-
-**多模态输入**
-- [x] 语音录制（实时音量波形）
-- [x] Emoji 表情选择
-- [x] 图片粘贴预览及文件上传
-- [x] @提及建议
-
-**IM 即时通讯**
-- [x] Socket 连接与重连
-- [x] 房间加入/离开
-- [x] 输入状态、已读回执
-- [x] 增量消息拉取
-
-**智能通讯录**
-- [x] "AI智能体 > 群聊 > 联系人"分组策略
-- [x] 中文拼音首字母排序与搜索
-
-**身份管理**
-- [x] 用户管理（含头像编辑）
-- [x] 组织管理
-- [x] 角色权限管理
-- [x] 成员管理
-
-**资源管理**
-- [x] 分片上传、断点续传
-- [x] 目录树结构管理
-- [x] 分享链接（永久/临时/密码）
-- [x] 剪贴板功能
-
-**待办事项**
-- [x] CRUD 操作
-- [x] 跟进记录与时间轴
-- [x] 评论功能
-
-**AI 配置**
-- [x] 多模型服务商配置
-- [x] 模型列表管理
-- [x] 连接测试
-
-**Runner 管理**
-- [x] Runner 节点注册
-- [x] 在线状态监控
-- [x] 插件能力管理
-
-**数据工具**
-- [x] MongoDB 数据浏览
-- [x] 查询执行
-
-**调试工具**
-- [x] HookBus 调试面板
-- [x] Payload 编辑
-- [x] 历史记录
-
-### 🚧 进行中 (Phase 2: 核心 AI 能力)
-
-- [ ] **数据库写操作**：实现基于白名单与审计的安全 SQL 执行引擎
-- [ ] **权限精细化**：库/表/列级别的访问控制与风控策略
-- [ ] **HookBus 对接**：完善前后端动作的统一总线接入
-- [ ] **插件自增长闭环**：打通"规划 -> 代码生成 -> 测试 -> 部署"全流程
-
-### 🔮 未来计划 (Phase 3: 深度集成)
-
-- [ ] **自动 CRUD 生成**：根据表结构自动生成管理页面
-- [ ] **多智能体协作**：复杂任务的 Agent 编排与协作
-- [ ] **业务深度插件**：如客户分析、报表自动生成等
-- [ ] **Tip 生成器**：AI 自动生成代码提示与文档
+```
+ role ::
+   web      ─►  交互层  ·  超级个体操作入口
+   saas     ─►  元平台  ·  AI 生成 + 调度  ·  **必须高可用**
+   runner   ─►  租户自己的机器(本机/VPS/家用服务器)
+                跑用户的应用与数据
+                SaaS 不负责稳定性, 但保存代码镜像 → **一键恢复**
+```
 
 ---
 
-## 🚦 快速开始
+## `# design`  —  八大核心设计
 
-### 环境要求
+### `[1]  HookBus`  ::  AI 代码的白名单入口
 
-- Node.js >= 18
-- pnpm >= 8
-- Docker (用于 PostgreSQL, Redis, MongoDB)
+所有 AI 产出的能力收口到 Hook (`@HookHandler` 装饰器注册).
+AI 不能自由 `import` · 不能碰文件系统 · 不能乱跑网络 — **只能调 HookBus 注册的 Hook**.
+对 LLM 代码产出的强约束 · 审计基础.
 
-### 安装依赖
+```
+ protocol   ::  call_hook(name, payload, options)
+ interceptors ::  行级权限  ·  写操作审计  ·  debug 沙箱
+ monitor    ::  WebSocket 实时查看 Hook 执行
+```
+
+### `[2]  WebMCP`  ::  前端操作协议
+
+AI 用**结构化指令** (非视觉点击) 操作界面.
+组件声明"我支持什么操作" → AI 调 `web_control` Hook 派发.
+
+`use-case ::` 主动 AI 像导购一样操作网站 · 帮用户填表 · 切 Tab · 打开详情.
+
+### `[3]  Unit Core`  ::  Runner 侧能力基座
+
+Runner 的 **"标准库"**. `system-unit` 提供原子能力 (ast · file · mongo ...) .
+AI 产代码调这些 Unit · 不碰底层 API.
+
+```
+ [+] 能力扫描  →  HookBus 注册
+ [+] 热加载 unit.core
+ [+] 持久化能力清单
+```
+
+### `[4]  Knowledge`  ::  AI 可编程记忆
+
+非普通文档系统 —— **AI 的可编程记忆体系**.
+
+```
+ books     ::  skill  (技能手册, 教 AI 用 Hook)
+               lore   (领域知识)
+ prompt    ::  LM 必读章节  →  每次查章节自动附带
+ search    ::  pgvector 语义搜索
+ hooks     ::  get_knowledge_toc · get_knowledge_chapter · search_knowledge
+ source    ::  本地预置 (代码声明, 只读)  +  用户扩展 (数据库)
+```
+
+### `[5]  Solution 市场`  ::  超级个体商店
+
+应用模板 (含 app + unit + workflow + agent) 可**购买 → 安装 → 卸载**.
+超级个体做的 Solution 上架 → 其他用户装到自己 Runner 直接用.
+
+`biz ::` **被动收入支柱之一**.
+
+### `[6]  FRP 自动公网化`  ::  零运维部署通道
+
+```
+ Runner 启动  →  frpc.toml 自动生成  →  连入 SaaS frps  →  分配子域名  →  应用公网可达
+```
+
+解决超级个体最头疼的部署问题 :: 不用买服务器 · 配 DNS · 装 Nginx · 申 SSL.
+一行 `docker-compose up` 搞定.
+
+```
+ [x] frps   内置于 SaaS Docker compose
+ [x] frpc   内置于 Runner 镜像
+ [ ] 自定义域名 CNAME 绑定  (Phase 4 完善)
+```
+
+### `[7]  Storage 网盘`  ::  跨租户 MD5 去重
+
+完整网盘能力 :: 目录树 · 分享链接 (永久/临时/密码) · 拖拽 · 断点续传.
+
+`highlight ::` MD5 跨租户引用计数  →  同文件全平台只存一份物理副本  →  显著省存储.
+
+### `[8]  AI 代码生成流水线  [WIP]`
+
+三层 Agent + 确定性工具 + 影子环境 · 保证 AI 产出可控.
+
+```
+ Design Agent  (产 JSON Schema)
+      │
+      ▼
+ Dev Agent     (并行 · 一方法一次 LLM 调用)
+      │
+      ▼
+ Integrator    (Babel AST + json-schema-to-zod + 规则审计)
+      │
+      ▼
+ 集成测试      (影子 MongoDB + Hook mock + OTel trace)
+      │
+      ▼
+ QA Agent      (读 trace 判断)
+      │
+      ▼
+ 人工 approval
+      │
+      ▼
+ 签名分发  →  Runner 热加载
+```
+
+详见 [`PLAN.md`](PLAN.md).
+
+---
+
+## `# stack`  —  技术栈
+
+```
+ layer              ::  choice                                                    note
+
+ web frontend       ::  Astro 5 + Vue 3 + Pinia + Tailwind                       模块化管理后台
+ saas backend       ::  NestJS 11 + TypeScript                                    模块化 AI 服务
+ ai orchestration   ::  LangChain · LangGraph                                     Agent 运行时 + Checkpoint
+ ai providers       ::  OpenAI · Anthropic · Google GenAI · Azure OpenAI · DeepSeek
+ primary db         ::  MySQL (TypeORM)                                           业务数据
+ vector db          ::  PostgreSQL + pgvector                                     Knowledge 语义搜索
+ cache              ::  Redis (ioredis)                                           会话 / 状态
+ runner db          ::  MongoDB                                                   应用数据 + 影子调试表
+ realtime           ::  Socket.IO                                                 三端长连接
+ runner rt          ::  Fastify + zx                                              轻量节点
+ runner codegen lang::  纯 JavaScript (ES Modules)                                零编译 · 热加载友好
+ runtime validation ::  Zod  (schema 由工具自动生成)                              AI 不写 schema · 幻觉隔离
+ tunneling          ::  FRP 0.61.1                                                Runner 公网化
+ https              ::  Caddy 2                                                   自动 Let's Encrypt
+ observability      ::  OpenTelemetry + in-band trace                             随 WS 回传 SaaS · 零外部 collector
+ code AST           ::  Babel parser · traverse                                    Integrator 工具链
+```
+
+---
+
+## `# modules`  —  模块清单
+
+### `saas :: src/`
+
+`src/core/`  —  核心能力
+
+```
+ agent-runtime   ::  Agent 加载 · 工具注入 · 对话流
+ ai              ::  LLM 调用 · 上下文构建
+ hookbus         ::  事务总线 · 生命周期拦截
+ plugin          ::  插件编排 (规划中, 可能并入 Solution)
+ langgraph       ::  Checkpoint 持久化 (StateGraph 编排层 Phase 3 补)
+ prompt          ::  Prompt 工程中心
+ tip             ::  AI 提示管理
+ function-call   ::  函数调用协议
+```
+
+`src/app/`  —  业务模块
+
+```
+ agent           ::  Agent 元信息管理
+ conversation    ::  会话 · IM · SSE 流
+ identity        ::  多主体 · RBAC · CASL
+ knowledge       ::  知识书本 · 章节 · 语义搜索
+ solution        ::  Solution 市场
+ runner          ::  Runner 注册与管理
+ storage         ::  网盘 + MD5 去重
+ resource        ::  资源库
+ todo            ::  待办
+ ai-models       ::  AI 模型配置
+```
+
+### `web :: web/src/modules/`
+
+```
+ agent           ::  AI 对话工作区
+ runner          ::  Runner 5-Tab 控制面板 (Performance · Domain · AppDomain · App · Solution)
+ webmcp          ::  前端操作 SDK + Demo
+ hookbus-debug   ::  Hook 调试工作台
+ storage         ::  网盘界面
+ todo            ::  待办管理
+ identity        ::  身份权限
+ knowledge       ::  知识库浏览
+ solution        ::  Solution 市场
+ ai-provider     ::  AI 模型服务商
+ mongo-explorer  ::  MongoDB 浏览
+ im              ::  即时通讯 (服务层)
+```
+
+### `runner :: runner/src/modules/`
+
+```
+ registration    ::  Socket 握手 + FRP 自启
+ runner-control  ::  控制面板后端 API (Token 鉴权)
+ frpc            ::  FRP 客户端生命周期
+ hookbus         ::  Hook 注册与发布
+ webmcp          ::  页面声明缓存与派发
+ mongo           ::  MongoDB 连接
+ solution        ::  Runner 本地 Solution 管理
+ task            ::  zx 任务执行
+ proxy           ::  代理层
+```
+
+### `unit-core :: runner/src/unit-core/`
+
+AI 生成代码的**运行时原语库**:
+
+```
+ ast             ::  代码 AST 操作
+ file            ::  文件系统
+ mongo           ::  MongoDB 访问
+```
+
+---
+
+## `# status`  —  开发进度
+
+### `[OK]` 已完成 :: 基础设施
+
+```
+ [x]  Docker 一键部署           (SaaS + Runner 双 compose · Dockerfile 内置 FRPC)
+ [x]  Runner 5-Tab 控制面板     (Performance · Domain · AppDomain · App · Solution)
+ [x]  Knowledge 模块             (pgvector + LM 必读 + 本地预置 + Hook 暴露)
+ [x]  Solution 市场              (CRUD / 市场 / 购买 / 安装 / 卸载)
+ [x]  Storage 网盘               (MD5 跨租户去重)
+ [x]  FRP 自动公网化             (frpc 自启 · Caddy HTTPS)
+ [x]  HookBus + Unit Core        (装饰器 + system-unit 原语)
+ [x]  WebMCP                     (SDK + Demo)
+ [x]  身份权限 RBAC / CASL
+ [x]  AI 对话 + 流式 SSE + 多模态输入
+ [x]  Runner 注册 + 密钥管理
+```
+
+### `[WIP]` 进行中 :: AI 核心闭环
+
+```
+ [ ]  Phase 0  协议契约         call_hook debug + Design Agent JSON + Dev Agent prompt + 代码分发
+ [ ]  Phase 1  代码生成流水线    Design / Dev / Integrator / QA Agent + 影子环境 + 人工 approval
+ [ ]  Phase 2  对话记忆         定长分块 + 双层向量索引 + Session tool + Hook 历史独立 section
+ [ ]  写操作行级权限 + 审计拦截
+ [ ]  Runner 零信任验证
+```
+
+### `[TODO]` 未来 :: 差异化能力
+
+```
+ [ ]  LangGraph StateGraph 编排层 + 编排 Agent
+ [ ]  主动 AI 触发层             (行为埋点 + 规则引擎)
+ [ ]  语音链路                   (ASR + TTS + 实时中断)
+ [ ]  Runner 离线降级策略
+ [ ]  多 frps 高可用 + 自定义域名 SSL 自动化
+ [ ]  实时 log 流
+```
+
+详见 [`PLAN.md`](PLAN.md).
+
+---
+
+## `# principles`  —  设计理念
+
+### `[1]`  LLM 不写 Schema · 只用 Schema
+
+`axiom ::` 幻觉最容易发生在 LLM 自由度高的地方.
+
+```
+ Design Agent    →  JSON Schema   (结构化, 可校验)
+       │
+       ▼
+ Integrator      →  Zod           (工具确定性, 非 LLM)
+       │
+       ▼
+ Dev Agent       →  import Zod 做校验 · 不编写 schema
+```
+
+**→ LLM 的自由度被最大程度压缩.**
+
+### `[2]`  拆小 · 并行 · 确定性合并
+
+```
+ [+]  Dev Agent 每次只生一个方法  (单方法上下文小, 幻觉率指数下降)
+ [+]  多方法并行生成              (Promise.all)
+ [+]  AST 工具合并 · 不是 LLM 合并
+```
+
+### `[3]`  集成测试主导 · 无单元测试
+
+```
+ [+]  Service 内部方法真互调  (update 真调 findOne, 不 mock)
+ [+]  只 mock 外部 Hook       (签名自动生成)
+ [+]  OTel in-band trace      随响应回传 · QA Agent 读 trace 定位问题
+```
+
+### `[4]`  定长分块 + 原文返回 · 拒绝摘要
+
+对话记忆**不做 LLM 摘要** (lossy · 偏差累积).
+
+```
+ chunk   ::  约 2000 字 / 按消息边界软对齐 / 不硬切
+ overlap ::  相邻 chunk 15% 重叠
+ index   ::  双层向量  (chunk 粗筛 + message 精搜)
+ recall  ::  返回完整原文 · 让 LLM 在 raw context 上自己推理
+```
+
+### `[5]`  SaaS 稳定 · Runner 可弃
+
+```
+ saas    ::  元平台 · AI Agent 团队的家 · 必须高可用
+ runner  ::  租户的机器 · 稳定性租户自担
+ backup  ::  SaaS 保存所有代码镜像 · Runner 挂了能一键恢复
+```
+
+### `[6]`  Debug 作为协议一等公民
+
+```
+ call_hook(..., { debug })
+       │
+       ├─  prod   ::  context 不激活 · SpanProcessor 直接丢弃 · 零开销
+       ├─  debug  ::  DB 操作 → 影子表 · 外部调用 → mock
+       └─  trace  ::  随响应回传 · 无需部署外部 collector
+```
+
+---
+
+## `# quickstart`
+
+```
+ requires ::
+   Node.js  >= 18
+   pnpm     >= 8
+   Docker + Docker Compose
+```
+
+### `saas ::`
 
 ```bash
-pnpm install
+$ pnpm install
+$ cp .env.example .env
+
+$ docker-compose up -d            # pgvector + redis + Caddy + frps
+$ pnpm run start:dev              # backend
+$ cd web && pnpm run dev          # frontend
 ```
 
-### 配置环境变量
+### `runner ::` (租户侧)
 
 ```bash
-cp .env.example .env
-# 编辑 .env 填写必要的配置
+$ cd runner
+$ docker-compose up -d
 ```
 
-### 启动开发环境
+首次启动 → 在 SaaS 的 Runner 管理页面创建 Runner → 拿 `runnerKey` 填入 Runner 配置.
+
+### `build ::` 生产
 
 ```bash
-# 启动所有服务 (后端 + 前端 + Runner)
-npm run dev
-
-# 或分别启动
-npm run web:dev    # 前端
-npm run server:dev  # 后端
-npm run runner:dev  # Runner
-```
-
-### 构建生产版本
-
-```bash
-npm run build
-```
-
-### Docker 部署
-
-```bash
-docker-compose up -d
+$ pnpm run build
 ```
 
 ---
 
-## 📁 项目结构
+## `# tree`
 
 ```
-azure-ai/
-├── web/                    # Astro + Vue 3 前端
-│   ├── src/
-│   │   ├── api/           # API 封装
-│   │   ├── modules/       # 功能模块
-│   │   ├── components/    # 公共组件
-│   │   └── pages/         # 页面
-│   └── package.json
-├── src/                    # NestJS 后端
-│   ├── app/               # 业务模块
-│   ├── core/              # 核心模块
-│   ├── config/            # 配置
-│   └── ...
-├── runner/                 # Fastify Runner
-│   └── src/modules/       # Runner 模块
-├── runners/               # Runners 管理
-├── plugins/               # 插件目录
-├── docker-compose.yml     # Docker 配置
-└── pnpm-workspace.yaml    # PNPM 工作区
+ azure-ai/
+   ├── web/                  # Astro + Vue 前端
+   │    └── src/modules/      ::  功能模块
+   ├── src/                  # NestJS 后端
+   │    ├── app/              ::  业务模块
+   │    ├── agents/           ::  AI Agent 定义  (Phase 1 扩展)
+   │    ├── core/             ::  核心模块
+   │    └── config/           ::  配置
+   ├── runner/               # Fastify Runner
+   │    ├── src/modules/      ::  通信与控制模块
+   │    ├── src/unit-core/    ::  AI 代码运行时原语
+   │    └── docker/           ::  Runner Docker 配置
+   ├── plugins/              # 插件目录 (Solution 依赖)
+   ├── docker-compose.yml    # SaaS 基础设施
+   ├── PLAN.md               # 演进计划
+   └── pnpm-workspace.yaml
 ```
 
 ---
 
-## 🔗 相关资源
+## `# refs`
 
-- 文档：[/docs](/docs)
-- API 文档：[/docs/api](/docs/api)
+```
+ →  PLAN.md         演进计划
+ →  /docs           模块总览
+ →  DEVELOPMENT.md  开发指南
+ →  CLAUDE.md       Claude Code 导引
+```
+
+---
+
+## `# license`
+
+`UNLICENSED`  —  私有项目 · 保留所有权利.

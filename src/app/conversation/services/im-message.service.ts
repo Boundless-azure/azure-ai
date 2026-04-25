@@ -700,6 +700,13 @@ export class ImMessageService {
       `${tag} start — session=${payload.sessionId} agent=${payload.agentPrincipalId} msgs=${messages.length} trigger="${payload.userContent?.slice(0, 60)}"`,
     );
 
+    // 广播 AI 正在输入状态
+    this.imGateway.broadcastTyping(
+      payload.sessionId,
+      payload.agentPrincipalId,
+      true,
+    );
+
     const gen = this.agentRuntimeService.startDialogue(
       agent.codeDir,
       messages,
@@ -710,21 +717,39 @@ export class ImMessageService {
           agentPrincipalId: payload.agentPrincipalId,
           triggerMessageId: payload.triggerMessageId,
         },
+        invocationContext: {
+          principalId: payload.agentPrincipalId,
+          principalType: 'agent',
+          source: 'llm',
+          extras: {
+            sessionId: payload.sessionId,
+            triggerMessageId: payload.triggerMessageId,
+          },
+        },
       },
     ) as AsyncGenerator<unknown>;
 
     // 同时收集 LLM 文本输出，供兜底回复使用
     let collectedText = '';
-    for await (const ev of gen) {
-      if (typeof ev === 'string') {
-        collectedText += ev;
-      } else if (this.isEventRecord(ev)) {
-        if (ev.type === 'token') {
-          collectedText += (ev.data as { text?: string })?.text ?? '';
-        } else if (ev.type === 'error') {
-          this.logger.warn(`${tag} agent error: ${String(ev.error)}`);
+    try {
+      for await (const ev of gen) {
+        if (typeof ev === 'string') {
+          collectedText += ev;
+        } else if (this.isEventRecord(ev)) {
+          if (ev.type === 'token') {
+            collectedText += (ev.data as { text?: string })?.text ?? '';
+          } else if (ev.type === 'error') {
+            this.logger.warn(`${tag} agent error: ${String(ev.error)}`);
+          }
         }
       }
+    } finally {
+      // 无论正常结束还是异常，始终清除输入状态
+      this.imGateway.broadcastTyping(
+        payload.sessionId,
+        payload.agentPrincipalId,
+        false,
+      );
     }
 
     // 查询是否已存在 reply_to_id = triggerMessageId 的 assistant 消息
@@ -859,6 +884,15 @@ export class ImMessageService {
       messages,
       {
         aiModelIds: Array.isArray(agent.aiModelIds) ? agent.aiModelIds : [],
+        invocationContext: {
+          principalId: payload.agentPrincipalId,
+          principalType: 'agent',
+          source: 'llm',
+          extras: {
+            sessionId: payload.sessionId,
+            triggerMessageId: payload.triggerMessageId,
+          },
+        },
       },
     ) as AsyncGenerator<unknown>;
 

@@ -28,6 +28,7 @@ export const LOCAL_BOOK_CONVERSATION_HOOK: KnowledgeBookInfo = {
   creatorId: null,
   isEmbedded: false,
   active: true,
+  tags: ['本地知识', '对话'],
   createdAt: new Date('2025-01-01T00:00:00.000Z'),
   updatedAt: new Date('2025-01-01T00:00:00.000Z'),
 };
@@ -45,6 +46,7 @@ export const LOCAL_BOOK_WEB_CONTROL: KnowledgeBookInfo = {
   creatorId: null,
   isEmbedded: false,
   active: true,
+  tags: ['本地知识', '前端控制', 'WebMCP'],
   createdAt: new Date('2025-01-01T00:00:00.000Z'),
   updatedAt: new Date('2025-01-01T00:00:00.000Z'),
 };

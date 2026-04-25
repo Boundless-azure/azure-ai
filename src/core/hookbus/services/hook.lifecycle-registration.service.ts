@@ -7,7 +7,8 @@ import { HookResultStatus } from '../enums/hook.enums';
 
 /**
  * @title Hook 生命周期注册服务
- * @description 启动时缓存 Hook Key 与控制器方法映射，供调试与分发使用。
+ * @description 启动时把 @HookLifecycle 声明的控制器方法挂到 HookBus, 以便外部以 Hook 形式调用。
+ *              handler 直接接收 event。
  * @keywords-cn 生命周期注册, Hook映射缓存, 方法引用
  * @keywords-en lifecycle-registration, hook-binding-cache, method-reference
  */
@@ -29,7 +30,7 @@ export class HookLifecycleRegistrationService implements OnModuleInit {
       const callable = this.resolveCallable(item.className, item.methodName);
       this.hookBus.register(
         item.hook,
-        async (ctx) => {
+        async (event) => {
           const methodRef =
             (await this.cache.getBinding(item.hook)) ?? item.methodRef;
           if (!callable) {
@@ -38,7 +39,7 @@ export class HookLifecycleRegistrationService implements OnModuleInit {
               error: `hook target not found: ${methodRef}`,
             };
           }
-          const args = this.resolveArgs(ctx.event.payload);
+          const args = this.resolveArgs(event.payload);
           const result = await callable(...args);
           return {
             status: HookResultStatus.Success,

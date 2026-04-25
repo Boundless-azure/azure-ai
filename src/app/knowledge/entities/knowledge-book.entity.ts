@@ -39,4 +39,8 @@ export class KnowledgeBookEntity extends BaseAuditedEntity {
   /** 是否启用 */
   @Column({ name: 'active', type: 'boolean', default: true })
   active!: boolean;
+
+  /** 标签列表（逗号分隔存储） */
+  @Column({ name: 'tags', type: 'simple-array', nullable: true })
+  tags!: string[] | null;
 }

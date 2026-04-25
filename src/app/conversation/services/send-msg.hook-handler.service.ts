@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
-import type { HookContext, HookResult } from '@/core/hookbus/types/hook.types';
+import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
 import { ImMessageService } from './im-message.service';
 
 /**
@@ -29,11 +29,12 @@ export class SendMsgHookHandlerService {
   @HookHandler('send_msg', {
     pluginName: 'im',
     tags: ['im', 'proactive', 'send'],
+    description: '向 IM 会话发送 assistant 消息（主动对话专用）。payload: { sessionId: string, content: string, senderPrincipalId: string, replyToId: string }。所有字段必填。replyToId 必须是本轮触发消息的 ID，用于溯源与防重；同一 replyToId 最多回复 4 条。',
   })
   async handleSendMsg(
-    ctx: HookContext<{ sessionId?: string; content?: string; senderPrincipalId?: string; replyToId?: string }>,
+    event: HookEvent<{ sessionId?: string; content?: string; senderPrincipalId?: string; replyToId?: string }>,
   ): Promise<HookResult> {
-    const { sessionId, content, senderPrincipalId, replyToId } = ctx.event.payload ?? {};
+    const { sessionId, content, senderPrincipalId, replyToId } = event.payload ?? {};
 
     if (!sessionId || !content || !senderPrincipalId || !replyToId) {
       return {

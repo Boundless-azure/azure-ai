@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import type { ChatMessage, ModelSseEvent } from '@core/ai/types';
 import type { AIModelRequest } from '@core/ai/types';
 import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint';
@@ -6,21 +6,29 @@ import { AIModelService } from '@core/ai/services/ai-model.service';
 import { AgentLoaderService } from './agent-loader.service';
 import type { LoadedAgent } from '../types/agent-runtime.types';
 import { HookBusService } from '@/core/hookbus/services/hook.bus.service';
+import { RunnerHookRpcService } from '@/app/runner/services/runner-hook-rpc.service';
+import type { HookInvocationContext } from '@/core/hookbus/types/hook.types';
 import {
   buildCallHookTool,
   buildCallHookAsyncTool,
-  buildCallHookBatchSyncTool,
-  buildCallHookBatchTool,
+  buildSearchHookTool,
+  buildGetHookTagTool,
+  buildGetHookInfoTool,
+  type InvocationContextProvider,
 } from '../tools/call-hook.tools';
 import { buildBaseLlmSystemPrompt } from '../prompts/base-llm.prompt';
 
 /**
  * @title Agent 运行时服务
- * @description 对外提供两种接入方式：
- * 1) 有对话层（dialogues）时，通过 handleAiServer 注入 AIModelService 并调用 handle(messages)
- * 2) 仅工具（handle）时，返回该 agent 的工具集合，供上层作为额外工具参与主对话
- * @keywords-cn 运行时服务, 对话接入, 句柄工具, AI服务注入
- * @keywords-en runtime-service, dialogue-attach, handle-tools, ai-service-inject
+ * @description 对外提供两种接入方式:
+ * 1) 有对话层 (dialogues) 时, 通过 handleAiServer 注入 AIModelService 并调用 handle(messages)
+ * 2) 仅工具 (handle) 时, 返回该 agent 的工具集合, 供上层作为额外工具参与主对话
+ *
+ * Hook 调用上下文:
+ * - 每次 startDialogue / getTools 调用方都应通过 options.invocationContext 传入 token 等环境信息
+ * - 工具层闭包持有该上下文, LLM schema 完全不暴露这些字段, 保证 LLM 不可见不可改
+ * @keywords-cn 运行时服务, 对话接入, 句柄工具, AI服务注入, 调用上下文
+ * @keywords-en runtime-service, dialogue-attach, handle-tools, ai-service-inject, invocation-context
  */
 @Injectable()
 export class AgentRuntimeService {
@@ -30,26 +38,35 @@ export class AgentRuntimeService {
     private readonly aiModelService: AIModelService,
     private readonly loader: AgentLoaderService,
     private readonly hookBus: HookBusService,
+    @Inject(forwardRef(() => RunnerHookRpcService))
+    private readonly hookRpc: RunnerHookRpcService,
   ) {}
 
   /**
-   * 加载并准备 Agent（描述/工具/对话层）
+   * 加载并准备 Agent (描述/工具/对话层)
+   * @keyword-en load-agent
    */
-  async load(inputDir: string): Promise<LoadedAgent> {
+  async load(
+    inputDir: string,
+    invocationContext?: HookInvocationContext,
+  ): Promise<LoadedAgent> {
     const loaded = await this.loader.loadAll(inputDir);
-    // 总是将 call_hook / call_hook_async / call_hook_batch_sync / call_hook_batch 注入到工具集
+    const getCtx: InvocationContextProvider = () => invocationContext ?? {};
+    // 5 个 hook 工具 (call_hook + call_hook_async + 3 meta tool) 强制注入到工具集
     const hookTools = [
-      buildCallHookTool(this.hookBus),
-      buildCallHookAsyncTool(this.hookBus),
-      buildCallHookBatchSyncTool(this.hookBus),
-      buildCallHookBatchTool(this.hookBus),
+      buildCallHookTool(this.hookBus, this.hookRpc, getCtx),
+      buildCallHookAsyncTool(this.hookBus, this.hookRpc, getCtx),
+      buildSearchHookTool(this.hookBus, this.hookRpc, getCtx),
+      buildGetHookTagTool(this.hookBus, this.hookRpc, getCtx),
+      buildGetHookInfoTool(this.hookBus, this.hookRpc, getCtx),
     ];
     loaded.tools = [...hookTools, ...loaded.tools];
     return loaded;
   }
 
   /**
-   * 当存在对话层时，将 AIModelService 注入并返回可直接调用的句柄
+   * 当存在对话层时, 将 AIModelService 注入并返回可直接调用的句柄
+   * @keyword-en attach-dialogue
    */
   attachDialogue(agent: LoadedAgent): void {
     if (!agent.dialogues) return;
@@ -57,32 +74,33 @@ export class AgentRuntimeService {
       agent.dialogues.handleAiServer(this.buildAiAdapter());
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      this.logger.error(`注入 AIModelService 失败：${msg}`);
+      this.logger.error(`注入 AIModelService 失败: ${msg}`);
     }
   }
 
   /**
-   * 启动 Agent 对话（当存在 dialogues 时）；返回与 ConversationService.chatStream 相同风格的事件流
+   * 启动 Agent 对话 (当存在 dialogues 时); 返回与 ConversationService.chatStream 相同风格的事件流
+   * @keyword-en start-dialogue
    */
   async *startDialogue(
     agentDir: string,
     messages: ChatMessage[],
     options?: {
       aiModelIds?: string[];
-      /** 主动对话模式上下文，注入为前置系统提示词（在 aiAdapter 层合并，不影响 agent 定义） */
+      /** 主动对话模式上下文, 注入为前置系统提示词 */
       proactiveContext?: {
         sessionId: string;
         agentPrincipalId: string;
         triggerMessageId: string;
       };
+      /** Hook 调用上下文 (token / principalId / traceId), 由调用方在请求作用域填入 */
+      invocationContext?: HookInvocationContext;
     },
   ): AsyncGenerator<ModelSseEvent> {
-    const loaded = await this.load(agentDir);
+    const loaded = await this.load(agentDir, options?.invocationContext);
     if (!loaded.dialogues) {
-      throw new Error('该 Agent 未提供对话层（dialogues）');
+      throw new Error('该 Agent 未提供对话层 (dialogues)');
     }
-    // 在 aiAdapter 层注入 proactiveContext 系统提示，不通过 setAgentConfig 影响 agent 定义
-    // loaded.tools 中的 call_hook 等工具也直接绑定到 LLM，无需 agent 定义感知
     loaded.dialogues.handleAiServer(
       this.buildAiAdapter(options?.proactiveContext, loaded.tools),
     );
@@ -94,10 +112,14 @@ export class AgentRuntimeService {
   }
 
   /**
-   * 获取工具集合（包含 call_hook + call_hook_async + call_hook_batch_sync + call_hook_batch + Agent 自身工具）
+   * 获取工具集合 (含 call_hook + call_hook_async + search_hook + get_hook_tag + get_hook_info + Agent 自身工具)
+   * @keyword-en get-tools
    */
-  async getTools(agentDir: string): Promise<unknown[]> {
-    const loaded = await this.load(agentDir);
+  async getTools(
+    agentDir: string,
+    invocationContext?: HookInvocationContext,
+  ): Promise<unknown[]> {
+    const loaded = await this.load(agentDir, invocationContext);
     return loaded.tools;
   }
 
@@ -109,7 +131,7 @@ export class AgentRuntimeService {
     },
     tools?: unknown[],
   ) {
-    // 主动对话模式：前置注入系统提示词，用 [system prompt]...[/system prompt] 包裹
+    // 主动对话模式: 前置注入系统提示词, 用 [system prompt]...[/system prompt] 包裹
     const injectedPrefix = proactiveContext
       ? [
           '[system prompt]',
@@ -140,7 +162,6 @@ export class AgentRuntimeService {
         checkpointer?: unknown;
         params?: Record<string, unknown>;
       }) => {
-        // 合并系统提示：基础工具提示 + 主动对话前置注入 + agent 自身定义的 systemPrompt
         const basePrompt = buildBaseLlmSystemPrompt();
         const mergedSystemPrompt = [
           basePrompt,
@@ -165,7 +186,6 @@ export class AgentRuntimeService {
             ? req.checkpointer
             : undefined,
           params: req.params as AIModelRequest['params'],
-          // 注入 agent-runtime 层的工具（call_hook 等），直接绑定到 LLM
           tools: tools && tools.length > 0 ? tools : undefined,
         };
         return this.aiModelService.chatStream(aiReq);

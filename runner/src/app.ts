@@ -12,6 +12,8 @@ import { RunnerRegistrationService } from './modules/registration/services/regis
 import { RunnerHookBusService } from './modules/hookbus/services/hookbus.service';
 import { registerHookBusRoutes } from './modules/hookbus/routes/hookbus.routes';
 import { registerHookBusGateway } from './modules/hookbus/ws/hookbus.gateway';
+import { attachHookRpc } from './modules/hookbus/ws/hook-rpc.client';
+import type { Socket as ClientSocket } from 'socket.io-client';
 import { registerDataAuthRoutes } from './modules/data-auth/routes/data-auth.routes';
 import { RunnerWebMcpService } from './modules/webmcp/services/webmcp.service';
 import { RunnerDbMigrationService } from './modules/runner-db/services/runner-db.migration.service';
@@ -35,6 +37,7 @@ export async function createRunnerApp() {
   const mongoClient = new RunnerMongoClient();
   const redisClient = new RunnerRedisClient();
   const registrationService = new RunnerRegistrationService();
+  // hookBus 必须在 registrationService 之后注入回调, 但需先实例化以便闭包使用
   const hookBus = new RunnerHookBusService({
     concurrency: 4,
     storage: {
@@ -56,6 +59,11 @@ export async function createRunnerApp() {
     root: join(process.cwd(), 'src', 'public'),
     prefix: '/',
   });
+
+  // socket connect 后挂 hook-rpc 协议 (attach 内部幂等)
+  registrationService.setOnSocketReady((socket: ClientSocket) =>
+    attachHookRpc(socket, hookBus),
+  );
 
   registerConfigurationRoutes(app, mongoClient, redisClient);
   registerRunnerRegistrationRoutes(app, registrationService);

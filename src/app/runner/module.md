@@ -25,6 +25,7 @@
 - app/runner/services/reward-record.service.ts
 - app/runner/services/runner-proxy.service.ts
 - app/runner/services/runner-hook-register.service.ts
+- app/runner/services/runner-hook-rpc.service.ts # SaaS↔Runner Hook RPC 调度 (in-flight + 软超时 + 背压)
 - app/runner/controllers/runner.controller.ts
 - app/runner/controllers/runner.gateway.ts        # onRegister 返回 frpsToken
 - app/runner/controllers/runner.proxy.controller.ts
@@ -46,7 +47,17 @@
   - onFrpStart(payload, client) - FRP 启动指令
   - onFrpStop(payload, client) - FRP 停止指令
   - onFrpReload(payload, client) - FRP 重载指令
-  - handleDisconnect(client) - Runner 断连处理
+  - onHookAck(payload) - 接收 Runner 回 hook:ack
+  - onHookProgress(payload) - 接收 Runner 进度心跳 (合并 callIds)
+  - onHookResult(payload) - 接收 Runner 终态 hook:result
+  - handleDisconnect(client) - Runner 断连处理 (清扫 in-flight)
+- RunnerHookRpcService
+  - setSocketResolver(fn) - 注入 runnerId→Socket 解析器, 打破双向依赖
+  - callHook(runnerId, body) - 派发 hook 调用 (软返回 { errorMsg, result, debugLog }); body.context 透传给 envelope.context
+  - handleAck(callId) - 收 ack 后切换为 stale 监控
+  - handleProgress(progress) - 续命 stale 截止
+  - handleResult(callId, reply) - 完成 in-flight, 解锁背压
+  - cleanupRunner(runnerId) - 该 runner 名下所有 in-flight 软返回 runner-offline
 - RunnerProxyService
   - getRunner(runnerId) - 获取 Runner 基础信息
   - getStats(runnerId) - 获取性能统计
@@ -113,6 +124,11 @@ reward-record -> app/runner/services/reward-record.service.ts
 - RunnerService.markStatus -> runner_mark_status_003
 - RunnerGateway.onRegister -> runner_gateway_register_004
 - RunnerGateway.handleDisconnect -> runner_gateway_disconnect_005
+- RunnerHookRpcService.callHook -> runner_hook_rpc_call_019
+- RunnerHookRpcService.handleAck -> runner_hook_rpc_ack_020
+- RunnerHookRpcService.handleProgress -> runner_hook_rpc_progress_021
+- RunnerHookRpcService.handleResult -> runner_hook_rpc_result_022
+- RunnerHookRpcService.cleanupRunner -> runner_hook_rpc_cleanup_023
 - RunnerProxyService.getStats -> runner_proxy_stats_007
 - RunnerProxyService.listDomains -> runner_proxy_list_domains_008
 - RunnerProxyService.createDomain -> runner_proxy_create_domain_009

@@ -58,7 +58,11 @@ export class HookBusService implements OnModuleInit {
   async emit<T, R>(event: HookEvent<T>): Promise<HookResult<R>[]> {
     const now = Date.now();
     const src = this.captureSource();
-    const enriched: HookEvent<T> = { ...event, ts: now, source: src };
+    const enriched: HookEvent<T> = {
+      ...event,
+      callSite: event.callSite ?? src,
+      context: { ts: now, ...(event.context ?? {}) },
+    };
     this.emitDebug({
       type: 'emit',
       name: enriched.name,
@@ -78,7 +82,7 @@ export class HookBusService implements OnModuleInit {
     event: HookEvent<T>,
   ): Promise<HookResult<R>[]> {
     const regs = this.select<T, R>(event.name, event.filter);
-    return await this.invoker.invoke<T, R>({ event }, regs);
+    return await this.invoker.invoke<T, R>(event, regs);
   }
 
   private matchFilter(

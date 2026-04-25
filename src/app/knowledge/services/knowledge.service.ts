@@ -42,7 +42,7 @@ export class KnowledgeService {
     private readonly bookRepo: Repository<KnowledgeBookEntity>,
     @InjectRepository(KnowledgeChapterEntity)
     private readonly chapterRepo: Repository<KnowledgeChapterEntity>,
-  ) {}
+  ) { }
 
   // ========== 书本 CRUD ==========
 
@@ -61,6 +61,7 @@ export class KnowledgeService {
       creatorId,
       isEmbedded: false,
       active: true,
+      tags: dto.tags ?? null,
     });
     const saved = await this.bookRepo.save(entity);
     return this.toBookInfo(saved);
@@ -81,9 +82,9 @@ export class KnowledgeService {
     const ids = books.map((b) => b.id);
     const counts: Array<{ book_id: string; count: string }> = ids.length
       ? await this.chapterRepo.manager.query(
-          `SELECT book_id, COUNT(*) as count FROM knowledge_chapters WHERE book_id = ANY($1) AND is_delete = false GROUP BY book_id`,
-          [ids],
-        )
+        `SELECT book_id, COUNT(*) as count FROM knowledge_chapters WHERE book_id = ANY($1) AND is_delete = false GROUP BY book_id`,
+        [ids],
+      )
       : [];
     const countMap = new Map(counts.map((c) => [c.book_id, Number(c.count)]));
 
@@ -139,6 +140,7 @@ export class KnowledgeService {
     if (dto.description !== undefined)
       book.description = dto.description ?? null;
     if (dto.active !== undefined) book.active = dto.active;
+    if (dto.tags !== undefined) book.tags = dto.tags ?? null;
     // 描述变更则重置向量化状态
     if (dto.description !== undefined) {
       book.isEmbedded = false;
@@ -355,12 +357,50 @@ export class KnowledgeService {
       .filter((b): b is KnowledgeBookInfo => b !== undefined);
     const dbResults = dbIds.length
       ? (
-          await this.bookRepo.find({
-            where: { id: In(dbIds), isDelete: false },
-          })
-        ).map((b) => this.toBookInfo(b))
+        await this.bookRepo.find({
+          where: { id: In(dbIds), isDelete: false },
+        })
+      ).map((b) => this.toBookInfo(b))
       : [];
     return [...localResults, ...dbResults];
+  }
+
+  // ========== Tag 过滤列表 ==========
+
+  /**
+   * 按 tag 列表过滤返回书本（最多 100 条），不传 tags 则返回全部前 100 条
+   * @keyword-en list-by-tags
+   */
+  async listByTags(opts?: {
+    tags?: string[];
+    type?: KnowledgeBookType;
+    limit?: number;
+  }): Promise<KnowledgeBookInfo[]> {
+    const limit = Math.min(opts?.limit ?? 100, 100);
+
+    let books: KnowledgeBookEntity[];
+    if (opts?.tags && opts.tags.length > 0) {
+      // simple-array 以逗号拼接存储，用 ANY + ILIKE 做兼容匹配
+      const tagConditions = opts.tags
+        .map((_, i) => `tags ILIKE $${i + 1}`)
+        .join(' OR ');
+      const params = opts.tags.map((t) => `%${t}%`);
+      const typeClause = opts?.type ? ` AND type = '${opts.type}'` : '';
+      books = await this.bookRepo.manager.query(
+        `SELECT * FROM knowledge_books WHERE is_delete = false AND active = true AND (${tagConditions})${typeClause} ORDER BY created_at DESC LIMIT ${limit}`,
+        params,
+      );
+    } else {
+      const where: Record<string, unknown> = { isDelete: false, active: true };
+      if (opts?.type) where['type'] = opts.type;
+      books = await this.bookRepo.find({
+        where,
+        order: { createdAt: 'DESC' },
+        take: limit,
+      });
+    }
+
+    return books.map((b) => this.toBookInfo(b));
   }
 
   // ========== 向量搜索 ==========
@@ -476,6 +516,7 @@ export class KnowledgeService {
       creatorId: entity.creatorId,
       isEmbedded: entity.isEmbedded,
       active: entity.active,
+      tags: entity.tags ?? null,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };

@@ -16,6 +16,7 @@ export interface KnowledgeBookInfo {
   creatorId: string | null;
   isEmbedded: boolean;
   active: boolean;
+  tags: string[] | null;
   chapterCount?: number;
   createdAt: string | Date;
   updatedAt: string | Date;
@@ -45,12 +46,14 @@ export interface CreateBookRequest {
   type: KnowledgeBookType;
   name: string;
   description?: string;
+  tags?: string[];
 }
 
 export interface UpdateBookRequest {
   name?: string;
   description?: string;
   active?: boolean;
+  tags?: string[];
 }
 
 export interface CreateChapterRequest {
@@ -73,12 +76,14 @@ export const CreateBookSchema = z.object({
   type: z.enum(['skill', 'lore']),
   name: z.string().min(1).max(255),
   description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
 });
 
 export const UpdateBookSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional(),
   active: z.boolean().optional(),
+  tags: z.array(z.string()).optional(),
 });
 
 export const CreateChapterSchema = z.object({
