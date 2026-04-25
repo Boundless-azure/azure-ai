@@ -20,6 +20,12 @@ import type {
   KnowledgeChapterInfo,
   KnowledgeMatchResult,
 } from '../types/knowledge.types';
+import {
+  LOCAL_BOOKS,
+  LOCAL_CHAPTERS_BY_BOOK,
+  LOCAL_CHAPTERS_BY_ID,
+  isLocalKnowledgeId,
+} from '../local/local-knowledge.seed';
 
 /**
  * @title 知识服务
@@ -61,49 +67,77 @@ export class KnowledgeService {
   }
 
   /**
-   * 获取所有书本列表
+   * 获取所有书本列表（含本地预置书本）
    * @keyword-en list-books
    */
   async listBooks(type?: KnowledgeBookType): Promise<KnowledgeBookInfo[]> {
     const where: Record<string, unknown> = { isDelete: false, active: true };
     if (type) where['type'] = type;
-    const books = await this.bookRepo.find({ where, order: { createdAt: 'DESC' } });
+    const books = await this.bookRepo.find({
+      where,
+      order: { createdAt: 'DESC' },
+    });
 
     const ids = books.map((b) => b.id);
-    if (ids.length === 0) return [];
-
-    const counts: Array<{ book_id: string; count: string }> =
-      await this.chapterRepo.manager.query(
-        `SELECT book_id, COUNT(*) as count FROM knowledge_chapters WHERE book_id = ANY($1) AND is_delete = false GROUP BY book_id`,
-        [ids],
-      );
+    const counts: Array<{ book_id: string; count: string }> = ids.length
+      ? await this.chapterRepo.manager.query(
+          `SELECT book_id, COUNT(*) as count FROM knowledge_chapters WHERE book_id = ANY($1) AND is_delete = false GROUP BY book_id`,
+          [ids],
+        )
+      : [];
     const countMap = new Map(counts.map((c) => [c.book_id, Number(c.count)]));
 
-    return books.map((b) => ({
+    const dbResults: KnowledgeBookInfo[] = books.map((b) => ({
       ...this.toBookInfo(b),
       chapterCount: countMap.get(b.id) ?? 0,
     }));
+
+    // 合并本地预置书本（前置，按 type 过滤）
+    const localResults = LOCAL_BOOKS.filter(
+      (b) => !type || b.type === type,
+    ).map((b) => ({
+      ...b,
+      chapterCount: LOCAL_CHAPTERS_BY_BOOK.get(b.id)?.length ?? 0,
+    }));
+
+    return [...localResults, ...dbResults];
   }
 
   /**
-   * 获取书本详情
+   * 获取书本详情（支持本地预置书本）
    * @keyword-en get-book
    */
   async getBook(id: string): Promise<KnowledgeBookInfo> {
-    const book = await this.bookRepo.findOne({ where: { id, isDelete: false } });
+    if (isLocalKnowledgeId(id)) {
+      const local = LOCAL_BOOKS.find((b) => b.id === id);
+      if (!local)
+        throw new NotFoundException(`Knowledge book not found: ${id}`);
+      return local;
+    }
+    const book = await this.bookRepo.findOne({
+      where: { id, isDelete: false },
+    });
     if (!book) throw new NotFoundException(`Knowledge book not found: ${id}`);
     return this.toBookInfo(book);
   }
 
   /**
-   * 更新书本
+   * 更新书本（本地预置书本不可修改）
    * @keyword-en update-book
    */
-  async updateBook(id: string, dto: UpdateKnowledgeBookDto): Promise<KnowledgeBookInfo> {
-    const book = await this.bookRepo.findOne({ where: { id, isDelete: false } });
+  async updateBook(
+    id: string,
+    dto: UpdateKnowledgeBookDto,
+  ): Promise<KnowledgeBookInfo> {
+    if (isLocalKnowledgeId(id))
+      throw new BadRequestException('本地预置书本不可修改');
+    const book = await this.bookRepo.findOne({
+      where: { id, isDelete: false },
+    });
     if (!book) throw new NotFoundException(`Knowledge book not found: ${id}`);
     if (dto.name !== undefined) book.name = dto.name;
-    if (dto.description !== undefined) book.description = dto.description ?? null;
+    if (dto.description !== undefined)
+      book.description = dto.description ?? null;
     if (dto.active !== undefined) book.active = dto.active;
     // 描述变更则重置向量化状态
     if (dto.description !== undefined) {
@@ -115,11 +149,15 @@ export class KnowledgeService {
   }
 
   /**
-   * 删除书本（软删）
+   * 删除书本（软删，本地预置书本不可删除）
    * @keyword-en delete-book
    */
   async deleteBook(id: string): Promise<void> {
-    const book = await this.bookRepo.findOne({ where: { id, isDelete: false } });
+    if (isLocalKnowledgeId(id))
+      throw new BadRequestException('本地预置书本不可删除');
+    const book = await this.bookRepo.findOne({
+      where: { id, isDelete: false },
+    });
     if (!book) throw new NotFoundException(`Knowledge book not found: ${id}`);
     book.isDelete = true;
     await this.bookRepo.save(book);
@@ -151,14 +189,21 @@ export class KnowledgeService {
    * 更新章节
    * @keyword-en update-chapter
    */
+  /**
+   * 更新章节（本地预置章节不可修改）
+   * @keyword-en update-chapter
+   */
   async updateChapter(
     chapterId: string,
     dto: UpdateKnowledgeChapterDto,
   ): Promise<KnowledgeChapterInfo> {
+    if (isLocalKnowledgeId(chapterId))
+      throw new BadRequestException('本地预置章节不可修改');
     const chapter = await this.chapterRepo.findOne({
       where: { id: chapterId, isDelete: false },
     });
-    if (!chapter) throw new NotFoundException(`Chapter not found: ${chapterId}`);
+    if (!chapter)
+      throw new NotFoundException(`Chapter not found: ${chapterId}`);
     if (dto.title !== undefined) chapter.title = dto.title;
     if (dto.sortOrder !== undefined) chapter.sortOrder = dto.sortOrder;
     if (dto.isLmRequired !== undefined) chapter.isLmRequired = dto.isLmRequired;
@@ -168,14 +213,17 @@ export class KnowledgeService {
   }
 
   /**
-   * 删除章节（软删）
+   * 删除章节（软删，本地预置章节不可删除）
    * @keyword-en delete-chapter
    */
   async deleteChapter(chapterId: string): Promise<void> {
+    if (isLocalKnowledgeId(chapterId))
+      throw new BadRequestException('本地预置章节不可删除');
     const chapter = await this.chapterRepo.findOne({
       where: { id: chapterId, isDelete: false },
     });
-    if (!chapter) throw new NotFoundException(`Chapter not found: ${chapterId}`);
+    if (!chapter)
+      throw new NotFoundException(`Chapter not found: ${chapterId}`);
     chapter.isDelete = true;
     await this.chapterRepo.save(chapter);
   }
@@ -183,32 +231,57 @@ export class KnowledgeService {
   // ========== Hook API ==========
 
   /**
-   * 通过书本 ID 数组获取目录（不含内容）
+   * 通过书本 ID 数组获取目录（不含内容，支持本地预置）
    * @keyword-en get-toc-by-book-ids
    */
-  async getTocByBookIds(bookIds: string[]): Promise<Record<string, KnowledgeChapterToc[]>> {
+  async getTocByBookIds(
+    bookIds: string[],
+  ): Promise<Record<string, KnowledgeChapterToc[]>> {
     if (bookIds.length === 0) return {};
-    const chapters = await this.chapterRepo.find({
-      where: { bookId: In(bookIds), isDelete: false },
-      order: { bookId: 'ASC', sortOrder: 'ASC' },
-      select: ['id', 'bookId', 'title', 'sortOrder', 'isLmRequired'],
-    });
+
+    const localIds = bookIds.filter(isLocalKnowledgeId);
+    const dbIds = bookIds.filter((id) => !isLocalKnowledgeId(id));
+
     const result: Record<string, KnowledgeChapterToc[]> = {};
-    for (const c of chapters) {
-      if (!result[c.bookId]) result[c.bookId] = [];
-      result[c.bookId].push({
-        id: c.id,
-        bookId: c.bookId,
-        title: c.title,
-        sortOrder: c.sortOrder,
-        isLmRequired: c.isLmRequired,
-      });
+
+    // 本地预置目录
+    for (const bid of localIds) {
+      const chapters = LOCAL_CHAPTERS_BY_BOOK.get(bid);
+      if (chapters) {
+        result[bid] = chapters.map((c) => ({
+          id: c.id,
+          bookId: c.bookId,
+          title: c.title,
+          sortOrder: c.sortOrder,
+          isLmRequired: c.isLmRequired,
+        }));
+      }
     }
+
+    // 数据库目录
+    if (dbIds.length > 0) {
+      const chapters = await this.chapterRepo.find({
+        where: { bookId: In(dbIds), isDelete: false },
+        order: { bookId: 'ASC', sortOrder: 'ASC' },
+        select: ['id', 'bookId', 'title', 'sortOrder', 'isLmRequired'],
+      });
+      for (const c of chapters) {
+        if (!result[c.bookId]) result[c.bookId] = [];
+        result[c.bookId].push({
+          id: c.id,
+          bookId: c.bookId,
+          title: c.title,
+          sortOrder: c.sortOrder,
+          isLmRequired: c.isLmRequired,
+        });
+      }
+    }
+
     return result;
   }
 
   /**
-   * 通过书本 ID 数组和章节 ID 数组获取章节内容，LM 必读章节始终附带
+   * 通过书本 ID 数组和章节 ID 数组获取章节内容，LM 必读章节始终附带（支持本地预置）
    * @keyword-en get-chapter-content
    */
   async getChapterContent(
@@ -217,46 +290,77 @@ export class KnowledgeService {
   ): Promise<Record<string, KnowledgeChapterInfo[]>> {
     if (bookIds.length === 0) return {};
 
-    // 获取 LM 必读章节（每本书都要带上）
-    const lmRequired = await this.chapterRepo.find({
-      where: { bookId: In(bookIds), isLmRequired: true, isDelete: false },
-    });
-
-    let requested: KnowledgeChapterEntity[] = [];
-    if (chapterIds && chapterIds.length > 0) {
-      requested = await this.chapterRepo.find({
-        where: { id: In(chapterIds), bookId: In(bookIds), isDelete: false },
-      });
-    }
-
-    // 合并去重
-    const merged = new Map<string, KnowledgeChapterEntity>();
-    for (const c of [...lmRequired, ...requested]) {
-      merged.set(c.id, c);
-    }
+    const localIds = bookIds.filter(isLocalKnowledgeId);
+    const dbIds = bookIds.filter((id) => !isLocalKnowledgeId(id));
 
     const result: Record<string, KnowledgeChapterInfo[]> = {};
-    for (const c of merged.values()) {
-      if (!result[c.bookId]) result[c.bookId] = [];
-      result[c.bookId].push(this.toChapterInfo(c));
+
+    // 本地预置：LM 必读章节始终附带，同时包含指定章节
+    for (const bid of localIds) {
+      const chapters = LOCAL_CHAPTERS_BY_BOOK.get(bid);
+      if (!chapters) continue;
+      const merged = new Map<string, KnowledgeChapterInfo>();
+      for (const c of chapters) {
+        if (c.isLmRequired) merged.set(c.id, c);
+      }
+      if (chapterIds) {
+        for (const cid of chapterIds) {
+          const local = LOCAL_CHAPTERS_BY_ID.get(cid);
+          if (local && local.bookId === bid) merged.set(local.id, local);
+        }
+      }
+      const sorted = Array.from(merged.values()).sort(
+        (a, b) => a.sortOrder - b.sortOrder,
+      );
+      if (sorted.length > 0) result[bid] = sorted;
     }
-    // 按 sortOrder 排序
-    for (const bookId of Object.keys(result)) {
-      result[bookId].sort((a, b) => a.sortOrder - b.sortOrder);
+
+    // 数据库
+    if (dbIds.length > 0) {
+      const lmRequired = await this.chapterRepo.find({
+        where: { bookId: In(dbIds), isLmRequired: true, isDelete: false },
+      });
+      let requested: KnowledgeChapterEntity[] = [];
+      if (chapterIds && chapterIds.length > 0) {
+        requested = await this.chapterRepo.find({
+          where: { id: In(chapterIds), bookId: In(dbIds), isDelete: false },
+        });
+      }
+      const merged = new Map<string, KnowledgeChapterEntity>();
+      for (const c of [...lmRequired, ...requested]) {
+        merged.set(c.id, c);
+      }
+      for (const c of merged.values()) {
+        if (!result[c.bookId]) result[c.bookId] = [];
+        result[c.bookId].push(this.toChapterInfo(c));
+      }
+      for (const bookId of dbIds) {
+        result[bookId]?.sort((a, b) => a.sortOrder - b.sortOrder);
+      }
     }
+
     return result;
   }
 
   /**
-   * 通过书本 ID 数组获取名称和描述
+   * 通过书本 ID 数组获取名称和描述（支持本地预置）
    * @keyword-en get-book-info-by-ids
    */
   async getBookInfoByIds(bookIds: string[]): Promise<KnowledgeBookInfo[]> {
     if (bookIds.length === 0) return [];
-    const books = await this.bookRepo.find({
-      where: { id: In(bookIds), isDelete: false },
-    });
-    return books.map((b) => this.toBookInfo(b));
+    const localIds = bookIds.filter(isLocalKnowledgeId);
+    const dbIds = bookIds.filter((id) => !isLocalKnowledgeId(id));
+    const localResults = localIds
+      .map((id) => LOCAL_BOOKS.find((b) => b.id === id))
+      .filter((b): b is KnowledgeBookInfo => b !== undefined);
+    const dbResults = dbIds.length
+      ? (
+          await this.bookRepo.find({
+            where: { id: In(dbIds), isDelete: false },
+          })
+        ).map((b) => this.toBookInfo(b))
+      : [];
+    return [...localResults, ...dbResults];
   }
 
   // ========== 向量搜索 ==========
@@ -265,12 +369,22 @@ export class KnowledgeService {
    * 构建书本向量（对描述进行 embedding）
    * @keyword-en build-embedding
    */
-  async buildEmbedding(bookId: string, apiKey: string): Promise<KnowledgeBookInfo> {
-    const book = await this.bookRepo.findOne({ where: { id: bookId, isDelete: false } });
-    if (!book) throw new NotFoundException(`Knowledge book not found: ${bookId}`);
-    if (!book.description) throw new BadRequestException('Book has no description to embed');
+  async buildEmbedding(
+    bookId: string,
+    apiKey: string,
+  ): Promise<KnowledgeBookInfo> {
+    const book = await this.bookRepo.findOne({
+      where: { id: bookId, isDelete: false },
+    });
+    if (!book)
+      throw new NotFoundException(`Knowledge book not found: ${bookId}`);
+    if (!book.description)
+      throw new BadRequestException('Book has no description to embed');
 
-    const emb = new OpenAIEmbeddings({ apiKey, model: 'text-embedding-3-small' });
+    const emb = new OpenAIEmbeddings({
+      apiKey,
+      model: 'text-embedding-3-small',
+    });
     try {
       const vec = await emb.embedQuery(book.description);
       const literal = `[${vec.map((v) => (Number.isFinite(v) ? v : 0)).join(',')}]`;
@@ -294,7 +408,10 @@ export class KnowledgeService {
     opts?: { type?: KnowledgeBookType; limit?: number },
   ): Promise<KnowledgeMatchResult[]> {
     const topK = opts?.limit ?? 5;
-    const emb = new OpenAIEmbeddings({ apiKey, model: 'text-embedding-3-small' });
+    const emb = new OpenAIEmbeddings({
+      apiKey,
+      model: 'text-embedding-3-small',
+    });
     let vec: number[];
     try {
       vec = await emb.embedQuery(query);
@@ -304,18 +421,24 @@ export class KnowledgeService {
     const literal = `[${vec.map((v) => (Number.isFinite(v) ? v : 0)).join(',')}]`;
 
     const typeFilter = opts?.type ? `AND type = '${opts.type}'` : '';
-    const rows: Array<{ id: string; name: string; type: string; description: string; distance: number }> =
-      await this.bookRepo.manager.query(
-        `SELECT id, name, type, description, embedding <-> '${literal}'::vector AS distance
+    const rows: Array<{
+      id: string;
+      name: string;
+      type: string;
+      description: string;
+      distance: number;
+    }> = await this.bookRepo.manager.query(
+      `SELECT id, name, type, description, embedding <-> '${literal}'::vector AS distance
          FROM knowledge_books
          WHERE is_delete = false AND active = true AND is_embedded = true AND embedding IS NOT NULL ${typeFilter}
          ORDER BY embedding <-> '${literal}'::vector ASC
          LIMIT $1`,
-        [topK],
-      );
+      [topK],
+    );
 
     return rows.map((r) => {
-      const d = typeof r.distance === 'number' ? r.distance : Number(r.distance);
+      const d =
+        typeof r.distance === 'number' ? r.distance : Number(r.distance);
       return {
         bookId: r.id,
         name: r.name,
@@ -333,8 +456,11 @@ export class KnowledgeService {
    * @keyword-en assert-book-exists
    */
   private async assertBookExists(bookId: string): Promise<void> {
-    const exists = await this.bookRepo.findOne({ where: { id: bookId, isDelete: false } });
-    if (!exists) throw new NotFoundException(`Knowledge book not found: ${bookId}`);
+    const exists = await this.bookRepo.findOne({
+      where: { id: bookId, isDelete: false },
+    });
+    if (!exists)
+      throw new NotFoundException(`Knowledge book not found: ${bookId}`);
   }
 
   /**

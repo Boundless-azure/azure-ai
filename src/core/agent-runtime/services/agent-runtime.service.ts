@@ -9,7 +9,10 @@ import { HookBusService } from '@/core/hookbus/services/hook.bus.service';
 import {
   buildCallHookTool,
   buildCallHookAsyncTool,
+  buildCallHookBatchSyncTool,
+  buildCallHookBatchTool,
 } from '../tools/call-hook.tools';
+import { buildBaseLlmSystemPrompt } from '../prompts/base-llm.prompt';
 
 /**
  * @title Agent 运行时服务
@@ -34,10 +37,12 @@ export class AgentRuntimeService {
    */
   async load(inputDir: string): Promise<LoadedAgent> {
     const loaded = await this.loader.loadAll(inputDir);
-    // 总是将 call_hook / call_hook_async 注入到工具集
+    // 总是将 call_hook / call_hook_async / call_hook_batch_sync / call_hook_batch 注入到工具集
     const hookTools = [
       buildCallHookTool(this.hookBus),
       buildCallHookAsyncTool(this.hookBus),
+      buildCallHookBatchSyncTool(this.hookBus),
+      buildCallHookBatchTool(this.hookBus),
     ];
     loaded.tools = [...hookTools, ...loaded.tools];
     return loaded;
@@ -89,7 +94,7 @@ export class AgentRuntimeService {
   }
 
   /**
-   * 获取工具集合（包含 call_hook + call_hook_async + Agent 自身工具）
+   * 获取工具集合（包含 call_hook + call_hook_async + call_hook_batch_sync + call_hook_batch + Agent 自身工具）
    */
   async getTools(agentDir: string): Promise<unknown[]> {
     const loaded = await this.load(agentDir);
@@ -110,7 +115,8 @@ export class AgentRuntimeService {
           '[system prompt]',
           `你处于主动对话模式。这点最重要,你的回答必须通过调用工具来发送给用户，而不是直接返回，直接返回是无效的。`,
           `当前 IM 会话 session_id="${proactiveContext.sessionId}"，你的 principal_id="${proactiveContext.agentPrincipalId}"。`,
-          `你可以调用工具 call_hook（hookName="send_msg"，payload={ sessionId="${proactiveContext.sessionId}", senderPrincipalId="${proactiveContext.agentPrincipalId}", content="...", replyToId="${proactiveContext.triggerMessageId}" }）向用户发送消息。其中 replyToId 固定为 "${proactiveContext.triggerMessageId}"，不得修改或编造。`,
+          `发送消息请参阅【对话 Hook 技能手册】中的 send_msg hook 说明（bookId=local_conversation_hook_skill），其中包含完整的 payload 结构、参数约束和使用场景。`,
+          `replyToId 固定为 "${proactiveContext.triggerMessageId}"，不得修改或编造。`,
           `根据上下文自主决定是否发送、何时发送、发送什么。在上下文中要结合所有消息来判断决定如何返回,不能出现回答不连贯的问题.`,
           `有时候用户是发的连贯信息,要结合历史消息来进行综合回复,而不是只针对最后一条消息进行回复。`,
           `你可以模拟人类情感, 比如长句可以分成多条发送,最多 4 轮, 以表现出思考的过程和情感的表达, 但要注意不要过度发送过多消息导致用户体验变差。`,
@@ -134,17 +140,21 @@ export class AgentRuntimeService {
         checkpointer?: unknown;
         params?: Record<string, unknown>;
       }) => {
-        // 合并系统提示：前置注入 + agent 自身定义的 systemPrompt
-        const mergedSystemPrompt = injectedPrefix
-          ? [injectedPrefix, req.systemPrompt].filter(Boolean).join('\n')
-          : req.systemPrompt;
+        // 合并系统提示：基础工具提示 + 主动对话前置注入 + agent 自身定义的 systemPrompt
+        const basePrompt = buildBaseLlmSystemPrompt();
+        const mergedSystemPrompt = [
+          basePrompt,
+          injectedPrefix,
+          req.systemPrompt,
+        ]
+          .filter(Boolean)
+          .join('\n');
 
         if (injectedPrefix) {
           this.logger.log(
             `[startDialogue] merged systemPrompt:\n---\n${mergedSystemPrompt}\n---`,
           );
         }
-
         const aiReq: AIModelRequest = {
           modelId: req.modelId,
           messages: req.messages,
