@@ -63,13 +63,15 @@ src/app/knowledge/
 ### services/knowledge-hook-handler.service.ts
 
 全部声明 `payloadSchema` (zod, SSOT), handler 签名通过 `z.infer` 复用类型, invoker 在执行前自动校验。
+全部用 `event.log.info(":start" / ":done")` + `event.log.error(":fail")` 写日志, 作为 OTel debugLog 的标准示范;
+LLM 在 call_hook 时传 `debug: true` 即可在 reply.debugLog 拿到这些条目。
 
-| 函数名 | Hook 名 | payload | 关键词描述 |
-|--------|---------|---------|-----------|
-| `handleGetTag` | `saas.app.knowledge.getTag` | type? / cursor? / limit? | 知识库 tag 频次榜 (默认/上限 400) |
-| `handleGetToc` | `saas.app.knowledge.getToc` | bookIds[] | 通过 bookIds 获取目录 |
-| `handleGetChapter` | `saas.app.knowledge.getChapter` | bookIds[] / chapterIds? | 获取章节内容 (含 LM 必读) |
-| `handleSearch` | `saas.app.knowledge.search` | tags? / type? / limit? | 按 tag 过滤列举书本 (前 100 条) |
+| 函数名 | Hook 名 | payload | 关键词描述 | log 标记 |
+|--------|---------|---------|-----------|----------|
+| `handleGetTag` | `saas.app.knowledge.getTag` | type? / cursor? / limit? | 知识库 tag 频次榜 (默认/上限 400) | knowledge.getTag:start/done/fail |
+| `handleGetToc` | `saas.app.knowledge.getToc` | bookIds[] | 通过 bookIds 获取目录 | knowledge.getToc:start/done/fail |
+| `handleGetChapter` | `saas.app.knowledge.getChapter` | bookIds[] / chapterIds? | 获取章节内容 (含 LM 必读) | knowledge.getChapter:start/done/fail |
+| `handleSearch` | `saas.app.knowledge.search` | tags? / type? / limit? | 按 tag 过滤列举书本 (前 100 条) | knowledge.search:start/done/fail |
 
 ### local/local-knowledge.seed.ts
 

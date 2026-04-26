@@ -75,7 +75,9 @@ const hookCallSchema = z.object({
   debug: z
     .boolean()
     .optional()
-    .describe('仅 runner: 启用 OTel sandbox tracer'),
+    .describe(
+      '启用 OTel sandbox tracer; 调用结果的 debugLog 会带回 handler 写的日志条目 (saas / runner 通用)',
+    ),
   debugDb: z
     .boolean()
     .optional()
@@ -136,24 +138,37 @@ function softError(code: string): HookCallReply {
 async function dispatchSaasHook(
   hookBus: HookBusService,
   ctx: HookInvocationContext,
-  input: { hookName: string; payload?: unknown },
+  input: { hookName: string; payload?: unknown; debug?: boolean },
 ): Promise<HookCallReply> {
   try {
+    // debug 通过 context.extras.debug 透传给 invoker, 启 OTel sandbox; 不污染原 ctx
+    const enrichedCtx: HookInvocationContext = input.debug
+      ? { ...ctx, extras: { ...(ctx.extras ?? {}), debug: true } }
+      : ctx;
     const results = await hookBus.emit({
       name: input.hookName,
       payload: input.payload ?? {},
-      context: ctx,
+      context: enrichedCtx,
     });
     const errorMsg: string[] = [];
     const data: unknown[] = [];
-    for (const r of results as Array<{ status?: string; data?: unknown; error?: string }>) {
+    const debugLog: unknown[] = [];
+    for (const r of results as Array<{
+      status?: string;
+      data?: unknown;
+      error?: string;
+      debugLog?: unknown[];
+    }>) {
       if (r?.status === 'error' || r?.error) {
         errorMsg.push(r.error ?? 'hook-error');
       } else {
         data.push(r?.data);
       }
+      if (r?.debugLog && r.debugLog.length > 0) {
+        debugLog.push(...r.debugLog);
+      }
     }
-    return { errorMsg, result: data, debugLog: [] };
+    return { errorMsg, result: data, debugLog };
   } catch (e) {
     return softError(e instanceof Error ? e.message : String(e));
   }
@@ -170,7 +185,11 @@ async function dispatchOne(
   input: HookCallInput,
 ): Promise<HookCallReply> {
   if (input.target === SAAS) {
-    return await dispatchSaasHook(hookBus, ctx, input);
+    return await dispatchSaasHook(hookBus, ctx, {
+      hookName: input.hookName,
+      payload: input.payload,
+      ...(input.debug !== undefined ? { debug: input.debug } : {}),
+    });
   }
   if (!input.runnerId) {
     return softError('runnerId-required');

@@ -17,6 +17,11 @@
 - data-permission：数据权限模块（DataPermissionModule）
   - 作用：提供 DTO 节点装饰器与 forRoot 注入能力，按表名 + DTO + 上下文执行数据权限节点并聚合查询条件。
 
+- observability：可观测性模块（无 NestJS 模块, 纯函数工厂）
+  - 作用：HookLog OTel 实现层, createHookLogSession 给单次 hook 调用造日志会话；
+    debug=false 走 noop 零开销, debug=true 起一次性 InMemorySpanExporter, drain SpanEvent 写到 reply.debugLog。
+    类型 SSOT 在 core/hookbus/types/hook.types.ts (HookLog/HookLogEntry/HookLogSession)。
+
 备注：
 - 本文件用于对 core 下的各模块进行作用标记与目录索引，便于 IDE 与开发者快速了解结构。
 - 仅文档用途，不参与构建流程。

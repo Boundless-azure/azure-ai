@@ -98,14 +98,20 @@ export class KnowledgeHookHandlerService {
     event: HookEvent<GetKnowledgeTocPayload>,
   ): Promise<HookResult> {
     const { bookIds } = event.payload;
+    event.log?.info('knowledge.getToc:start', { bookIdCount: bookIds.length });
     try {
+      const start = Date.now();
       const data = await this.knowledgeService.getTocByBookIds(bookIds);
+      event.log?.info('knowledge.getToc:done', {
+        bookIdCount: bookIds.length,
+        bookCount: Array.isArray(data) ? data.length : 0,
+        durationMs: Date.now() - start,
+      });
       return { status: HookResultStatus.Success, data };
     } catch (e) {
-      return {
-        status: HookResultStatus.Error,
-        error: e instanceof Error ? e.message : String(e),
-      };
+      const msg = e instanceof Error ? e.message : String(e);
+      event.log?.error('knowledge.getToc:fail', { error: msg });
+      return { status: HookResultStatus.Error, error: msg };
     }
   }
 
@@ -128,17 +134,26 @@ export class KnowledgeHookHandlerService {
     event: HookEvent<GetKnowledgeChapterPayload>,
   ): Promise<HookResult> {
     const { bookIds, chapterIds } = event.payload;
+    event.log?.info('knowledge.getChapter:start', {
+      bookIdCount: bookIds.length,
+      chapterIdCount: chapterIds?.length ?? 0,
+      lmRequiredOnly: !chapterIds || chapterIds.length === 0,
+    });
     try {
+      const start = Date.now();
       const data = await this.knowledgeService.getChapterContent(
         bookIds,
         chapterIds,
       );
+      event.log?.info('knowledge.getChapter:done', {
+        bookCount: Array.isArray(data) ? data.length : 0,
+        durationMs: Date.now() - start,
+      });
       return { status: HookResultStatus.Success, data };
     } catch (e) {
-      return {
-        status: HookResultStatus.Error,
-        error: e instanceof Error ? e.message : String(e),
-      };
+      const msg = e instanceof Error ? e.message : String(e);
+      event.log?.error('knowledge.getChapter:fail', { error: msg });
+      return { status: HookResultStatus.Error, error: msg };
     }
   }
 
@@ -163,18 +178,28 @@ export class KnowledgeHookHandlerService {
     event: HookEvent<GetKnowledgeTagPayload>,
   ): Promise<HookResult> {
     const { type, cursor, limit } = event.payload;
+    event.log?.info('knowledge.getTag:start', {
+      ...(type ? { type } : {}),
+      ...(cursor !== undefined ? { cursor } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
     try {
+      const start = Date.now();
       const data = await this.knowledgeService.listAllTags({
         type,
         cursor,
         limit,
       });
+      const items = (data as { items?: unknown[] } | null)?.items;
+      event.log?.info('knowledge.getTag:done', {
+        returned: Array.isArray(items) ? items.length : 0,
+        durationMs: Date.now() - start,
+      });
       return { status: HookResultStatus.Success, data };
     } catch (e) {
-      return {
-        status: HookResultStatus.Error,
-        error: e instanceof Error ? e.message : String(e),
-      };
+      const msg = e instanceof Error ? e.message : String(e);
+      event.log?.error('knowledge.getTag:fail', { error: msg });
+      return { status: HookResultStatus.Error, error: msg };
     }
   }
 
@@ -197,18 +222,27 @@ export class KnowledgeHookHandlerService {
     event: HookEvent<SearchKnowledgePayload>,
   ): Promise<HookResult> {
     const { tags, type, limit } = event.payload;
+    event.log?.info('knowledge.search:start', {
+      tagCount: tags?.length ?? 0,
+      ...(type ? { type } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
     try {
+      const start = Date.now();
       const data = await this.knowledgeService.listByTags({
         tags,
         type,
         limit,
       });
+      event.log?.info('knowledge.search:done', {
+        returned: Array.isArray(data) ? data.length : 0,
+        durationMs: Date.now() - start,
+      });
       return { status: HookResultStatus.Success, data };
     } catch (e) {
-      return {
-        status: HookResultStatus.Error,
-        error: e instanceof Error ? e.message : String(e),
-      };
+      const msg = e instanceof Error ? e.message : String(e);
+      event.log?.error('knowledge.search:fail', { error: msg });
+      return { status: HookResultStatus.Error, error: msg };
     }
   }
 }

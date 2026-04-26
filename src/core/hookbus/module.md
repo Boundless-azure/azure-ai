@@ -69,12 +69,18 @@ HookBus模块 -> core/hookbus/hookbus.module.ts
 Hook缓存服务 -> core/hookbus/cache/hook.cache.ts
 
 类型导出（Types）
-- HookEvent<T>           -- name + payload + context + filter + declaration + callSite
+- HookEvent<T>           -- name + payload + context + filter + declaration + callSite + log
 - HookInvocationContext  -- token / principalId / principalType / source / traceId / runnerId / ts / extras
+                            extras.debug=true 触发 OTel sandbox tracer (call-hook.tools.ts 透传 input.debug 进来)
 - HookHandler<T,R>       -- (event) => HookResult, 与 Runner 同形
 - HookMiddleware<T,R>    -- (event, next) => HookResult, 与 Runner 同形
 - HookRequiredAbility    -- { action, subject }; 与 identity RequiredAbility 同构, 不反向 import
+- HookLog                -- handler 可见的日志接口: trace/debug/info/warn/error/event(name, attrs?)
+                            invoker 注入到 event.log; 实现见 core/observability/services/hook-log.factory.ts
+- HookLogEntry           -- drain 出来的单条 { ts, level, message, attrs? }; 写到 HookResult.debugLog
+- HookLogSession         -- { log, finalize({ ok?, error? }) => HookLogEntry[] }
 - HookRegistration / HookMetadata / HookResult / HookFilter / HookDeclaration
+                            HookResult.debugLog?: HookLogEntry[]; debug=true 时由 invoker drain 注入
 
 快速检索映射（Keywords -> Files）
 - "hook.bus.service" / "HookBusService" -> src/core/hookbus/services/hook.bus.service.ts
@@ -104,6 +110,16 @@ handler / middleware 签名统一为 `(event, next?) => HookResult`, 与 Runner 
 - 校验由 identity 模块的 HookAbilityMiddlewareService 注入 invoker.use, 仅当 context.source === 'llm'
   时才校验, 其他来源 (http/system/runner-internal) 走各自入口卫兵, 避免双重校验
 - 校验失败软返 errorMsg `permission-denied:<action>:<subject>`, 与 hook 调用统一软错语义保持一致
+
+日志通道 (event.log, OTel-backed, debug 开关):
+- HookEvent.log 是 HookLog 接口, 由 HookInvokerService 在每次命中 reg 派发前注入, 不会为 undefined
+- debug=false (默认): 单例 NOOP_HOOK_LOG, 全部方法 no-op, 零开销; HookResult.debugLog 缺省
+- debug=true: invoker 为该次调用造一次性 BasicTracerProvider + InMemorySpanExporter, log.* → SpanEvent;
+  handler 完成后 invoker.finalize() 同步 end span + 投影 SpanEvent 为 HookLogEntry[] 写到 result.debugLog,
+  再异步 shutdown provider; 多个命中 reg 各自独立 session, 并发互不污染
+- debug 信号: event.context.extras.debug === true (call-hook.tools.ts dispatchSaasHook 把 input.debug 写在这里)
+- LLM 拿到的回包 reply.debugLog 是所有命中 reg.debugLog 的拍平合并, 失败/成功都写
+- CLAUDE.md 强约束: handler 禁 console.log / 独立 LogRecord, 一律走 event.log
 
 payload schema 校验 (zod, SSOT, 全项目唯一校验路径):
 - @HookHandler 注册: metadata.payloadSchema 直接写 zod schema

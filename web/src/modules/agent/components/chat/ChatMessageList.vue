@@ -33,65 +33,78 @@
 
         <div
           v-else
-          class="flex mb-6 px-2 group/message w-full gap-3"
-          :class="[
-            msg.senderId === selfId ? 'flex-row-reverse' : 'flex-row',
-            isNewMessage(msg.id) ? 'message-enter' : '',
-          ]"
+          class="mb-5 px-2 group/message w-full"
+          :class="[isNewMessage(msg.id) ? 'message-enter' : '']"
         >
-          <!-- Avatar Column -->
-          <div class="flex-shrink-0 select-none">
-            <button
-              class="block"
-              :title="
-                displayNameById[msg.senderId || ''] || msg.senderName || ''
-              "
-              @click.stop="handleAvatarClick(msg)"
-            >
-              <div
-                class="w-9 h-9 rounded-md bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-700 shadow-sm overflow-hidden"
-              >
-                <img
-                  v-if="avatarSrcById[(msg.senderId || '').trim()]"
-                  :src="avatarSrcById[(msg.senderId || '').trim()]"
-                  class="w-full h-full object-contain"
-                />
-                <span v-else>
-                  {{
-                    (msg.senderId === selfId
-                      ? '我'
-                      : displayNameById[(msg.senderId || '').trim()] ||
-                        msg.senderName ||
-                        ''
-                    ).slice(0, 1) || (msg.senderId === selfId ? '我' : '他')
-                  }}
-                </span>
-              </div>
-            </button>
-          </div>
-
-          <!-- Content Column -->
           <div
-            class="flex flex-col min-w-0 max-w-[85%]"
+            class="flex flex-col min-w-0 w-full"
             :class="msg.senderId === selfId ? 'items-end' : 'items-start'"
           >
-            <!-- Nickname + Mentions -->
-            <span
-              v-if="sessionType === 'group' && msg.senderId !== selfId"
-              class="text-xs text-gray-500 mb-1 select-none ml-1"
+            <div
+              class="flex items-center gap-2 mb-2 w-full"
+              :class="msg.senderId === selfId ? 'flex-row-reverse' : 'flex-row'"
             >
-              {{ displayNameById[msg.senderId || ''] || msg.senderName }}
-              <!-- @mention 列表 -->
-              <template v-if="msg.mentions && msg.mentions.length > 0">
-                <span
-                  v-for="mention in msg.mentions"
-                  :key="mention.agentPrincipalId"
-                  class="text-blue-500 font-medium"
+              <button
+                class="block flex-shrink-0 select-none"
+                :title="
+                  displayNameById[msg.senderId || ''] || msg.senderName || ''
+                "
+                @click.stop="handleAvatarClick(msg)"
+              >
+                <div
+                  class="w-[34px] h-[34px] rounded-full bg-[linear-gradient(180deg,#f4f5f7_0%,#e5e7eb_100%)] flex items-center justify-center text-[11px] font-semibold text-gray-700 shadow-sm overflow-hidden ring-1 ring-black/5"
                 >
-                  {{ ' ' + mention.mentionText }}
+                  <img
+                    v-if="avatarSrcById[(msg.senderId || '').trim()]"
+                    :src="avatarSrcById[(msg.senderId || '').trim()]"
+                    class="w-full h-full object-cover"
+                  />
+                  <span v-else>
+                    {{
+                      (msg.senderId === selfId
+                        ? '我'
+                        : displayNameById[(msg.senderId || '').trim()] ||
+                          msg.senderName ||
+                          ''
+                      ).slice(0, 1) || (msg.senderId === selfId ? '我' : '他')
+                    }}
+                  </span>
+                </div>
+              </button>
+
+              <div
+                class="flex items-center gap-2 min-w-0"
+                :class="msg.senderId === selfId ? 'flex-row-reverse' : 'flex-row'"
+              >
+                <span
+                  class="text-[11px] font-medium text-gray-500 select-none truncate"
+                >
+                  {{
+                    msg.senderId === selfId
+                      ? '我'
+                      : displayNameById[msg.senderId || ''] ||
+                        msg.senderName ||
+                        'Azure AI 助手'
+                  }}
                 </span>
-              </template>
-            </span>
+                <template
+                  v-if="
+                    sessionType === 'group' &&
+                    msg.senderId !== selfId &&
+                    msg.mentions &&
+                    msg.mentions.length > 0
+                  "
+                >
+                  <span
+                    v-for="mention in msg.mentions"
+                    :key="mention.agentPrincipalId"
+                    class="text-[11px] text-blue-500 font-medium truncate"
+                  >
+                    {{ mention.mentionText }}
+                  </span>
+                </template>
+              </div>
+            </div>
 
             <!-- Message Bubble Row -->
             <div
@@ -117,25 +130,13 @@
 
               <!-- Bubble -->
               <div
-                class="rounded-lg px-3 py-2 shadow-sm text-sm relative group transition-all break-words"
+                class="message-panel w-full text-sm relative group transition-all break-words"
                 :class="
                   msg.senderId === selfId
-                    ? 'bg-black text-white mr-1.5'
-                    : 'bg-white border border-gray-200 text-gray-800 ml-1.5'
+                    ? 'message-panel-self rounded-[10px] bg-[linear-gradient(180deg,#262626_0%,#111111_100%)] px-4 py-3 text-white shadow-[0_10px_28px_rgba(17,17,17,0.24)]'
+                    : 'assistant-card rounded-[10px] bg-[linear-gradient(180deg,#fbfbfc_0%,#f1f3f5_100%)] border border-[#d9dde3] px-4 py-3 text-gray-800 shadow-[0_10px_28px_rgba(15,23,42,0.10)]'
                 "
               >
-                <!-- Tail for Self (Right) -->
-                <div
-                  v-if="msg.senderId === selfId"
-                  class="absolute top-3 -right-[6px] w-3 h-3 bg-black rotate-45"
-                ></div>
-
-                <!-- Tail for Others (Left) -->
-                <div
-                  v-else
-                  class="absolute top-3 -left-[6px] w-3 h-3 bg-white border-l border-b border-gray-200 rotate-45"
-                ></div>
-
                 <div
                   v-if="msg.tool_calls && msg.tool_calls.length > 0"
                   class="mb-3 space-y-2 relative z-10"
@@ -143,7 +144,7 @@
                   <div
                     v-for="tool in msg.tool_calls"
                     :key="tool.id"
-                    class="bg-gray-50 border border-gray-200 rounded-lg p-2 text-xs font-mono text-gray-600 overflow-x-auto"
+                    class="rounded-[8px] border border-[#d7dbe0] bg-white/82 p-2.5 text-xs font-mono text-gray-600 overflow-x-auto"
                   >
                     <div class="flex items-center justify-between mb-1">
                       <span class="font-bold text-blue-600 flex items-center">
@@ -178,7 +179,7 @@
 
                 <div
                   v-if="msg.role === ChatRole.Assistant"
-                  class="markdown-body prose prose-sm max-w-none overflow-x-auto relative z-10"
+                  class="markdown-body prose prose-sm max-w-none overflow-x-auto relative z-10 assistant-markdown"
                   v-html="renderMarkdown(msg.content)"
                   @click="handleMessageClick"
                 ></div>
@@ -594,6 +595,64 @@ const renderMarkdown = (content: string): string => {
 </script>
 
 <style scoped>
+.message-panel {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.message-panel-self {
+  box-shadow:
+    0 10px 28px rgba(17, 17, 17, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.assistant-card {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    0 10px 28px rgba(15, 23, 42, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 0 0 1px rgba(217, 221, 227, 0.72);
+}
+
+.assistant-markdown :deep(p),
+.assistant-markdown :deep(ul),
+.assistant-markdown :deep(ol),
+.assistant-markdown :deep(pre),
+.assistant-markdown :deep(blockquote) {
+  margin-top: 0;
+  margin-bottom: 0.7em;
+}
+
+.assistant-markdown :deep(ul),
+.assistant-markdown :deep(ol) {
+  padding-left: 1.1rem;
+}
+
+.assistant-markdown :deep(li + li) {
+  margin-top: 0.2rem;
+}
+
+.assistant-markdown :deep(blockquote) {
+  border-left: 3px solid #d4d4d8;
+  padding-left: 0.85rem;
+  color: #52525b;
+  background: rgba(255, 255, 255, 0.44);
+  border-radius: 0 0.65rem 0.65rem 0;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+.assistant-markdown :deep(pre) {
+  box-shadow: inset 0 0 0 1px rgba(161, 161, 170, 0.2);
+}
+
+.assistant-markdown :deep(code:not(pre code)) {
+  background: rgba(212, 212, 216, 0.35);
+  border-radius: 0.4rem;
+  padding: 0.12rem 0.35rem;
+}
+
 .markdown-body :deep(p) {
   margin-bottom: 0.5em;
 }

@@ -31,15 +31,30 @@ hook-lifecycle-registry -> modules/hookbus/lifecycle/registry.ts
 - HookLifecycleRegistry.list -> runner_hookbus_lifecycle_list_015
 
 类型导出（Types, 与 SaaS 端语义对齐）
-- HookEvent<T>           -- name + payload + context + filter + declaration
+- HookEvent<T>           -- name + payload + context + filter + declaration + log
 - HookInvocationContext  -- token / principalId / principalType / source / traceId / runnerId / ts / extras
+                            extras.debug=true 触发 OTel sandbox tracer (hook-rpc.client 把 envelope.debug 写在这里)
 - HookHandler<T,R>       -- (event) => HookResult
 - HookMiddleware<T,R>    -- (event, next) => HookResult
 - HookRequiredAbility    -- { action, subject }; metadata.requiredAbility 透传给 SaaS HookAbilityMiddleware 校验
+- HookLog                -- handler 可见的日志接口: trace/debug/info/warn/error/event(name, attrs?)
+                            hookbus.service 注入到 event.log; 实现见 modules/observability/hook-log.factory.ts
+- HookLogEntry           -- drain 出来的单条 { ts, level, message, attrs? }; 写到 HookResult.debugLog
+- HookLogSession         -- { log, finalize({ ok?, error? }) => HookLogEntry[] }
+- HookResult.debugLog?   -- HookLogEntry[]; debug=true 时由 hookbus.service drain 注入
 
 模块功能描述（Description）
 提供 runner Hook 注册与发布能力，采用生产者-消费者队列执行，支持声明式中间件与方法绑定缓存，
 并通过 HTTP 与 Socket.IO 暴露调试入口。handler / middleware 签名与 SaaS 端完全一致, 都是 (event, next?) => HookResult。
+
+日志通道 (event.log, OTel-backed, debug 开关) — 与 SaaS 同构:
+- HookEvent.log 由 hookbus.service.consumeTask 在每次命中 reg 派发前注入, 不会为 undefined
+- debug=false (默认): 单例 NOOP_HOOK_LOG, 全部方法 no-op, 零开销; HookResult.debugLog 缺省
+- debug=true: 为该次调用造一次性 BasicTracerProvider + InMemorySpanExporter (modules/observability),
+  log.* → SpanEvent; handler 完成 finalize 同步 end span + 投影 SpanEvent 为 HookLogEntry[] 写到 result.debugLog
+- debug 信号链路: SaaS call-hook.tools → envelope.debug → hook-rpc.client.ts (写到 context.extras.debug=true)
+  → hookbus.service.consumeTask 创建 session → handler 写 → adaptResults 拍平合并到 reply.debugLog 回 SaaS
+- CLAUDE.md 强约束: handler 禁 console.log / 独立 LogRecord, 一律走 event.log
 
 payload schema 校验 (zod, SSOT):
 - 注册时通过 metadata.payloadSchema 声明 zod schema; consumeTask -> runHandlerWithSchema 在 handler 执行前自动 safeParse

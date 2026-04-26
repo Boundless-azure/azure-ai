@@ -9,6 +9,7 @@ import type {
   HookResult,
   HookDebugEvent,
 } from '../types/hook.types';
+import { createHookLogSession } from '../../observability/hook-log.factory';
 
 /**
  * @title HookBus 服务
@@ -140,6 +141,18 @@ export class RunnerHookBusService {
     });
   }
 
+  /** event.context.extras.debug=true 时为本次调用造 OTel log 会话, 否则走 noop 单例 */
+  private buildLogSession(event: HookEvent<unknown>) {
+    const debug = Boolean(event.context?.extras?.debug);
+    return createHookLogSession({
+      hookName: event.name,
+      debug,
+      ...(event.context?.traceId
+        ? { upstreamTraceId: event.context.traceId }
+        : {}),
+    });
+  }
+
   private schedule(): void {
     const concurrency = Math.max(1, this.options.concurrency ?? 1);
     while (this.runningWorkers < concurrency && this.queue.length > 0) {
@@ -163,19 +176,31 @@ export class RunnerHookBusService {
     );
     const results: Array<HookResult<unknown>> = [];
     for (const item of selected) {
+      const session = this.buildLogSession(task.event);
+      const decoratedEvent: HookEvent<unknown> = {
+        ...task.event,
+        log: session.log,
+      };
       const named = (task.event.declaration?.middlewares ?? [])
         .map((name) => this.namedMiddlewares.get(name))
         .filter((mw): mw is HookMiddleware<unknown, unknown> => Boolean(mw));
       const chain = this.compose([...named, ...this.middlewares], async () =>
-        this.runHandlerWithSchema(item, task.event),
+        this.runHandlerWithSchema(item, decoratedEvent),
       );
       try {
-        const result = await chain(task.event);
-        results.push(result);
+        const result = await chain(decoratedEvent);
+        const debugLog = session.finalize({
+          ok: result.status !== 'error',
+          ...(result.error ? { error: result.error } : {}),
+        });
+        results.push(debugLog.length > 0 ? { ...result, debugLog } : result);
       } catch (error) {
+        const msg = error instanceof Error ? error.message : 'hook failed';
+        const debugLog = session.finalize({ error: msg });
         results.push({
           status: 'error',
-          error: error instanceof Error ? error.message : 'hook failed',
+          error: msg,
+          ...(debugLog.length > 0 ? { debugLog } : {}),
         });
       }
     }

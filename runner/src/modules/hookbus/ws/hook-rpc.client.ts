@@ -39,19 +39,31 @@ interface CallReply {
 
 /**
  * 把 RunnerHookBusService 的 HookResult[] 适配成 CallReply 外形
+ * - debugLog 来自每个 result.debugLog (debug=true 时由 hookbus.service drain 出来), 拍平合并
  * @keyword-en adapt-bus-result
  */
-function adaptResults(results: Array<{ status: string; data?: unknown; error?: string }>): CallReply {
+function adaptResults(
+  results: Array<{
+    status: string;
+    data?: unknown;
+    error?: string;
+    debugLog?: unknown[];
+  }>,
+): CallReply {
   const errorMsg: string[] = [];
   const data: unknown[] = [];
+  const debugLog: unknown[] = [];
   for (const r of results) {
     if (r.status === 'error' || r.error) {
       errorMsg.push(r.error ?? 'hook-error');
     } else {
       data.push(r.data);
     }
+    if (r.debugLog && r.debugLog.length > 0) {
+      debugLog.push(...r.debugLog);
+    }
   }
-  return { errorMsg, result: data, debugLog: [] };
+  return { errorMsg, result: data, debugLog };
 }
 
 /**
@@ -270,18 +282,28 @@ export function attachHookRpc(socket: Socket, hookBus: RunnerHookBusService): vo
     ensureTick();
     let reply: CallReply;
     try {
+      // envelope.debug 透过 context.extras.debug 透传给 hookBus, 由 hookbus.service 创建 OTel session
+      // 注入 event.log; handler 写的日志在 result.debugLog 里出来, adaptResults 拍平合并到 reply.debugLog
+      const enrichedContext: HookInvocationContext | undefined = envelope.debug
+        ? {
+            ...(envelope.context ?? {}),
+            extras: { ...(envelope.context?.extras ?? {}), debug: true },
+          }
+        : envelope.context;
       const results = await hookBus.emit({
         name: envelope.hookName,
         payload: envelope.payload,
-        context: envelope.context,
+        context: enrichedContext,
       });
       reply = adaptResults(
-        results as unknown as Array<{ status: string; data?: unknown; error?: string }>,
+        results as unknown as Array<{
+          status: string;
+          data?: unknown;
+          error?: string;
+          debugLog?: unknown[];
+        }>,
       );
-      // debug / debugDb :: 占位, 后续接入 OTel sandbox + Mongo shadow (Phase 2)
-      if (envelope.debug) {
-        reply.debugLog.push({ level: 'info', msg: 'debug-trace placeholder, OTel pending' });
-      }
+      // debugDb :: 占位, 后续接入 Mongo shadow (Phase 2)
       if (envelope.debugDb) {
         reply.debugLog.push({ level: 'info', msg: 'debug-db placeholder, mongo shadow pending' });
       }

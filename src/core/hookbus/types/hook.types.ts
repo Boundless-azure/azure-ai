@@ -10,6 +10,44 @@ import type { HookResultStatus, HookPhase } from '../enums/hook.enums';
  * @keywords-en hook-types, invocation-context, event-shape, middleware, runtime-injected
  */
 
+/**
+ * Hook 日志接口 (event.log)
+ * - handler 通过 event.log.info(...) 写日志, 禁 console.log / 独立 LogRecord
+ * - 实现见 core/observability/services/hook-log.factory.ts
+ *   * debug=false 走 noop 单例, 零开销
+ *   * debug=true 落 OTel SpanEvent, finalize drain 进 reply.debugLog
+ * @keyword-en hook-log-api
+ */
+export interface HookLog {
+  trace(message: string, attrs?: Record<string, unknown>): void;
+  debug(message: string, attrs?: Record<string, unknown>): void;
+  info(message: string, attrs?: Record<string, unknown>): void;
+  warn(message: string, attrs?: Record<string, unknown>): void;
+  error(message: string, attrs?: Record<string, unknown>): void;
+  /** 自定义事件名, 对应 OTel SpanEvent.name */
+  event(name: string, attrs?: Record<string, unknown>): void;
+}
+
+/**
+ * drain 出来的单条日志, 透过 reply.debugLog 回到 SaaS / LLM
+ * @keyword-en hook-log-entry
+ */
+export interface HookLogEntry {
+  ts: number;
+  level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'event';
+  message: string;
+  attrs?: Record<string, unknown>;
+}
+
+/**
+ * 一次 hook 调用的 log 会话; invoker 创建, 注入到 event.log, 调完 finalize 拿条目
+ * @keyword-en hook-log-session
+ */
+export interface HookLogSession {
+  log: HookLog;
+  finalize(opts?: { ok?: boolean; error?: string }): HookLogEntry[];
+}
+
 export interface HookFilter {
   pluginId?: string;
   pluginName?: string;
@@ -98,6 +136,12 @@ export interface HookResult<R = unknown> {
   data?: R;
   error?: string;
   durationMs?: number;
+  /**
+   * debug=true 时由 invoker drain HookLogSession 注入; 否则缺省。
+   * 走 reply.debugLog 回 LLM / SaaS, 不走 console.log / 独立 LogRecord。
+   * @keyword-en debug-log
+   */
+  debugLog?: HookLogEntry[];
 }
 
 export interface HookDebugEvent {
@@ -117,6 +161,13 @@ export interface HookEvent<T = unknown> {
   declaration?: HookDeclaration;
   /** captureSource 填的调用栈起点, 仅 SaaS 调试用 */
   callSite?: { file?: string; line?: number; stack?: string[] };
+  /**
+   * Hook 日志接口 (event.log.info(...) 等); 由 invoker 注入, 永远非空。
+   * - debug=false 时是 noop 单例, 零开销
+   * - debug=true 时挂在一次性 InMemorySpanExporter 上, finalize drain 进 reply.debugLog
+   * @keyword-en hook-log-on-event
+   */
+  log?: HookLog;
 }
 
 export type HookHandler<T = unknown, R = unknown> = (

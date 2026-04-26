@@ -7,6 +7,7 @@ import type {
   HookResult,
 } from '../types/hook.types';
 import { HookCacheService } from '../cache/hook.cache';
+import { createHookLogSession } from '@core/observability/services/hook-log.factory';
 
 /**
  * @title Hook 调用器服务
@@ -44,8 +45,17 @@ export class HookInvokerService {
       return [{ status: HookResultStatus.Skipped }];
     }
 
+    // event.context.extras.debug=true 触发 OTel sandbox tracer (单次调用范围内, 多个命中 reg 各持独立会话)
+    const debug = Boolean(event.context?.extras?.debug);
+    const upstreamTraceId = event.context?.traceId;
+
     const tasks = regs.map(async (reg) => {
       const start = Date.now();
+      const session = createHookLogSession({
+        hookName: event.name,
+        debug,
+        upstreamTraceId,
+      });
       const eventMws = (event.declaration?.middlewares ?? [])
         .map((name) => this.namedMiddlewares.get(name))
         .filter((item): item is HookMiddleware<T, R> => Boolean(item));
@@ -54,28 +64,41 @@ export class HookInvokerService {
         async (ev) => this.runHandlerWithSchema(reg, ev),
       );
       // metadata.requiredAbility 镜像到 event.declaration 给中间件读 (不污染原 event)
-      const decorated: HookEvent<T> = reg.metadata?.requiredAbility
-        ? {
-            ...event,
-            declaration: {
-              ...event.declaration,
-              requiredAbility: reg.metadata.requiredAbility,
-            },
-          }
-        : event;
+      const decorated: HookEvent<T> = {
+        ...event,
+        log: session.log,
+        ...(reg.metadata?.requiredAbility
+          ? {
+              declaration: {
+                ...event.declaration,
+                requiredAbility: reg.metadata.requiredAbility,
+              },
+            }
+          : {}),
+      };
       try {
         const res = await chain(decorated);
         const duration = Date.now() - start;
         await this.safeRecordStatus(event.name, res.status);
-        return { ...res, durationMs: duration } as HookResult<R>;
+        const debugLog = session.finalize({
+          ok: res.status !== HookResultStatus.Error,
+          ...(res.error ? { error: res.error } : {}),
+        });
+        return {
+          ...res,
+          durationMs: duration,
+          ...(debugLog.length > 0 ? { debugLog } : {}),
+        } as HookResult<R>;
       } catch (e) {
         const duration = Date.now() - start;
         const msg = (e as Error)?.message ?? 'Hook execution error';
         await this.safeRecordStatus(event.name, HookResultStatus.Error);
+        const debugLog = session.finalize({ error: msg });
         return {
           status: HookResultStatus.Error,
           error: msg,
           durationMs: duration,
+          ...(debugLog.length > 0 ? { debugLog } : {}),
         } as HookResult<R>;
       }
     });
