@@ -402,12 +402,8 @@ export class KnowledgeService {
     // 聚合 tag 频次 (db + local 共一套统计)
     const tagCount = new Map<string, number>();
     const allTagsArrays: Array<readonly string[]> = [
-      ...dbBooks.map((b) =>
-        Array.isArray(b.tags) ? (b.tags as string[]) : [],
-      ),
-      ...localBooks.map((b) =>
-        Array.isArray(b.tags) ? (b.tags as string[]) : [],
-      ),
+      ...dbBooks.map((b) => (Array.isArray(b.tags) ? b.tags : [])),
+      ...localBooks.map((b) => (Array.isArray(b.tags) ? b.tags : [])),
     ];
     for (const arr of allTagsArrays) {
       for (const t of arr) {
@@ -468,7 +464,7 @@ export class KnowledgeService {
       if (!b.active) return false;
       if (opts?.type && b.type !== opts.type) return false;
       if (wantTags.length === 0) return true;
-      const bookTags = Array.isArray(b.tags) ? (b.tags as string[]) : [];
+      const bookTags = Array.isArray(b.tags) ? b.tags : [];
       // 与 db 侧 ILIKE %want% 同语义: 大小写不敏感子串匹配
       return wantTags.some((want) => {
         const w = want.toLowerCase();
