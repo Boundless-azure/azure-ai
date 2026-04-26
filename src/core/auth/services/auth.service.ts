@@ -71,7 +71,7 @@ export class AuthService {
    */
   async login(dto: LoginDto): Promise<LoginResponse> {
     if (!dto.email && !dto.phone) {
-      await this.emitAuthHook('onAuthLoginFailed', {
+      await this.emitAuthHook('saas.app.auth.loginFailed', {
         identifier: dto.email || dto.phone || '',
         reason: 'missing identifier',
       });
@@ -87,7 +87,7 @@ export class AuthService {
     }
 
     if (!user || !user.passwordSalt || !user.passwordHash) {
-      await this.emitAuthHook('onAuthLoginFailed', {
+      await this.emitAuthHook('saas.app.auth.loginFailed', {
         identifier: dto.email || dto.phone || '',
         reason: 'invalid credentials',
       });
@@ -96,7 +96,7 @@ export class AuthService {
 
     // 检查账号锁定
     if (user.lockedUntil && user.lockedUntil > new Date()) {
-      await this.emitAuthHook('onAuthLoginFailed', {
+      await this.emitAuthHook('saas.app.auth.loginFailed', {
         identifier: dto.email || dto.phone || '',
         reason: 'account is locked',
       });
@@ -117,7 +117,7 @@ export class AuthService {
         user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 锁定15分钟
       }
       await this.userRepo.save(user);
-      await this.emitAuthHook('onAuthLoginFailed', {
+      await this.emitAuthHook('saas.app.auth.loginFailed', {
         identifier: dto.email || dto.phone || '',
         reason: 'invalid credentials',
       });
@@ -130,7 +130,7 @@ export class AuthService {
     });
 
     if (!principal) {
-      await this.emitAuthHook('onAuthLoginFailed', {
+      await this.emitAuthHook('saas.app.auth.loginFailed', {
         identifier: dto.email || dto.phone || '',
         reason: 'principal not found',
       });
@@ -186,7 +186,7 @@ export class AuthService {
       return raw;
     })();
 
-    await this.emitAuthHook('onAuthLoginSuccess', {
+    await this.emitAuthHook('saas.app.auth.loginSuccess', {
       principalId: principal.id,
       userId: user.id,
       loginAt: user.lastLoginAt?.toISOString() ?? new Date().toISOString(),
@@ -218,7 +218,7 @@ export class AuthService {
     dto: ChangePasswordDto,
   ): Promise<void> {
     if (!principalId || !principalId.trim()) {
-      await this.emitAuthHook('onAuthPasswordChanged', {
+      await this.emitAuthHook('saas.app.auth.passwordChanged', {
         principalId: '',
         ok: false,
       });
@@ -227,7 +227,7 @@ export class AuthService {
     const current = dto.currentPassword?.trim();
     const next = dto.nextPassword?.trim();
     if (!current || !next) {
-      await this.emitAuthHook('onAuthPasswordChanged', {
+      await this.emitAuthHook('saas.app.auth.passwordChanged', {
         principalId,
         ok: false,
       });
@@ -237,7 +237,7 @@ export class AuthService {
       where: { principalId, isDelete: false },
     });
     if (!user || !user.passwordSalt || !user.passwordHash) {
-      await this.emitAuthHook('onAuthPasswordChanged', {
+      await this.emitAuthHook('saas.app.auth.passwordChanged', {
         principalId,
         ok: false,
       });
@@ -249,7 +249,7 @@ export class AuthService {
       this.ensureString(user.passwordHash),
     );
     if (!ok) {
-      await this.emitAuthHook('onAuthPasswordChanged', {
+      await this.emitAuthHook('saas.app.auth.passwordChanged', {
         principalId,
         ok: false,
       });
@@ -262,7 +262,7 @@ export class AuthService {
     user.loginAttempts = 0;
     user.lockedUntil = null;
     await this.userRepo.save(user);
-    await this.emitAuthHook('onAuthPasswordChanged', {
+    await this.emitAuthHook('saas.app.auth.passwordChanged', {
       principalId,
       ok: true,
     });

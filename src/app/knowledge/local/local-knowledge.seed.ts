@@ -24,7 +24,7 @@ export const LOCAL_BOOK_CONVERSATION_HOOK: KnowledgeBookInfo = {
   type: KnowledgeBookType.SKILL,
   name: '对话 Hook 技能手册',
   description:
-    '描述如何通过 call_hook 在 IM 对话中发送消息，包含 send_msg hook 的 payload 结构与使用场景。',
+    '描述如何通过 call_hook 在 IM 对话中发送消息，包含 saas.app.conversation.sendMsg hook 的 payload 结构与使用场景。',
   creatorId: null,
   isEmbedded: false,
   active: true,
@@ -67,7 +67,7 @@ export const LOCAL_CHAPTER_CONVERSATION_HOOK_LM: KnowledgeChapterInfo = {
   isLmRequired: true,
   content: `# 对话 Hook 技能手册 — LM 必读
 
-## send_msg
+## saas.app.conversation.sendMsg
 
 通过 \`call_hook\` 向 IM 会话发送消息。
 
@@ -75,7 +75,7 @@ export const LOCAL_CHAPTER_CONVERSATION_HOOK_LM: KnowledgeChapterInfo = {
 
 \`\`\`
 call_hook(
-  hookName = "send_msg",
+  hookName = "saas.app.conversation.sendMsg",
   payload  = {
     sessionId:          string,  // 目标会话 ID（必填）
     content:            string,  // 消息文本内容（必填）
@@ -94,7 +94,7 @@ call_hook(
 
 - **replyToId 必须传入**：值固定为本轮被触发的消息 ID，不可省略或编造。
 - **单条消息最多回复 4 次**：超出后 hook 将返回 error，停止发送。
-- 直接 return 文字是无效的，必须通过 \`call_hook("send_msg", ...)\` 才能让用户收到消息。
+- 直接 return 文字是无效的，必须通过 \`call_hook("saas.app.conversation.sendMsg", ...)\` 才能让用户收到消息。
 - 可多次调用，模拟分段回复（如短句分段发送），但不超过 4 次。
 
 ### 使用场景
@@ -105,7 +105,7 @@ call_hook(
 | 分段表达 | 将长回复分成多条短消息发送，模拟真实对话节奏 |
 | 确认反馈 | 执行某任务后，通过本 hook 通知用户执行结果 |
 
-> ⚠️ 本手册仅描述 IM 对话层 hook，其他 hook（如 web_control）请查阅对应技能手册。
+> ⚠️ 本手册仅描述 IM 对话层 hook，其他 hook（如 saas.app.conversation.webControl）请查阅对应技能手册。
 `,
 };
 
@@ -123,7 +123,7 @@ export const LOCAL_CHAPTER_WEB_CONTROL_LM: KnowledgeChapterInfo = {
 
 > ⚠️ **仅适用于已接入 Web MCP 的页面**。如果当前会话没有连接的前端页面，或前端页面未集成 WebMCP SDK，以下 hook 将返回 error。
 
-## web_control
+## saas.app.conversation.webControl
 
 向前端页面发送控制指令（setData / callEmit）。
 
@@ -131,7 +131,7 @@ export const LOCAL_CHAPTER_WEB_CONTROL_LM: KnowledgeChapterInfo = {
 
 \`\`\`
 call_hook(
-  hookName = "web_control",
+  hookName = "saas.app.conversation.webControl",
   payload  = {
     sessionId: string,           // 当前会话 ID（必填）
     type:      "data" | "emit",  // 操作类型（必填）
@@ -148,26 +148,26 @@ call_hook(
 
 ---
 
-## web_control_pageinfo
+## saas.app.conversation.webControlPageinfo
 
 获取当前会话页面注册的 Schema（了解页面支持哪些 data/emit 操作）。
 
 \`\`\`
 call_hook(
-  hookName = "web_control_pageinfo",
+  hookName = "saas.app.conversation.webControlPageinfo",
   payload  = { sessionId: string }
 )
 \`\`\`
 
 ---
 
-## web_control_data
+## saas.app.conversation.webControlData
 
 实时获取前端某个 data key 的当前值。
 
 \`\`\`
 call_hook(
-  hookName = "web_control_data",
+  hookName = "saas.app.conversation.webControlData",
   payload  = { sessionId: string, dataKey: string }
 )
 \`\`\`
@@ -176,18 +176,18 @@ call_hook(
 
 ## 推荐使用流程
 
-1. 先调用 \`web_control_pageinfo\` 获取页面 Schema，了解页面结构。
-2. 根据 Schema 确定操作目标，再调用 \`web_control\` 下发指令。
-3. 如需读取最新状态，使用 \`web_control_data\`。
+1. 先调用 \`saas.app.conversation.webControlPageinfo\` 获取页面 Schema，了解页面结构。
+2. 根据 Schema 确定操作目标，再调用 \`saas.app.conversation.webControl\` 下发指令。
+3. 如需读取最新状态，使用 \`saas.app.conversation.webControlData\`。
 
 ## 使用场景
 
 | 场景 | hook | 说明 |
 |------|------|------|
-| 表单自动填充 | web_control (data) | AI 将结果写入前端表单字段 |
-| 触发页面行为 | web_control (emit) | 触发按钮点击、弹窗、刷新等事件 |
-| 了解页面状态 | web_control_data | 读取当前输入值或状态变量 |
-| 了解页面能力 | web_control_pageinfo | 首次控制前，先查询页面 Schema |
+| 表单自动填充 | saas.app.conversation.webControl (data) | AI 将结果写入前端表单字段 |
+| 触发页面行为 | saas.app.conversation.webControl (emit) | 触发按钮点击、弹窗、刷新等事件 |
+| 了解页面状态 | saas.app.conversation.webControlData | 读取当前输入值或状态变量 |
+| 了解页面能力 | saas.app.conversation.webControlPageinfo | 首次控制前，先查询页面 Schema |
 `,
 };
 

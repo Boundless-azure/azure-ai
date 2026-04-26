@@ -15,6 +15,17 @@ export interface HookFilter {
 }
 
 /**
+ * Hook 所需能力声明 (CASL action/subject)
+ * - 与 SaaS 端 HookRequiredAbility / identity RequiredAbility 同构
+ * - Runner 不本地校验 (ability 数据在 SaaS), 仅透传到 metadata 并通过 runner.system.hookbus.getInfo 暴露给 LLM 自查
+ * @keyword-en hook-required-ability
+ */
+export interface HookRequiredAbility {
+  action: string;
+  subject: string;
+}
+
+/**
  * Hook 调用环境上下文
  * - LLM 不可见, 不通过工具 schema 暴露
  * - SaaS 派发到 Runner 时通过 WS envelope.context 透传, Runner 端透传给 hookBus.emit
@@ -59,13 +70,20 @@ export interface HookMetadata {
   methodRef?: string;
   /**
    * @field payloadSchema
-   * @description Zod schema (来自 Unit Core / 用户声明), 用于在 get_hook_info 时派生 JSON Schema。
+   * @description Zod schema (来自 Unit Core / 用户声明), 用于在 runner.system.hookbus.getInfo 时派生 JSON Schema。
    *              强约束: 不允许 LLM 写, 仅 Unit Core / Integrator 注册时填入。
    * @keyword-en payload-schema, zod
    */
   payloadSchema?: import('zod').ZodTypeAny;
   /** 是否要求调用者携带有效 token */
   requireAuth?: boolean;
+  /**
+   * 调用方所需能力 (action/subject); 一个或多个 (多个为 AND)。
+   * - Runner 端不本地校验, 仅透传 + LLM 自查暴露
+   * - 由 SaaS 端 HookAbilityMiddleware 在派发 hook:call 前完成校验
+   * @keyword-en required-ability
+   */
+  requiredAbility?: HookRequiredAbility | HookRequiredAbility[];
 }
 
 export interface HookResult<TResult = unknown> {
@@ -85,7 +103,6 @@ export interface HookDebugEvent {
 export interface HookDeclaration {
   description?: string;
   middlewares?: string[];
-  payloadDto?: new () => object;
   filter?: HookFilter;
   errorMode?: 'capture' | 'throw';
 }

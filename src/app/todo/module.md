@@ -41,7 +41,11 @@
   - POST /todo/followups/:followupId/comments
   - GET /todo/followups/:followupId/comments
   - DELETE /todo/comments/:commentId
-  - HookLifecycle on CRUD before/after/error
+  - HookLifecycle on CRUD: 全部声明 zod payloadSchema (input 形状), lifecycle-registration 自动包成 envelope
+    · 命名遵循 platform.app.module.action:
+    · saas.app.todo.list (status?/followerId?/initiatorId?/q?), saas.app.todo.get ({id}),
+      saas.app.todo.create (CreateTodoInput), saas.app.todo.update (UpdateTodoInput),
+      saas.app.todo.delete ({id})
 
 关键词索引（中文 / English Keyword Index）
 待办事项实体 -> app/todo/entities/todo.entity.ts

@@ -21,3 +21,7 @@ unit-types -> unit-core/types/unit.types.ts
 
 模块功能描述（Description）
 Unit Core 模块作为 runner 的能力基座，负责扫描 workspace 与 system-unit 的 Hook 描述并注册至 HookBus，同时按需热加载 unit.core 实现并持久化能力清单。
+
+registerToHookBus 把 unit.hook.ts 声明的 `payloadSchema` (zod) 透传到 metadata, 这样:
+- HookBus invoker 在 handler 前自动 safeParse
+- LLM 通过 runner.system.hookbus.getInfo 拿到的 payloadSchema 即来自此字段 (z.toJSONSchema 派生)

@@ -137,7 +137,7 @@ export class AgentRuntimeService {
           '[system prompt]',
           `你处于主动对话模式。这点最重要,你的回答必须通过调用工具来发送给用户，而不是直接返回，直接返回是无效的。`,
           `当前 IM 会话 session_id="${proactiveContext.sessionId}"，你的 principal_id="${proactiveContext.agentPrincipalId}"。`,
-          `发送消息请参阅【对话 Hook 技能手册】中的 send_msg hook 说明（bookId=local_conversation_hook_skill），其中包含完整的 payload 结构、参数约束和使用场景。`,
+          `发送消息请参阅【对话 Hook 技能手册】中的 saas.app.conversation.sendMsg hook 说明（bookId=local_conversation_hook_skill），其中包含完整的 payload 结构、参数约束和使用场景。`,
           `replyToId 固定为 "${proactiveContext.triggerMessageId}"，不得修改或编造。`,
           `根据上下文自主决定是否发送、何时发送、发送什么。在上下文中要结合所有消息来判断决定如何返回,不能出现回答不连贯的问题.`,
           `有时候用户是发的连贯信息,要结合历史消息来进行综合回复,而不是只针对最后一条消息进行回复。`,

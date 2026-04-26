@@ -224,7 +224,7 @@ export class OrderService {
 需求描述
   ↓
 Design Agent (1 次 LLM 调用)
-  → 读 Knowledge(get_knowledge_toc + search_knowledge)查相关技能手册
+  → 读 Knowledge(saas.app.knowledge.getToc + saas.app.knowledge.search)查相关技能手册
   → 产出完整 JSON(entities + hooks + service + tests)
   ↓
 人工 review(可选,重大 service 建议)

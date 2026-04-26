@@ -61,7 +61,7 @@ export class ImMessageService {
     @Inject(forwardRef(() => ImGateway))
     private readonly imGateway: ImGateway,
     private readonly agentRuntimeService: AgentRuntimeService,
-  ) { }
+  ) {}
 
   // ===== agent 触发队列：执行锁（运行中保存最新 pending，完成后 5s 防抖再消费）=====
   // key: `${sessionId}:${agentPrincipalId}` — 每个 agent 独立队列，群聊不同 agent 互不干扰
@@ -226,10 +226,10 @@ export class ImMessageService {
       metadata:
         mentions.length > 0
           ? {
-            mentions: mentions.map((m) => ({
-              principalId: m.principalId,
-            })),
-          }
+              mentions: mentions.map((m) => ({
+                principalId: m.principalId,
+              })),
+            }
           : null,
       isAnnouncement: false,
       isEdited: false,
@@ -394,9 +394,9 @@ export class ImMessageService {
     ] as string[];
     const senders = senderIds.length
       ? await this.principalRepo
-        .createQueryBuilder('p')
-        .where('p.id IN (:...ids)', { ids: senderIds })
-        .getMany()
+          .createQueryBuilder('p')
+          .where('p.id IN (:...ids)', { ids: senderIds })
+          .getMany()
       : [];
     const senderMap = new Map(senders.map((s) => [s.id, s.displayName]));
 
@@ -534,9 +534,9 @@ export class ImMessageService {
     ] as string[];
     const senders = senderIds.length
       ? await this.principalRepo
-        .createQueryBuilder('p')
-        .where('p.id IN (:...ids)', { ids: senderIds })
-        .getMany()
+          .createQueryBuilder('p')
+          .where('p.id IN (:...ids)', { ids: senderIds })
+          .getMany()
       : [];
     const senderMap = new Map(senders.map((s) => [s.id, s.displayName]));
 
@@ -678,9 +678,10 @@ export class ImMessageService {
   }
 
   /**
-   * 执行主动对话模式的一轮 LLM 请求，并在结束后验证是否有 assistant 消息产生。
-   * 若没有则注入隐藏提醒消息后重试一次（isRetry=true 时不再继续）。
-   * @keyword-en run-proactive-dialogue verify-assistant-reply retry
+   * 执行主动对话模式的一轮 LLM 请求, 结束后验证是否有 assistant 消息产生。
+   * 若 LLM 没通过 call_hook(saas.app.conversation.sendMsg) 发消息, 则把流式收集到的文本直接当回复发出去 (前提: 该轮没发过)。
+   * 不再注入提醒消息重试 — 一轮定胜负, 减少延迟和 token 浪费。
+   * @keyword-en run-proactive-dialogue collect-fallback no-retry
    */
   private async runProactiveDialogue(
     agent: import('@/app/agent/entities/agent.entity').AgentEntity,
@@ -691,10 +692,9 @@ export class ImMessageService {
       userContent: string;
     },
     messages: ChatMessage[],
-    isRetry: boolean,
   ): Promise<void> {
     const startedAt = new Date();
-    const tag = isRetry ? '[proactive:retry]' : '[proactive]';
+    const tag = '[proactive]';
 
     this.logger.log(
       `${tag} start — session=${payload.sessionId} agent=${payload.agentPrincipalId} msgs=${messages.length} trigger="${payload.userContent?.slice(0, 60)}"`,
@@ -729,7 +729,7 @@ export class ImMessageService {
       },
     ) as AsyncGenerator<unknown>;
 
-    // 同时收集 LLM 文本输出，供兜底回复使用
+    // 同时收集 LLM 文本输出, 供兜底回复使用
     let collectedText = '';
     try {
       for await (const ev of gen) {
@@ -744,7 +744,7 @@ export class ImMessageService {
         }
       }
     } finally {
-      // 无论正常结束还是异常，始终清除输入状态
+      // 无论正常结束还是异常, 始终清除输入状态
       this.imGateway.broadcastTyping(
         payload.sessionId,
         payload.agentPrincipalId,
@@ -752,8 +752,7 @@ export class ImMessageService {
       );
     }
 
-    // 查询是否已存在 reply_to_id = triggerMessageId 的 assistant 消息
-    // call_hook 是完整 await 的同步调用，generator 结束前 DB 必然已落库
+    // call_hook 是完整 await 的同步调用, generator 结束前 DB 必然已落库
     const elapsed = Date.now() - startedAt.getTime();
     const hasReply = await this.hasReplyToMessage(
       payload.sessionId,
@@ -766,50 +765,30 @@ export class ImMessageService {
       return;
     }
 
-    this.logger.warn(
-      `${tag} NO reply detected after ${elapsed}ms — session=${payload.sessionId}`,
-    );
-
-    if (isRetry) {
-      // 重试仍未回复，尝试将 LLM 收集到的文本兜底发送给用户
-      const fallback = collectedText.trim();
-      if (fallback) {
-        this.logger.warn(
-          `${tag} using collected text as fallback reply (${fallback.length} chars)`,
-        );
-        try {
-          await this.sendMessage(
-            payload.agentPrincipalId.trim(),
-            {
-              sessionId: payload.sessionId,
-              content: fallback,
-              replyToId: payload.triggerMessageId,
-            },
-            { role: 'assistant', skipAgentTrigger: true },
-          );
-        } catch (err) {
-          this.logger.error(`${tag} fallback send failed: ${String(err)}`);
-        }
-      } else {
-        this.logger.warn(`${tag} giving up — no text collected either`);
-      }
+    // 没通过 saas.app.conversation.sendMsg 发消息 → 把流式收集到的文本直接兜底发出去
+    const fallback = collectedText.trim();
+    if (!fallback) {
+      this.logger.warn(
+        `${tag} NO reply, NO text collected — giving up (${elapsed}ms)`,
+      );
       return;
     }
-
-    // 注入隐藏提醒消息，追加到 messages 末尾后重试
-    const reminderContent =
-      '【系统提示】本轮你没有通过 call_hook 发送任何消息给用户。\n' +
-      `请立即调用 call_hook(hookName="send_msg", payload={ sessionId="${payload.sessionId}", senderPrincipalId="${payload.agentPrincipalId}", replyToId="${payload.triggerMessageId}", content="..." }) 来回复用户。\n` +
-      `replyToId 必须是 "${payload.triggerMessageId}"，不得修改或省略。\n` +
-      '直接返回文本是无效的，用户看不到你的输出，必须通过工具调用才能送达。' +
-      '这条不用回复的,因为这条是系统注入的提醒消息,你在产生回复时要忽略系统对你产生了提醒这一事实,也就是说你要当做没有收到过这条消息一样来判断和生成回复内容。';
-    const retryMessages: ChatMessage[] = [
-      ...messages,
-      { role: 'user', content: reminderContent },
-    ];
-
-    this.logger.warn(`[proactive] injecting reminder → retrying once`);
-    await this.runProactiveDialogue(agent, payload, retryMessages, true);
+    this.logger.warn(
+      `${tag} NO sendMsg call, falling back to collected text (${fallback.length} chars, ${elapsed}ms)`,
+    );
+    try {
+      await this.sendMessage(
+        payload.agentPrincipalId.trim(),
+        {
+          sessionId: payload.sessionId,
+          content: fallback,
+          replyToId: payload.triggerMessageId,
+        },
+        { role: 'assistant', skipAgentTrigger: true },
+      );
+    } catch (err) {
+      this.logger.error(`${tag} fallback send failed: ${String(err)}`);
+    }
   }
 
   /**
@@ -872,9 +851,10 @@ export class ImMessageService {
     });
 
     // === 主动对话模式 ===
-    // proactiveChatEnabled 时 LLM 通过 call_hook('send_msg', ...) 自行决定何时发消息
+    // proactiveChatEnabled 时 LLM 通过 call_hook('saas.app.conversation.sendMsg', ...) 自行决定何时发消息;
+    // 没发的情况下 runProactiveDialogue 会用流式收集的文本兜底发, 不再注入提醒重试.
     if (agent.proactiveChatEnabled !== false) {
-      await this.runProactiveDialogue(agent, payload, messages, false);
+      await this.runProactiveDialogue(agent, payload, messages);
       return;
     }
 

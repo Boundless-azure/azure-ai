@@ -8,6 +8,7 @@ import {
   Query,
   Post,
 } from '@nestjs/common';
+import { z } from 'zod';
 import { AgentService } from '../services/agent.service';
 import { AgentEntity } from '../entities/agent.entity';
 import {
@@ -17,6 +18,29 @@ import {
 } from '../types/agent.types';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+
+/**
+ * @title Agent Hook payload schema (input 形状, SSOT)
+ * @keywords-cn AgentHook, payloadSchema, input
+ * @keywords-en agent-hook, payload-schema, input
+ */
+const onAgentListInput = z.object({
+  q: z.string().optional(),
+});
+
+const onAgentUpdateInput = z.object({
+  nickname: z.string().min(1).max(100).optional(),
+  purpose: z.string().optional(),
+  avatarUrl: z.string().min(1).max(255).optional(),
+  aiModelIds: z.array(z.string()).optional(),
+  proactiveChatEnabled: z.boolean().optional(),
+});
+
+const onAgentEmbeddingsUpdateInput = z.object({
+  ids: z.array(z.string()).optional(),
+});
+
+const idParamInput = z.object({ id: z.string() });
 
 /**
  * @title Agent 控制器
@@ -31,9 +55,9 @@ export class AgentController {
   @Get()
   @CheckAbility('read', 'agent')
   @HookLifecycle({
-    hook: 'onAgentList',
+    hook: 'saas.app.agent.list',
     description: 'Agent列表查询',
-    payloadDto: QueryAgentDto,
+    payloadSchema: onAgentListInput,
     payloadSource: 'query',
   })
   async list(@Query() query: QueryAgentDto): Promise<AgentEntity[]> {
@@ -43,8 +67,9 @@ export class AgentController {
   @Get(':id')
   @CheckAbility('read', 'agent')
   @HookLifecycle({
-    hook: 'onAgentGet',
+    hook: 'saas.app.agent.get',
     description: 'Agent详情查询',
+    payloadSchema: idParamInput,
     payloadSource: 'params',
   })
   async get(@Param('id') id: string): Promise<AgentEntity | null> {
@@ -54,9 +79,9 @@ export class AgentController {
   @Put(':id')
   @CheckAbility('update', 'agent')
   @HookLifecycle({
-    hook: 'onAgentUpdate',
+    hook: 'saas.app.agent.update',
     description: 'Agent更新',
-    payloadDto: UpdateAgentDto,
+    payloadSchema: onAgentUpdateInput,
     payloadSource: 'body',
   })
   async update(
@@ -69,8 +94,9 @@ export class AgentController {
   @Delete(':id')
   @CheckAbility('delete', 'agent')
   @HookLifecycle({
-    hook: 'onAgentDelete',
+    hook: 'saas.app.agent.delete',
     description: 'Agent删除',
+    payloadSchema: idParamInput,
     payloadSource: 'params',
   })
   async delete(@Param('id') id: string): Promise<{ ok: boolean }> {
@@ -87,9 +113,9 @@ export class AgentController {
   @Post('embeddings')
   @CheckAbility('update', 'agent')
   @HookLifecycle({
-    hook: 'onAgentEmbeddingsUpdate',
+    hook: 'saas.app.agent.embeddingsUpdate',
     description: 'Agent向量更新',
-    payloadDto: UpdateEmbeddingsDto,
+    payloadSchema: onAgentEmbeddingsUpdateInput,
     payloadSource: 'body',
   })
   async updateEmbeddings(@Body() dto: UpdateEmbeddingsDto): Promise<{

@@ -8,13 +8,13 @@ import { mongoOps } from './unit-core/mongo.ops';
  * @keywords-en hook-mapping, mongo-ops, crud
  */
 export const unitCore: UnitCoreModule['handlers'] = {
-  'mongo:insertOne': async (ctx, payload) =>
+  'runner.unitcore.mongo.insertOne': async (ctx, payload) =>
     mongoOps.insertOne(ctx, payload as { db?: string; collection: string; doc: Record<string, unknown> }),
-  'mongo:find': async (ctx, payload) =>
+  'runner.unitcore.mongo.find': async (ctx, payload) =>
     mongoOps.find(ctx, payload as { db?: string; collection: string; filter?: Record<string, unknown>; limit?: number }),
-  'mongo:updateOne': async (ctx, payload) =>
+  'runner.unitcore.mongo.updateOne': async (ctx, payload) =>
     mongoOps.updateOne(ctx, payload as { db?: string; collection: string; filter: Record<string, unknown>; update: Record<string, unknown> }),
-  'mongo:deleteOne': async (ctx, payload) =>
+  'runner.unitcore.mongo.deleteOne': async (ctx, payload) =>
     mongoOps.deleteOne(ctx, payload as { db?: string; collection: string; filter: Record<string, unknown> }),
 };
 

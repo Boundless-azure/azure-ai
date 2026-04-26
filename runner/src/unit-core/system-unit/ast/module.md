@@ -13,4 +13,4 @@ ast-unit-ops -> unit-core/system-unit/ast/unit-core/ast.ops.ts
 - astOps.analyze -> unit_ast_analyze_001
 
 模块功能描述（Description）
-系统 AST 能力基于 TypeScript AST 解析 JS/TS 文件，输出函数位置与 JSDOC 描述信息，并通过 file:read Hook 获取文件内容。
+系统 AST 能力基于 TypeScript AST 解析 JS/TS 文件，输出函数位置与 JSDOC 描述信息，并通过 runner.unitcore.file.read Hook 获取文件内容。

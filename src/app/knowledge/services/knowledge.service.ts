@@ -42,7 +42,7 @@ export class KnowledgeService {
     private readonly bookRepo: Repository<KnowledgeBookEntity>,
     @InjectRepository(KnowledgeChapterEntity)
     private readonly chapterRepo: Repository<KnowledgeChapterEntity>,
-  ) { }
+  ) {}
 
   // ========== 书本 CRUD ==========
 
@@ -82,9 +82,9 @@ export class KnowledgeService {
     const ids = books.map((b) => b.id);
     const counts: Array<{ book_id: string; count: string }> = ids.length
       ? await this.chapterRepo.manager.query(
-        `SELECT book_id, COUNT(*) as count FROM knowledge_chapters WHERE book_id = ANY($1) AND is_delete = false GROUP BY book_id`,
-        [ids],
-      )
+          `SELECT book_id, COUNT(*) as count FROM knowledge_chapters WHERE book_id = ANY($1) AND is_delete = false GROUP BY book_id`,
+          [ids],
+        )
       : [];
     const countMap = new Map(counts.map((c) => [c.book_id, Number(c.count)]));
 
@@ -357,10 +357,10 @@ export class KnowledgeService {
       .filter((b): b is KnowledgeBookInfo => b !== undefined);
     const dbResults = dbIds.length
       ? (
-        await this.bookRepo.find({
-          where: { id: In(dbIds), isDelete: false },
-        })
-      ).map((b) => this.toBookInfo(b))
+          await this.bookRepo.find({
+            where: { id: In(dbIds), isDelete: false },
+          })
+        ).map((b) => this.toBookInfo(b))
       : [];
     return [...localResults, ...dbResults];
   }
@@ -368,8 +368,69 @@ export class KnowledgeService {
   // ========== Tag 过滤列表 ==========
 
   /**
+   * 列举所有 tag 的频次榜 (db 书本 + 本地预置书本聚合)
+   * 默认/上限 400, 一次拿全景便于 LLM 决策, 超过用 cursor 翻页
+   * @keyword-en list-all-tags
+   */
+  async listAllTags(opts?: {
+    type?: KnowledgeBookType;
+    cursor?: number;
+    limit?: number;
+  }): Promise<{
+    items: Array<{ name: string; count: number }>;
+    total: number;
+    cursor: number;
+    nextCursor: number | null;
+  }> {
+    const TAG_PAGE_LIMIT = 400;
+    const limit = Math.max(
+      1,
+      Math.min(opts?.limit ?? TAG_PAGE_LIMIT, TAG_PAGE_LIMIT),
+    );
+    const cursor = Math.max(0, opts?.cursor ?? 0);
+
+    // db 书本
+    const where: Record<string, unknown> = { isDelete: false, active: true };
+    if (opts?.type) where['type'] = opts.type;
+    const dbBooks = await this.bookRepo.find({ where });
+
+    // 本地预置书本 (LOCAL_BOOKS 是 KnowledgeBookInfo 形态, 含 active 字段)
+    const localBooks = LOCAL_BOOKS.filter(
+      (b) => b.active && (!opts?.type || b.type === opts.type),
+    );
+
+    // 聚合 tag 频次 (db + local 共一套统计)
+    const tagCount = new Map<string, number>();
+    const allTagsArrays: Array<readonly string[]> = [
+      ...dbBooks.map((b) =>
+        Array.isArray(b.tags) ? (b.tags as string[]) : [],
+      ),
+      ...localBooks.map((b) =>
+        Array.isArray(b.tags) ? (b.tags as string[]) : [],
+      ),
+    ];
+    for (const arr of allTagsArrays) {
+      for (const t of arr) {
+        if (typeof t !== 'string' || !t) continue;
+        tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
+      }
+    }
+
+    const sorted = Array.from(tagCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+
+    const slice = sorted.slice(cursor, cursor + limit);
+    const nextCursor =
+      cursor + slice.length < sorted.length ? cursor + slice.length : null;
+
+    return { items: slice, total: sorted.length, cursor, nextCursor };
+  }
+
+  /**
    * 按 tag 列表过滤返回书本（最多 100 条），不传 tags 则返回全部前 100 条
-   * @keyword-en list-by-tags
+   * 同时合并 db 书本 + 本地预置书本 (LOCAL_BOOKS), 与 listAllTags 行为对齐
+   * @keyword-en list-by-tags merge-local
    */
   async listByTags(opts?: {
     tags?: string[];
@@ -378,29 +439,48 @@ export class KnowledgeService {
   }): Promise<KnowledgeBookInfo[]> {
     const limit = Math.min(opts?.limit ?? 100, 100);
 
-    let books: KnowledgeBookEntity[];
+    // ---- db 书本 ----
+    let dbBooks: KnowledgeBookEntity[];
     if (opts?.tags && opts.tags.length > 0) {
-      // simple-array 以逗号拼接存储，用 ANY + ILIKE 做兼容匹配
+      // simple-array 以逗号拼接存储，用 ILIKE 做兼容子串匹配
       const tagConditions = opts.tags
         .map((_, i) => `tags ILIKE $${i + 1}`)
         .join(' OR ');
       const params = opts.tags.map((t) => `%${t}%`);
       const typeClause = opts?.type ? ` AND type = '${opts.type}'` : '';
-      books = await this.bookRepo.manager.query(
+      dbBooks = await this.bookRepo.manager.query(
         `SELECT * FROM knowledge_books WHERE is_delete = false AND active = true AND (${tagConditions})${typeClause} ORDER BY created_at DESC LIMIT ${limit}`,
         params,
       );
     } else {
       const where: Record<string, unknown> = { isDelete: false, active: true };
       if (opts?.type) where['type'] = opts.type;
-      books = await this.bookRepo.find({
+      dbBooks = await this.bookRepo.find({
         where,
         order: { createdAt: 'DESC' },
         take: limit,
       });
     }
 
-    return books.map((b) => this.toBookInfo(b));
+    // ---- 本地预置书本 (同样按 tags / type / active 过滤) ----
+    const wantTags = (opts?.tags ?? []).filter(Boolean);
+    const localBooks = LOCAL_BOOKS.filter((b) => {
+      if (!b.active) return false;
+      if (opts?.type && b.type !== opts.type) return false;
+      if (wantTags.length === 0) return true;
+      const bookTags = Array.isArray(b.tags) ? (b.tags as string[]) : [];
+      // 与 db 侧 ILIKE %want% 同语义: 大小写不敏感子串匹配
+      return wantTags.some((want) => {
+        const w = want.toLowerCase();
+        return bookTags.some((t) => t.toLowerCase().includes(w));
+      });
+    });
+
+    const merged: KnowledgeBookInfo[] = [
+      ...dbBooks.map((b) => this.toBookInfo(b)),
+      ...localBooks,
+    ];
+    return merged.slice(0, limit);
   }
 
   // ========== 向量搜索 ==========

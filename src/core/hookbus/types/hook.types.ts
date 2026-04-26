@@ -45,10 +45,27 @@ export interface HookInvocationContext {
 
 export interface HookDeclaration {
   description?: string;
-  payloadDto?: new () => object;
   middlewares?: string[];
   filter?: HookFilter;
   errorMode?: 'capture' | 'throw';
+  /**
+   * runtime 镜像; 由 HookInvokerService.invoke 从命中的 reg.metadata.requiredAbility 复制过来,
+   * 让中间件无需访问 reg 即可读到能力要求 (中间件签名只接受 event)。
+   * @keyword-en required-ability-mirror
+   */
+  requiredAbility?: HookRequiredAbility | HookRequiredAbility[];
+}
+
+/**
+ * Hook 所需能力声明 (CASL action/subject)
+ * - 形状与 identity 模块的 RequiredAbility 同构, 但本类型刻意 in-place 定义,
+ *   避免 core/hookbus 反向依赖 app/identity
+ * - HookAbilityMiddleware 在 source === 'llm' 路径上据此调用 AbilityService.can(...)
+ * @keyword-en hook-required-ability
+ */
+export interface HookRequiredAbility {
+  action: string;
+  subject: string;
 }
 
 export interface HookMetadata {
@@ -67,6 +84,13 @@ export interface HookMetadata {
   requireAuth?: boolean;
   /** 控制器层桥接的方法引用 (className.methodName) */
   methodRef?: string;
+  /**
+   * 调用方所需能力 (action/subject); 一个或多个 (多个为 AND 关系)。
+   * - 由 @HookLifecycle 注册时从同方法 @CheckAbility 自动继承; 也可显式声明
+   * - HookAbilityMiddleware 仅在 context.source === 'llm' 时校验, 其他来源 (http/system) 由各自入口卫兵负责
+   * @keyword-en required-ability
+   */
+  requiredAbility?: HookRequiredAbility | HookRequiredAbility[];
 }
 
 export interface HookResult<R = unknown> {

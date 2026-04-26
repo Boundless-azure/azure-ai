@@ -51,10 +51,20 @@ export class HookInvokerService {
         .filter((item): item is HookMiddleware<T, R> => Boolean(item));
       const chain = this.compose<T, R>(
         [...eventMws, ...this.middlewares] as HookMiddleware<T, R>[],
-        async () => reg.handler(event),
+        async (ev) => this.runHandlerWithSchema(reg, ev),
       );
+      // metadata.requiredAbility 镜像到 event.declaration 给中间件读 (不污染原 event)
+      const decorated: HookEvent<T> = reg.metadata?.requiredAbility
+        ? {
+            ...event,
+            declaration: {
+              ...event.declaration,
+              requiredAbility: reg.metadata.requiredAbility,
+            },
+          }
+        : event;
       try {
-        const res = await chain(event);
+        const res = await chain(decorated);
         const duration = Date.now() - start;
         await this.safeRecordStatus(event.name, res.status);
         return { ...res, durationMs: duration } as HookResult<R>;
@@ -75,6 +85,29 @@ export class HookInvokerService {
         ? s.value
         : { status: HookResultStatus.Error, error: 'handler crashed' },
     );
+  }
+
+  /**
+   * 紧贴 handler 的 zod payload 校验; metadata.payloadSchema 缺省时跳过 (兼容存量 hook)
+   * @keyword-en run-handler-with-schema
+   */
+  private async runHandlerWithSchema<T, R>(
+    reg: HookRegistration<T, R>,
+    event: HookEvent<T>,
+  ): Promise<HookResult<R>> {
+    const schema = reg.metadata?.payloadSchema;
+    if (!schema) return await reg.handler(event);
+    const parsed = schema.safeParse(event.payload);
+    if (!parsed.success) {
+      const detail = parsed.error.issues
+        .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+        .join('; ');
+      return {
+        status: HookResultStatus.Error,
+        error: `payload-schema-invalid: ${detail}`,
+      } as HookResult<R>;
+    }
+    return await reg.handler({ ...event, payload: parsed.data as T });
   }
 
   private compose<T, R>(

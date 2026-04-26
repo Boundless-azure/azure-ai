@@ -7,7 +7,7 @@ import type { HookInvocationContext } from '../types/hook.types';
  * @title Runner Hook RPC 客户端
  * @description 接收 SaaS 通过 /runner/ws 下发的 hook:call, 维护 in-flight 队列, 分别推送
  *              ack / 3s 周期 progress / 终态 result。统一外形 { errorMsg, result, debugLog }。
- *              同时注册 3 个基础元 hook: search_hook / get_hook_tag / get_hook_info。
+ *              同时注册 3 个基础元 hook: runner.system.hookbus.search / .getTag / .getInfo。
  *              envelope.context 透传给 hookBus.emit, 让 handler 可读 token / principalId / traceId 等。
  * @keywords-cn HookRPC客户端, 远程调用, 在途队列, 进度心跳, 元Hook, 调用上下文
  * @keywords-en hook-rpc-client, remote-call, inflight-queue, progress-heartbeat, meta-hook, invocation-context
@@ -17,8 +17,10 @@ import type { HookInvocationContext } from '../types/hook.types';
 const HOOK_CALL_ACK_TIMEOUT_MS = 3000;
 /** progress 推送周期 :: 与 SaaS 端 stale 超时配合 (3s push, 5s 才判超时) */
 const HOOK_CALL_PROGRESS_INTERVAL_MS = 3000;
-/** 单次默认翻页大小 */
+/** 单次默认翻页大小 (runner.system.hookbus.search / runner.system.hookbus.getInfo) */
 const DEFAULT_PAGE_SIZE = 100;
+/** runner.system.hookbus.getTag 单次上限: tag 是发现链路起点, 一次拿全景, 硬上限 400 */
+const TAG_PAGE_LIMIT = 400;
 
 interface CallEnvelope {
   callId: string;
@@ -76,16 +78,16 @@ function projectRegistrations(
 }
 
 /**
- * 注册 3 个元 hook (search_hook / get_hook_tag / get_hook_info)。
+ * 注册 3 个元 hook (runner.system.hookbus.search / .getTag / .getInfo)。
  * 仅注册一次, 重复挂载安全 (基于 registration name 去重)。
  * @keyword-en register-meta-hooks
  */
 export function registerMetaHooks(hookBus: RunnerHookBusService): void {
   const existing = new Set(hookBus.listRegistrations().map((i) => i.name));
 
-  if (!existing.has('search_hook')) {
+  if (!existing.has('runner.system.hookbus.search')) {
     hookBus.register(
-      'search_hook',
+      'runner.system.hookbus.search',
       (event) => {
         const payload = (event.payload ?? {}) as {
           tags?: string[];
@@ -124,9 +126,9 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
     );
   }
 
-  if (!existing.has('get_hook_tag')) {
+  if (!existing.has('runner.system.hookbus.getTag')) {
     hookBus.register(
-      'get_hook_tag',
+      'runner.system.hookbus.getTag',
       (event) => {
         const payload = (event.payload ?? {}) as {
           pluginName?: string;
@@ -143,7 +145,7 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
         const sorted = Array.from(tagCount.entries())
           .sort((a, b) => b[1] - a[1])
           .map(([name, count]) => ({ name, count }));
-        const limit = Math.max(1, Math.min(payload.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE));
+        const limit = Math.max(1, Math.min(payload.limit ?? TAG_PAGE_LIMIT, TAG_PAGE_LIMIT));
         const cursor = Math.max(0, payload.cursor ?? 0);
         const slice = sorted.slice(cursor, cursor + limit);
         const nextCursor = cursor + slice.length < sorted.length ? cursor + slice.length : null;
@@ -153,20 +155,20 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
         };
       },
       {
-        description: '获取已注册 hook 的 tag 频次榜, 支持 pluginName 过滤, 默认每页 100 条, 通过 cursor 翻页',
+        description: `获取已注册 hook 的 tag 频次榜, 支持 pluginName 过滤, 默认/上限 ${TAG_PAGE_LIMIT} 条, 超过用 cursor 翻页`,
         tags: ['meta'],
         payloadSchema: z.object({
           pluginName: z.string().optional(),
           cursor: z.number().int().nonnegative().optional(),
-          limit: z.number().int().positive().max(DEFAULT_PAGE_SIZE).optional(),
+          limit: z.number().int().positive().max(TAG_PAGE_LIMIT).optional(),
         }),
       },
     );
   }
 
-  if (!existing.has('get_hook_info')) {
+  if (!existing.has('runner.system.hookbus.getInfo')) {
     hookBus.register(
-      'get_hook_info',
+      'runner.system.hookbus.getInfo',
       (event) => {
         const payload = (event.payload ?? {}) as { hookNames?: string[] };
         const want = new Set(payload.hookNames ?? []);
@@ -176,6 +178,10 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
           tags: string[];
           pluginName: string | null;
           payloadSchema: unknown | null;
+          requiredAbility:
+            | { action: string; subject: string }
+            | Array<{ action: string; subject: string }>
+            | null;
         }> = [];
         const all = hookBus.listRegistrations();
         for (const item of all) {
@@ -195,13 +201,14 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
             tags: item.metadata?.tags ?? [],
             pluginName: item.metadata?.pluginName ?? null,
             payloadSchema: schema,
+            requiredAbility: item.metadata?.requiredAbility ?? null,
           });
         }
         return { status: 'success', data: { items } };
       },
       {
         description:
-          '批量获取 hook 的描述/tags/payload JSON Schema (从 Zod 派生), 不传 hookNames 则返回全部',
+          '批量获取 hook 的描述/tags/payload JSON Schema (Zod 派生)/requiredAbility (CASL action+subject), 不传 hookNames 则返回全部',
         tags: ['meta'],
         payloadSchema: z.object({
           hookNames: z.array(z.string()).optional(),

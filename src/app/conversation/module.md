@@ -17,14 +17,15 @@
 - controllers/webmcp.gateway.ts：WebMCP Socket.IO 网关（namespace /webmcp）
 - services/webmcp-session-data.service.ts：会话扩展数据 CRUD
 - services/webmcp.hook-handlers.service.ts：WebMCP Hook 处理器
-- services/send-msg.hook-handler.service.ts：IM send_msg Hook 处理器（主动对话模式）
+- services/send-msg.hook-handler.service.ts：IM saas.app.conversation.sendMsg Hook 处理器（主动对话模式）
 
-Hook 注册（由 HookDecoratorExplorerService 自动发现）
-- web_control         — 向前端发送 data/emit 调用
-- web_control_pageinfo — 获取最新注册页面信息（Schema）
-- web_control_data    — 请求前端实时返回指定 data key 值
-- web_control_status  — 查询 MCP 连接状态
-- send_msg            — 主动对话：LLM 通过 call_hook('send_msg', {sessionId,content,senderPrincipalId}) 发消息
+Hook 注册（由 HookDecoratorExplorerService 自动发现, 全部声明 payloadSchema 以走 invoker 自动校验, 命名遵循 platform.app.module.action）
+- saas.app.conversation.webControl         — 向前端发送 data/emit 调用 (sessionId / type / payload / timeout?)
+- saas.app.conversation.webControlPageinfo — 获取最新注册页面信息 Schema (sessionId)
+- saas.app.conversation.webControlData    — 请求前端实时返回指定 data key 值 (sessionId / dataKey)
+- saas.app.conversation.webControlStatus  — 查询 MCP 连接状态 (sessionId)
+- saas.app.conversation.sendMsg           — 主动对话: LLM 通过 call_hook('saas.app.conversation.sendMsg') 发消息 (sessionId / content / senderPrincipalId / replyToId)
+  · payload schema 走 zod, handler 签名通过 z.infer 复用类型 (SSOT)
     - GET  /conversation/groups（分页：page/pageSize；每组附带 latestMessage；不支持日期筛选）
     - GET  /conversation/groups/:groupId（组详情）
     - POST /conversation/groups（创建组，入参：date 或 dayGroupId）

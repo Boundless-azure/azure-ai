@@ -34,13 +34,16 @@
   - GET /agent/:id
   - PUT /agent/:id
   - DELETE /agent/:id
-  - HookLifecycle on CRUD before/after/error
+  - HookLifecycle on CRUD: 全部声明 zod payloadSchema (input 形状), 命名 platform.app.module.action
+    · saas.app.agent.list (q?), saas.app.agent.get ({id}), saas.app.agent.update (UpdateAgentInput),
+      saas.app.agent.delete ({id}), saas.app.agent.embeddingsUpdate (ids?)
 - AgentExecutionController
   - GET /agent-execution
   - GET /agent-execution/:id
   - PUT /agent-execution/:id
   - DELETE /agent-execution/:id
-  - HookLifecycle on CRUD before/after/error
+  - HookLifecycle on CRUD: 全部声明 zod payloadSchema (input 形状), 命名 platform.app.module.action
+    · saas.app.agent.executionList, executionGet/executionDelete ({id}), executionUpdate (UpdateExecutionInput)
 
 关键词索引（中文 / English Keyword Index）
 Agent表 -> app/agent/entities/agent.entity.ts

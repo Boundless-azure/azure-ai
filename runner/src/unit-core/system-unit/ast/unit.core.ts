@@ -8,7 +8,7 @@ import { astOps } from './unit-core/ast.ops';
  * @keywords-en hook-mapping, ast-analysis, unit-core
  */
 export const unitCore: UnitCoreModule['handlers'] = {
-  'ast:analyze': async (ctx, payload) => astOps.analyze(ctx, payload as { path: string }),
+  'runner.unitcore.ast.analyze': async (ctx, payload) => astOps.analyze(ctx, payload as { path: string }),
 };
 
 export default unitCore;

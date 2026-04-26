@@ -35,7 +35,10 @@ export class RunnerHookBusService {
       queueKeyPrefix: options?.storage?.queueKeyPrefix,
       bindingKeyPrefix: options?.storage?.bindingKeyPrefix,
     };
-    this.options = { concurrency: options?.concurrency ?? 4, storage: normalizedStorage };
+    this.options = {
+      concurrency: options?.concurrency ?? 4,
+      storage: normalizedStorage,
+    };
   }
 
   register<TPayload, TResult>(
@@ -43,16 +46,52 @@ export class RunnerHookBusService {
     handler: HookHandler<TPayload, TResult>,
     metadata?: HookMetadata,
   ): HookRegistration<TPayload, TResult> {
-    const item: HookRegistration<TPayload, TResult> = { name, handler, metadata };
+    const item: HookRegistration<TPayload, TResult> = {
+      name,
+      handler,
+      metadata,
+    };
     const list = this.registrations.get(name) ?? [];
     list.push(item as HookRegistration);
-    list.sort((a, b) => (a.metadata?.priority ?? 0) - (b.metadata?.priority ?? 0));
+    list.sort(
+      (a, b) => (a.metadata?.priority ?? 0) - (b.metadata?.priority ?? 0),
+    );
     this.registrations.set(name, list);
     const methodRef = metadata?.methodRef;
     if (methodRef && methodRef.trim()) {
       this.bindingMap.set(name, methodRef.trim());
     }
     return item;
+  }
+
+  /**
+   * @title 注销 Hook 注册项
+   * @description 默认整组移除; 传 predicate 可只移除匹配项, 用于 lifecycle 热替换 (只清同来源旧项, 不影响其他模块同名注册)。
+   * @keywords-cn 注销, 移除, 热替换
+   * @keywords-en unregister, remove, hot-replace
+   */
+  unregister(
+    name: string,
+    predicate?: (reg: HookRegistration) => boolean,
+  ): number {
+    const list = this.registrations.get(name);
+    if (!list || list.length === 0) return 0;
+    if (!predicate) {
+      const removed = list.length;
+      this.registrations.delete(name);
+      this.bindingMap.delete(name);
+      return removed;
+    }
+    const remained = list.filter((item) => !predicate(item));
+    const removed = list.length - remained.length;
+    if (removed === 0) return 0;
+    if (remained.length === 0) {
+      this.registrations.delete(name);
+      this.bindingMap.delete(name);
+    } else {
+      this.registrations.set(name, remained);
+    }
+    return removed;
   }
 
   listRegistrations(): HookRegistration[] {
@@ -128,11 +167,11 @@ export class RunnerHookBusService {
         .map((name) => this.namedMiddlewares.get(name))
         .filter((mw): mw is HookMiddleware<unknown, unknown> => Boolean(mw));
       const chain = this.compose([...named, ...this.middlewares], async () =>
-        item.handler(task.event),
+        this.runHandlerWithSchema(item, task.event),
       );
       try {
         const result = await chain(task.event);
-        results.push(result as HookResult<unknown>);
+        results.push(result);
       } catch (error) {
         results.push({
           status: 'error',
@@ -149,13 +188,41 @@ export class RunnerHookBusService {
     task.resolve(results);
   }
 
-  private matchFilter(metadata: HookMetadata | undefined, filter: HookFilter | undefined): boolean {
+  private matchFilter(
+    metadata: HookMetadata | undefined,
+    filter: HookFilter | undefined,
+  ): boolean {
     if (!filter) return true;
     if (filter.pluginId && metadata?.pluginId !== filter.pluginId) return false;
-    if (filter.pluginName && metadata?.pluginName !== filter.pluginName) return false;
-    if (filter.tag && !(metadata?.tags ?? []).includes(filter.tag)) return false;
+    if (filter.pluginName && metadata?.pluginName !== filter.pluginName)
+      return false;
+    if (filter.tag && !(metadata?.tags ?? []).includes(filter.tag))
+      return false;
     if (filter.phase && metadata?.phase !== filter.phase) return false;
     return true;
+  }
+
+  /**
+   * 紧贴 handler 的 zod payload 校验; metadata.payloadSchema 缺省时跳过 (兼容存量 hook)
+   * @keyword-en run-handler-with-schema
+   */
+  private async runHandlerWithSchema(
+    reg: HookRegistration,
+    event: HookEvent<unknown>,
+  ): Promise<HookResult<unknown>> {
+    const schema = reg.metadata?.payloadSchema;
+    if (!schema) return await reg.handler(event);
+    const parsed = schema.safeParse(event.payload);
+    if (!parsed.success) {
+      const detail = parsed.error.issues
+        .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+        .join('; ');
+      return {
+        status: 'error',
+        error: `payload-schema-invalid: ${detail}`,
+      };
+    }
+    return await reg.handler({ ...event, payload: parsed.data });
   }
 
   private compose<TPayload, TResult>(

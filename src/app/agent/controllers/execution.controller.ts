@@ -7,11 +7,32 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { z } from 'zod';
 import { AgentExecutionService } from '../services/execution.service';
 import { AgentExecutionEntity } from '../entities/agent-execution.entity';
 import { QueryExecutionDto, UpdateExecutionDto } from '../types/agent.types';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+
+/**
+ * @title Agent Execution Hook payload schema (input 形状, SSOT)
+ * @keywords-cn AgentExecutionHook, payloadSchema, input
+ * @keywords-en agent-execution-hook, payload-schema, input
+ */
+const onAgentExecutionListInput = z.object({
+  agentId: z.string().optional(),
+  contextMessageId: z.string().optional(),
+  runnerId: z.string().optional(),
+});
+
+const onAgentExecutionUpdateInput = z.object({
+  nodeStatus: z.record(z.string(), z.unknown()).optional(),
+  latestResponse: z.record(z.string(), z.unknown()).optional(),
+  contextMessageId: z.string().min(1).max(36).optional(),
+  runnerId: z.string().min(1).max(36).optional(),
+});
+
+const idParamInput = z.object({ id: z.string() });
 
 /**
  * @title 执行Agent 控制器
@@ -26,9 +47,9 @@ export class AgentExecutionController {
   @Get()
   @CheckAbility('read', 'agent_execution')
   @HookLifecycle({
-    hook: 'onAgentExecutionList',
+    hook: 'saas.app.agent.executionList',
     description: 'Agent执行记录列表查询',
-    payloadDto: QueryExecutionDto,
+    payloadSchema: onAgentExecutionListInput,
     payloadSource: 'query',
   })
   async list(
@@ -40,8 +61,9 @@ export class AgentExecutionController {
   @Get(':id')
   @CheckAbility('read', 'agent_execution')
   @HookLifecycle({
-    hook: 'onAgentExecutionGet',
+    hook: 'saas.app.agent.executionGet',
     description: 'Agent执行记录详情查询',
+    payloadSchema: idParamInput,
     payloadSource: 'params',
   })
   async get(@Param('id') id: string): Promise<AgentExecutionEntity | null> {
@@ -51,9 +73,9 @@ export class AgentExecutionController {
   @Put(':id')
   @CheckAbility('update', 'agent_execution')
   @HookLifecycle({
-    hook: 'onAgentExecutionUpdate',
+    hook: 'saas.app.agent.executionUpdate',
     description: 'Agent执行记录更新',
-    payloadDto: UpdateExecutionDto,
+    payloadSchema: onAgentExecutionUpdateInput,
     payloadSource: 'body',
   })
   async update(
@@ -66,8 +88,9 @@ export class AgentExecutionController {
   @Delete(':id')
   @CheckAbility('delete', 'agent_execution')
   @HookLifecycle({
-    hook: 'onAgentExecutionDelete',
+    hook: 'saas.app.agent.executionDelete',
     description: 'Agent执行记录删除',
+    payloadSchema: idParamInput,
     payloadSource: 'params',
   })
   async delete(@Param('id') id: string): Promise<{ ok: boolean }> {

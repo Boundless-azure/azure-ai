@@ -15,6 +15,7 @@
 - app/identity/services/organization.service.ts
 - app/identity/services/role.service.ts
 - app/identity/services/ability.service.ts
+- app/identity/services/hook.ability-middleware.service.ts
 - app/identity/controllers/principal.controller.ts
 - app/identity/controllers/organization.controller.ts
 - app/identity/controllers/role.controller.ts
@@ -51,8 +52,17 @@
   - buildForRoles(roleIds)
   - buildForPrincipal(principalId)
   - getHandle()
+- HookAbilityMiddlewareService
+  - onModuleInit()  -- 注入 invoker.use, 把 @CheckAbility 语义平移到 Hook 调用链 (仅 source==='llm')
 - Identity Controllers
-  - HookLifecycle on RBAC CRUD before/after/error
+  - HookLifecycle on RBAC CRUD: 全部声明 zod payloadSchema (input 形状), lifecycle-registration 自动包成 envelope
+    · 命名遵循 saas.app.identity.<resource><Action>:
+    · saas.app.identity.userList/userCreate/userUpdate/userDelete (× 4)
+    · saas.app.identity.roleList/roleCreate/roleUpdate/roleDelete + rolePermissionList/rolePermissionUpsert (× 6)
+    · saas.app.identity.principalList/principalCreate/principalUpdate/principalDelete (× 4)
+    · saas.app.identity.permissionDefinitionList/Create/Update/Delete (× 4)
+    · saas.app.identity.organizationList/Create/Update/Delete (× 4)
+    · saas.app.identity.membershipList/membershipCreate/membershipDelete (× 3)
 
 关键词索引（中文 / English Keyword Index）
 统一主体 -> app/identity/entities/principal.entity.ts
@@ -61,6 +71,7 @@
 角色定义 -> app/identity/entities/role.entity.ts
 角色权限 -> app/identity/entities/role-permission.entity.ts
 能力服务 -> app/identity/services/ability.service.ts
+Hook能力中间件 -> app/identity/services/hook.ability-middleware.service.ts
 
 关键词到文件函数哈希映射（Keywords -> Function Hash）
 - PrincipalService.list -> id_psi_list_001
@@ -75,6 +86,7 @@
 - RoleController.create(HookLifecycle) -> id_hook_role_create_010
 - MembershipController.add(HookLifecycle) -> id_hook_membership_add_011
 - PermissionDefinitionController.create(HookLifecycle) -> id_hook_perm_def_create_012
+- HookAbilityMiddlewareService.onModuleInit -> id_hook_ability_mw_013
 
 模块功能描述（Description）
 本模块统一了 B2B 与 B2C 的身份与权限模型：所有交互主体均为 Principal，通过 principalType 区分企业用户/消费者/官方账号/Agent/系统。组织与成员关系管理采用 RBAC（Role + RolePermission），结合资源级 ACL（由业务模块维护）进行权限决策。AbilityService 提供 can/cannot 能力检查，并可后续替换为 CASL 原生实现。

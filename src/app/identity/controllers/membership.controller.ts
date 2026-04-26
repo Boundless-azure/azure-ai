@@ -9,10 +9,30 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { z } from 'zod';
 import { MembershipEntity } from '../entities/membership.entity';
 import { RoleEntity } from '../entities/role.entity';
 import { CheckAbility } from '../decorators/check-ability.decorator';
 import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+
+/**
+ * @title Membership Hook payload schema (input 形状, SSOT)
+ * @keywords-cn MembershipHook, payloadSchema, input
+ * @keywords-en membership-hook, payload-schema, input
+ */
+const onRbacMembershipListInput = z.object({
+  organizationId: z.string().optional(),
+  principalId: z.string().optional(),
+});
+
+const onRbacMembershipCreateInput = z.object({
+  organizationId: z.string(),
+  principalId: z.string(),
+  roleId: z.string().optional(),
+  role: z.string().optional(),
+});
+
+const idParamInput = z.object({ id: z.string() });
 
 /**
  * @title Membership 控制器
@@ -32,8 +52,10 @@ export class MembershipController {
   @Get()
   @CheckAbility('read', 'membership')
   @HookLifecycle({
-    hook: 'onRbacMembershipList',
+    hook: 'saas.app.identity.membershipList',
     description: 'RBAC成员关系列表查询',
+    payloadSchema: onRbacMembershipListInput,
+    payloadSource: 'query',
   })
   async list(
     @Query('organizationId') organizationId?: string,
@@ -64,8 +86,10 @@ export class MembershipController {
   @Post()
   @CheckAbility('create', 'membership')
   @HookLifecycle({
-    hook: 'onRbacMembershipCreate',
+    hook: 'saas.app.identity.membershipCreate',
     description: 'RBAC成员关系创建',
+    payloadSchema: onRbacMembershipCreateInput,
+    payloadSource: 'body',
   })
   async add(
     @Body()
@@ -98,8 +122,10 @@ export class MembershipController {
   @Delete(':id')
   @CheckAbility('delete', 'membership')
   @HookLifecycle({
-    hook: 'onRbacMembershipDelete',
+    hook: 'saas.app.identity.membershipDelete',
     description: 'RBAC成员关系删除',
+    payloadSchema: idParamInput,
+    payloadSource: 'params',
   })
   async remove(@Param('id') id: string) {
     await this.repo.update({ id }, { isDelete: true, active: false });

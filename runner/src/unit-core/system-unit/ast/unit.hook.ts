@@ -16,7 +16,7 @@ export const unitHooks: UnitHookModule = {
   },
   hooks: [
     {
-      name: 'ast:analyze',
+      name: 'runner.unitcore.ast.analyze',
       description: '解析 JS/TS/JSX/MJS/CJS 文件，返回函数位置与 JSDOC 描述',
       payloadSchema: z.object({ path: z.string() }),
     },

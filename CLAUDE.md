@@ -133,6 +133,14 @@ Jest 额外 mock :: `^uuid$  →  test/mocks/uuid.ts`  (ESM uuid 需 mock).
 source :: `src/core/agent-runtime/services/agent-runtime.service.ts` · `tools/call-hook.tools.ts`
 **rule :: AI 能调的一切走 Hook · 禁止自由 `import`.**
 
+**hook 命名范式 :: `<platform>.<app>.<module>.<action>` (4 段, camelCase action)**
+- `platform` ∈ { `saas` , `runner` }
+- `app` :: SaaS 端默认 `app`; Runner 端按应用 / `unitcore` / `system` 区分来源
+- `module` :: 业务模块 (todo / agent / identity / conversation / knowledge / auth / hookbus / file / mongo / ast)
+- `action` :: 动作或事件 (list / get / create / update / delete / loginSuccess / sendMsg / webControl / runnerBootstrap / search / getInfo …)
+- 例 :: `saas.app.todo.create` · `saas.app.conversation.sendMsg` · `runner.unitcore.file.read` · `runner.system.hookbus.getInfo`
+- 旧式 `onXxx` / `snake_case` / `colon:separated` 全部废弃; 不允许新增旧风格命名
+
 ### `[2/7]  Unit Core`  ::  Runner 侧能力基座(AI 的"标准库")
 
 `runner/src/unit-core/`. 启动时扫描 `workspace/` + `system-unit/{ast,file,mongo}` → 解析 Hook 清单 → 注册到 Runner HookBus → 落库 `RunnerDbService`.
@@ -146,14 +154,14 @@ source :: `src/core/agent-runtime/services/agent-runtime.service.ts` · `tools/c
  ├─ 书本类型  ::  skill (教 AI 用 Hook)  +  lore (领域知识)
  ├─ LM 必读   ::  每次 prompt 自动附带
  ├─ 存储     ::  独立 PostgreSQL + pgvector · 不混 MySQL
- ├─ Hook 出口 ::  get_knowledge_toc · get_knowledge_chapter · search_knowledge
+ ├─ Hook 出口 ::  saas.app.knowledge.getToc · saas.app.knowledge.getChapter · saas.app.knowledge.search
  └─ 来源     ::  local seed (代码声明,只读) + db 扩展
                  →  src/app/knowledge/local/local-knowledge.seed.ts
 ```
 
 ### `[4/7]  WebMCP`  ::  AI → 前端操作协议
 
-结构化指令 (**非**视觉点击) :: 组件声明操作 → AI 调 `web_control` Hook → Runner webmcp 派发.
+结构化指令 (**非**视觉点击) :: 组件声明操作 → AI 调 `saas.app.conversation.webControl` Hook → Runner webmcp 派发.
 demo :: `web/src/modules/webmcp/`
 
 ### `[5/7]  存储分层`  ::  别搞混

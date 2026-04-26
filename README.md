@@ -135,7 +135,7 @@ AI 产代码调这些 Unit · 不碰底层 API.
                lore   (领域知识)
  prompt    ::  LM 必读章节  →  每次查章节自动附带
  search    ::  pgvector 语义搜索
- hooks     ::  get_knowledge_toc · get_knowledge_chapter · search_knowledge
+ hooks     ::  saas.app.knowledge.getToc · saas.app.knowledge.getChapter · saas.app.knowledge.search
  source    ::  本地预置 (代码声明, 只读)  +  用户扩展 (数据库)
 ```
 

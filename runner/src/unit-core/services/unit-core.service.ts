@@ -174,6 +174,7 @@ export class UnitCoreService {
           tags: [hook.unitName, hook.source],
           description: hook.description,
           methodRef: `unit:${hook.unitName}:${hook.hookName}`,
+          payloadSchema: hook.payloadSchema,
         },
       );
     }

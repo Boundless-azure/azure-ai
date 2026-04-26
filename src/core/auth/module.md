@@ -18,10 +18,10 @@
 - AuthService
   - login(dto)
   - changePassword(principalId, dto)
-- AuthHookHandlersService
-  - handleLoginSuccess(ctx)
-  - handleLoginFailed(ctx)
-  - handlePasswordChanged(ctx)
+- AuthHookHandlersService (全部声明 payloadSchema, 走 invoker 自动校验, 命名 platform.app.module.action)
+  - handleLoginSuccess(event)  -- saas.app.auth.loginSuccess (principalId / userId / loginAt?)
+  - handleLoginFailed(event)   -- saas.app.auth.loginFailed (identifier / reason)
+  - handlePasswordChanged(event) -- saas.app.auth.passwordChanged (principalId / ok)
 - JwtStrategy
   - validate(payload)
 

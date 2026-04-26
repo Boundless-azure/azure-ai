@@ -17,7 +17,6 @@
 - core/hookbus/services/hook.invoker.service.ts
 - core/hookbus/services/hook.bus.service.ts
 - core/hookbus/services/hook.debug-state.service.ts
-- core/hookbus/services/hook.validation-middleware.service.ts
 - core/hookbus/services/hook.auth-middleware.service.ts
 - core/hookbus/services/hook.lifecycle-registration.service.ts
 - core/hookbus/services/hook.decorator-explorer.service.ts
@@ -37,9 +36,9 @@
 - HookBusService.select(name, filter)
 - HookBusService.listRegistrations()
 - HookBusService.onDebug(listener)
-- HookValidationMiddlewareService.onModuleInit()
 - HookAuthMiddlewareService.onModuleInit()  -- 注册全局 auth mw, 解析 token → principalId
-- HookLifecycleRegistrationService.onModuleInit()
+- HookLifecycleRegistrationService.onModuleInit()  -- 把 @HookLifecycle 声明的 input zod schema 包成 envelope schema 写入 metadata.payloadSchema; 同时反射读 @CheckAbility 自动继承到 metadata.requiredAbility
+- HookLifecycleRegistrationService.resolveTarget(className, methodName)  -- 一次扫描同时取 callable + @CheckAbility 元数据
 - HookLifecycleInterceptor.intercept(context, next)  -- 把 token / principalId 写入 event.context
 - HookDecoratorExplorerService.onModuleInit()
 - HookDebugStateService.getEnabled()
@@ -62,7 +61,6 @@ Hook注册服务 -> core/hookbus/services/hook.registry.service.ts
 Hook调用器 -> core/hookbus/services/hook.invoker.service.ts
 Hook总线服务 -> core/hookbus/services/hook.bus.service.ts
 Hook调试状态服务 -> core/hookbus/services/hook.debug-state.service.ts
-Hook校验中间件 -> core/hookbus/services/hook.validation-middleware.service.ts
 Hook鉴权中间件 -> core/hookbus/services/hook.auth-middleware.service.ts
 Hook生命周期注册服务 -> core/hookbus/services/hook.lifecycle-registration.service.ts
 Hook装饰器扫描 -> core/hookbus/services/hook.decorator-explorer.service.ts
@@ -75,6 +73,7 @@ Hook缓存服务 -> core/hookbus/cache/hook.cache.ts
 - HookInvocationContext  -- token / principalId / principalType / source / traceId / runnerId / ts / extras
 - HookHandler<T,R>       -- (event) => HookResult, 与 Runner 同形
 - HookMiddleware<T,R>    -- (event, next) => HookResult, 与 Runner 同形
+- HookRequiredAbility    -- { action, subject }; 与 identity RequiredAbility 同构, 不反向 import
 - HookRegistration / HookMetadata / HookResult / HookFilter / HookDeclaration
 
 快速检索映射（Keywords -> Files）
@@ -96,3 +95,22 @@ HookBus 模块是系统的事件编排核心，支持同名 Hook 的多插件实
 - LLM tool schema 不暴露 context 字段, LLM 不可见不可改
 
 handler / middleware 签名统一为 `(event, next?) => HookResult`, 与 Runner 端完全一致, 没有 ctx wrapper。
+
+权限校验 (与 HTTP @CheckAbility 对齐):
+- HookMetadata.requiredAbility = { action, subject } 或数组 (AND); HookHandler 注册可显式写,
+  HookLifecycle 注册时由 lifecycle-registration 反射读同方法 @CheckAbility 自动继承
+- HookInvokerService.invoke 在派发前把 reg.metadata.requiredAbility 镜像到 event.declaration.requiredAbility,
+  让中间件无需访问 reg 即可读到 (中间件签名只接受 event)
+- 校验由 identity 模块的 HookAbilityMiddlewareService 注入 invoker.use, 仅当 context.source === 'llm'
+  时才校验, 其他来源 (http/system/runner-internal) 走各自入口卫兵, 避免双重校验
+- 校验失败软返 errorMsg `permission-denied:<action>:<subject>`, 与 hook 调用统一软错语义保持一致
+
+payload schema 校验 (zod, SSOT, 全项目唯一校验路径):
+- @HookHandler 注册: metadata.payloadSchema 直接写 zod schema
+- @HookLifecycle 注册: options.payloadSchema 是 input 部分形状, lifecycle-registration 自动包成
+  envelope `{ input, meta?, ok?, result?, error? }` 写入 metadata.payloadSchema
+- HookInvokerService.runHandlerWithSchema 在 handler 执行前自动 safeParse, 校验失败返回
+  `payload-schema-invalid: <field>: <message>`, 不进入 handler
+- handler 签名复用 `HookEvent<z.infer<typeof xxxSchema>>`, schema 即类型源
+- 缺省 payloadSchema 时跳过校验 (兼容存量); LLM 通过 get_hook_info 拿到的 JSON Schema 也来自此字段
+- 不再使用 class-validator + payloadDto 路径 (已移除)

@@ -15,7 +15,7 @@ export const astOps = {
    * @keywords-en analyze-file, js-analysis, function-list, jsdoc
    */
   async analyze(ctx: UnitExecutionContext, payload: { path: string }) {
-    const result = await ctx.invokeHook<{ path: string }, { content: string }>('file:read', {
+    const result = await ctx.invokeHook<{ path: string }, { content: string }>('runner.unitcore.file.read', {
       path: payload.path,
     });
     const content = result.content;

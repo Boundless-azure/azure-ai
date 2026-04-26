@@ -8,6 +8,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { z } from 'zod';
 import { TodoService } from '../services/todo.service';
 import { TodoEntity } from '../entities/todo.entity';
 import { TodoFollowupEntity } from '../entities/todo-followup.entity';
@@ -20,10 +21,54 @@ import {
   CreateCommentDto,
   UpdateFollowupDto,
 } from '../types/todo.types';
+import { TodoStatus } from '../enums/todo.enums';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import { CurrentPrincipal } from '@/core/auth/decorators/current-principal.decorator';
 import type { JwtPayload } from '@/core/auth/types/auth.types';
 import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+
+/**
+ * @title Todo Hook payload schema (input 形状, SSOT)
+ * @description lifecycle interceptor emit 的 payload 形如 { input, meta, ok, result/error }, 此处只声明 input 部分,
+ *              lifecycle-registration 自动包成 envelope schema 写入 metadata.payloadSchema 供 invoker 校验和 LLM 派生 JSON Schema。
+ * @keywords-cn TodoHook, payloadSchema, input, SSOT
+ * @keywords-en todo-hook, payload-schema, input, ssot
+ */
+const todoStatusSchema = z.enum([
+  TodoStatus.Pending,
+  TodoStatus.InProgress,
+  TodoStatus.Failed,
+  TodoStatus.WaitingAcceptance,
+  TodoStatus.Completed,
+]);
+
+const onTodoListInput = z.object({
+  status: todoStatusSchema.optional(),
+  followerId: z.string().optional(),
+  initiatorId: z.string().optional(),
+  q: z.string().optional(),
+});
+
+const onTodoIdParamInput = z.object({ id: z.string() });
+
+const onTodoCreateInput = z.object({
+  initiatorId: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  content: z.string().optional(),
+  followerIds: z.array(z.string()).optional(),
+  statusColor: z.string().optional(),
+  status: todoStatusSchema.optional(),
+});
+
+const onTodoUpdateInput = z.object({
+  title: z.string().optional(),
+  description: z.string().optional(),
+  content: z.string().optional(),
+  followerIds: z.array(z.string()).optional(),
+  statusColor: z.string().optional(),
+  status: todoStatusSchema.optional(),
+});
 
 /**
  * @title 待办事项控制器
@@ -38,9 +83,9 @@ export class TodoController {
   @Get()
   @CheckAbility('read', 'todo')
   @HookLifecycle({
-    hook: 'onTodoList',
+    hook: 'saas.app.todo.list',
     description: '待办列表查询',
-    payloadDto: QueryTodoDto,
+    payloadSchema: onTodoListInput,
     payloadSource: 'query',
   })
   async list(
@@ -53,8 +98,9 @@ export class TodoController {
   @Get(':id')
   @CheckAbility('read', 'todo')
   @HookLifecycle({
-    hook: 'onTodoGet',
+    hook: 'saas.app.todo.get',
     description: '待办详情查询',
+    payloadSchema: onTodoIdParamInput,
     payloadSource: 'params',
   })
   async get(@Param('id') id: string): Promise<TodoEntity | null> {
@@ -64,9 +110,9 @@ export class TodoController {
   @Post()
   @CheckAbility('create', 'todo')
   @HookLifecycle({
-    hook: 'onTodoCreate',
+    hook: 'saas.app.todo.create',
     description: '待办创建',
-    payloadDto: CreateTodoDto,
+    payloadSchema: onTodoCreateInput,
     payloadSource: 'body',
   })
   async create(
@@ -79,9 +125,9 @@ export class TodoController {
   @Put(':id')
   @CheckAbility('update', 'todo')
   @HookLifecycle({
-    hook: 'onTodoUpdate',
+    hook: 'saas.app.todo.update',
     description: '待办更新',
-    payloadDto: UpdateTodoDto,
+    payloadSchema: onTodoUpdateInput,
     payloadSource: 'body',
   })
   async update(
@@ -95,8 +141,9 @@ export class TodoController {
   @Delete(':id')
   @CheckAbility('delete', 'todo')
   @HookLifecycle({
-    hook: 'onTodoDelete',
+    hook: 'saas.app.todo.delete',
     description: '待办删除',
+    payloadSchema: onTodoIdParamInput,
     payloadSource: 'params',
   })
   async delete(@Param('id') id: string): Promise<{ ok: boolean }> {

@@ -16,27 +16,27 @@ export const unitHooks: UnitHookModule = {
   },
   hooks: [
     {
-      name: 'file:read',
+      name: 'runner.unitcore.file.read',
       description: '读取 workspace 下指定文件内容',
       payloadSchema: z.object({ path: z.string() }),
     },
     {
-      name: 'file:write',
+      name: 'runner.unitcore.file.write',
       description: '写入 workspace 下指定文件（覆盖）',
       payloadSchema: z.object({ path: z.string(), content: z.string() }),
     },
     {
-      name: 'file:delete',
+      name: 'runner.unitcore.file.delete',
       description: '删除 workspace 下指定文件',
       payloadSchema: z.object({ path: z.string() }),
     },
     {
-      name: 'file:list',
+      name: 'runner.unitcore.file.list',
       description: '列出 workspace 下指定目录内容',
       payloadSchema: z.object({ path: z.string() }),
     },
     {
-      name: 'file:patchRange',
+      name: 'runner.unitcore.file.patchRange',
       description: '对 workspace 文件执行按行/字符区间的局部修改',
       payloadSchema: z.object({
         path: z.string(),

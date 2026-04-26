@@ -16,7 +16,7 @@ export const unitHooks: UnitHookModule = {
   },
   hooks: [
     {
-      name: 'mongo:insertOne',
+      name: 'runner.unitcore.mongo.insertOne',
       description: '在指定数据库/集合插入单条记录',
       payloadSchema: z.object({
         db: z.string().optional(),
@@ -25,7 +25,7 @@ export const unitHooks: UnitHookModule = {
       }),
     },
     {
-      name: 'mongo:find',
+      name: 'runner.unitcore.mongo.find',
       description: '在指定数据库/集合查询记录',
       payloadSchema: z.object({
         db: z.string().optional(),
@@ -35,7 +35,7 @@ export const unitHooks: UnitHookModule = {
       }),
     },
     {
-      name: 'mongo:updateOne',
+      name: 'runner.unitcore.mongo.updateOne',
       description: '在指定数据库/集合更新单条记录',
       payloadSchema: z.object({
         db: z.string().optional(),
@@ -45,7 +45,7 @@ export const unitHooks: UnitHookModule = {
       }),
     },
     {
-      name: 'mongo:deleteOne',
+      name: 'runner.unitcore.mongo.deleteOne',
       description: '在指定数据库/集合删除单条记录',
       payloadSchema: z.object({
         db: z.string().optional(),

@@ -8,12 +8,12 @@ import { fileOps } from './unit-core/file.ops';
  * @keywords-en hook-mapping, file-ops, unit-core
  */
 export const unitCore: UnitCoreModule['handlers'] = {
-  'file:read': async (ctx, payload) => fileOps.readFile(ctx, payload as { path: string }),
-  'file:write': async (ctx, payload) =>
+  'runner.unitcore.file.read': async (ctx, payload) => fileOps.readFile(ctx, payload as { path: string }),
+  'runner.unitcore.file.write': async (ctx, payload) =>
     fileOps.writeFile(ctx, payload as { path: string; content: string }),
-  'file:delete': async (ctx, payload) => fileOps.deleteFile(ctx, payload as { path: string }),
-  'file:list': async (ctx, payload) => fileOps.listDir(ctx, payload as { path: string }),
-  'file:patchRange': async (ctx, payload) =>
+  'runner.unitcore.file.delete': async (ctx, payload) => fileOps.deleteFile(ctx, payload as { path: string }),
+  'runner.unitcore.file.list': async (ctx, payload) => fileOps.listDir(ctx, payload as { path: string }),
+  'runner.unitcore.file.patchRange': async (ctx, payload) =>
     fileOps.patchRange(
       ctx,
       payload as {

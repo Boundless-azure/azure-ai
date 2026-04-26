@@ -56,10 +56,7 @@ export class HookLifecycleInterceptor implements NestInterceptor {
           : req?.body;
     const declaration = {
       description: options.description,
-      payloadDto: options.payloadDto,
-      middlewares:
-        options.middlewares ??
-        (options.payloadDto ? ['validate-payload'] : undefined),
+      middlewares: options.middlewares,
       filter: options.filter,
       errorMode: options.errorMode ?? 'capture',
     };

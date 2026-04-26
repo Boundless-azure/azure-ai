@@ -53,7 +53,10 @@ function countReply(reply: HookCallReply): { ok: number; err: number } {
 
 const SAAS = 'saas' as const;
 const RUNNER = 'runner' as const;
+/** search_hook / get_hook_info 默认/上限页大小 */
 const DEFAULT_PAGE_SIZE = 100;
+/** get_hook_tag 上限: tag 是发现链路起点, 一次拿全景, 硬上限 400 */
+const TAG_PAGE_LIMIT = 400;
 
 const hookCallSchema = z.object({
   hookName: z.string().describe('要调用的 hook 名称'),
@@ -98,7 +101,13 @@ const getHookTagSchema = z.object({
   runnerId: z.string().optional().describe('target=runner 必填'),
   pluginName: z.string().optional(),
   cursor: z.number().int().nonnegative().optional(),
-  limit: z.number().int().positive().max(DEFAULT_PAGE_SIZE).optional(),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .max(TAG_PAGE_LIMIT)
+    .optional()
+    .describe(`默认 ${TAG_PAGE_LIMIT}, 一次性拿全景以便 LLM 决策; 上限 ${TAG_PAGE_LIMIT}`),
 });
 type GetHookTagInput = z.infer<typeof getHookTagSchema>;
 
@@ -234,10 +243,10 @@ export function buildCallHookTool(
     {
       name: 'call_hook',
       description:
-        '同步调用 hook 并等待结果 (统一外形 { errorMsg, result, debugLog })。' +
-        '默认 target=runner 通过 WS 派发到指定 runnerId; target=saas 时走平台内置 HookBus。' +
-        'errorMsg 非空表示软错, 你应据此调整后重试。' +
-        '调用前若不熟悉 hook, 先用 search_hook / get_hook_info 查询。',
+        '同步调用 hook, 等待结果 (统一外形 { errorMsg, result, debugLog })。' +
+        '默认 target=runner 经 WS 派发到指定 runnerId; target=saas 走平台 HookBus。' +
+        'errorMsg 非空 = 软错, 据此调整重试。' +
+        '【强约束】若 payload schema 未在已加载知识章节中看到, 调用前必须先 get_hook_info(hookNames=[...]) 拿到 JSON Schema 再写 payload。凭名字猜字段会软错回退、浪费一轮。',
       schema: hookCallSchema,
     },
   );
@@ -339,7 +348,7 @@ export function buildSearchHookTool(
         return JSON.stringify(softError('runnerId-required'));
       }
       const reply = await hookRpc.callHook(input.runnerId, {
-        hookName: 'search_hook',
+        hookName: 'runner.system.hookbus.search',
         payload: {
           tags: input.tags,
           pluginName: input.pluginName,
@@ -400,7 +409,7 @@ export function buildGetHookTagTool(
           .map(([name, count]) => ({ name, count }));
         const limit = Math.max(
           1,
-          Math.min(input.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE),
+          Math.min(input.limit ?? TAG_PAGE_LIMIT, TAG_PAGE_LIMIT),
         );
         const cursor = Math.max(0, input.cursor ?? 0);
         const slice = sorted.slice(cursor, cursor + limit);
@@ -421,7 +430,7 @@ export function buildGetHookTagTool(
         return JSON.stringify(softError('runnerId-required'));
       }
       const reply = await hookRpc.callHook(input.runnerId, {
-        hookName: 'get_hook_tag',
+        hookName: 'runner.system.hookbus.getTag',
         payload: {
           pluginName: input.pluginName,
           cursor: input.cursor,
@@ -440,8 +449,9 @@ export function buildGetHookTagTool(
     {
       name: 'get_hook_tag',
       description:
-        '获取已注册 hook 的 tag 频次榜, 用于先看类目再 search_hook 缩范围。' +
-        'target=saas 走平台; target=runner 必填 runnerId。',
+        `获取已注册 hook 的 tag 频次榜, 默认/上限 ${TAG_PAGE_LIMIT} 条 (一次拿全景便于决策); 超过用 cursor 翻页. ` +
+        'target=saas 走平台; target=runner 必填 runnerId. ' +
+        '推荐作为 hook 发现链路的起点 - 先看 tag 全景, 再据此 search_hook 缩范围.',
       schema: getHookTagSchema,
     },
   );
@@ -507,7 +517,7 @@ export function buildGetHookInfoTool(
         return JSON.stringify(softError('runnerId-required'));
       }
       const reply = await hookRpc.callHook(input.runnerId, {
-        hookName: 'get_hook_info',
+        hookName: 'runner.system.hookbus.getInfo',
         payload: { hookNames: input.hookNames },
         context: getCtx(),
       });

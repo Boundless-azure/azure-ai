@@ -1,9 +1,50 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { z } from 'zod';
 import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
 import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
 import { WebMcpGateway } from '../controllers/webmcp.gateway';
 import { WebMcpSessionDataService } from '../services/webmcp-session-data.service';
+
+/**
+ * @title WebMCP Hook payload schema (SSOT)
+ * @description 单一来源: schema 给 LLM 用作 JSONSchema 派生 + 运行时校验, type 由 z.infer 派生供 handler 签名复用。
+ * @keywords-cn WebMCPHook, payloadSchema, SSOT, zod-infer
+ * @keywords-en webmcp-hook, payload-schema, ssot, zod-infer
+ */
+const webControlSchema = z.object({
+  sessionId: z.string().describe('目标会话 ID, 必填'),
+  type: z
+    .enum(['data', 'emit'])
+    .describe('指令类型: data=设置数据, emit=触发事件'),
+  payload: z
+    .unknown()
+    .describe('指令载荷, type=data 时为待写入数据, type=emit 时为事件参数'),
+  timeout: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe('等待前端响应的超时, 默认 8000ms'),
+});
+
+const webControlPageInfoSchema = z.object({
+  sessionId: z.string().describe('目标会话 ID, 必填'),
+});
+
+const webControlDataSchema = z.object({
+  sessionId: z.string().describe('目标会话 ID, 必填'),
+  dataKey: z.string().describe('要读取的前端 data key, 必填'),
+});
+
+const webControlStatusSchema = z.object({
+  sessionId: z.string().describe('目标会话 ID, 必填'),
+});
+
+type WebControlPayload = z.infer<typeof webControlSchema>;
+type WebControlPageInfoPayload = z.infer<typeof webControlPageInfoSchema>;
+type WebControlDataPayload = z.infer<typeof webControlDataSchema>;
+type WebControlStatusPayload = z.infer<typeof webControlStatusSchema>;
 
 /**
  * @title WebMCP Hook 处理器
@@ -19,37 +60,34 @@ export class WebMcpHookHandlersService {
   constructor(
     private readonly gateway: WebMcpGateway,
     private readonly dataService: WebMcpSessionDataService,
-  ) { }
+  ) {}
 
   // ----------------------------------------------------------------
-  // web_control — 向前端发送 data/emit 调用
+  // saas.app.conversation.webControl — 向前端发送 data/emit 调用
   // ----------------------------------------------------------------
 
   /**
    * 向前端页面发送控制指令（setData / callEmit）
-   * payload: { sessionId: string; type: 'data' | 'emit'; payload: unknown }
    * @keyword-en hook-web-control
    */
-  @HookHandler('web_control', {
+  @HookHandler('saas.app.conversation.webControl', {
     pluginName: 'webmcp',
     tags: ['webmcp', 'control', 'call'],
-    description: '向前端页面发送控制指令。payload: { sessionId: string, type: "data" | "emit", payload: unknown, timeout?: number }。sessionId 和 type 必填；type=data 为设置数据，type=emit 为触发事件；timeout 可选（默认 8000ms）。前端需已连接 WebMCP。',
+    description:
+      '向前端页面发送控制指令。type=data 为设置数据, type=emit 为触发事件; timeout 默认 8000ms。前端需已连接 WebMCP, 调用前建议用 saas.app.conversation.webControlStatus 确认。',
+    payloadSchema: webControlSchema,
   })
   async handleWebControl(
-    event: HookEvent<{ sessionId?: string; type?: 'data' | 'emit'; payload?: unknown; timeout?: number }>,
+    event: HookEvent<WebControlPayload>,
   ): Promise<HookResult> {
-    const { sessionId, type, payload, timeout } = event.payload ?? {};
-
-    if (!sessionId || !type) {
-      return { status: HookResultStatus.Error, error: 'sessionId and type are required' };
-    }
-    if (type !== 'data' && type !== 'emit') {
-      return { status: HookResultStatus.Error, error: 'type must be "data" or "emit"' };
-    }
+    const { sessionId, type, payload, timeout } = event.payload;
 
     const socketId = await this._resolveSocket(sessionId);
     if (!socketId) {
-      return { status: HookResultStatus.Error, error: `no active connection for session ${sessionId}` };
+      return {
+        status: HookResultStatus.Error,
+        error: `no active connection for session ${sessionId}`,
+      };
     }
 
     try {
@@ -58,8 +96,11 @@ export class WebMcpHookHandlersService {
         { type, payload },
         typeof timeout === 'number' ? timeout : 8000,
       );
-      this.logger.debug(`[web_control] ok type=${type} session=${sessionId}`);
-      return { status: HookResultStatus.Success, data: { result, socketId } };
+      this.logger.debug(`[webControl] ok type=${type} session=${sessionId}`);
+      return {
+        status: HookResultStatus.Success,
+        data: { result, socketId },
+      };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return { status: HookResultStatus.Error, error: msg };
@@ -67,56 +108,61 @@ export class WebMcpHookHandlersService {
   }
 
   // ----------------------------------------------------------------
-  // web_control_pageinfo — 获取最新页面信息（来自 Schema）
+  // saas.app.conversation.webControlPageinfo — 获取最新页面信息（来自 Schema）
   // ----------------------------------------------------------------
 
   /**
    * 获取指定 session 当前最新注册的页面信息
-   * payload: { sessionId: string }
    * @keyword-en hook-web-control-pageinfo
    */
-  @HookHandler('web_control_pageinfo', {
+  @HookHandler('saas.app.conversation.webControlPageinfo', {
     pluginName: 'webmcp',
     tags: ['webmcp', 'page-info'],
-    description: '获取指定 session 当前注册的页面 Schema 信息（组件声明、可操作元素列表）。payload: { sessionId: string }。sessionId 必填。调用前建议先用 web_control_status 确认已连接。',
+    description:
+      '获取指定 session 当前注册的页面 Schema 信息（组件声明、可操作元素列表）。调用前建议先用 saas.app.conversation.webControlStatus 确认已连接。',
+    payloadSchema: webControlPageInfoSchema,
   })
   async handleWebControlPageInfo(
-    event: HookEvent<{ sessionId?: string }>,
+    event: HookEvent<WebControlPageInfoPayload>,
   ): Promise<HookResult> {
-    const { sessionId } = event.payload ?? {};
-    if (!sessionId) return { status: HookResultStatus.Error, error: 'sessionId required' };
+    const { sessionId } = event.payload;
 
     const schema = await this.dataService.getLatestSchema(sessionId);
-    if (!schema) return { status: HookResultStatus.Error, error: 'no schema found for session' };
+    if (!schema)
+      return {
+        status: HookResultStatus.Error,
+        error: 'no schema found for session',
+      };
 
     return { status: HookResultStatus.Success, data: schema };
   }
 
   // ----------------------------------------------------------------
-  // web_control_data — 实时获取前端某个 data key 的当前值
+  // saas.app.conversation.webControlData — 实时获取前端某个 data key 的当前值
   // ----------------------------------------------------------------
 
   /**
    * 向前端请求指定 data key 的实时值，前端通过 webmcp:call 接收并回传
-   * payload: { sessionId: string; dataKey: string }
    * @keyword-en hook-web-control-data
    */
-  @HookHandler('web_control_data', {
+  @HookHandler('saas.app.conversation.webControlData', {
     pluginName: 'webmcp',
     tags: ['webmcp', 'data-query'],
-    description: '向前端实时请求指定 data key 的当前值。payload: { sessionId: string, dataKey: string }。sessionId 和 dataKey 必填。返回 { requested: true, dataKey, socketId }，实际值由前端异步推送。',
+    description:
+      '向前端实时请求指定 data key 的当前值。返回 { requested: true, dataKey, socketId }, 实际值由前端异步推送。',
+    payloadSchema: webControlDataSchema,
   })
   async handleWebControlData(
-    event: HookEvent<{ sessionId?: string; dataKey?: string }>,
+    event: HookEvent<WebControlDataPayload>,
   ): Promise<HookResult> {
-    const { sessionId, dataKey } = event.payload ?? {};
-    if (!sessionId || !dataKey) {
-      return { status: HookResultStatus.Error, error: 'sessionId and dataKey are required' };
-    }
+    const { sessionId, dataKey } = event.payload;
 
     const socketId = await this._resolveSocket(sessionId);
     if (!socketId) {
-      return { status: HookResultStatus.Error, error: `no active connection for session ${sessionId}` };
+      return {
+        status: HookResultStatus.Error,
+        error: `no active connection for session ${sessionId}`,
+      };
     }
 
     // 向前端发送 data 读取指令（op: callEmit 特殊 key $sys.page_data$ 或指定 key）
@@ -126,31 +172,37 @@ export class WebMcpHookHandlersService {
     });
 
     if (!sent) {
-      return { status: HookResultStatus.Error, error: 'socket not found or disconnected' };
+      return {
+        status: HookResultStatus.Error,
+        error: 'socket not found or disconnected',
+      };
     }
 
-    return { status: HookResultStatus.Success, data: { requested: true, dataKey, socketId } };
+    return {
+      status: HookResultStatus.Success,
+      data: { requested: true, dataKey, socketId },
+    };
   }
 
   // ----------------------------------------------------------------
-  // web_control_status — 查询 MCP 连接情况
+  // saas.app.conversation.webControlStatus — 查询 MCP 连接情况
   // ----------------------------------------------------------------
 
   /**
    * 查询指定 session 的 WebMCP 连接状态
-   * payload: { sessionId: string }
    * @keyword-en hook-web-control-status
    */
-  @HookHandler('web_control_status', {
+  @HookHandler('saas.app.conversation.webControlStatus', {
     pluginName: 'webmcp',
     tags: ['webmcp', 'status'],
-    description: '查询指定 session 的 WebMCP 连接状态。payload: { sessionId: string }。sessionId 必填。返回 { dbLastSocketId, activeSocketId, connected: boolean }；connected=false 时无法使用 web_control 系列指令。',
+    description:
+      '查询指定 session 的 WebMCP 连接状态。返回 { dbLastSocketId, activeSocketId, connected: boolean }; connected=false 时无法使用 saas.app.conversation.webControl 系列指令。',
+    payloadSchema: webControlStatusSchema,
   })
   async handleWebControlStatus(
-    event: HookEvent<{ sessionId?: string }>,
+    event: HookEvent<WebControlStatusPayload>,
   ): Promise<HookResult> {
-    const { sessionId } = event.payload ?? {};
-    if (!sessionId) return { status: HookResultStatus.Error, error: 'sessionId required' };
+    const { sessionId } = event.payload;
 
     const dbStatus = await this.dataService.getConnStatus(sessionId);
     // 实时 socket 状态（内存）

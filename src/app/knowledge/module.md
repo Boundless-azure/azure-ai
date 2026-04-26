@@ -56,16 +56,20 @@ src/app/knowledge/
 | `getChapterContent` | 获取章节内容（含 LM 必读，含本地预置） |
 | `getBookInfoByIds` | 批量获取书本名称和描述（含本地预置） |
 | `listByTags` | 按 tag 过滤返回书本列表（最多 100 条） |
+| `listAllTags` | 列举所有 tag 频次榜（默认/上限 400, 聚合 db + 本地预置, 用于 LLM 发现起点） |
 | `buildEmbedding` | 对描述进行向量化 |
 | `vectorSearch` | 自然语言向量语义匹配（内部保留，不再对外 Hook 暴露） |
 
 ### services/knowledge-hook-handler.service.ts
 
-| 函数名 | Hook 名 | 关键词描述 |
-|--------|---------|-----------|
-| `handleGetToc` | `get_knowledge_toc` | 通过 bookIds 获取目录 |
-| `handleGetChapter` | `get_knowledge_chapter` | 获取章节内容（含 LM 必读） |
-| `handleSearch` | `search_knowledge` | 按 tag 过滤列举书本（前 100 条） |
+全部声明 `payloadSchema` (zod, SSOT), handler 签名通过 `z.infer` 复用类型, invoker 在执行前自动校验。
+
+| 函数名 | Hook 名 | payload | 关键词描述 |
+|--------|---------|---------|-----------|
+| `handleGetTag` | `saas.app.knowledge.getTag` | type? / cursor? / limit? | 知识库 tag 频次榜 (默认/上限 400) |
+| `handleGetToc` | `saas.app.knowledge.getToc` | bookIds[] | 通过 bookIds 获取目录 |
+| `handleGetChapter` | `saas.app.knowledge.getChapter` | bookIds[] / chapterIds? | 获取章节内容 (含 LM 必读) |
+| `handleSearch` | `saas.app.knowledge.search` | tags? / type? / limit? | 按 tag 过滤列举书本 (前 100 条) |
 
 ### local/local-knowledge.seed.ts
 

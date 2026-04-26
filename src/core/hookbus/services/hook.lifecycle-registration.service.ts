@@ -1,9 +1,36 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DiscoveryService } from '@nestjs/core';
+import { z, type ZodTypeAny } from 'zod';
 import { listHookLifecycleDeclarations } from '../decorators/hook-lifecycle.decorator';
 import { HookCacheService } from '../cache/hook.cache';
 import { HookBusService } from './hook.bus.service';
 import { HookResultStatus } from '../enums/hook.enums';
+import type { HookRequiredAbility } from '../types/hook.types';
+
+/**
+ * identity 模块 @CheckAbility 装饰器使用的 metadata key (字符串常量复用)
+ * - 这里只读不依赖 identity 模块的 import, 避免 core/hookbus 反向依赖 app/identity
+ * - 与 src/app/identity/decorators/check-ability.decorator.ts 的 CHECK_ABILITY_KEY 同值
+ * @keyword-en check-ability-key-mirror
+ */
+const CHECK_ABILITY_KEY = 'check_ability_metadata';
+
+/**
+ * 把用户声明的 input schema 包装成 lifecycle envelope schema
+ * envelope shape :: { input, meta?, ok?, result?, error? }
+ * @keyword-en wrap-lifecycle-envelope-schema
+ */
+function wrapLifecycleEnvelope(inputSchema: ZodTypeAny): ZodTypeAny {
+  return z
+    .object({
+      input: inputSchema,
+      meta: z.unknown().optional(),
+      ok: z.boolean().optional(),
+      result: z.unknown().optional(),
+      error: z.unknown().optional(),
+    })
+    .passthrough();
+}
 
 /**
  * @title Hook 生命周期注册服务
@@ -27,7 +54,10 @@ export class HookLifecycleRegistrationService implements OnModuleInit {
       void this.cache.recordBinding(item.hook, item.methodRef);
       const exists = this.hookBus.select(item.hook).length > 0;
       if (exists) continue;
-      const callable = this.resolveCallable(item.className, item.methodName);
+      const { callable, ability } = this.resolveTarget(
+        item.className,
+        item.methodName,
+      );
       this.hookBus.register(
         item.hook,
         async (event) => {
@@ -52,6 +82,10 @@ export class HookLifecycleRegistrationService implements OnModuleInit {
           description: item.description,
           middlewares: item.middlewares,
           errorMode: item.errorMode,
+          payloadSchema: item.payloadSchema
+            ? wrapLifecycleEnvelope(item.payloadSchema)
+            : undefined,
+          requiredAbility: ability ?? undefined,
         },
       );
     }
@@ -70,11 +104,21 @@ export class HookLifecycleRegistrationService implements OnModuleInit {
     return [payload];
   }
 
-  private resolveCallable(
+  /**
+   * @title 同时取出 controller 方法的可调对象与 @CheckAbility 元数据
+   * @description 一次扫描兼顾 callable 与 ability 元数据继承,
+   *              避免 onModuleInit 阶段两次遍历 DiscoveryService。
+   * @keywords-cn 反射读取, 能力继承, 控制器方法
+   * @keywords-en reflect-resolve, ability-inheritance, controller-method
+   */
+  private resolveTarget(
     className?: string,
     methodName?: string,
-  ): ((...args: unknown[]) => unknown) | null {
-    if (!className || !methodName) return null;
+  ): {
+    callable: ((...args: unknown[]) => unknown) | null;
+    ability: HookRequiredAbility | HookRequiredAbility[] | null;
+  } {
+    if (!className || !methodName) return { callable: null, ability: null };
     const wrappers = [
       ...this.discovery.getControllers(),
       ...this.discovery.getProviders(),
@@ -85,9 +129,14 @@ export class HookLifecycleRegistrationService implements OnModuleInit {
       if (!instance || !metatype || metatype.name !== className) continue;
       const fn = instance[methodName];
       if (typeof fn !== 'function') continue;
-      return (...args: unknown[]) =>
+      const callable = (...args: unknown[]) =>
         (fn as (...next: unknown[]) => unknown).apply(instance, args);
+      const ability = (Reflect.getMetadata(CHECK_ABILITY_KEY, fn) ?? null) as
+        | HookRequiredAbility
+        | HookRequiredAbility[]
+        | null;
+      return { callable, ability };
     }
-    return null;
+    return { callable: null, ability: null };
   }
 }
