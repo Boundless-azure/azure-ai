@@ -24,6 +24,8 @@ export enum ChatMessageType {
   File = 'file',
   /** 系统消息 */
   System = 'system',
+  /** 通知消息 (AI 可见, 用户端隐藏) */
+  Notification = 'notification',
 }
 
 /**

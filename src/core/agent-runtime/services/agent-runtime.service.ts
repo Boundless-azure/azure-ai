@@ -95,6 +95,8 @@ export class AgentRuntimeService {
       };
       /** Hook 调用上下文 (token / principalId / traceId), 由调用方在请求作用域填入 */
       invocationContext?: HookInvocationContext;
+      /** AI session_data 自动注入块, 由调用方从 AiSessionDataService.getAllAsPromptBlock 获取 */
+      sessionDataPromptBlock?: string;
     },
   ): AsyncGenerator<ModelSseEvent> {
     const loaded = await this.load(agentDir, options?.invocationContext);
@@ -102,7 +104,7 @@ export class AgentRuntimeService {
       throw new Error('该 Agent 未提供对话层 (dialogues)');
     }
     loaded.dialogues.handleAiServer(
-      this.buildAiAdapter(options?.proactiveContext, loaded.tools),
+      this.buildAiAdapter(options?.proactiveContext, loaded.tools, options?.sessionDataPromptBlock),
     );
     loaded.dialogues.setAgentConfig?.({ aiModelIds: options?.aiModelIds });
     const gen = loaded.dialogues.handle(messages);
@@ -130,6 +132,7 @@ export class AgentRuntimeService {
       triggerMessageId: string;
     },
     tools?: unknown[],
+    sessionDataPromptBlock?: string,
   ) {
     // 主动对话模式: 前置注入系统提示词, 用 [system prompt]...[/system prompt] 包裹
     const injectedPrefix = proactiveContext
@@ -166,6 +169,7 @@ export class AgentRuntimeService {
         const mergedSystemPrompt = [
           basePrompt,
           injectedPrefix,
+          sessionDataPromptBlock,
           req.systemPrompt,
         ]
           .filter(Boolean)

@@ -19,7 +19,12 @@ import {
   RUNNER_WS_PING_INTERVAL_MS,
   RUNNER_WS_PING_TIMEOUT_MS,
 } from '../enums/runner.enums';
-import { HookCallReply, RunnerRegisterDto } from '../types/runner.types';
+import {
+  HookCallReply,
+  HookCallEnvelope,
+  RunnerRegisterDto,
+} from '../types/runner.types';
+import { HookBusService } from '@/core/hookbus/services/hook.bus.service';
 
 /**
  * @title Runner 网关
@@ -116,6 +121,7 @@ export class RunnerGateway implements OnGatewayDisconnect, OnModuleInit {
     private readonly runnerFrpNodeService: RunnerFrpNodeService,
     private readonly tokenService: RunnerTokenService,
     private readonly hookRpc: RunnerHookRpcService,
+    private readonly hookBusService: HookBusService,
   ) {}
 
   @SubscribeMessage(RunnerWsEvent.Register)
@@ -291,6 +297,52 @@ export class RunnerGateway implements OnGatewayDisconnect, OnModuleInit {
   ): void {
     if (!payload?.callId || !payload?.reply) return;
     this.hookRpc.handleResult(payload.callId, payload.reply);
+  }
+
+  /**
+   * @title Runner→SaaS 双向 Hook RPC
+   * @description Runner 通过同一 Socket 连接调用 SaaS 侧 hook, SaaS 本地执行后返回 hook:result。
+   *              context 携带的 token/principalId 用于鉴权, SaaS 侧 HookBus 正常放行。
+   * @keyword-en runner-to-saas-hook-call, bidirectional-rpc
+   */
+  @SubscribeMessage(RunnerWsEvent.HookCall)
+  async onRunnerHookCall(
+    @MessageBody() envelope: HookCallEnvelope,
+    @ConnectedSocket() client: Socket,
+  ): Promise<void> {
+    if (!envelope?.callId || !envelope?.hookName) return;
+    const runnerId = this.socketRunnerMap.get(client.id);
+    try {
+      const results = await this.hookBusService.emit({
+        name: envelope.hookName,
+        payload: envelope.payload,
+        context: {
+          ...(envelope.context ?? {}),
+          runnerId,
+          source: 'runner',
+        },
+      });
+      const reply: HookCallReply = {
+        errorMsg: [],
+        result: results.map((r) => ({
+          status: r.status,
+          data: r.data,
+          error: r.error,
+        })),
+        debugLog: [],
+      };
+      client.emit(RunnerWsEvent.HookResult, { callId: envelope.callId, reply });
+    } catch (e) {
+      const reply: HookCallReply = {
+        errorMsg: [e instanceof Error ? e.message : String(e)],
+        result: null,
+        debugLog: [],
+      };
+      client.emit(RunnerWsEvent.HookResult, {
+        callId: envelope.callId,
+        reply,
+      });
+    }
   }
 
   async handleDisconnect(client: Socket): Promise<void> {

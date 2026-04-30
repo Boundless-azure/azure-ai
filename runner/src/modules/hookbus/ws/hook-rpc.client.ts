@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import type { Socket } from 'socket.io-client';
 import { RunnerHookBusService } from '../services/hookbus.service';
 import type { HookInvocationContext } from '../types/hook.types';
+import type { UnitCoreService } from '../../../unit-core/services/unit-core.service';
 
 /**
  * @title Runner Hook RPC 客户端
@@ -231,17 +233,54 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
 }
 
 /**
+ * Runner→SaaS hook 调用: 通过 Socket 连接向 SaaS 发 hook:call, 等待 hook:result 返回。
+ * @description 复用双向 RPC 协议, context 携带用户 token 实现鉴权。
+ * @keyword-en call-saas-hook
+ */
+function createCallSaaSHook(socket: Socket) {
+  return async (
+    hookName: string,
+    payload: unknown,
+    context?: Record<string, unknown>,
+  ): Promise<{ errorMsg?: string[]; result: unknown }> => {
+    const callId = `runner-saas.${randomUUID().slice(0, 12)}`;
+    return new Promise((resolve) => {
+      const handler = (data: { callId: string; reply: CallReply }) => {
+        if (data.callId === callId) {
+          socket.off('hook:result', handler);
+          resolve(data.reply);
+        }
+      };
+      socket.on('hook:result', handler);
+      socket.emit('hook:call', { callId, hookName, payload, context });
+      setTimeout(() => {
+        socket.off('hook:result', handler);
+        resolve({ errorMsg: ['saas-rpc-timeout'], result: null });
+      }, 10000);
+    });
+  };
+}
+
+/**
  * 把 hook-rpc 协议挂到一个已建立的 socket-client 上。
  * @description 监听 hook:call, 维护 in-flight Map, 推 ack 后启 3s tick 推 progress, 结果用 hook:result 回包。
  *              重复挂载安全: 通过 socket 已绑定标记避免双注册。
  *              envelope.context 透传给 hookBus.emit, 让 handler 通过 event.context 读 token 等环境信息。
+ *              同时注入 callSaaSHook 到 unitCore, 使 unit handler 可反向调用 SaaS hook。
  * @keyword-en attach-hook-rpc
  */
-export function attachHookRpc(socket: Socket, hookBus: RunnerHookBusService): void {
+export function attachHookRpc(
+  socket: Socket,
+  hookBus: RunnerHookBusService,
+  unitCore?: UnitCoreService,
+): void {
   type AnnotatedSocket = Socket & { __hookRpcAttached?: boolean };
   const s = socket as AnnotatedSocket;
   if (s.__hookRpcAttached) return;
   s.__hookRpcAttached = true;
+
+  // 注入 Runner→SaaS hook 调用能力
+  unitCore?.setCallSaaSHook(createCallSaaSHook(socket));
 
   registerMetaHooks(hookBus);
 

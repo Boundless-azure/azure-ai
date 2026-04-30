@@ -55,6 +55,12 @@ export interface UnitExecutionContext {
   mongo: {
     getDb: (dbName?: string) => import('mongodb').Db | null;
   };
+  /** 调用 SaaS 侧 hook, 复用 Socket 连接, context 携带用户 token 自动鉴权 */
+  callSaaSHook?: (
+    hookName: string,
+    payload: unknown,
+    context?: Record<string, unknown>,
+  ) => Promise<{ errorMsg?: string[]; result: unknown }>;
 }
 
 export type UnitCoreHandler = (

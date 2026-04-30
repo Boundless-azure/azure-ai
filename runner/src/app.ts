@@ -62,7 +62,7 @@ export async function createRunnerApp() {
 
   // socket connect 后挂 hook-rpc 协议 (attach 内部幂等)
   registrationService.setOnSocketReady((socket: ClientSocket) =>
-    attachHookRpc(socket, hookBus),
+    attachHookRpc(socket, hookBus, unitCore),
   );
 
   registerConfigurationRoutes(app, mongoClient, redisClient);

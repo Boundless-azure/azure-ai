@@ -21,6 +21,7 @@ export class UnitCoreService {
   private readonly registry: UnitRegistryService;
   private readonly hooks = new Map<string, UnitHookRecord>();
   private readonly sources = new Map<string, UnitSource>();
+  private _callSaaSHook?: UnitExecutionContext['callSaaSHook'];
 
   constructor(
     private readonly options: {
@@ -31,6 +32,15 @@ export class UnitCoreService {
     },
   ) {
     this.registry = new UnitRegistryService(options.workspacePath, options.systemUnitPath);
+  }
+
+  /**
+   * @title 注入 SaaS hook 调用能力
+   * @description 由 hook-rpc 层调用, 将 Socket 连接包装为 callSaaSHook 供 unit handler 使用。
+   * @keyword-en set-call-saas-hook
+   */
+  setCallSaaSHook(fn: UnitExecutionContext['callSaaSHook']): void {
+    this._callSaaSHook = fn;
   }
 
   /**
@@ -144,6 +154,7 @@ export class UnitCoreService {
       mongo: {
         getDb: (dbName) => this.options.mongoClient.getDb(dbName),
       },
+      callSaaSHook: this._callSaaSHook,
     };
     return (await handler(ctx, payload)) as TResult;
   }

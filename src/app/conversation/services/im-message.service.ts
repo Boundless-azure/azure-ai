@@ -18,6 +18,7 @@ import { ChatMessageType, ChatSessionType } from '@core/ai/enums/chat.enums';
 import type { ChatMessage } from '@core/ai/types';
 import { ImSessionService } from './im-session.service';
 import { ImGateway } from '../controllers/im.gateway';
+import { AiSessionDataService } from './ai-session-data.service';
 import type {
   SendMessageDto,
   ImMessageInfo,
@@ -61,6 +62,7 @@ export class ImMessageService {
     @Inject(forwardRef(() => ImGateway))
     private readonly imGateway: ImGateway,
     private readonly agentRuntimeService: AgentRuntimeService,
+    private readonly aiSessionDataService: AiSessionDataService,
   ) {}
 
   // ===== agent 触发队列：执行锁（运行中保存最新 pending，完成后 5s 防抖再消费）=====
@@ -192,6 +194,7 @@ export class ImMessageService {
     options?: {
       role?: 'system' | 'user' | 'assistant';
       skipAgentTrigger?: boolean;
+      messageType?: 'text' | 'notification';
     },
   ): Promise<ImMessageInfo> {
     // 验证会话存在
@@ -216,11 +219,15 @@ export class ImMessageService {
     const mentions = await this.extractMentions(dto.content);
 
     // 创建消息
+    const resolvedMessageType =
+      options?.messageType === 'notification'
+        ? ChatMessageType.Notification
+        : (dto.messageType ?? ChatMessageType.Text);
     const message = this.messageRepo.create({
       sessionId: session.sessionId,
       senderId,
       content: dto.content,
-      messageType: dto.messageType ?? ChatMessageType.Text,
+      messageType: resolvedMessageType,
       replyToId: dto.replyToId ?? null,
       attachments: dto.attachments ?? null,
       metadata:
@@ -234,8 +241,11 @@ export class ImMessageService {
       isAnnouncement: false,
       isEdited: false,
       isDelete: false,
-      // 向后兼容字段
-      role: options?.role ?? 'user',
+      // 向后兼容字段: notification 用 assistant 兼容
+      role:
+        options?.messageType === 'notification'
+          ? 'assistant'
+          : (options?.role ?? 'user'),
     });
 
     const saved = await this.messageRepo.save(message);
@@ -707,6 +717,8 @@ export class ImMessageService {
       true,
     );
 
+    const sessionDataPromptBlock = (await this.aiSessionDataService.getAllAsPromptBlock(payload.sessionId)) ?? undefined;
+
     const gen = this.agentRuntimeService.startDialogue(
       agent.codeDir,
       messages,
@@ -726,6 +738,7 @@ export class ImMessageService {
             triggerMessageId: payload.triggerMessageId,
           },
         },
+        sessionDataPromptBlock,
       },
     ) as AsyncGenerator<unknown>;
 
@@ -859,6 +872,7 @@ export class ImMessageService {
     }
 
     // === 普通模式：收集完整回复后统一发送 ===
+    const sessionDataPromptBlock = (await this.aiSessionDataService.getAllAsPromptBlock(payload.sessionId)) ?? undefined;
     const gen = this.agentRuntimeService.startDialogue(
       agent.codeDir,
       messages,
@@ -873,6 +887,7 @@ export class ImMessageService {
             triggerMessageId: payload.triggerMessageId,
           },
         },
+        sessionDataPromptBlock,
       },
     ) as AsyncGenerator<unknown>;
 

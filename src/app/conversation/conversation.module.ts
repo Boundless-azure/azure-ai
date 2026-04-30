@@ -16,6 +16,8 @@ import { ImContactGroupService } from './services/im-contact-group.service';
 import { WebMcpSessionDataService } from './services/webmcp-session-data.service';
 import { WebMcpHookHandlersService } from './services/webmcp.hook-handlers.service';
 import { SendMsgHookHandlerService } from './services/send-msg.hook-handler.service';
+import { AiSessionDataService } from './services/ai-session-data.service';
+import { AiSessionDataHookHandlersService } from './services/ai-session-data.hook-handlers.service';
 import { ImContactGroupEntity } from './entities/im-contact-group.entity';
 import { ImContactGroupMemberEntity } from './entities/im-contact-group-member.entity';
 import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
@@ -83,7 +85,9 @@ import { AuthModule } from '@/core/auth/auth.module';
     WebMcpSessionDataService,
     WebMcpHookHandlersService,
     SendMsgHookHandlerService,
+    AiSessionDataService,
+    AiSessionDataHookHandlersService,
   ],
-  exports: [ConversationService, ImSessionService, ImMessageService, WebMcpGateway, WebMcpSessionDataService],
+  exports: [ConversationService, ImSessionService, ImMessageService, WebMcpGateway, WebMcpSessionDataService, AiSessionDataService],
 })
 export class ConversationModule {}

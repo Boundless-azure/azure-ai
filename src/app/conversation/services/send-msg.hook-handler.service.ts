@@ -17,9 +17,12 @@ const sendMsgSchema = z.object({
   senderPrincipalId: z.string().describe('发送者主体 ID, 必填'),
   replyToId: z
     .string()
-    .describe(
-      '本轮触发消息的 ID, 必填; 用于溯源和防重, 同一 replyToId 最多回复 4 条',
-    ),
+    .optional()
+    .describe('回复消息 ID, 可选; 同一 replyToId 最多回复 4 条'),
+  messageType: z
+    .enum(['text', 'notification'])
+    .optional()
+    .describe('消息类型, 默认 text; notification 为 AI 可见用户端隐藏的通知'),
 });
 
 type SendMsgPayload = z.infer<typeof sendMsgSchema>;
@@ -40,46 +43,58 @@ export class SendMsgHookHandlerService {
   ) {}
 
   /**
-   * 通过 HookBus 向指定 IM 会话发送消息; replyToId 必须是本轮触发消息 ID
+   * 通过 HookBus 向指定 IM 会话发送消息
    * @keyword-en send-msg-hook-handler
    */
   @HookHandler('saas.app.conversation.sendMsg', {
     pluginName: 'im',
     tags: ['im', 'proactive', 'send'],
     description:
-      '向 IM 会话发送 assistant 消息（主动对话专用）。replyToId 必须是本轮触发消息的 ID, 用于溯源与防重; 同一 replyToId 最多回复 4 条。',
+      '向 IM 会话发送消息。messageType=text 为普通消息, notification 为 AI 可见用户端隐藏的通知。',
     payloadSchema: sendMsgSchema,
   })
   async handleSendMsg(
     event: HookEvent<SendMsgPayload>,
   ): Promise<HookResult> {
-    const { sessionId, content, senderPrincipalId, replyToId } = event.payload;
-
-    // 硬性限制：同一 triggerMessage 最多回复 4 条
-    const MAX_REPLIES = 4;
-    const replyCount = await this.imMessageService.countReplyMessages(
+    const {
       sessionId,
+      content,
       senderPrincipalId,
       replyToId,
-    );
-    if (replyCount >= MAX_REPLIES) {
-      this.logger.warn(
-        `[sendMsg] reply limit reached (${replyCount}/${MAX_REPLIES}) session=${sessionId} replyTo=${replyToId}`,
+      messageType,
+    } = event.payload;
+
+    // replyToId 存在时检查回复数量限制
+    if (replyToId) {
+      const MAX_REPLIES = 4;
+      const replyCount = await this.imMessageService.countReplyMessages(
+        sessionId,
+        senderPrincipalId,
+        replyToId,
       );
-      return {
-        status: HookResultStatus.Error,
-        error: `已达到单条消息最大回复数量 ${MAX_REPLIES}，请勿继续发送。`,
-      };
+      if (replyCount >= MAX_REPLIES) {
+        this.logger.warn(
+          `[sendMsg] reply limit reached (${replyCount}/${MAX_REPLIES}) session=${sessionId} replyTo=${replyToId}`,
+        );
+        return {
+          status: HookResultStatus.Error,
+          error: `已达到单条消息最大回复数量 ${MAX_REPLIES}，请勿继续发送。`,
+        };
+      }
     }
 
     try {
       const msg = await this.imMessageService.sendMessage(
         senderPrincipalId,
         { sessionId, content, replyToId },
-        { role: 'assistant', skipAgentTrigger: true },
+        {
+          role: 'assistant',
+          skipAgentTrigger: true,
+          messageType: messageType as 'text' | 'notification' | undefined,
+        },
       );
       this.logger.debug(
-        `[sendMsg] sent to session=${sessionId} by=${senderPrincipalId} replyTo=${replyToId}`,
+        `[sendMsg] sent to session=${sessionId} by=${senderPrincipalId} type=${messageType ?? 'text'}`,
       );
       return {
         status: HookResultStatus.Success,
