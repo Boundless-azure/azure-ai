@@ -141,6 +141,16 @@ async function dispatchSaasHook(
   input: { hookName: string; payload?: unknown; debug?: boolean },
 ): Promise<HookCallReply> {
   try {
+    // ① fail-fast :: hook 名根本没注册 → 直接返回 errorMsg, 不让 LLM 误以为"存在但空"
+    //   (无此挡板 invoker 会返回 [{status:'skipped'}], 经过下面循环会变成 result=[undefined], ok=1)
+    const regs = hookBus.select(input.hookName);
+    if (regs.length === 0) {
+      return softError(
+        `hook-not-found:${input.hookName} :: 该 hook 在 saas 端未注册. ` +
+          '请用 search_hook / get_hook_tag 拿真实 hook 列表, 不要凭名字猜 — ' +
+          '比如 "搜 todo" 应该用 saas.app.todo.list 配 q 参数, 而不是不存在的 saas.app.todo.search.',
+      );
+    }
     // debug 通过 context.extras.debug 透传给 invoker, 启 OTel sandbox; 不污染原 ctx
     const enrichedCtx: HookInvocationContext = input.debug
       ? { ...ctx, extras: { ...(ctx.extras ?? {}), debug: true } }
@@ -161,6 +171,13 @@ async function dispatchSaasHook(
     }>) {
       if (r?.status === 'error' || r?.error) {
         errorMsg.push(r.error ?? 'hook-error');
+      } else if (r?.status === 'skipped') {
+        // ② 兜底 :: 即使 select 通过, invoker 链路里所有 reg 都被 filter 跳过也要明确告知 LLM
+        //   不能让 skipped 伪装成成功 (LLM 看见 ok=1 就会误判"hook 存在但空")
+        errorMsg.push(
+          `hook-skipped:${input.hookName} :: 命中的 handler 全部被中间件/filter 跳过, ` +
+            'payload 或 filter 条件可能不对.',
+        );
       } else {
         data.push(r?.data);
       }

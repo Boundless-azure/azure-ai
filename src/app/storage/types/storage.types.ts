@@ -69,7 +69,9 @@ export interface ShareLinkResponse {
 }
 
 // 复制节点请求
-export interface CopyNodesRequest {
-  nodeIds: string[];
-  targetParentId: string | null;
-}
+export const CopyNodesSchema = z.object({
+  nodeIds: z.array(z.string()).min(1),
+  targetParentId: z.string().nullable(),
+});
+
+export type CopyNodesRequest = z.infer<typeof CopyNodesSchema>;

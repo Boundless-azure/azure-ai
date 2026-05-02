@@ -16,6 +16,7 @@ import { ImContactGroupService } from './services/im-contact-group.service';
 import { WebMcpSessionDataService } from './services/webmcp-session-data.service';
 import { WebMcpHookHandlersService } from './services/webmcp.hook-handlers.service';
 import { SendMsgHookHandlerService } from './services/send-msg.hook-handler.service';
+import { SmartHistoryHookHandlerService } from './services/smart-history.hook-handler.service';
 import { AiSessionDataService } from './services/ai-session-data.service';
 import { AiSessionDataHookHandlersService } from './services/ai-session-data.hook-handlers.service';
 import { ImContactGroupEntity } from './entities/im-contact-group.entity';
@@ -24,6 +25,7 @@ import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
 import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
 import { ChatSessionDataEntity } from '@core/ai/entities/chat-session-data.entity';
 import { ChatSessionMemberEntity } from '@core/ai/entities/chat-session-member.entity';
+import { ChatSessionSmartEntity } from '@core/ai/entities/chat-session-smart.entity';
 import { LGCheckpointEntity } from '@core/langgraph/checkpoint/entities/lg-checkpoint.entity';
 import { LGWriteEntity } from '@core/langgraph/checkpoint/entities/lg-write.entity';
 import { LangGraphCheckpointModule } from '@core/langgraph/checkpoint/checkpoint.module';
@@ -58,7 +60,7 @@ import { AuthModule } from '@/core/auth/auth.module';
       ChatSessionEntity,
       ChatSessionDataEntity,
       ChatSessionMemberEntity,
-      ChatSessionMemberEntity,
+      ChatSessionSmartEntity,
       LGCheckpointEntity,
       LGWriteEntity,
       AgentExecutionEntity,
@@ -85,6 +87,7 @@ import { AuthModule } from '@/core/auth/auth.module';
     WebMcpSessionDataService,
     WebMcpHookHandlersService,
     SendMsgHookHandlerService,
+    SmartHistoryHookHandlerService,
     AiSessionDataService,
     AiSessionDataHookHandlersService,
   ],

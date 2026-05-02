@@ -52,8 +52,12 @@ const getKnowledgeTagSchema = z.object({
 const searchKnowledgeSchema = z.object({
   tags: z
     .array(z.string())
+    .max(10)
     .optional()
-    .describe('按 tag 过滤 (ILIKE 模糊匹配); 不传则全部前 100 条'),
+    .describe(
+      'tag 列表 (上限 10 个, 任一命中即返回); 必须从 saas.app.knowledge.getTag 返回的真实 tag 中挑选, ' +
+        '禁止自创或叠加未在全景里出现过的 tag, 否则 hook 直接返回 error。不传 tags 则返回前 100 条。',
+    ),
   type: knowledgeBookTypeSchema.optional().describe('可选过滤: skill / lore'),
   limit: z
     .number()
@@ -215,7 +219,9 @@ export class KnowledgeHookHandlerService {
     pluginName: 'knowledge',
     tags: ['knowledge', 'search', 'tag'],
     description:
-      '按标签列举知识书本, 最多返回 100 条。tags 可不传 (返回全部前 100 条); 传入则按标签 ILIKE 模糊匹配; type 可选 (skill / lore)。',
+      '按标签列举知识书本, 最多返回 100 条。tags 可不传 (返回全部前 100 条); ' +
+      '传入时必须是 saas.app.knowledge.getTag 全景中真实存在的子集 — ' +
+      '若全部不存在 hook 会直接 error 阻止瞎猜; type 可选 (skill / lore)。',
     payloadSchema: searchKnowledgeSchema,
   })
   async handleSearch(
@@ -229,20 +235,90 @@ export class KnowledgeHookHandlerService {
     });
     try {
       const start = Date.now();
+
+      // 强约束 :: 传了 tags 就必须跟 getTag 全集做交集, 拒绝瞎猜的循环。
+      // 不传 tags (前 100 条预览模式) 不走校验, 行为照旧。
+      let known: string[] | undefined;
+      let unknown: string[] = [];
+      if (tags && tags.length > 0) {
+        const validation = await this.validateTags(tags, type);
+        known = validation.known;
+        unknown = validation.unknown;
+        if (known.length === 0) {
+          event.log?.warn('knowledge.search:reject-all-unknown', {
+            unknown,
+            availableSample: validation.availableSample,
+          });
+          return {
+            status: HookResultStatus.Error,
+            error:
+              `tags 全部不存在: [${unknown.join(', ')}]. ` +
+              `请先 call_hook("saas.app.knowledge.getTag") 拿真实 tag 列表, ` +
+              `不要自创 tag 或在数组里叠加未在全景里出现过的 tag。` +
+              (validation.availableSample.length > 0
+                ? ` 当前部分可用 tag: [${validation.availableSample.join(', ')}]`
+                : ' (当前知识库为空, 不要再 search 了)'),
+          };
+        }
+      }
+
       const data = await this.knowledgeService.listByTags({
-        tags,
+        tags: known,
         type,
         limit,
       });
       event.log?.info('knowledge.search:done', {
         returned: Array.isArray(data) ? data.length : 0,
+        knownCount: known?.length ?? 0,
+        unknownCount: unknown.length,
         durationMs: Date.now() - start,
       });
-      return { status: HookResultStatus.Success, data };
+      // 部分 unknown 时把信息透传给 LLM, 让它能看到自己在猜
+      const wrapped =
+        unknown.length > 0
+          ? {
+              items: data,
+              unknownTags: unknown,
+              hint:
+                `以下 tag 不存在已被忽略: [${unknown.join(', ')}]. ` +
+                `请只使用 saas.app.knowledge.getTag 返回里出现过的 tag, 不要自创。`,
+            }
+          : data;
+      return { status: HookResultStatus.Success, data: wrapped };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       event.log?.error('knowledge.search:fail', { error: msg });
       return { status: HookResultStatus.Error, error: msg };
     }
+  }
+
+  /**
+   * 把传入的 tags 跟 getTag 全集做交集 :: 返回 known/unknown 拆分 + 当前可用 tag 样本
+   * @description 全集来自 listAllTags (上限 400, 跟 getTag hook 同源), 大小写不敏感。
+   *              空数据库时 known/unknown 都为空数组, 由调用方决定怎么响应。
+   * @keyword-en validate-tags-against-real-set
+   */
+  private async validateTags(
+    tags: string[],
+    type?: KnowledgeBookType,
+  ): Promise<{
+    known: string[];
+    unknown: string[];
+    availableSample: string[];
+  }> {
+    const all = await this.knowledgeService.listAllTags({ type, limit: 400 });
+    const realSet = new Set(
+      (all?.items ?? []).map((it) => it.name.toLowerCase()),
+    );
+    const known: string[] = [];
+    const unknown: string[] = [];
+    for (const t of tags) {
+      if (realSet.has(t.toLowerCase())) known.push(t);
+      else unknown.push(t);
+    }
+    const availableSample = (all?.items ?? [])
+      .slice(0, 8)
+      .map((it) => it.name);
+    return { known, unknown, availableSample };
   }
 }

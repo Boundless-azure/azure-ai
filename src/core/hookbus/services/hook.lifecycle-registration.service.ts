@@ -70,7 +70,17 @@ export class HookLifecycleRegistrationService implements OnModuleInit {
             };
           }
           const args = this.resolveArgs(event.payload);
-          const result = await callable(...args);
+          // HTTP 路径下 NestJS 通过 @CurrentPrincipal() 等装饰器把 principal 注入到 controller method 第 2 参;
+          // hook 路径绕开了 NestJS pipeline, 这里手动把 event.context 转成 JwtPayload 形态 append 到 args 末尾,
+          // 让 controller method 与 service 层 (尤其是 data-permission build) 能拿到一致的 principal。
+          // controller method 没声明 principal 参数时多余位置参数被静默丢弃, 不会破坏既有签名。
+          const principal = event.context?.principalId
+            ? {
+                id: event.context.principalId,
+                type: event.context.principalType,
+              }
+            : undefined;
+          const result = await callable(...args, principal);
           return {
             status: HookResultStatus.Success,
             data: result,

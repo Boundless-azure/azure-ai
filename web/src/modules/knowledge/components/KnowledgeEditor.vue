@@ -230,8 +230,9 @@
             <div class="flex items-center px-4 py-2 border-b border-gray-100 flex-shrink-0 bg-gray-50">
               <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('knowledge.preview') }}</span>
             </div>
+            <!-- markdown-it 渲染输出 :: scoped 样式见底部 markdown-preview 块 -->
             <div
-              class="flex-1 overflow-y-auto p-4 prose prose-sm max-w-none"
+              class="flex-1 overflow-y-auto p-4 markdown-preview"
               v-html="renderedContent"
             ></div>
           </div>
@@ -300,9 +301,39 @@
  * @keywords-en knowledge-editor, chapter, markdown, preview, lm-required
  */
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
+import MarkdownIt from 'markdown-it';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github-dark.css';
 import { useI18n } from '../../agent/composables/useI18n';
 import { useKnowledge } from '../hooks/useKnowledge';
 import type { KnowledgeBookInfo, KnowledgeChapterToc, KnowledgeChapterInfo } from '../types/knowledge.types';
+
+/**
+ * Markdown 渲染器单例 :: 与 ChatMessageList 同款配置 (linkify / typographer / hljs 高亮)
+ * @keyword-en md-renderer-singleton
+ */
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  typographer: true,
+  breaks: true,
+  highlight(str: string, lang: string) {
+    if (lang && hljs.getLanguage(lang)) {
+      try {
+        return (
+          '<pre class="hljs"><code>' +
+          hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
+          '</code></pre>'
+        );
+      } catch {
+        // fallthrough to default escape
+      }
+    }
+    return (
+      '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>'
+    );
+  },
+});
 
 const props = defineProps<{
   book: KnowledgeBookInfo;
@@ -352,35 +383,16 @@ const editingChapterId = ref<string | null>(null);
 const chapterTitleDraft = ref('');
 const chapterTitleInputRef = ref<HTMLInputElement | null>(null);
 
-/** 简单 Markdown 渲染（粗体/斜体/代码/标题/列表） */
+/**
+ * Markdown 预览渲染 :: 走 markdown-it (跟 ChatMessageList 同款), 支持完整 GFM + 代码高亮
+ * 空内容时给个占位提示
+ * @keyword-en rendered-content-markdown
+ */
 const renderedContent = computed(() => {
-  if (!editorContent.value) return `<p class="text-gray-400 italic">预览区域</p>`;
-  let html = editorContent.value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    // 标题
-    .replace(/^#{3} (.+)$/gm, '<h3 class="text-base font-semibold mt-4 mb-2">$1</h3>')
-    .replace(/^#{2} (.+)$/gm, '<h2 class="text-lg font-bold mt-5 mb-2">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold mt-6 mb-3">$1</h1>')
-    // 粗体/斜体
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // 行内代码
-    .replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1 rounded text-pink-600 text-sm">$1</code>')
-    // 代码块
-    .replace(/```[\s\S]*?```/g, (match) => {
-      const code = match.slice(3, -3).replace(/^\w*\n/, '');
-      return `<pre class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto my-3"><code>${code}</code></pre>`;
-    })
-    // 无序列表
-    .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc text-gray-700">$1</li>')
-    // 有序列表
-    .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 list-decimal text-gray-700">$1</li>')
-    // 段落
-    .replace(/\n\n/g, '</p><p class="mb-3">')
-    .replace(/\n/g, '<br>');
-  return `<p class="mb-3">${html}</p>`;
+  if (!editorContent.value) {
+    return `<p class="text-gray-400 italic">预览区域</p>`;
+  }
+  return md.render(editorContent.value);
 });
 
 /** 选择章节 */
@@ -544,3 +556,144 @@ onMounted(async () => {
   tocLoading.value = false;
 });
 </script>
+
+<!-- Markdown 预览样式 :: scoped 用 :deep() 穿透到 v-html 注入的子节点
+     与 ChatMessageList 的 .markdown-body 同款思路, 但更克制
+     keyword: markdown-preview-style -->
+<style scoped>
+.markdown-preview :deep(h1),
+.markdown-preview :deep(h2),
+.markdown-preview :deep(h3),
+.markdown-preview :deep(h4) {
+  font-weight: 700;
+  color: #111827;
+  margin-top: 1.2em;
+  margin-bottom: 0.6em;
+  line-height: 1.3;
+}
+.markdown-preview :deep(h1) {
+  font-size: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.3em;
+}
+.markdown-preview :deep(h2) {
+  font-size: 1.25rem;
+}
+.markdown-preview :deep(h3) {
+  font-size: 1.1rem;
+}
+.markdown-preview :deep(h4) {
+  font-size: 1rem;
+}
+
+.markdown-preview :deep(p) {
+  margin: 0.6em 0;
+  line-height: 1.7;
+  color: #374151;
+}
+
+.markdown-preview :deep(ul),
+.markdown-preview :deep(ol) {
+  margin: 0.6em 0;
+  padding-left: 1.5rem;
+  color: #374151;
+}
+.markdown-preview :deep(ul) {
+  list-style: disc;
+}
+.markdown-preview :deep(ol) {
+  list-style: decimal;
+}
+.markdown-preview :deep(li) {
+  margin: 0.25em 0;
+  line-height: 1.6;
+}
+.markdown-preview :deep(li > p) {
+  margin: 0.2em 0;
+}
+
+.markdown-preview :deep(blockquote) {
+  margin: 0.8em 0;
+  padding: 0.4em 1em;
+  border-left: 3px solid #d4d4d8;
+  background: #f9fafb;
+  color: #52525b;
+  border-radius: 0 0.4rem 0.4rem 0;
+}
+
+.markdown-preview :deep(code:not(pre code)) {
+  background: rgba(212, 212, 216, 0.35);
+  border-radius: 0.3rem;
+  padding: 0.1rem 0.3rem;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  font-size: 0.88em;
+  color: #be185d;
+}
+
+.markdown-preview :deep(pre) {
+  margin: 0.8em 0;
+  padding: 1em;
+  background-color: #0d1117;
+  color: #c9d1d9;
+  border-radius: 0.5em;
+  overflow-x: auto;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+.markdown-preview :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+}
+
+.markdown-preview :deep(a) {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown-preview :deep(a:hover) {
+  color: #1d4ed8;
+}
+
+.markdown-preview :deep(table) {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  width: 100%;
+  font-size: 0.92em;
+}
+.markdown-preview :deep(th),
+.markdown-preview :deep(td) {
+  border: 1px solid #e5e7eb;
+  padding: 0.4em 0.7em;
+  text-align: left;
+}
+.markdown-preview :deep(th) {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.markdown-preview :deep(hr) {
+  margin: 1.2em 0;
+  border: none;
+  border-top: 1px solid #e5e7eb;
+}
+
+.markdown-preview :deep(strong) {
+  font-weight: 600;
+  color: #111827;
+}
+.markdown-preview :deep(em) {
+  font-style: italic;
+}
+
+.markdown-preview :deep(img) {
+  max-width: 100%;
+  border-radius: 0.4rem;
+  margin: 0.5em 0;
+}
+</style>

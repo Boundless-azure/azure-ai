@@ -175,11 +175,6 @@ export class AgentRuntimeService {
           .filter(Boolean)
           .join('\n');
 
-        if (injectedPrefix) {
-          this.logger.log(
-            `[startDialogue] merged systemPrompt:\n---\n${mergedSystemPrompt}\n---`,
-          );
-        }
         const aiReq: AIModelRequest = {
           modelId: req.modelId,
           messages: req.messages,

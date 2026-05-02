@@ -18,17 +18,33 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { Request } from 'express';
+import { z } from 'zod';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
+import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
 import { StorageService } from '../services/storage.service';
 import { ResourceService } from '../../resource/services/resource.service';
 import {
   CreateStorageNodeRequest,
+  CreateStorageNodeSchema,
   UpdateStorageNodeRequest,
+  UpdateStorageNodeSchema,
   CreateShareRequest,
+  CreateShareSchema,
   ListStorageNodesQuery,
+  ListStorageNodesSchema,
   StorageNodeType,
   CopyNodesRequest,
+  CopyNodesSchema,
 } from '../types/storage.types';
+
+/**
+ * @title Storage Hook payload schema (input 形状, SSOT)
+ * @description lifecycle 自动包成 envelope, 此处只声明 input 部分。
+ * @keywords-cn StorageHook, payloadSchema, input
+ * @keywords-en storage-hook, payload-schema, input
+ */
+const idParamInput = z.object({ id: z.string() });
+const emptyInput = z.object({});
 
 type AuthedReq = Request & { user?: { id?: string; tenantId?: string } };
 
@@ -77,6 +93,12 @@ export class StorageController {
    */
   @Post('nodes')
   @CheckAbility('create', 'storage')
+  @HookLifecycle({
+    hook: 'saas.app.storage.createNode',
+    description: 'Storage 节点创建 (文件夹或文件)',
+    payloadSchema: CreateStorageNodeSchema,
+    payloadSource: 'body',
+  })
   async createNode(
     @Body() body: CreateStorageNodeRequest,
     @Req() req: AuthedReq,
@@ -93,6 +115,12 @@ export class StorageController {
    */
   @Post('nodes/copy')
   @CheckAbility('create', 'storage')
+  @HookLifecycle({
+    hook: 'saas.app.storage.copyNodes',
+    description: 'Storage 节点批量复制 (递归 + 自动改名)',
+    payloadSchema: CopyNodesSchema,
+    payloadSource: 'body',
+  })
   async copyNodes(@Body() body: CopyNodesRequest, @Req() req: AuthedReq) {
     const tenantId = req.user?.tenantId ?? req.user?.id ?? 'default';
     const userId = req.user?.id ?? 'system';
@@ -173,6 +201,12 @@ export class StorageController {
    */
   @Get('nodes')
   @CheckAbility('read', 'storage')
+  @HookLifecycle({
+    hook: 'saas.app.storage.listNodes',
+    description: 'Storage 节点列表查询 (按 parentId / type / q 过滤)',
+    payloadSchema: ListStorageNodesSchema,
+    payloadSource: 'query',
+  })
   async listNodes(
     @Query() query: ListStorageNodesQuery,
     @Req() req: AuthedReq,
@@ -188,6 +222,12 @@ export class StorageController {
    */
   @Get('nodes/root')
   @CheckAbility('read', 'storage')
+  @HookLifecycle({
+    hook: 'saas.app.storage.getRootNodes',
+    description: 'Storage 根目录节点列表',
+    payloadSchema: emptyInput,
+    payloadSource: 'query',
+  })
   async getRootNodes(@Req() req: AuthedReq) {
     const tenantId = req.user?.tenantId ?? req.user?.id ?? 'default';
     const nodes = await this.storageService.getRootNodes(tenantId);
@@ -200,6 +240,12 @@ export class StorageController {
    */
   @Get('nodes/:id')
   @CheckAbility('read', 'storage')
+  @HookLifecycle({
+    hook: 'saas.app.storage.getNode',
+    description: 'Storage 节点详情',
+    payloadSchema: idParamInput,
+    payloadSource: 'params',
+  })
   async getNode(@Param('id') id: string, @Req() req: AuthedReq) {
     const tenantId = req.user?.tenantId ?? req.user?.id ?? 'default';
     const node = await this.storageService.getNode(id, tenantId);
@@ -212,6 +258,12 @@ export class StorageController {
    */
   @Put('nodes/:id')
   @CheckAbility('update', 'storage')
+  @HookLifecycle({
+    hook: 'saas.app.storage.updateNode',
+    description: 'Storage 节点更新 (改名或移动 parent)',
+    payloadSchema: UpdateStorageNodeSchema,
+    payloadSource: 'body',
+  })
   async updateNode(
     @Param('id') id: string,
     @Body() body: UpdateStorageNodeRequest,
@@ -234,6 +286,12 @@ export class StorageController {
    */
   @Delete('nodes/:id')
   @CheckAbility('delete', 'storage')
+  @HookLifecycle({
+    hook: 'saas.app.storage.deleteNode',
+    description: 'Storage 节点软删除',
+    payloadSchema: idParamInput,
+    payloadSource: 'params',
+  })
   async deleteNode(@Param('id') id: string, @Req() req: AuthedReq) {
     const tenantId = req.user?.tenantId ?? req.user?.id ?? 'default';
     await this.storageService.deleteNode(id, tenantId);
@@ -246,6 +304,12 @@ export class StorageController {
    */
   @Post('nodes/:id/share')
   @CheckAbility('share', 'storage')
+  @HookLifecycle({
+    hook: 'saas.app.storage.createShare',
+    description: 'Storage 节点分享链接创建',
+    payloadSchema: CreateShareSchema,
+    payloadSource: 'body',
+  })
   async createShare(
     @Param('id') id: string,
     @Body() body: CreateShareRequest,
@@ -262,6 +326,12 @@ export class StorageController {
    */
   @Delete('nodes/:id/share')
   @CheckAbility('share', 'storage')
+  @HookLifecycle({
+    hook: 'saas.app.storage.removeShare',
+    description: 'Storage 节点分享链接移除',
+    payloadSchema: idParamInput,
+    payloadSource: 'params',
+  })
   async removeShare(@Param('id') id: string, @Req() req: AuthedReq) {
     const tenantId = req.user?.tenantId ?? req.user?.id ?? 'default';
     await this.storageService.removeShare(id, tenantId);
