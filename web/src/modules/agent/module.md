@@ -15,7 +15,8 @@ src/modules/agent/
 │   ├── chat-history.cache.ts      # 聊天历史缓存
 │   └── im-config.cache.ts         # IM 配置缓存
 ├── components/
-│   ├── AgentList.vue              # Agent 列表组件
+│   ├── AgentList.vue              # Agent 列表组件 (含角色分配入口)
+│   ├── AgentRoleAssignModal.vue   # Agent 角色分配 Modal (复用 identity membership)
 │   ├── AgentWorkspace.vue          # Agent 工作区
 │   ├── ChatDetail.vue             # 聊天详情
 │   ├── ChatPanel.vue              # 聊天面板
@@ -121,6 +122,24 @@ src/modules/agent/
 | `loadContacts` | 加载通讯录 |
 | `loadAgents` | 加载 Agent |
 | `mentionCandidates` | 获取 @ 提及候选 |
+
+### components/AgentList.vue (Agent 角色分配入口)
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `openRoleModal` | 打开 Agent 角色分配 Modal, 落点为 agent.principalId |
+| `closeRoleModal` | 关闭 Modal 并清理选中 Agent |
+
+### components/AgentRoleAssignModal.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `bootstrap` | 加载组织、角色、当前成员关系 |
+| `refreshMemberships` | 按 principalId 重拉成员关系 |
+| `addRole` | 调用 useMemberships.add({organizationId, principalId, roleId}) |
+| `removeRole` | 调用 useMemberships.remove(membershipId) |
+| `formatRoleLabel` | owner/admin/member 中文映射展示 |
+| `getOrgName` | organizationId → 组织名 |
 
 ### components/ChatPanel.vue
 

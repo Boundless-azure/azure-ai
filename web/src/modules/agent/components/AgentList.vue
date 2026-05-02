@@ -86,6 +86,13 @@
             </div>
             <div class="flex space-x-2">
               <button
+                @click="openRoleModal(agent)"
+                class="w-9 h-9 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 flex items-center justify-center text-indigo-600 transition-colors opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto"
+                title="分配角色"
+              >
+                <i class="fa-solid fa-user-tag text-sm"></i>
+              </button>
+              <button
                 @click="openEditModal(agent)"
                 class="w-9 h-9 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-600 transition-colors opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto"
                 :title="t('agent.edit')"
@@ -372,6 +379,14 @@
       :initial-url="resolveResourceUrl(editForm.avatarUrl) || null"
       @confirm="onAvatarConfirm"
     />
+
+    <!-- Agent 角色分配 Modal :: 走 identity membership 系统 -->
+    <AgentRoleAssignModal
+      :open="showRoleModal"
+      :principal-id="roleAssignAgent?.principalId ?? null"
+      :agent-name="roleAssignAgent?.nickname ?? null"
+      @close="closeRoleModal"
+    />
   </div>
 </template>
 
@@ -394,6 +409,7 @@ import {
 import { resolveResourceUrl } from '../../../utils/http';
 import { agentApi } from '../../../api/agent';
 import type { AiModelItem } from '../../ai-provider/types/ai-provider.types';
+import AgentRoleAssignModal from './AgentRoleAssignModal.vue';
 
 const { t, currentLocale } = useI18n();
 const ui = useUIStore();
@@ -411,6 +427,18 @@ const editForm = ref<UpdateAgentRequest>({
   proactiveChatEnabled: true,
 });
 const aiModels = ref<AiModelItem[]>([]);
+
+// 角色分配 Modal :: 复用 identity membership, 入口落在 agent.principalId
+const showRoleModal = ref(false);
+const roleAssignAgent = ref<Agent | null>(null);
+function openRoleModal(agent: Agent) {
+  roleAssignAgent.value = agent;
+  showRoleModal.value = true;
+}
+function closeRoleModal() {
+  showRoleModal.value = false;
+  roleAssignAgent.value = null;
+}
 const modelOptions = computed(() =>
   aiModels.value.map((item) => ({
     value: item.name,

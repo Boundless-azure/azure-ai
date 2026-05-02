@@ -76,6 +76,8 @@ export interface AgentDoc {
   keywords?: string[] | null;
   nodes: Record<string, unknown> | null;
   conversationGroupId: string | null;
+  /** 关联的 Identity 主体 ID :: 角色分配走 membership 表, 落点是 principalId */
+  principalId?: string | null;
   active: boolean;
   aiModelIds?: string[] | null;
   createdAt?: Date;

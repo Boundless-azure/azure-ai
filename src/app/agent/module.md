@@ -1,10 +1,11 @@
 模块名称：app/agent（Agent 与执行记录模块）
 
 概述
-- 管理 Agent 元信息（拟人昵称、用途说明、关联向量、节点图、代码目录、对话组关联、AI模型ID列表）。
+- 管理 Agent 元信息（拟人昵称、用途说明、关联向量、节点图、代码目录、对话组关联、AI模型ID列表、关联 principalId）。
  - 支持向量列 embedding（pgvector）用于 Agent 的向量检索；并新增 keywords(JSON) 作为回退匹配。
 - 管理执行Agent记录（任务说明、引用Agent、节点状态、最新返回、上下文关联）。
 - 提供查/改/删接口；新增不在本模块受理。
+- principalId 字段供前端"分配角色"入口使用：membership 表落点 = principalId, 角色分配复用 identity 模块的 RBAC 系统。
 
 文件清单（File List）
 - app/agent/entities/agent.entity.ts

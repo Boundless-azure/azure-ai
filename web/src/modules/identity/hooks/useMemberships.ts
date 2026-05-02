@@ -5,7 +5,6 @@
  * @keywords-en memberships, list, add, remove
  */
 import { ref } from 'vue';
-import { z } from 'zod';
 import { agentApi } from '../../../api/agent';
 import type { MembershipItem } from '../types/identity.types';
 import { IDENTITY_EVENT_NAMES } from '../constants/identity.constants';
@@ -15,12 +14,11 @@ export function useMemberships() {
   const items = ref<MembershipItem[]>([]);
   const error = ref<string | null>(null);
 
-  const RoleSchema = z.union([
-    z.literal('owner'),
-    z.literal('admin'),
-    z.literal('member'),
-  ]);
-
+  /**
+   * 把后端返回的 membership 项归一化 :: role 字段直接透传 (内置三档或自定义角色 code), 不再强制 zod 校验,
+   * 以便 Agent 角色分配场景能展示自定义 RoleEntity.code。展示侧自行做友好映射。
+   * @keyword-en normalize-membership
+   */
   function normalizeMembership(r: {
     id: string;
     organizationId: string;
@@ -30,13 +28,11 @@ export function useMemberships() {
     tags?: string[] | null;
     active: boolean;
   }): MembershipItem {
-    const parsed = RoleSchema.safeParse(r.role);
-    const role = parsed.success ? parsed.data : 'member';
     return {
       id: r.id,
       organizationId: r.organizationId,
       principalId: r.principalId,
-      role,
+      role: r.role || 'member',
       department: r.department ?? null,
       tags: r.tags ?? null,
       active: r.active,
@@ -65,7 +61,8 @@ export function useMemberships() {
   async function add(dto: {
     organizationId: string;
     principalId: string;
-    role: string;
+    role?: string;
+    roleId?: string;
   }) {
     const res = await agentApi.addMembership(dto);
     const normalized = normalizeMembership(res.data);

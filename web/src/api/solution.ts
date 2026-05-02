@@ -66,9 +66,17 @@ export async function installSolution(id: string, data: InstallSolutionRequest):
   return res.data.data;
 }
 
-// 卸载解决方案
-export async function uninstallSolution(id: string, data: UninstallSolutionRequest): Promise<Solution> {
-  const res = await http.delete<BaseResponse<Solution>>(`/solutions/${id}/install`, data);
+// 卸载解决方案 :: 返回 { ok, failed[] }
+//                  - ok=true 表示全部目标 Runner 卸载成功
+//                  - failed 列出软错的 runnerId, 调用方可据此提示重试
+export async function uninstallSolution(
+  id: string,
+  data: UninstallSolutionRequest,
+): Promise<{ ok: boolean; failed: string[] }> {
+  const res = await http.delete<BaseResponse<{ ok: boolean; failed: string[] }>>(
+    `/solutions/${id}/install`,
+    data,
+  );
   return res.data.data;
 }
 

@@ -21,6 +21,7 @@ import { RunnerDbService } from './modules/runner-db/services/runner-db.service'
 import { UnitCoreService } from './unit-core/services/unit-core.service';
 import { registerWebMcpRoutes } from './modules/webmcp/routes/webmcp.routes';
 import { registerSolutionRoutes } from './modules/solution/routes/solution.routes';
+import { registerSolutionHooks } from './modules/solution/hooks/solution.hooks';
 import { registerProxyRoutes } from './modules/proxy/proxy.routes';
 import { registerFrpcRoutes } from './modules/frpc/routes/frpc.routes';
 import { registerRunnerControlRoutes } from './modules/runner-control/runner-control.routes';
@@ -120,6 +121,7 @@ export async function createRunnerApp() {
     await migration.run(db);
     const runnerDb = new RunnerDbService(db);
     await unitCore.persistHooks(runnerDb);
+    registerSolutionHooks(hookBus, mongoClient);
   }
   if (cfg.redisUri) {
     await redisClient.connect(cfg.redisUri);

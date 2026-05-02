@@ -627,7 +627,8 @@ export const agentApi = {
   addMembership: (data: {
     organizationId: string;
     principalId: string;
-    role: string;
+    role?: string;
+    roleId?: string;
   }) => {
     const parsed = AddMembershipSchema.safeParse(data);
     if (!parsed.success) throw new Error('Invalid add membership payload');

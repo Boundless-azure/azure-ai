@@ -152,7 +152,11 @@ export interface MembershipItem {
   id: string;
   organizationId: string;
   principalId: string;
-  role: MembershipRole;
+  /**
+   * 角色字段 :: 内置三档 owner/admin/member 或自定义 RoleEntity.code (Agent 角色分配场景)。
+   * 展示侧需自行做中文映射, 落盘时统一是 RoleEntity.code。
+   */
+  role: MembershipRole | string;
   department?: string | null;
   tags?: string[] | null;
   active: boolean;
@@ -348,18 +352,22 @@ export const ListMembershipsQuerySchema = z.object({
 /**
  * @title AddMembership Schema
  * @description Zod 校验：添加成员请求结构。
- * @keywords-cn 添加成员校验
- * @keywords-en add-membership-schema
+ *              role 走内置三档 (owner/admin/member, 由 UserManagement 用) ;
+ *              roleId 走 RoleEntity 主键 (由 Agent / 自定义角色场景用)。
+ *              二者择一; 后端 MembershipController 同时接受。
+ * @keywords-cn 添加成员校验, 角色字段, 自定义角色ID
+ * @keywords-en add-membership-schema, role-field, custom-role-id
  */
-export const AddMembershipSchema = z.object({
-  organizationId: z.string().min(1),
-  principalId: z.string().min(1),
-  role: z.union([
-    z.literal(MembershipRoles.Owner),
-    z.literal(MembershipRoles.Admin),
-    z.literal(MembershipRoles.Member),
-  ]),
-});
+export const AddMembershipSchema = z
+  .object({
+    organizationId: z.string().min(1),
+    principalId: z.string().min(1),
+    role: z.string().min(1).optional(),
+    roleId: z.string().min(1).optional(),
+  })
+  .refine((data) => Boolean(data.role || data.roleId), {
+    message: 'role 或 roleId 必须提供其一',
+  });
 
 /**
  * @title CreatePermissionDefinition Schema

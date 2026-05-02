@@ -18,12 +18,17 @@ import {
   SolutionSource,
   SolutionInclude,
 } from '../enums/solution.enums';
+import { RunnerService } from '@/app/runner/services/runner.service';
+import { RunnerHookRpcService } from '@/app/runner/services/runner-hook-rpc.service';
+import { RunnerStatus } from '@/app/runner/enums/runner.enums';
 
 /**
  * @title Solution Service
- * @description Solution 管理服务，提供 Solution CRUD、市场和分页功能
- * @keywords-cn Solution服务, Solution管理, Solution市场, 分页
- * @keywords-en solution-service, solution-management, solution-marketplace, pagination
+ * @description Solution 管理服务: CRUD 走本地表; 列表/详情通过 RunnerHookRpc 跨进程聚合
+ *              所有 mounted Runner 上 runner.app.solution.list 的真实数据,
+ *              不再依赖 mock。市场/购买相关接口暂保留占位 (前端"开发中")。
+ * @keywords-cn Solution服务, 跨Runner聚合, hook调度, 真实数据
+ * @keywords-en solution-service, cross-runner-aggregate, hook-dispatch, real-data
  */
 @Injectable()
 export class SolutionService {
@@ -32,143 +37,14 @@ export class SolutionService {
     private readonly solutionRepo: Repository<SolutionEntity>,
     @InjectRepository(SolutionPurchaseEntity)
     private readonly purchaseRepo: Repository<SolutionPurchaseEntity>,
+    private readonly runnerService: RunnerService,
+    private readonly runnerHookRpc: RunnerHookRpcService,
   ) {}
-
-  // Mock data for development
-  private readonly mockSolutions: SolutionResponse[] = [
-    {
-      id: 'mock-solution-1',
-      runnerIds: ['runner-1', 'runner-2'],
-      tenantId: 'tenant-1',
-      name: '天气查询解决方案',
-      version: '1.0.0',
-      summary: '实时查询全球天气信息，支持温度、湿度、风速等',
-      description: '一款强大的天气查询解决方案，可以实时获取全球各地的天气信息',
-      iconUrl: 'https://api.iconify.design/mdi:weather-partly-cloudy.svg',
-      tags: ['工具', '生活服务'],
-      authorName: '系统内置',
-      authorId: 'system',
-      markdownContent: '# 天气查询解决方案\n\n支持全球天气查询...',
-      pluginDir: null,
-      installCount: 1250,
-      rating: 4.8,
-      status: PluginStatus.ACTIVE,
-      isPublished: true,
-      isInstalled: true,
-      source: SolutionSource.SELF_DEVELOPED,
-      location: '/runner/solutions/weather-query',
-      images: ['https://example.com/weather-1.png'],
-      includes: [SolutionInclude.APP, SolutionInclude.UNIT],
-      createdAt: new Date('2025-01-15'),
-      updatedAt: new Date('2025-03-10'),
-    },
-    {
-      id: 'mock-solution-2',
-      runnerIds: ['runner-1'],
-      tenantId: 'tenant-1',
-      name: 'PDF 转换解决方案',
-      version: '1.2.0',
-      summary: '支持 Word、Excel、图片转 PDF 格式',
-      description: '强大的文档格式转换工具',
-      iconUrl: 'https://api.iconify.design/mdi:file-pdf-box.svg',
-      tags: ['工具', '文档处理'],
-      authorName: '系统内置',
-      authorId: 'system',
-      markdownContent: '# PDF 转换解决方案\n\n支持多种格式转换...',
-      pluginDir: null,
-      installCount: 890,
-      rating: 4.5,
-      status: PluginStatus.ACTIVE,
-      isPublished: true,
-      isInstalled: true,
-      source: SolutionSource.MARKETPLACE,
-      location: '/runner/solutions/pdf-converter',
-      images: ['https://example.com/pdf-1.png'],
-      includes: [SolutionInclude.APP, SolutionInclude.WORKFLOW],
-      createdAt: new Date('2025-02-01'),
-      updatedAt: new Date('2025-03-05'),
-    },
-    {
-      id: 'mock-solution-3',
-      runnerIds: [],
-      tenantId: null,
-      name: '翻译助手解决方案',
-      version: '2.1.0',
-      summary: '支持 100+ 语言互译，精准快速',
-      description: '基于 AI 的智能翻译工具',
-      iconUrl: 'https://api.iconify.design/mdi:translate.svg',
-      tags: ['工具', '语言处理'],
-      authorName: '第三方开发者',
-      authorId: 'dev-001',
-      markdownContent: '# 翻译助手解决方案\n\n支持多语言翻译...',
-      pluginDir: null,
-      installCount: 2100,
-      rating: 4.9,
-      status: PluginStatus.ACTIVE,
-      isPublished: true,
-      isInstalled: false,
-      source: SolutionSource.MARKETPLACE,
-      location: null,
-      images: null,
-      includes: [
-        SolutionInclude.APP,
-        SolutionInclude.UNIT,
-        SolutionInclude.AGENT,
-      ],
-      createdAt: new Date('2025-01-20'),
-      updatedAt: new Date('2025-03-15'),
-    },
-    {
-      id: 'mock-solution-4',
-      runnerIds: [],
-      tenantId: null,
-      name: '数据分析解决方案',
-      version: '1.0.0',
-      summary: 'Excel/CSV 数据可视化与分析',
-      description: '智能数据分析工具',
-      iconUrl: 'https://api.iconify.design/mdi:chart-bar.svg',
-      tags: ['数据处理', '可视化'],
-      authorName: '系统内置',
-      authorId: 'system',
-      markdownContent: '# 数据分析解决方案\n\n支持多种数据格式...',
-      pluginDir: null,
-      installCount: 560,
-      rating: 4.3,
-      status: PluginStatus.ACTIVE,
-      isPublished: true,
-      isInstalled: false,
-      source: SolutionSource.SELF_DEVELOPED,
-      location: null,
-      images: null,
-      includes: [SolutionInclude.APP, SolutionInclude.AGENT],
-      createdAt: new Date('2025-02-10'),
-      updatedAt: new Date('2025-03-01'),
-    },
-  ];
-
-  // Mock runners for development
-  private readonly mockRunners = [
-    { id: 'runner-1', alias: 'Runner 北京节点', status: 'online' },
-    { id: 'runner-2', alias: 'Runner 上海节点', status: 'online' },
-    { id: 'runner-3', alias: 'Runner 广州节点', status: 'online' },
-    { id: 'runner-4', alias: 'Runner 深圳节点', status: 'offline' },
-  ];
-
-  private readonly mockTags: TagResponse[] = [
-    { tag: '工具', count: 3 },
-    { tag: '效率', count: 2 },
-    { tag: '生活服务', count: 1 },
-    { tag: '文档处理', count: 1 },
-    { tag: '语言处理', count: 1 },
-    { tag: '数据处理', count: 1 },
-    { tag: '可视化', count: 1 },
-  ];
 
   /**
    * @title 创建 Solution
    * @description 创建新 Solution
-   * @param userId 用户 ID
-   * @param data 创建数据
+   * @keyword-en create-solution
    */
   async create(
     userId: string,
@@ -207,8 +83,8 @@ export class SolutionService {
 
   /**
    * @title 获取 Solution 详情
-   * @description 根据 ID 获取 Solution 详情
-   * @param id Solution ID
+   * @description 根据 ID 获取 Solution 详情 (本地表)
+   * @keyword-en get-solution-by-id
    */
   async getById(id: string): Promise<SolutionEntity> {
     const solution = await this.solutionRepo.findOne({
@@ -223,9 +99,7 @@ export class SolutionService {
   /**
    * @title 更新 Solution
    * @description 更新 Solution 信息
-   * @param id Solution ID
-   * @param userId 用户 ID
-   * @param data 更新数据
+   * @keyword-en update-solution
    */
   async update(
     id: string,
@@ -254,7 +128,7 @@ export class SolutionService {
   /**
    * @title 删除 Solution
    * @description 软删除 Solution
-   * @param id Solution ID
+   * @keyword-en delete-solution
    */
   async delete(id: string): Promise<void> {
     const solution = await this.getById(id);
@@ -264,46 +138,27 @@ export class SolutionService {
   }
 
   /**
-   * @title 列出 Solution
-   * @description 分页查询 Solution 列表
-   * @param query 查询参数
+   * @title 列出 Solution (跨 Runner 聚合)
+   * @description 拉取全部 mounted Runner, 并行调用 runner.app.solution.list hook,
+   *              把每个 Runner 的本地结果合并去重后做内存分页/筛选。
+   *              没有 runner 在线则返回空, 不再走 mock。
+   * @keywords-cn 列出solution, 跨runner聚合, hook调度, 内存分页
+   * @keywords-en list-solutions, cross-runner-aggregate, hook-dispatch, in-memory-pagination
    */
-  list(query: ListSolutionsQuery): PaginatedSolutionsResponse {
-    const { page, pageSize, tag, q, isInstalled, source, runnerId } = query;
-    const skip = (page - 1) * pageSize;
+  async list(query: ListSolutionsQuery): Promise<PaginatedSolutionsResponse> {
+    const { page, pageSize, tag, q, source, runnerId } = query;
+    const aggregated = await this.aggregateFromRunners(runnerId);
 
-    let filteredSolutions = [...this.mockSolutions];
-
-    // Filter by isInstalled
-    if (isInstalled !== undefined) {
-      filteredSolutions = filteredSolutions.filter(
-        (s) => s.isInstalled === isInstalled,
-      );
-    }
-
-    // Filter by source
+    let filtered = aggregated;
     if (source !== undefined) {
-      filteredSolutions = filteredSolutions.filter((s) => s.source === source);
+      filtered = filtered.filter((s) => s.source === source);
     }
-
-    // Filter by runnerId
-    if (runnerId !== undefined) {
-      filteredSolutions = filteredSolutions.filter((s) =>
-        s.runnerIds.includes(runnerId),
-      );
-    }
-
-    // Filter by tag
     if (tag) {
-      filteredSolutions = filteredSolutions.filter((s) =>
-        s.tags?.includes(tag),
-      );
+      filtered = filtered.filter((s) => s.tags?.includes(tag));
     }
-
-    // Filter by search query
     if (q) {
       const lowerQ = q.toLowerCase();
-      filteredSolutions = filteredSolutions.filter(
+      filtered = filtered.filter(
         (s) =>
           s.name.toLowerCase().includes(lowerQ) ||
           s.summary?.toLowerCase().includes(lowerQ) ||
@@ -311,167 +166,158 @@ export class SolutionService {
       );
     }
 
-    const total = filteredSolutions.length;
-    const paginatedSolutions = filteredSolutions.slice(skip, skip + pageSize);
+    const total = filtered.length;
+    const skip = (page - 1) * pageSize;
+    const items = filtered.slice(skip, skip + pageSize);
 
     return {
-      items: paginatedSolutions,
+      items,
       total,
       page,
       pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
     };
   }
 
   /**
-   * @title 列出市场 Solution
-   * @description 分页查询已发布的 Solution 列表
-   * @param query 查询参数
+   * @title 列出市场 Solution (占位)
+   * @description 市场功能"开发中", 直接返回空分页, 不再访问 mock。
+   *              前端 marketplace tab 已切到占位卡片, 此处保留是为了 API 兼容性。
+   * @keyword-en list-marketplace-placeholder
    */
   listMarketplace(query: ListSolutionsQuery): PaginatedSolutionsResponse {
-    const { page, pageSize, tag, q, source } = query;
-    const skip = (page - 1) * pageSize;
-
-    let filteredSolutions = this.mockSolutions.filter((s) => s.isPublished);
-
-    // Filter by source
-    if (source !== undefined) {
-      filteredSolutions = filteredSolutions.filter((s) => s.source === source);
-    }
-
-    // Filter by tag
-    if (tag) {
-      filteredSolutions = filteredSolutions.filter((s) =>
-        s.tags?.includes(tag),
-      );
-    }
-
-    // Filter by search query
-    if (q) {
-      const lowerQ = q.toLowerCase();
-      filteredSolutions = filteredSolutions.filter(
-        (s) =>
-          s.name.toLowerCase().includes(lowerQ) ||
-          s.summary?.toLowerCase().includes(lowerQ) ||
-          s.description?.toLowerCase().includes(lowerQ),
-      );
-    }
-
-    const total = filteredSolutions.length;
-    const paginatedSolutions = filteredSolutions.slice(skip, skip + pageSize);
-
     return {
-      items: paginatedSolutions,
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      items: [],
+      total: 0,
+      page: query.page,
+      pageSize: query.pageSize,
+      totalPages: 0,
     };
   }
 
   /**
    * @title 安装 Solution
-   * @description 将市场 Solution 安装到指定 Runner 列表
-   * @param id Solution ID
-   * @param runnerIds Runner ID 列表
-   * @param userId 用户 ID
+   * @description 把市场 Solution 落到指定 Runner (当前实现仅写本地 SolutionEntity 的 runnerIds, 真正的物理安装走 Runner hook)。
+   * @keyword-en install-solution
    */
-  install(id: string, runnerIds: string[], _userId: string): SolutionResponse {
-    const solution = this.mockSolutions.find((s) => s.id === id);
-    if (!solution) {
-      throw new NotFoundException('Solution not found');
-    }
-
-    // Add new runnerIds that are not already installed
-    const existingRunnerIds = new Set(solution.runnerIds);
-    const newRunnerIds = runnerIds.filter((r) => !existingRunnerIds.has(r));
-    solution.runnerIds = [...solution.runnerIds, ...newRunnerIds];
+  async install(
+    id: string,
+    runnerIds: string[],
+    userId: string,
+  ): Promise<SolutionEntity> {
+    const solution = await this.getById(id);
+    const existing = new Set(solution.runnerIds ?? []);
+    for (const r of runnerIds) existing.add(r);
+    solution.runnerIds = Array.from(existing);
     solution.isInstalled = solution.runnerIds.length > 0;
-    solution.installCount += newRunnerIds.length;
-
-    return solution;
+    solution.updateUser = userId;
+    return await this.solutionRepo.save(solution);
   }
 
   /**
    * @title 卸载 Solution
-   * @description 从指定 Runner 列表卸载 Solution
-   * @param id Solution ID
-   * @param runnerIds Runner ID 列表
-   * @param userId 用户 ID
+   * @description 两种 id 形态 :: 真实 SolutionEntity.id (uuidv7) 走本地表更新 runnerIds;
+   *              聚合得到的合成 id (`<runnerId>::<name>@<version>`) 走 runner.app.solution.delete hook,
+   *              在每个 runnerId 对应 Runner 上物理卸载。任一 Runner 软错不打断其他 Runner 调用。
+   * @keywords-cn 卸载solution, 双形态id, 跨进程派发
+   * @keywords-en uninstall-solution, dual-id-shape, cross-process-dispatch
    */
-  uninstall(
+  async uninstall(
     id: string,
     runnerIds: string[],
-    _userId: string,
-  ): SolutionResponse {
-    const solution = this.mockSolutions.find((s) => s.id === id);
-    if (!solution) {
-      throw new NotFoundException('Solution not found');
+    userId: string,
+  ): Promise<{ ok: boolean; failed: string[] }> {
+    const synthetic = this.parseSyntheticId(id);
+    if (synthetic) {
+      const failed: string[] = [];
+      await Promise.all(
+        runnerIds.map(async (runnerId) => {
+          const reply = await this.runnerHookRpc.callHook(runnerId, {
+            hookName: 'runner.app.solution.delete',
+            payload: { name: synthetic.name },
+          });
+          if ((reply.errorMsg ?? []).length > 0) failed.push(runnerId);
+        }),
+      );
+      return { ok: failed.length === 0, failed };
     }
-
-    // Remove specified runnerIds
+    const solution = await this.getById(id);
     const removeSet = new Set(runnerIds);
-    solution.runnerIds = solution.runnerIds.filter((r) => !removeSet.has(r));
+    solution.runnerIds = (solution.runnerIds ?? []).filter(
+      (r) => !removeSet.has(r),
+    );
     solution.isInstalled = solution.runnerIds.length > 0;
+    solution.updateUser = userId;
+    await this.solutionRepo.save(solution);
+    return { ok: true, failed: [] };
+  }
 
-    return solution;
+  /**
+   * @title 解析合成 id
+   * @description 聚合得到的 id 形如 `<runnerId>::<name>@<version>`, 失败返回 null。
+   * @keyword-en parse-synthetic-id
+   */
+  private parseSyntheticId(
+    id: string,
+  ): { runnerId: string; name: string; version: string } | null {
+    const sep = id.indexOf('::');
+    if (sep < 0) return null;
+    const runnerId = id.slice(0, sep);
+    const rest = id.slice(sep + 2);
+    const at = rest.lastIndexOf('@');
+    if (at < 0) return null;
+    return {
+      runnerId,
+      name: rest.slice(0, at),
+      version: rest.slice(at + 1),
+    };
   }
 
   /**
    * @title 获取所有标签
-   * @description 获取所有已发布 Solution 的标签及数量
+   * @description 从聚合后的 Solution 列表中统计 tag 频次榜
+   * @keyword-en get-tags
    */
-  getTags(): TagResponse[] {
-    return this.mockTags;
+  async getTags(): Promise<TagResponse[]> {
+    const aggregated = await this.aggregateFromRunners();
+    const counter = new Map<string, number>();
+    for (const item of aggregated) {
+      for (const t of item.tags ?? []) {
+        counter.set(t, (counter.get(t) ?? 0) + 1);
+      }
+    }
+    return Array.from(counter.entries())
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count);
   }
 
   /**
    * @title 获取所有 Runner
-   * @description 获取所有可用的 Runner 列表
+   * @description 返回当前用户可见的 Runner 列表 (alias / status), 服务前端展示。
+   * @keyword-en get-runners
    */
-  getRunners(): { id: string; alias: string; status: string }[] {
-    return this.mockRunners;
+  async getRunners(): Promise<{ id: string; alias: string; status: string }[]> {
+    const list = await this.runnerService.list({});
+    return list.map((r) => ({
+      id: r.id,
+      alias: r.alias,
+      status: r.status === RunnerStatus.Mounted ? 'online' : 'offline',
+    }));
   }
 
   /**
-   * @title 获取购买记录
-   * @description 获取当前用户的购买记录
-   * @param userId 用户 ID
+   * @title 获取购买记录 (占位)
+   * @description "我的购买"功能"开发中", 返回空数组。
+   * @keyword-en get-purchases-placeholder
    */
-  getPurchases(userId: string): SolutionPurchaseResponse[] {
-    // Mock purchase data
-    const mockPurchases: SolutionPurchaseResponse[] = [
-      {
-        id: 'purchase-1',
-        userId,
-        solutionId: 'mock-solution-1',
-        solutionName: '天气查询解决方案',
-        solutionVersion: '1.0.0',
-        runnerId: 'runner-1',
-        purchasedAt: new Date('2025-03-01'),
-        createdAt: new Date('2025-03-01'),
-      },
-      {
-        id: 'purchase-2',
-        userId,
-        solutionId: 'mock-solution-2',
-        solutionName: 'PDF 转换解决方案',
-        solutionVersion: '1.2.0',
-        runnerId: null,
-        purchasedAt: new Date('2025-03-05'),
-        createdAt: new Date('2025-03-05'),
-      },
-    ];
-    return mockPurchases;
+  getPurchases(_userId: string): SolutionPurchaseResponse[] {
+    return [];
   }
 
   /**
    * @title 购买 Solution
-   * @description 记录用户购买 Solution
-   * @param userId 用户 ID
-   * @param solutionId Solution ID
-   * @param solutionName Solution 名称
-   * @param solutionVersion Solution 版本
+   * @description 落购买记录 (前端入口暂关闭, 仅留 API)。
+   * @keyword-en purchase-solution
    */
   async purchase(
     userId: string,
@@ -496,32 +342,120 @@ export class SolutionService {
     return await this.purchaseRepo.save(purchase);
   }
 
-  private toResponse(entity: SolutionEntity): SolutionResponse {
+  /**
+   * @title 跨 Runner 聚合 Solution
+   * @description 拿全部 mounted Runner, 并行 callHook(runner.app.solution.list),
+   *              错误/离线 Runner 软跳过, 命中即合并。同名 Solution 以最新 version 为准, 累加 runnerIds。
+   *              runnerId 过滤可仅查单台。
+   * @keywords-cn 跨runner聚合, 并行调度, 软错跳过, 同名合并
+   * @keywords-en cross-runner-aggregate, parallel-dispatch, soft-skip, name-merge
+   */
+  private async aggregateFromRunners(
+    runnerId?: string,
+  ): Promise<SolutionResponse[]> {
+    const allRunners = await this.runnerService.list({});
+    const onlineRunners = allRunners.filter(
+      (r) => r.status === RunnerStatus.Mounted && (!runnerId || r.id === runnerId),
+    );
+    if (onlineRunners.length === 0) return [];
+
+    const replies = await Promise.all(
+      onlineRunners.map((r) =>
+        this.runnerHookRpc.callHook(r.id, {
+          hookName: 'runner.app.solution.list',
+          payload: {},
+        }),
+      ),
+    );
+
+    const merged = new Map<string, SolutionResponse>();
+    onlineRunners.forEach((runner, idx) => {
+      const reply = replies[idx];
+      if (!reply || (reply.errorMsg ?? []).length > 0) return;
+      const items = this.extractSolutionItems(reply.result);
+      for (const raw of items) {
+        const normalized = this.normalizeRunnerSolution(raw, runner.id);
+        const key = `${normalized.name}@${normalized.version}`;
+        const existing = merged.get(key);
+        if (existing) {
+          const runnerIdSet = new Set([
+            ...existing.runnerIds,
+            ...normalized.runnerIds,
+          ]);
+          existing.runnerIds = Array.from(runnerIdSet);
+        } else {
+          merged.set(key, normalized);
+        }
+      }
+    });
+
+    return Array.from(merged.values());
+  }
+
+  /**
+   * @title 提取 hook reply 中的 solution 列表
+   * @description Runner hook 返回 `{ items: [...] }`, 但被 RunnerHookRpc 包成 `result: HookResult[]`,
+   *              需要先取 [0].data.items。任何异常形状都软返空数组。
+   * @keyword-en extract-solution-items
+   */
+  private extractSolutionItems(rawResult: unknown): Array<Record<string, unknown>> {
+    if (!Array.isArray(rawResult)) return [];
+    const first = rawResult[0] as { data?: { items?: unknown } } | undefined;
+    const items = first?.data?.items;
+    if (!Array.isArray(items)) return [];
+    return items as Array<Record<string, unknown>>;
+  }
+
+  /**
+   * @title 把 Runner 端 SolutionInfo 标准化成 SaaS 端 SolutionResponse 形状
+   * @description Runner 侧 SolutionInfo 字段较少, 这里补齐 SaaS 列表展示需要的扩展字段
+   *              (id / runnerIds / 默认评分 / 安装次数等)。
+   * @keyword-en normalize-runner-solution
+   */
+  private normalizeRunnerSolution(
+    raw: Record<string, unknown>,
+    runnerId: string,
+  ): SolutionResponse {
+    const name = String(raw.name ?? 'unknown');
+    const version = String(raw.version ?? '0.0.0');
+    const sourceVal = raw.source === 'marketplace'
+      ? SolutionSource.MARKETPLACE
+      : SolutionSource.SELF_DEVELOPED;
+    const includes = Array.isArray(raw.includes)
+      ? (raw.includes.filter((v) =>
+          ['app', 'unit', 'workflow', 'agent'].includes(String(v)),
+        ) as SolutionInclude[])
+      : [];
+    const installedAt = typeof raw.installedAt === 'string'
+      ? new Date(raw.installedAt)
+      : new Date();
     return {
-      id: entity.id,
-      runnerIds: entity.runnerIds || [],
-      tenantId: entity.tenantId,
-      name: entity.name,
-      version: entity.version,
-      summary: entity.summary,
-      description: entity.description,
-      iconUrl: entity.iconUrl,
-      tags: entity.tags,
-      authorName: entity.authorName,
-      authorId: entity.authorId,
-      markdownContent: entity.markdownContent,
-      pluginDir: entity.pluginDir,
-      installCount: entity.installCount,
-      rating: entity.rating,
-      status: entity.status,
-      isPublished: entity.isPublished,
-      isInstalled: entity.isInstalled,
-      source: entity.source,
-      location: entity.location,
-      images: entity.images,
-      includes: entity.includes,
-      createdAt: entity.createdAt,
-      updatedAt: entity.updatedAt,
+      id: `${runnerId}::${name}@${version}`,
+      runnerIds: [runnerId],
+      tenantId: null,
+      name,
+      version,
+      summary: typeof raw.summary === 'string' ? raw.summary : null,
+      description: typeof raw.description === 'string' ? raw.description : null,
+      iconUrl: null,
+      tags: null,
+      authorName: null,
+      authorId: null,
+      markdownContent: null,
+      pluginDir: null,
+      installCount: 0,
+      rating: 0,
+      status: PluginStatus.ACTIVE,
+      isPublished: false,
+      isInstalled: true,
+      source: sourceVal,
+      location: typeof raw.location === 'string' ? raw.location : null,
+      images: Array.isArray(raw.images)
+        ? raw.images.filter((v): v is string => typeof v === 'string')
+        : null,
+      includes,
+      createdAt: installedAt,
+      updatedAt: installedAt,
     };
   }
 }

@@ -203,15 +203,20 @@ export function useSolutions() {
     }
   }
 
-  // 卸载 Solution
-  async function uninstallSolution(id: string, runnerIds: string[]): Promise<boolean> {
+  // 卸载 Solution :: 返回是否全部成功 (失败的 runnerId 写到 error)
+  async function uninstallSolution(
+    id: string,
+    runnerIds: string[],
+  ): Promise<boolean> {
     loading.value = true;
     error.value = null;
     try {
-      await solutionApi.uninstallSolution(id, { runnerIds });
+      const reply = await solutionApi.uninstallSolution(id, { runnerIds });
+      if (!reply.ok && reply.failed.length > 0) {
+        error.value = `部分 Runner 卸载失败: ${reply.failed.join(', ')}`;
+      }
       await loadSolutions();
-      await loadMarketplaceSolutions();
-      return true;
+      return reply.ok;
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to uninstall solution';
       return false;

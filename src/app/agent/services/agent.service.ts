@@ -257,6 +257,10 @@ export class AgentService {
       typeof doc.avatarUrl === 'string' && doc.avatarUrl.trim()
         ? doc.avatarUrl.trim()
         : null;
+    e.principalId =
+      typeof doc.principalId === 'string' && doc.principalId.trim()
+        ? doc.principalId
+        : null;
     e.isAiGenerated = doc.isAiGenerated;
     e.purpose = doc.purpose;
     if (typeof doc.embedding === 'string') {

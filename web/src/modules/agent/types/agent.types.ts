@@ -407,6 +407,8 @@ export interface Agent {
   nodes: any;
   aiModelIds?: string[] | null;
   proactiveChatEnabled?: boolean;
+  /** 关联的 Identity 主体 ID :: 角色分配走 membership 表, principalId 是落点 */
+  principalId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
