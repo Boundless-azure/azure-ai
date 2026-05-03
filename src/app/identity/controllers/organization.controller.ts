@@ -24,21 +24,30 @@ import type {
  * @keywords-en organization-hook, payload-schema, input
  */
 const onRbacOrganizationListInput = z.object({
-  q: z.string().optional(),
+  q: z
+    .string()
+    .optional()
+    .describe('模糊匹配 name / code (LIKE %q%)'),
 });
 
 const onRbacOrganizationCreateInput = z.object({
-  name: z.string(),
-  code: z.string().nullable().optional(),
+  name: z.string().describe('组织/租户显示名'),
+  code: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('唯一短码; 用于业务关联引用, 建议小写无空格'),
 });
 
 const onRbacOrganizationUpdateInput = z.object({
   name: z.string().optional(),
   code: z.string().nullable().optional(),
-  active: z.boolean().optional(),
+  active: z.boolean().optional().describe('启停; false 时旗下成员仍存在'),
 });
 
-const idParamInput = z.object({ id: z.string() });
+const idParamInput = z.object({
+  id: z.string().describe('组织主键 ID (UUID)'),
+});
 
 /**
  * @title Organization 控制器
@@ -54,7 +63,8 @@ export class OrganizationController {
   @CheckAbility('read', 'organization')
   @HookLifecycle({
     hook: 'saas.app.identity.organizationList',
-    description: 'RBAC组织列表查询',
+    description:
+      'RBAC 组织/租户列表查询 :: 仅按 q 模糊匹配 name/code; 默认按 createdAt 倒序返回未软删组织',
     payloadSchema: onRbacOrganizationListInput,
     payloadSource: 'query',
   })
@@ -66,7 +76,7 @@ export class OrganizationController {
   @CheckAbility('create', 'organization')
   @HookLifecycle({
     hook: 'saas.app.identity.organizationCreate',
-    description: 'RBAC组织创建',
+    description: 'RBAC 组织创建 :: code 不强制唯一 (业务自管), 创建即激活',
     payloadSchema: onRbacOrganizationCreateInput,
     payloadSource: 'body',
   })
@@ -78,7 +88,7 @@ export class OrganizationController {
   @CheckAbility('update', 'organization')
   @HookLifecycle({
     hook: 'saas.app.identity.organizationUpdate',
-    description: 'RBAC组织更新',
+    description: 'RBAC 组织更新',
     payloadSchema: onRbacOrganizationUpdateInput,
     payloadSource: 'body',
   })
@@ -91,7 +101,8 @@ export class OrganizationController {
   @CheckAbility('delete', 'organization')
   @HookLifecycle({
     hook: 'saas.app.identity.organizationDelete',
-    description: 'RBAC组织删除',
+    description:
+      'RBAC 组织软删除 :: 同时置 active=false; 旗下成员/角色不会级联清理, 业务层需自行处理',
     payloadSchema: idParamInput,
     payloadSource: 'params',
   })

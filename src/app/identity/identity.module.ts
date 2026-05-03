@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DataPermissionModule } from '@/core/data-permission';
 import { PrincipalEntity } from './entities/principal.entity';
 import { OrganizationEntity } from './entities/organization.entity';
 import { MembershipEntity } from './entities/membership.entity';
@@ -23,8 +24,9 @@ import { UsersController } from './controllers/users.controller';
 /**
  * @title Identity 模块
  * @description 提供主体/组织/成员/角色/权限能力服务。
- * @keywords-cn 身份模块, 组织, 角色, 权限
- * @keywords-en identity-module, organization, role, permissions
+ *              依赖 DataPermissionModule (forRoot global) 使 PermissionDefinitionService 启动期能从装饰器同步数据节点。
+ * @keywords-cn 身份模块, 组织, 角色, 权限, 数据权限同步
+ * @keywords-en identity-module, organization, role, permissions, data-permission-sync
  */
 @Module({
   imports: [
@@ -37,6 +39,7 @@ import { UsersController } from './controllers/users.controller';
       PermissionDefinitionEntity,
       UserEntity,
     ]),
+    DataPermissionModule.forRoot({ isGlobal: true }),
   ],
   providers: [
     PrincipalService,

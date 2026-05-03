@@ -199,28 +199,14 @@
       </div>
     </transition>
 
-    <!-- Edit Modal -->
-    <div
-      v-if="showModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity"
-      @click.self="closeEditModal"
+    <!-- Edit Modal :: 用 BaseModal 统一外壳 -->
+    <BaseModal
+      :open="showModal"
+      :title="t('agent.edit')"
+      size="md"
+      @close="closeEditModal"
     >
-      <div
-        class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 transform transition-all scale-100"
-      >
-        <div class="flex items-center justify-between mb-8">
-          <h3 class="text-2xl font-bold text-gray-900">
-            {{ t('agent.edit') }}
-          </h3>
-          <button
-            @click="closeEditModal"
-            class="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <i class="fa-solid fa-times text-xl"></i>
-          </button>
-        </div>
-
-        <div class="space-y-6">
+      <div class="space-y-6">
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-2"
               >头像</label
@@ -333,45 +319,44 @@
           </div>
         </div>
 
-        <!-- 主动对话模式开关区域 | proactive-chat-toggle -->
-        <div class="flex items-center justify-between py-3 border-t border-gray-100 mt-2">
-          <div>
-            <div class="text-sm font-bold text-gray-700">主动对话模式</div>
-            <div class="text-xs text-gray-400 mt-0.5">启用后，LLM 通过 send_msg hook 主动决定何时发送消息</div>
-          </div>
-          <button
-            type="button"
+      <!-- 主动对话模式开关区域 | proactive-chat-toggle -->
+      <div class="flex items-center justify-between py-3 border-t border-gray-100 mt-2">
+        <div>
+          <div class="text-sm font-bold text-gray-700">主动对话模式</div>
+          <div class="text-xs text-gray-400 mt-0.5">启用后，LLM 通过 send_msg hook 主动决定何时发送消息</div>
+        </div>
+        <button
+          type="button"
+          :class="[
+            'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+            editForm.proactiveChatEnabled ? 'bg-gray-900' : 'bg-gray-200',
+          ]"
+          @click="editForm.proactiveChatEnabled = !editForm.proactiveChatEnabled"
+        >
+          <span
             :class="[
-              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-              editForm.proactiveChatEnabled ? 'bg-gray-900' : 'bg-gray-200',
+              'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+              editForm.proactiveChatEnabled ? 'translate-x-6' : 'translate-x-1',
             ]"
-            @click="editForm.proactiveChatEnabled = !editForm.proactiveChatEnabled"
-          >
-            <span
-              :class="[
-                'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
-                editForm.proactiveChatEnabled ? 'translate-x-6' : 'translate-x-1',
-              ]"
-            />
-          </button>
-        </div>
-
-        <div class="flex justify-end space-x-3 mt-10">
-          <button
-            @click="closeEditModal"
-            class="px-6 py-2.5 rounded-xl text-gray-600 hover:bg-gray-100 font-bold transition-colors"
-          >
-            {{ t('agent.cancel') }}
-          </button>
-          <button
-            @click="handleSave"
-            class="px-8 py-2.5 rounded-xl bg-gray-900 text-white hover:bg-gray-800 font-bold transition-colors shadow-lg shadow-gray-900/20"
-          >
-            {{ t('agent.save') }}
-          </button>
-        </div>
+          />
+        </button>
       </div>
-    </div>
+
+      <template #footer>
+        <button
+          @click="closeEditModal"
+          class="px-6 py-2.5 rounded-xl text-gray-600 hover:bg-gray-100 font-bold transition-colors"
+        >
+          {{ t('agent.cancel') }}
+        </button>
+        <button
+          @click="handleSave"
+          class="px-8 py-2.5 rounded-xl bg-gray-900 text-white hover:bg-gray-800 font-bold transition-colors shadow-lg shadow-gray-900/20"
+        >
+          {{ t('agent.save') }}
+        </button>
+      </template>
+    </BaseModal>
 
     <SquareAvatarCropModal
       v-model:open="showAvatarModal"
@@ -410,6 +395,7 @@ import { resolveResourceUrl } from '../../../utils/http';
 import { agentApi } from '../../../api/agent';
 import type { AiModelItem } from '../../ai-provider/types/ai-provider.types';
 import AgentRoleAssignModal from './AgentRoleAssignModal.vue';
+import BaseModal from '../../../components/BaseModal.vue';
 
 const { t, currentLocale } = useI18n();
 const ui = useUIStore();

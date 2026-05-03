@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
+import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
 import { WebMcpGateway } from '../controllers/webmcp.gateway';
 import { WebMcpSessionDataService } from '../services/webmcp-session-data.service';
@@ -77,6 +78,7 @@ export class WebMcpHookHandlersService {
       '向前端页面发送控制指令。type=data 为设置数据, type=emit 为触发事件; timeout 默认 8000ms。前端需已连接 WebMCP, 调用前建议用 saas.app.conversation.webControlStatus 确认。',
     payloadSchema: webControlSchema,
   })
+  @CheckAbility('update', 'session')
   async handleWebControl(
     event: HookEvent<WebControlPayload>,
   ): Promise<HookResult> {
@@ -122,6 +124,7 @@ export class WebMcpHookHandlersService {
       '获取指定 session 当前注册的页面 Schema 信息（组件声明、可操作元素列表）。调用前建议先用 saas.app.conversation.webControlStatus 确认已连接。',
     payloadSchema: webControlPageInfoSchema,
   })
+  @CheckAbility('read', 'session')
   async handleWebControlPageInfo(
     event: HookEvent<WebControlPageInfoPayload>,
   ): Promise<HookResult> {
@@ -152,6 +155,7 @@ export class WebMcpHookHandlersService {
       '向前端实时请求指定 data key 的当前值。返回 { requested: true, dataKey, socketId }, 实际值由前端异步推送。',
     payloadSchema: webControlDataSchema,
   })
+  @CheckAbility('read', 'session')
   async handleWebControlData(
     event: HookEvent<WebControlDataPayload>,
   ): Promise<HookResult> {
@@ -199,6 +203,7 @@ export class WebMcpHookHandlersService {
       '查询指定 session 的 WebMCP 连接状态。返回 { dbLastSocketId, activeSocketId, connected: boolean }; connected=false 时无法使用 saas.app.conversation.webControl 系列指令。',
     payloadSchema: webControlStatusSchema,
   })
+  @CheckAbility('read', 'session')
   async handleWebControlStatus(
     event: HookEvent<WebControlStatusPayload>,
   ): Promise<HookResult> {

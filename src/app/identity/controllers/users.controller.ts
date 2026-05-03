@@ -24,32 +24,49 @@ import type {
  * @keywords-cn UsersHook, payloadSchema, input
  * @keywords-en users-hook, payload-schema, input
  */
-const userPrincipalTypeSchema = z.enum(['user', 'user_consumer', 'system']);
+const userPrincipalTypeSchema = z
+  .enum(['user', 'user_consumer', 'system'])
+  .describe(
+    '可登录主体类型 :: user=企业用户, user_consumer=消费者用户, system=系统账号 (排除 agent / official_account)',
+  );
 
 const onRbacUserListInput = z.object({
-  q: z.string().optional(),
-  tenantId: z.string().optional(),
-  type: userPrincipalTypeSchema.optional(),
+  q: z
+    .string()
+    .optional()
+    .describe('模糊匹配 displayName / email / phone (LIKE %q%)'),
+  tenantId: z
+    .string()
+    .optional()
+    .describe('按所属租户/组织 ID 过滤'),
+  type: userPrincipalTypeSchema
+    .optional()
+    .describe('按类型过滤; 不传时默认返回 user + user_consumer + system'),
 });
 
 const onRbacUserCreateInput = z.object({
-  displayName: z.string(),
+  displayName: z.string().describe('用户显示名'),
   principalType: userPrincipalTypeSchema,
-  email: z.string(),
-  password: z.string().optional(),
+  email: z.string().describe('登录邮箱; 全局唯一, 已存在会报错'),
+  password: z
+    .string()
+    .optional()
+    .describe('明文密码 (服务端会 scrypt 加盐); 留空表示暂不允许密码登录'),
   phone: z.string().nullable().optional(),
-  tenantId: z.string().nullable().optional(),
+  tenantId: z.string().nullable().optional().describe('归属租户/组织 ID'),
 });
 
 const onRbacUserUpdateInput = z.object({
   displayName: z.string().optional(),
-  email: z.string().optional(),
+  email: z.string().optional().describe('改邮箱会同步 users 表, 仍受全局唯一约束'),
   phone: z.string().nullable().optional(),
   avatarUrl: z.string().nullable().optional(),
-  active: z.boolean().optional(),
+  active: z.boolean().optional().describe('启停; 不会软删主体'),
 });
 
-const idParamInput = z.object({ id: z.string() });
+const idParamInput = z.object({
+  id: z.string().describe('用户 principal_id (UUID)'),
+});
 
 /**
  * @title Users 控制器
@@ -65,7 +82,8 @@ export class UsersController {
   @CheckAbility('read', 'principal')
   @HookLifecycle({
     hook: 'saas.app.identity.userList',
-    description: 'RBAC用户列表查询',
+    description:
+      'RBAC 可登录用户列表 (排除 agent / official_account) :: 按 q / tenantId / type 过滤; 单次最多 500 条',
     payloadSchema: onRbacUserListInput,
     payloadSource: 'query',
   })
@@ -77,7 +95,8 @@ export class UsersController {
   @CheckAbility('create', 'principal')
   @HookLifecycle({
     hook: 'saas.app.identity.userCreate',
-    description: 'RBAC用户创建',
+    description:
+      'RBAC 用户创建 :: 事务地写 principals + users 两表, 邮箱全局唯一; password 走 scrypt+salt; 创建 Agent 请走 saas.app.agent.* 系列',
     payloadSchema: onRbacUserCreateInput,
     payloadSource: 'body',
   })
@@ -89,7 +108,8 @@ export class UsersController {
   @CheckAbility('update', 'principal')
   @HookLifecycle({
     hook: 'saas.app.identity.userUpdate',
-    description: 'RBAC用户更新',
+    description:
+      'RBAC 用户更新 :: 改 email/avatar 会同步 users 表; 此 hook 不改密码 (改密走专用流程)',
     payloadSchema: onRbacUserUpdateInput,
     payloadSource: 'body',
   })
@@ -102,7 +122,8 @@ export class UsersController {
   @CheckAbility('delete', 'principal')
   @HookLifecycle({
     hook: 'saas.app.identity.userDelete',
-    description: 'RBAC用户删除',
+    description:
+      'RBAC 用户软删除 :: 同时软删 principals + users 两表; 不会清理 membership, 已分配权限对象失效但仍保留行',
     payloadSchema: idParamInput,
     payloadSource: 'params',
   })

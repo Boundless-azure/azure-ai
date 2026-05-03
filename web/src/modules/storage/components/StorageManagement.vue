@@ -147,54 +147,28 @@
     </div>
 
     <!-- ==================== Create Folder Modal ==================== -->
-    <!-- 区域描述: 新建文件夹弹窗 -->
-    <!-- 区域关键词: create-folder-modal -->
-    <div v-if="showCreateFolder" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="showCreateFolder = false"></div>
-      <div class="relative bg-white rounded-2xl shadow-xl w-[480px] max-w-[95vw] border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h3 class="text-lg font-bold text-gray-900">新建文件夹</h3>
-            <p class="text-sm text-gray-500">在当前目录下创建新文件夹</p>
-          </div>
-          <button class="text-gray-400 hover:text-gray-700" @click="showCreateFolder = false">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-        <div class="p-6 space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">文件夹名称</label>
-            <input
-              v-model="newFolderName"
-              class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-              placeholder="请输入文件夹名称"
-              @keyup.enter="submitCreateFolder"
-            />
-          </div>
-        </div>
-        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-          <button class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50" @click="showCreateFolder = false">取消</button>
-          <button class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800" @click="submitCreateFolder">创建</button>
+    <!-- 新建文件夹弹窗 :: BaseModal create-folder-modal -->
+    <BaseModal :open="showCreateFolder" title="新建文件夹" subtitle="在当前目录下创建新文件夹" size="md" @close="showCreateFolder = false">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">文件夹名称</label>
+          <input
+            v-model="newFolderName"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+            placeholder="请输入文件夹名称"
+            @keyup.enter="submitCreateFolder"
+          />
         </div>
       </div>
-    </div>
+      <template #footer>
+        <button class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50" @click="showCreateFolder = false">取消</button>
+        <button class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800" @click="submitCreateFolder">创建</button>
+      </template>
+    </BaseModal>
 
-    <!-- ==================== Share Modal ==================== -->
-    <!-- 区域描述: 分享弹窗 -->
-    <!-- 区域关键词: share-modal -->
-    <div v-if="showShare" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="showShare = false"></div>
-      <div class="relative bg-white rounded-2xl shadow-xl w-[480px] max-w-[95vw] border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h3 class="text-lg font-bold text-gray-900">分享链接</h3>
-            <p class="text-sm text-gray-500">创建文件分享链接</p>
-          </div>
-          <button class="text-gray-400 hover:text-gray-700" @click="showShare = false">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-        <div class="p-6 space-y-4">
+    <!-- 分享弹窗 :: BaseModal share-modal -->
+    <BaseModal :open="showShare" title="分享链接" subtitle="创建文件分享链接" size="md" @close="showShare = false">
+      <div class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">分享方式</label>
             <div class="grid grid-cols-2 gap-2">
@@ -238,30 +212,16 @@
               <button class="px-3 py-2 rounded-lg bg-gray-900 text-white text-sm" @click="copyShareLink">复制</button>
             </div>
           </div>
-        </div>
-        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-          <button class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50" @click="showShare = false">关闭</button>
-          <button v-if="!shareLink" class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800" @click="submitShare">创建分享</button>
-        </div>
       </div>
-    </div>
+      <template #footer>
+        <button class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50" @click="showShare = false">关闭</button>
+        <button v-if="!shareLink" class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800" @click="submitShare">创建分享</button>
+      </template>
+    </BaseModal>
 
-    <!-- ==================== Upload Modal ==================== -->
-    <!-- 区域描述: 上传弹窗，支持多文件和拖拽 -->
-    <!-- 区域关键词: upload-modal, multi-file, drag-drop -->
-    <div v-if="showUpload" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="showUpload = false"></div>
-      <div class="relative bg-white rounded-2xl shadow-xl w-[600px] max-w-[95vw] border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h3 class="text-lg font-bold text-gray-900">上传文件</h3>
-            <p class="text-sm text-gray-500">拖拽文件到此处或点击选择</p>
-          </div>
-          <button class="text-gray-400 hover:text-gray-700" @click="showUpload = false">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-        <div class="p-6 space-y-4">
+    <!-- 上传弹窗 :: BaseModal, 支持多文件和拖拽 upload-modal -->
+    <BaseModal :open="showUpload" title="上传文件" subtitle="拖拽文件到此处或点击选择" size="lg" @close="showUpload = false">
+      <div class="space-y-4">
           <!-- 拖拽上传区域 -->
           <div
             class="border-2 border-dashed rounded-xl p-8 text-center transition-colors"
@@ -301,19 +261,18 @@
               </button>
             </div>
           </div>
-        </div>
-        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-          <button class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50" @click="showUpload = false">取消</button>
-          <button
-            class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700"
-            :disabled="pendingFiles.length === 0 || uploadStarted"
-            @click="submitUpload"
-          >
-            开始上传
-          </button>
-        </div>
       </div>
-    </div>
+      <template #footer>
+        <button class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50" @click="showUpload = false">取消</button>
+        <button
+          class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700"
+          :disabled="pendingFiles.length === 0 || uploadStarted"
+          @click="submitUpload"
+        >
+          开始上传
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- ==================== Context Menu ==================== -->
     <!-- 区域描述: 右键菜单 -->
@@ -359,6 +318,7 @@
  * @keywords-en storage-management, drag-drop-upload, multi-file-upload, context-menu, copy-paste
  */
 import { ref, reactive, onMounted, onUnmounted, shallowRef, computed } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import { useStorage } from '../hooks/useStorage';
 import { useStorageClipboardStore, type ClipboardItem } from '../store/clipboard.store';
 import { resourceApi } from '../../../api/resource';

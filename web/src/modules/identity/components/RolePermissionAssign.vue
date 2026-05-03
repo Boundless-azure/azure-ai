@@ -317,7 +317,9 @@ async function loadPermissions() {
     const perms = await listPermissions(selectedRoleId.value);
     const next = new Set<string>();
     perms.forEach((p) => {
-      next.add(makeKey(p.subject, p.action));
+      // 三元组 key :: 同一 (subject, action) 在不同 permissionType 下是不同节点, 必须分开存
+      const type = (p.permissionType ?? 'management') as PermissionDefinitionType;
+      next.add(makeKey(p.subject, p.action, type));
     });
     selectedKeys.value = next;
     if (!activeSelection.value && subjects.value.length > 0) {
@@ -333,8 +335,16 @@ async function loadPermissions() {
   }
 }
 
-function makeKey(subject: string, action: string) {
-  return `${subject}::${action}`;
+/**
+ * 三元组 key :: (subject, action, type), 让 selectedKeys 跨 tab 切换不丢失
+ * @keyword-en make-permission-key
+ */
+function makeKey(
+  subject: string,
+  action: string,
+  type: PermissionDefinitionType,
+) {
+  return `${subject}::${action}::${type}`;
 }
 
 function setSubjectCheckboxRef(subjectId: string, el: Element | null) {
@@ -360,7 +370,9 @@ function isChildSelected(
   subject: PermissionDefinitionItem,
   child: PermissionDefinitionItem,
 ) {
-  return selectedKeys.value.has(makeKey(subject.nodeKey, child.nodeKey));
+  return selectedKeys.value.has(
+    makeKey(subject.nodeKey, child.nodeKey, activeType.value),
+  );
 }
 
 function isSubjectChecked(subject: {
@@ -369,7 +381,9 @@ function isSubjectChecked(subject: {
 }) {
   if (subject.children.length === 0) return false;
   return subject.children.every((child) =>
-    selectedKeys.value.has(makeKey(subject.nodeKey, child.nodeKey)),
+    selectedKeys.value.has(
+      makeKey(subject.nodeKey, child.nodeKey, activeType.value),
+    ),
   );
 }
 
@@ -378,7 +392,9 @@ function isSubjectIndeterminate(subject: {
   children: PermissionDefinitionItem[];
 }) {
   const selectedCount = subject.children.filter((child) =>
-    selectedKeys.value.has(makeKey(subject.nodeKey, child.nodeKey)),
+    selectedKeys.value.has(
+      makeKey(subject.nodeKey, child.nodeKey, activeType.value),
+    ),
   ).length;
   return selectedCount > 0 && selectedCount < subject.children.length;
 }
@@ -391,7 +407,7 @@ function toggleSubject(subject: {
   const next = new Set(selectedKeys.value);
   const shouldSelect = !isSubjectChecked(subject);
   subject.children.forEach((child) => {
-    const key = makeKey(subject.nodeKey, child.nodeKey);
+    const key = makeKey(subject.nodeKey, child.nodeKey, activeType.value);
     if (shouldSelect) next.add(key);
     else next.delete(key);
   });
@@ -404,7 +420,7 @@ function toggleChild(
   child: PermissionDefinitionItem,
 ) {
   const next = new Set(selectedKeys.value);
-  const key = makeKey(subject.nodeKey, child.nodeKey);
+  const key = makeKey(subject.nodeKey, child.nodeKey, activeType.value);
   if (next.has(key)) next.delete(key);
   else next.add(key);
   selectedKeys.value = next;
@@ -431,19 +447,25 @@ async function save() {
   const ui = useUIStore();
   try {
     saving.value = true;
+    // 解三元组 key :: subject::action::permissionType
     const payloadItems = Array.from(selectedKeys.value).map((key) => {
-      const [subject, action] = key.split('::');
+      const [subject, action, permissionType] = key.split('::');
       return {
         subject,
         action,
-        conditions: null,
+        permissionType: (permissionType as PermissionDefinitionType) ?? 'management',
       };
     });
     await upsertPermissions(selectedRoleId.value, { items: payloadItems });
     ui.showToast('权限配置已保存', 'success');
   } catch (e) {
     console.error(e);
-    ui.showToast('保存失败', 'error');
+    const msg = e instanceof Error ? e.message : '保存失败';
+    // 后端权重越权防护时给的 ForbiddenException 信息要清晰反馈
+    ui.showToast(
+      msg.includes('权重越权') ? msg : '保存失败',
+      'error',
+    );
   } finally {
     saving.value = false;
   }

@@ -64,5 +64,4 @@ export interface JwtPayload {
 export interface AbilityRule {
   subject: string;
   action: string;
-  conditions?: Record<string, unknown>;
 }

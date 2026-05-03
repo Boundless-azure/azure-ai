@@ -1,21 +1,7 @@
 <template>
-  <!-- 添加跟进记录弹窗 -->
-  <Teleport to="body">
-    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" @click.self="emit('close')">
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
-      <!-- 头部 -->
-      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-        <h3 class="text-lg font-bold text-gray-900">{{ t('todo.followup.add') }}</h3>
-        <button
-          @click="emit('close')"
-          class="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <!-- 表单内容 -->
-      <div class="p-6 space-y-4">
+  <!-- 添加跟进记录弹窗 :: 用 BaseModal 统一外壳 -->
+  <BaseModal :open="true" :title="t('todo.followup.add')" size="md" @close="emit('close')">
+    <div class="space-y-4">
         <!-- 跟进人 -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -62,28 +48,25 @@
             :placeholder="t('todo.followup.placeholder')"
           ></textarea>
         </div>
-      </div>
-
-      <!-- 底部按钮 -->
-      <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
-        <button
-          @click="emit('close')"
-          class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-        >
-          {{ t('common.cancel') }}
-        </button>
-        <button
-          @click="handleSubmit"
-          :disabled="submitting || !form.followerId || !form.status"
-          class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          <i v-if="submitting" class="fa-solid fa-spinner fa-spin"></i>
-          {{ t('common.confirm') }}
-        </button>
-      </div>
     </div>
-  </div>
-  </Teleport>
+
+    <template #footer>
+      <button
+        @click="emit('close')"
+        class="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+      >
+        {{ t('common.cancel') }}
+      </button>
+      <button
+        @click="handleSubmit"
+        :disabled="submitting || !form.followerId || !form.status"
+        class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+      >
+        <i v-if="submitting" class="fa-solid fa-spinner fa-spin"></i>
+        {{ t('common.confirm') }}
+      </button>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -93,7 +76,8 @@
  * @keywords-cn 添加跟进, 弹窗
  * @keywords-en add-followup, modal
  */
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import { useI18n } from '../../agent/composables/useI18n';
 import { useTodos } from '../hooks/useTodos';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';

@@ -153,12 +153,11 @@ export class AuthService {
     const jwtSvc: { sign: (p: typeof payload) => string } = this.jwt;
     const token = jwtSvc.sign(payload);
 
-    // 构建 CASL 兼容权限规则
+    // 构建 CASL 兼容权限规则 (新范式 :: 行级 conditions 已迁出, 由 data-permission applyTo 处理)
     const ability = await this.abilityService.buildForPrincipal(principal.id);
     const rules: AbilityRule[] = ability.rules.map((r) => ({
       subject: r.subject,
       action: r.action,
-      conditions: r.conditions ?? undefined,
     }));
 
     // 可选缓存：将 JWT 与权限规则写入 Redis（TTL 24h），用于会话与快速校验

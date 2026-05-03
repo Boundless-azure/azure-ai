@@ -159,17 +159,15 @@
       </div>
     </div>
 
-    <!-- Install Modal -->
-    <div v-if="showInstallModal && installTargetSolution" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="showInstallModal = false"></div>
-      <div class="relative bg-white rounded-2xl shadow-xl w-[500px] max-w-[95vw] overflow-hidden border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-900">{{ t('solution.modals.installTitle') }}</h3>
-          <button class="text-gray-400 hover:text-gray-700" @click="showInstallModal = false">
-            <i class="fa-solid fa-xmark text-xl"></i>
-          </button>
-        </div>
-        <div class="p-6">
+    <!-- Install Modal :: BaseModal -->
+    <BaseModal
+      :open="showInstallModal && !!installTargetSolution"
+      :title="t('solution.modals.installTitle')"
+      size="md"
+      @close="showInstallModal = false"
+    >
+      <template v-if="installTargetSolution">
+        <div>
           <div class="mb-4">
             <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
               <div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600">
@@ -211,35 +209,33 @@
             </div>
           </div>
         </div>
-        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-          <button
-            class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-            @click="showInstallModal = false"
-          >
-            {{ t('solution.modals.cancel') }}
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700"
-            :disabled="installSelectedRunners.length === 0"
-            @click="confirmInstall"
-          >
-            {{ t('solution.modals.confirmInstall', { count: installSelectedRunners.length }) }}
-          </button>
-        </div>
-      </div>
-    </div>
+      </template>
+      <template #footer>
+        <button
+          class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+          @click="showInstallModal = false"
+        >
+          {{ t('solution.modals.cancel') }}
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700"
+          :disabled="installSelectedRunners.length === 0"
+          @click="confirmInstall"
+        >
+          {{ t('solution.modals.confirmInstall', { count: installSelectedRunners.length }) }}
+        </button>
+      </template>
+    </BaseModal>
 
-    <!-- Uninstall Modal -->
-    <div v-if="showUninstallModal && uninstallTargetSolution" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="showUninstallModal = false"></div>
-      <div class="relative bg-white rounded-2xl shadow-xl w-[500px] max-w-[95vw] overflow-hidden border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-900">{{ t('solution.modals.uninstallTitle') }}</h3>
-          <button class="text-gray-400 hover:text-gray-700" @click="showUninstallModal = false">
-            <i class="fa-solid fa-xmark text-xl"></i>
-          </button>
-        </div>
-        <div class="p-6">
+    <!-- Uninstall Modal :: BaseModal -->
+    <BaseModal
+      :open="showUninstallModal && !!uninstallTargetSolution"
+      :title="t('solution.modals.uninstallTitle')"
+      size="md"
+      @close="showUninstallModal = false"
+    >
+      <template v-if="uninstallTargetSolution">
+        <div>
           <div class="mb-4">
             <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
               <div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600">
@@ -286,45 +282,44 @@
             </div>
           </div>
         </div>
-        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-          <button
-            class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-            @click="showUninstallModal = false"
-          >
-            {{ t('solution.modals.cancel') }}
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
-            :disabled="uninstallSelectedRunners.length === 0"
-            @click="confirmUninstall"
-          >
-            {{ t('solution.modals.confirmUninstall', { count: uninstallSelectedRunners.length }) }}
-          </button>
-        </div>
-      </div>
-    </div>
+      </template>
+      <template #footer>
+        <button
+          class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+          @click="showUninstallModal = false"
+        >
+          {{ t('solution.modals.cancel') }}
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
+          :disabled="uninstallSelectedRunners.length === 0"
+          @click="confirmUninstall"
+        >
+          {{ t('solution.modals.confirmUninstall', { count: uninstallSelectedRunners.length }) }}
+        </button>
+      </template>
+    </BaseModal>
 
-    <!-- Detail Modal -->
-    <div v-if="showDetail && currentSolution" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="showDetail = false"></div>
-      <div class="relative bg-white rounded-2xl shadow-xl w-[800px] max-w-[95vw] max-h-[90vh] overflow-hidden border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div class="flex items-center gap-4">
-            <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600">
-              <i :class="currentSolution.iconUrl || 'fa-solid fa-box-open'"></i>
-            </div>
-            <div>
-              <h3 class="text-lg font-bold text-gray-900">{{ currentSolution.name }}</h3>
-              <p class="text-sm text-gray-500">v{{ currentSolution.version }} · {{ currentSolution.authorName || '-' }}</p>
-            </div>
+    <!-- Detail Modal :: BaseModal (lg, 自定义 title slot 含 icon) -->
+    <BaseModal
+      :open="showDetail && !!currentSolution"
+      size="lg"
+      @close="showDetail = false"
+    >
+      <template v-if="currentSolution" #title>
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600">
+            <i :class="currentSolution.iconUrl || 'fa-solid fa-box-open'"></i>
           </div>
-          <button class="text-gray-400 hover:text-gray-700" @click="showDetail = false">
-            <i class="fa-solid fa-xmark text-xl"></i>
-          </button>
+          <div>
+            <h3 class="text-lg font-bold text-gray-900">{{ currentSolution.name }}</h3>
+            <p class="text-sm text-gray-500">v{{ currentSolution.version }} · {{ currentSolution.authorName || '-' }}</p>
+          </div>
         </div>
-
+      </template>
+      <template v-if="currentSolution">
         <!-- Tabs -->
-        <div class="flex border-b border-gray-100">
+        <div class="flex border-b border-gray-100 -mx-6 -mt-4 px-6 mb-4">
           <button
             class="px-4 py-3 text-sm font-medium transition-colors"
             :class="detailTab === 'detail' ? 'text-gray-900 border-b-2 border-gray-900' : 'text-gray-500 hover:text-gray-700'"
@@ -341,109 +336,107 @@
           </button>
         </div>
 
-        <div class="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-          <!-- Detail Tab -->
-          <div v-if="detailTab === 'detail'">
-            <div class="grid grid-cols-3 gap-6">
-              <!-- Main Content -->
-              <div class="col-span-2">
-                <h4 class="text-sm font-bold text-gray-700 mb-2">{{ t('solution.detail.description') }}</h4>
-                <p class="text-sm text-gray-600 mb-4">{{ currentSolution.summary || currentSolution.description || '-' }}</p>
+        <!-- Detail Tab -->
+        <div v-if="detailTab === 'detail'">
+          <div class="grid grid-cols-3 gap-6">
+            <!-- Main Content -->
+            <div class="col-span-2">
+              <h4 class="text-sm font-bold text-gray-700 mb-2">{{ t('solution.detail.description') }}</h4>
+              <p class="text-sm text-gray-600 mb-4">{{ currentSolution.summary || currentSolution.description || '-' }}</p>
 
-                <h4 v-if="currentSolution.markdownContent" class="text-sm font-bold text-gray-700 mb-2">{{ t('solution.detail.detailedInfo') }}</h4>
-                <div v-if="currentSolution.markdownContent" class="prose prose-sm max-w-none text-gray-600">
-                  {{ currentSolution.markdownContent }}
-                </div>
-
-                <div v-if="currentSolution.includes && currentSolution.includes.length" class="mt-4">
-                  <h4 class="text-sm font-bold text-gray-700 mb-2">{{ t('solution.detail.includes') }}</h4>
-                  <div class="flex flex-wrap gap-2">
-                    <span
-                      v-for="include in currentSolution.includes"
-                      :key="include"
-                      class="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs"
-                    >
-                      {{ t(`solution.includes.${include}`) }}
-                    </span>
-                  </div>
-                </div>
+              <h4 v-if="currentSolution.markdownContent" class="text-sm font-bold text-gray-700 mb-2">{{ t('solution.detail.detailedInfo') }}</h4>
+              <div v-if="currentSolution.markdownContent" class="prose prose-sm max-w-none text-gray-600">
+                {{ currentSolution.markdownContent }}
               </div>
 
-              <!-- Sidebar -->
-              <div class="space-y-4">
-                <div class="bg-gray-50 rounded-lg p-4">
-                  <h5 class="text-xs font-bold text-gray-500 uppercase mb-2">{{ t('solution.detail.detailedInfo') }}</h5>
-                  <div class="space-y-2 text-sm">
-                    <div class="flex justify-between">
-                      <span class="text-gray-500">{{ t('solution.detail.info.installCount') }}</span>
-                      <span>{{ currentSolution.installCount }}</span>
-                    </div>
-                    <div class="flex justify-between">
-                      <span class="text-gray-500">{{ t('solution.detail.info.rating') }}</span>
-                      <span>{{ currentSolution.rating }}</span>
-                    </div>
-                    <div class="flex justify-between">
-                      <span class="text-gray-500">{{ t('solution.detail.info.status') }}</span>
-                      <span :class="currentSolution.status === 'active' ? 'text-green-600' : 'text-gray-500'">
-                        {{ currentSolution.status === 'active' ? t('solution.detail.info.active') : t('solution.detail.info.inactive') }}
-                      </span>
-                    </div>
-                    <div class="flex justify-between">
-                      <span class="text-gray-500">{{ t('solution.detail.info.source') }}</span>
-                      <span :class="currentSolution.source === 'marketplace' ? 'text-green-600' : 'text-blue-600'">
-                        {{ currentSolution.source === 'marketplace' ? t('solution.badges.source.marketplace') : t('solution.badges.source.selfDeveloped') }}
-                      </span>
-                    </div>
-                    <div v-if="currentSolution.tags && currentSolution.tags.length" class="pt-2 border-t border-gray-200">
-                      <span class="text-gray-500">{{ t('solution.detail.info.tags') }}</span>
-                      <div class="flex flex-wrap gap-1 mt-1">
-                        <span
-                          v-for="tag in currentSolution.tags"
-                          :key="tag"
-                          class="px-2 py-0.5 rounded-full bg-gray-200 text-xs"
-                        >
-                          {{ tag }}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+              <div v-if="currentSolution.includes && currentSolution.includes.length" class="mt-4">
+                <h4 class="text-sm font-bold text-gray-700 mb-2">{{ t('solution.detail.includes') }}</h4>
+                <div class="flex flex-wrap gap-2">
+                  <span
+                    v-for="include in currentSolution.includes"
+                    :key="include"
+                    class="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs"
+                  >
+                    {{ t(`solution.includes.${include}`) }}
+                  </span>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- Install Info Tab -->
-          <div v-if="detailTab === 'install-info'">
-            <div class="mb-4">
-              <h4 class="text-sm font-bold text-gray-700 mb-2">{{ t('solution.detail.installedRunners') }}</h4>
-              <p class="text-xs text-gray-500 mb-3">{{ t('solution.detail.installedDesc') }}</p>
-              <div v-if="currentSolution.runnerIds && currentSolution.runnerIds.length > 0" class="space-y-2">
-                <div
-                  v-for="runnerId in currentSolution.runnerIds"
-                  :key="runnerId"
-                  class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                >
-                  <div class="flex items-center gap-3">
-                    <i class="fa-solid fa-server text-gray-400"></i>
-                    <span class="font-medium text-gray-900">{{ getRunnerAlias(runnerId) }}</span>
+            <!-- Sidebar -->
+            <div class="space-y-4">
+              <div class="bg-gray-50 rounded-lg p-4">
+                <h5 class="text-xs font-bold text-gray-500 uppercase mb-2">{{ t('solution.detail.detailedInfo') }}</h5>
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">{{ t('solution.detail.info.installCount') }}</span>
+                    <span>{{ currentSolution.installCount }}</span>
                   </div>
-                  <button
-                    class="px-3 py-1 rounded-lg border border-red-200 text-red-600 text-sm hover:bg-red-50"
-                    @click="quickUninstallFromRunner(runnerId)"
-                  >
-                    {{ t('solution.actions.uninstall') }}
-                  </button>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">{{ t('solution.detail.info.rating') }}</span>
+                    <span>{{ currentSolution.rating }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">{{ t('solution.detail.info.status') }}</span>
+                    <span :class="currentSolution.status === 'active' ? 'text-green-600' : 'text-gray-500'">
+                      {{ currentSolution.status === 'active' ? t('solution.detail.info.active') : t('solution.detail.info.inactive') }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500">{{ t('solution.detail.info.source') }}</span>
+                    <span :class="currentSolution.source === 'marketplace' ? 'text-green-600' : 'text-blue-600'">
+                      {{ currentSolution.source === 'marketplace' ? t('solution.badges.source.marketplace') : t('solution.badges.source.selfDeveloped') }}
+                    </span>
+                  </div>
+                  <div v-if="currentSolution.tags && currentSolution.tags.length" class="pt-2 border-t border-gray-200">
+                    <span class="text-gray-500">{{ t('solution.detail.info.tags') }}</span>
+                    <div class="flex flex-wrap gap-1 mt-1">
+                      <span
+                        v-for="tag in currentSolution.tags"
+                        :key="tag"
+                        class="px-2 py-0.5 rounded-full bg-gray-200 text-xs"
+                      >
+                        {{ tag }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div v-else class="text-center py-8 text-gray-400">
-                <i class="fa-solid fa-server text-4xl mb-4"></i>
-                <p>{{ t('solution.empty.noInstallInfo') }}</p>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+
+        <!-- Install Info Tab -->
+        <div v-if="detailTab === 'install-info'">
+          <div class="mb-4">
+            <h4 class="text-sm font-bold text-gray-700 mb-2">{{ t('solution.detail.installedRunners') }}</h4>
+            <p class="text-xs text-gray-500 mb-3">{{ t('solution.detail.installedDesc') }}</p>
+            <div v-if="currentSolution.runnerIds && currentSolution.runnerIds.length > 0" class="space-y-2">
+              <div
+                v-for="runnerId in currentSolution.runnerIds"
+                :key="runnerId"
+                class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+              >
+                <div class="flex items-center gap-3">
+                  <i class="fa-solid fa-server text-gray-400"></i>
+                  <span class="font-medium text-gray-900">{{ getRunnerAlias(runnerId) }}</span>
+                </div>
+                <button
+                  class="px-3 py-1 rounded-lg border border-red-200 text-red-600 text-sm hover:bg-red-50"
+                  @click="quickUninstallFromRunner(runnerId)"
+                >
+                  {{ t('solution.actions.uninstall') }}
+                </button>
+              </div>
+            </div>
+            <div v-else class="text-center py-8 text-gray-400">
+              <i class="fa-solid fa-server text-4xl mb-4"></i>
+              <p>{{ t('solution.empty.noInstallInfo') }}</p>
+            </div>
+          </div>
+        </div>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -455,6 +448,7 @@
  * @keywords-en solution-management, solution-marketplace, my-solutions, my-purchases
  */
 import { ref, onMounted, computed } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import { useI18n } from '../../agent/composables/useI18n';
 import { useSolutions } from '../hooks/useSolutions';
 import type { Solution } from '../types/solution.types';

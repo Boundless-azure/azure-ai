@@ -8,14 +8,16 @@ import { DATA_PERMISSION_OPTIONS } from './types/tokens';
 import { DataPermissionController } from './controllers/data-permission.controller';
 
 /**
- * @title 数据权限模块
- * @description 提供 DTO 节点装饰器绑定、forRoot 注入与服务层权限执行能力。
- * @keywords-cn 数据权限模块, forRoot注入, DTO节点, 服务层权限
- * @keywords-en data-permission-module, for-root-injection, dto-node, service-permission
+ * @title 数据权限模块 (新范式)
+ * @description 不再需要 forRoot 配置 nodes / tableDtoMap, 全部走 @DataPermissionNode 装饰器扫描 (SSOT)。
+ *              forRoot 仅保留 isGlobal 参数控制注册作用域, 兼容期 forFeature 也仍可用。
+ *              业务方 :: 在 DTO 上挂 @DataPermissionNode 静态方法, service 注入 DataPermissionService 调 applyTo。
+ * @keywords-cn 数据权限模块, 装饰器扫描, SSOT
+ * @keywords-en data-permission-module, decorator-scan, ssot
  */
 @Module({})
 export class DataPermissionModule {
-  static forRoot(options: DataPermissionModuleOptions): DynamicModule {
+  static forRoot(options: DataPermissionModuleOptions = {}): DynamicModule {
     return {
       module: DataPermissionModule,
       global: options.isGlobal ?? false,
@@ -34,5 +36,13 @@ export class DataPermissionModule {
         DataPermissionService,
       ],
     };
+  }
+
+  /**
+   * 模块级注册 (兼容期, 行为同 forRoot 但非 global)
+   * @keyword-en for-feature-compat
+   */
+  static forFeature(): DynamicModule {
+    return DataPermissionModule.forRoot({ isGlobal: false });
   }
 }

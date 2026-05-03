@@ -301,28 +301,14 @@
       </div>
     </div>
 
-    <!-- Edit/Create Modal -->
-    <div
-      v-if="showModal"
-      class="fixed inset-0 z-50 flex items-center justify-center"
+    <!-- Edit/Create Modal :: 用 BaseModal 统一外壳 -->
+    <BaseModal
+      :open="showModal"
+      :title="isEdit ? '编辑用户' : '新增用户'"
+      size="md"
+      @close="closeModal"
     >
-      <div
-        class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        @click="closeModal"
-      ></div>
-      <div
-        class="relative bg-white rounded-2xl shadow-xl w-[500px] max-w-[95vw] border border-gray-200 p-6 space-y-4"
-      >
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-900">
-            {{ isEdit ? '编辑用户' : '新增用户' }}
-          </h3>
-          <button class="text-gray-400 hover:text-gray-700" @click="closeModal">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-
-        <div class="space-y-3">
+      <div class="space-y-3">
           <div v-if="isEdit">
             <label class="block text-sm font-medium text-gray-700 mb-1"
               >头像</label
@@ -423,24 +409,23 @@
               placeholder="13800000000"
             />
           </div>
-        </div>
-
-        <div class="pt-2 flex justify-end gap-2">
-          <button
-            class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
-            @click="closeModal"
-          >
-            取消
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
-            @click="handleSubmit"
-          >
-            保存
-          </button>
-        </div>
       </div>
-    </div>
+
+      <template #footer>
+        <button
+          class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+          @click="closeModal"
+        >
+          取消
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+          @click="handleSubmit"
+        >
+          保存
+        </button>
+      </template>
+    </BaseModal>
 
     <SquareAvatarCropModal
       v-model:open="showAvatarModal"
@@ -450,33 +435,15 @@
     />
   </div>
 
-  <div
-    v-if="showRoleModal"
-    class="fixed inset-0 z-50 flex items-center justify-center"
+  <!-- 角色分配 Modal :: 用 BaseModal 统一外壳 -->
+  <BaseModal
+    :open="showRoleModal"
+    title="角色分配"
+    :subtitle="`用户：${currentUser?.displayName ?? ''}`"
+    size="lg"
+    @close="closeRoleModal"
   >
-    <div
-      class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-      @click="closeRoleModal"
-    ></div>
-    <div
-      class="relative bg-white rounded-2xl shadow-xl w-[820px] max-w-[95vw] border border-gray-200 p-6 flex flex-col h-[620px]"
-    >
-      <div class="flex items-center justify-between mb-4 flex-shrink-0">
-        <div>
-          <h3 class="text-lg font-bold text-gray-900">角色分配</h3>
-          <p class="text-sm text-gray-500">
-            用户：{{ currentUser?.displayName }}
-          </p>
-        </div>
-        <button
-          class="text-gray-400 hover:text-gray-700"
-          @click="closeRoleModal"
-        >
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <div class="flex gap-2 mb-4 flex-shrink-0">
+    <div class="flex gap-2 mb-4 flex-shrink-0">
         <select
           v-model="newMembershipOrgId"
           class="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm"
@@ -542,8 +509,7 @@
           </tbody>
         </table>
       </div>
-    </div>
-  </div>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -555,6 +521,7 @@
  */
 
 import { ref, onMounted, reactive } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import IdentitySectionHeader from './IdentitySectionHeader.vue';
 import { usePrincipals } from '../hooks/usePrincipals';
 import { useOrganizations } from '../hooks/useOrganizations';

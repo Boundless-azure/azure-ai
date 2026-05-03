@@ -500,6 +500,11 @@ md.renderer.rules.image = function (tokens, idx, options, env, self) {
   return defaultImageRender(tokens, idx, options, env, self);
 };
 
+// 表格包一层 wrapper :: 让 table 用内容宽度自然排列, 容器溢出时横向滚动 (而不是压缩列宽)
+// @keyword-en md-table-wrapper horizontal-scroll preserve-column-width
+md.renderer.rules.table_open = () => '<div class="md-table-wrapper"><table>';
+md.renderer.rules.table_close = () => '</table></div>';
+
 const handleMessageClick = (e: MouseEvent) => {
   const target = e.target;
   if (!(target instanceof HTMLElement)) return;
@@ -651,6 +656,117 @@ const renderMarkdown = (content: string): string => {
   background: rgba(212, 212, 216, 0.35);
   border-radius: 0.4rem;
   padding: 0.12rem 0.35rem;
+}
+
+/* ===== 标题层级 :: 让 LLM 输出的 h1~h4 视觉层次清晰 md-headings ===== */
+.assistant-markdown :deep(h1),
+.assistant-markdown :deep(h2),
+.assistant-markdown :deep(h3),
+.assistant-markdown :deep(h4) {
+  margin: 1.05em 0 0.42em;
+  font-weight: 600;
+  color: #18181b;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+}
+.assistant-markdown :deep(h1) {
+  font-size: 1.18em;
+}
+.assistant-markdown :deep(h2) {
+  font-size: 1.08em;
+}
+.assistant-markdown :deep(h3) {
+  font-size: 1em;
+}
+.assistant-markdown :deep(h4) {
+  font-size: 0.95em;
+  color: #27272a;
+}
+.assistant-markdown :deep(h1:first-child),
+.assistant-markdown :deep(h2:first-child),
+.assistant-markdown :deep(h3:first-child),
+.assistant-markdown :deep(h4:first-child) {
+  margin-top: 0;
+}
+
+/* ===== 分隔线 :: 渐隐两端的细线, 替代生硬的硬线 md-hr ===== */
+.assistant-markdown :deep(hr) {
+  margin: 1.1em 0;
+  border: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(161, 161, 170, 0.45) 18%,
+    rgba(161, 161, 170, 0.45) 82%,
+    transparent 100%
+  );
+}
+
+/* ===== 强调与链接 ===== */
+.assistant-markdown :deep(strong) {
+  color: #18181b;
+  font-weight: 600;
+}
+.assistant-markdown :deep(em) {
+  color: #3f3f46;
+}
+.assistant-markdown :deep(a) {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(37, 99, 235, 0.4);
+  transition: text-decoration-color 0.15s ease;
+}
+.assistant-markdown :deep(a:hover) {
+  text-decoration-color: rgba(37, 99, 235, 0.85);
+}
+
+/* ===== 列表 marker 淡化 ===== */
+.assistant-markdown :deep(ul) {
+  list-style: disc;
+}
+.assistant-markdown :deep(ol) {
+  list-style: decimal;
+}
+.assistant-markdown :deep(li::marker) {
+  color: rgba(113, 113, 122, 0.7);
+}
+
+/* ===== markdown 表格 :: 列宽随内容, 容器横滚, 清晰边框 md-table ===== */
+.assistant-markdown :deep(.md-table-wrapper) {
+  margin: 0.7em 0;
+  overflow-x: auto;
+  border: 1px solid rgba(212, 212, 216, 0.85);
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.6);
+}
+.assistant-markdown :deep(.md-table-wrapper table) {
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+.assistant-markdown :deep(.md-table-wrapper th),
+.assistant-markdown :deep(.md-table-wrapper td) {
+  border: 1px solid rgba(212, 212, 216, 0.85);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+  max-width: 28rem;
+  overflow-wrap: anywhere;
+}
+.assistant-markdown :deep(.md-table-wrapper th) {
+  background: rgba(244, 244, 245, 0.95);
+  font-weight: 600;
+  color: #18181b;
+  position: sticky;
+  top: 0;
+}
+.assistant-markdown :deep(.md-table-wrapper tbody tr:nth-child(even) td) {
+  background: rgba(248, 248, 250, 0.55);
 }
 
 .markdown-body :deep(p) {

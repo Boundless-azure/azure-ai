@@ -141,6 +141,14 @@ source :: `src/core/agent-runtime/services/agent-runtime.service.ts` · `tools/c
 - 例 :: `saas.app.todo.create` · `saas.app.conversation.sendMsg` · `runner.unitcore.file.read` · `runner.system.hookbus.getInfo`
 - 旧式 `onXxx` / `snake_case` / `colon:separated` 全部废弃; 不允许新增旧风格命名
 
+**hook 鉴权范式 :: 凡注册 hook 必配 `@CheckAbility` (LLM 链路核心防线, 强约束)**
+- HTTP-paired hook 走 `@HookLifecycle + @CheckAbility` 双装饰器, 一处声明同时输出 HTTP 路由 + Hook 注册 + ability 元数据
+- 独立 hook (无 HTTP 配对) 走 service 上的 `@HookHandler + @CheckAbility` 双装饰器
+- `HookLifecycleRegistrationService` / `HookDecoratorExplorerService` 启动期把 `@CheckAbility` 元数据自动镜像进 `metadata.requiredAbility`, `HookAbilityMiddleware` 在 `source==='llm'` 时兜底校验
+- 例 :: `@HookHandler('saas.app.foo.bar') @CheckAbility('read', 'foo')` (service) / `@HookLifecycle({...}) @CheckAbility('read', 'foo')` (controller)
+- 例外 (P2) :: 系统事件 hook (`saas.app.auth.loginSuccess` 等) 仅由系统内部触发、不通过 LLM 调用, 可不挂 `@CheckAbility`; 其它一律必挂
+- ability 的 subject 应跟数据库 `permission_definitions` 的 root nodeKey (subject 表名) 对齐, 让前端 RolePermissionAssign UI 能匹配显示
+
 ### `[2/7]  Unit Core`  ::  Runner 侧能力基座(AI 的"标准库")
 
 `runner/src/unit-core/`. 启动时扫描 `workspace/` + `system-unit/{ast,file,mongo}` → 解析 Hook 清单 → 注册到 Runner HookBus → 落库 `RunnerDbService`.

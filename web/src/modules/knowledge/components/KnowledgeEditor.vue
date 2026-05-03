@@ -31,13 +31,14 @@
           />
           <h2
             v-else
-            class="text-lg font-bold text-gray-900 cursor-pointer hover:text-blue-600 transition-colors truncate"
+            class="text-lg font-bold text-gray-900 transition-colors truncate"
+            :class="isLocalBook ? 'cursor-default' : 'cursor-pointer hover:text-blue-600'"
             @click="startEditTitle"
           >
             {{ book.name }}
           </h2>
           <span
-            v-if="!book.isEmbedded"
+            v-if="!book.isEmbedded && !isLocalBook"
             class="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full"
           >
             <i class="fa-solid fa-circle-exclamation mr-1"></i>{{ t('knowledge.notEmbedded') }}
@@ -51,11 +52,11 @@
             class="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full"
           >
             {{ tag }}
-            <button type="button" @click="removeTag(idx)" class="text-gray-400 hover:text-red-500 leading-none">&times;</button>
+            <button v-if="!isLocalBook" type="button" @click="removeTag(idx)" class="text-gray-400 hover:text-red-500 leading-none">&times;</button>
           </span>
           <!-- tag 输入框 tag-inline-input -->
           <input
-            v-if="editingTags"
+            v-if="editingTags && !isLocalBook"
             v-model="tagInput"
             class="text-xs border border-gray-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-gray-400 w-24"
             placeholder="输入后 Enter"
@@ -65,7 +66,7 @@
             ref="tagInputRef"
           />
           <button
-            v-else
+            v-else-if="!isLocalBook"
             @click="startEditTags"
             class="px-1.5 py-0.5 text-xs text-gray-400 hover:text-gray-600 border border-dashed border-gray-300 rounded-full transition-colors"
           >
@@ -77,6 +78,7 @@
       <div class="flex items-center gap-2">
         <!-- 新增章节 -->
         <button
+          v-if="!isLocalBook"
           @click="showAddChapter = true"
           class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-1.5"
         >
@@ -85,6 +87,7 @@
         </button>
         <!-- 构建向量 -->
         <button
+          v-if="!isLocalBook"
           @click="handleBuildEmbedding"
           :disabled="embeddingLoading"
           class="px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-1.5"
@@ -130,7 +133,7 @@
             <span v-else class="w-1.5 flex-shrink-0"></span>
             <span class="text-sm flex-1 truncate">{{ chap.title }}</span>
             <!-- 章节操作 chapter-actions -->
-            <div class="opacity-0 group-hover:opacity-100 flex gap-0.5" @click.stop>
+            <div v-if="!isLocalBook" class="opacity-0 group-hover:opacity-100 flex gap-0.5" @click.stop>
               <button
                 @click="startEditChapterTitle(chap)"
                 class="p-0.5 hover:text-blue-400 transition-colors"
@@ -182,6 +185,7 @@
             <i class="fa-solid fa-file-lines text-5xl text-gray-200 mb-4"></i>
             <p class="text-gray-400">{{ t('knowledge.selectChapter') }}</p>
             <button
+              v-if="!isLocalBook"
               @click="showAddChapter = true"
               class="mt-3 text-sm text-blue-600 hover:underline"
             >
@@ -199,7 +203,7 @@
               <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Markdown</span>
               <div class="flex-1"></div>
               <!-- LM必读开关 lm-toggle -->
-              <label class="flex items-center gap-1.5 cursor-pointer text-xs text-gray-600">
+              <label v-if="!isLocalBook" class="flex items-center gap-1.5 cursor-pointer text-xs text-gray-600">
                 <span class="w-8 h-4 rounded-full relative transition-colors"
                   :class="currentChapterData?.isLmRequired ? 'bg-amber-400' : 'bg-gray-200'"
                   @click="toggleLmRequired"
@@ -211,7 +215,7 @@
                 {{ t('knowledge.lmRequired') }}
               </label>
               <!-- 自动保存状态 save-status -->
-              <span class="text-xs text-gray-400 flex items-center gap-1">
+              <span v-if="!isLocalBook" class="text-xs text-gray-400 flex items-center gap-1">
                 <i v-if="saving" class="fa-solid fa-spinner fa-spin text-blue-400"></i>
                 <i v-else-if="saved" class="fa-solid fa-check text-green-500"></i>
                 {{ saving ? t('knowledge.saving') : saved ? t('knowledge.saved') : '' }}
@@ -220,6 +224,8 @@
             <textarea
               v-model="editorContent"
               class="flex-1 resize-none font-mono text-sm text-gray-800 p-4 focus:outline-none leading-relaxed"
+              :class="isLocalBook ? 'bg-gray-50' : ''"
+              :readonly="isLocalBook"
               :placeholder="t('knowledge.editorPlaceholder')"
               @input="handleContentChange"
             ></textarea>
@@ -242,7 +248,7 @@
 
     <!-- 新增章节弹窗 add-chapter-modal keyword: add-chapter -->
     <div
-      v-if="showAddChapter"
+      v-if="showAddChapter && !isLocalBook"
       class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
       @click.self="showAddChapter = false"
     >
@@ -373,6 +379,7 @@ const localTags = ref<string[]>([...(props.book.tags ?? [])]);
 const editingTags = ref(false);
 const tagInput = ref('');
 const tagInputRef = ref<HTMLInputElement | null>(null);
+const isLocalBook = computed(() => props.book.id.startsWith('local_'));
 
 // 章节管理
 const showAddChapter = ref(false);
@@ -407,6 +414,7 @@ async function selectChapter(chapterId: string) {
 
 /** 内容变更自动保存（500ms 防抖） */
 function handleContentChange() {
+  if (isLocalBook.value) return;
   saved.value = false;
   if (saveTimer.value) clearTimeout(saveTimer.value);
   saveTimer.value = setTimeout(() => {
@@ -416,6 +424,7 @@ function handleContentChange() {
 
 /** 保存内容 */
 async function saveContent() {
+  if (isLocalBook.value) return;
   if (!selectedChapterId.value || !currentChapterData.value) return;
   saving.value = true;
   try {
@@ -430,6 +439,7 @@ async function saveContent() {
 
 /** 切换 LM 必读 */
 async function toggleLmRequired() {
+  if (isLocalBook.value) return;
   if (!selectedChapterId.value || !currentChapterData.value) return;
   const next = !currentChapterData.value.isLmRequired;
   await updateChapter(selectedChapterId.value, { isLmRequired: next });
@@ -440,12 +450,14 @@ async function toggleLmRequired() {
 
 /** tags 编辑：打开输入框 */
 function startEditTags() {
+  if (isLocalBook.value) return;
   editingTags.value = true;
   nextTick(() => tagInputRef.value?.focus());
 }
 
 /** 提交当前 tagInput 内容 */
 async function commitTag() {
+  if (isLocalBook.value) return;
   const tag = tagInput.value.trim().replace(/,+$/, '');
   if (tag && !localTags.value.includes(tag)) {
     localTags.value.push(tag);
@@ -462,18 +474,21 @@ async function commitTagAndClose() {
 
 /** 删除某个 tag */
 async function removeTag(idx: number) {
+  if (isLocalBook.value) return;
   localTags.value.splice(idx, 1);
   await saveTags();
 }
 
 /** 保存 tags 到后端 */
 async function saveTags() {
+  if (isLocalBook.value) return;
   await updateBook(props.book.id, { tags: [...localTags.value] });
   emit('updated', { ...props.book, tags: localTags.value });
 }
 
 /** 构建向量 */
 async function handleBuildEmbedding() {
+  if (isLocalBook.value) return;
   embeddingLoading.value = true;
   try {
     const updated = await buildEmbedding(props.book.id);
@@ -485,12 +500,14 @@ async function handleBuildEmbedding() {
 
 /** 书名编辑 */
 function startEditTitle() {
+  if (isLocalBook.value) return;
   titleDraft.value = props.book.name;
   editingTitle.value = true;
   nextTick(() => titleInputRef.value?.focus());
 }
 
 async function saveTitle() {
+  if (isLocalBook.value) return;
   if (!titleDraft.value.trim() || titleDraft.value === props.book.name) {
     editingTitle.value = false;
     return;
@@ -502,6 +519,7 @@ async function saveTitle() {
 
 /** 新增章节 */
 async function handleAddChapter() {
+  if (isLocalBook.value) return;
   if (!newChapterTitle.value) return;
   addChapterLoading.value = true;
   try {
@@ -522,6 +540,7 @@ async function handleAddChapter() {
 
 /** 删除章节 */
 async function handleDeleteChapter(chapterId: string) {
+  if (isLocalBook.value) return;
   if (!confirm(t('knowledge.deleteChapterConfirm'))) return;
   await deleteChapter(chapterId);
   await listChapters(props.book.id);
@@ -534,12 +553,14 @@ async function handleDeleteChapter(chapterId: string) {
 
 /** 章节标题编辑 */
 function startEditChapterTitle(chap: KnowledgeChapterToc) {
+  if (isLocalBook.value) return;
   editingChapterId.value = chap.id;
   chapterTitleDraft.value = chap.title;
   nextTick(() => chapterTitleInputRef.value?.focus());
 }
 
 async function saveChapterTitle() {
+  if (isLocalBook.value) return;
   if (!editingChapterId.value || !chapterTitleDraft.value.trim()) {
     editingChapterId.value = null;
     return;

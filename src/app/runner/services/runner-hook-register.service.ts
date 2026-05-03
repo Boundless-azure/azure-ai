@@ -25,7 +25,6 @@ export class RunnerHookRegisterService implements OnModuleInit {
       'resource',
       'todo',
       'plugin',
-      'ai_models',
       'runner',
     ];
     for (const moduleName of modules) {

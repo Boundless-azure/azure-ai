@@ -61,6 +61,24 @@ export interface QueryOrganizationDto {
   q?: string;
 }
 
+export interface QueryRoleDto {
+  q?: string;
+  organizationId?: string;
+}
+
+export interface QueryMembershipDto {
+  organizationId?: string;
+  principalId?: string;
+  roleId?: string;
+  active?: boolean;
+}
+
+export interface QueryPermissionDefinitionDto {
+  permissionType?: PermissionDefinitionType;
+  nodeKey?: string;
+  fid?: string | null;
+}
+
 export interface CreateOrganizationDto {
   name: string;
   code?: string | null;
@@ -88,7 +106,11 @@ export interface UpsertRolePermissionsDto {
   items: Array<{
     subject: string;
     action: string;
-    conditions?: Record<string, unknown> | null;
+    /**
+     * 权限类型 :: 默认 'management' (兼容旧入参), 新代码应显式传 'data' / 'menu'
+     * @keyword-en upsert-permission-type
+     */
+    permissionType?: PermissionDefinitionType;
   }>;
 }
 

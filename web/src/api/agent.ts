@@ -579,7 +579,7 @@ export const agentApi = {
         roleId: string;
         subject: string;
         action: string;
-        conditions?: Record<string, unknown> | null;
+        permissionType?: 'management' | 'data' | 'menu';
       }[]
     >(`/identity/roles/${id}/permissions`),
   upsertRolePermissions: (
@@ -588,7 +588,7 @@ export const agentApi = {
       items: Array<{
         subject: string;
         action: string;
-        conditions?: Record<string, unknown> | null;
+        permissionType?: 'management' | 'data' | 'menu';
       }>;
     },
   ) => {
@@ -618,6 +618,7 @@ export const agentApi = {
         organizationId: string;
         principalId: string;
         role: string;
+        roleName?: string | null;
         department?: string | null;
         tags?: string[] | null;
         active: boolean;

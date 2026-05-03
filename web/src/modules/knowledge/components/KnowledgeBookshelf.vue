@@ -107,11 +107,12 @@
                 <button
                   @click="openEditor(book)"
                   class="p-2 bg-white rounded-lg shadow text-gray-700 hover:text-blue-600 transition-colors text-xs"
-                  :title="t('knowledge.edit')"
+                  :title="isLocalBook(book) ? '查看' : t('knowledge.edit')"
                 >
-                  <i class="fa-solid fa-pen-to-square"></i>
+                  <i :class="isLocalBook(book) ? 'fa-solid fa-eye' : 'fa-solid fa-pen-to-square'"></i>
                 </button>
                 <button
+                  v-if="!isLocalBook(book)"
                   @click="handleBuildEmbedding(book)"
                   class="p-2 bg-white rounded-lg shadow text-gray-700 hover:text-emerald-600 transition-colors text-xs"
                   :title="t('knowledge.buildVector')"
@@ -120,6 +121,7 @@
                   <i :class="embeddingId === book.id ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-brain'"></i>
                 </button>
                 <button
+                  v-if="!isLocalBook(book)"
                   @click="handleDelete(book)"
                   class="p-2 bg-white rounded-lg shadow text-gray-700 hover:text-red-600 transition-colors text-xs"
                   :title="t('knowledge.delete')"
@@ -307,6 +309,10 @@ function openEditor(book: KnowledgeBookInfo) {
   editingBook.value = book;
 }
 
+function isLocalBook(book: KnowledgeBookInfo): boolean {
+  return book.id.startsWith('local_');
+}
+
 function handleBookUpdated(updated: KnowledgeBookInfo) {
   const idx = books.value.findIndex((b) => b.id === updated.id);
   if (idx >= 0) books.value[idx] = updated;
@@ -327,6 +333,7 @@ async function handleCreate() {
 }
 
 async function handleBuildEmbedding(book: KnowledgeBookInfo) {
+  if (isLocalBook(book)) return;
   embeddingId.value = book.id;
   try {
     await buildEmbedding(book.id);
@@ -336,6 +343,7 @@ async function handleBuildEmbedding(book: KnowledgeBookInfo) {
 }
 
 async function handleDelete(book: KnowledgeBookInfo) {
+  if (isLocalBook(book)) return;
   if (!confirm(t('knowledge.deleteConfirm', { name: book.name }))) return;
   await deleteBook(book.id);
   await listBooks(selectedType.value || undefined);

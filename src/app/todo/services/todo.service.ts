@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DeepPartial } from 'typeorm';
 import { v7 as uuidv7 } from 'uuid';
@@ -18,13 +18,18 @@ import {
   DataPermissionService,
   DataPermissionContextService,
 } from '@core/data-permission';
+import { AbilityService } from '@/app/identity/services/ability.service';
+import { PermissionDefinitionType } from '@/app/identity/enums/permission.enums';
 import type { JwtPayload } from '@/core/auth/types/auth.types';
 
 /**
  * @title 待办事项服务
  * @description 提供待办的列表、获取、创建、更新、删除以及跟进记录和评论管理能力。
- * @keywords-cn 待办服务, 列表, 更新, 删除, 跟进, 评论
- * @keywords-en todo-service, list, update, delete, followup, comment
+ *              数据权限走新范式 :: 调 dataPermission.applyTo(DtoClass, payload, ctx) 校验,
+ *              通过后 service 自由组装查询条件 (含 OR / 复合条件)。
+ *              ctx 由 ability service 拿当前 principal 的 (subject, action) 列表填充, 按 permissionType 分组。
+ * @keywords-cn 待办服务, 列表, 更新, 删除, 跟进, 评论, applyTo, 新范式
+ * @keywords-en todo-service, list, update, delete, followup, comment, apply-to, new-paradigm
  */
 @Injectable()
 export class TodoService {
@@ -37,45 +42,53 @@ export class TodoService {
     private readonly commentRepo: Repository<TodoFollowupCommentEntity>,
     private readonly dataPermission: DataPermissionService,
     private readonly dataPermissionContext: DataPermissionContextService,
+    private readonly abilityService: AbilityService,
   ) {}
 
   /**
+   * 构建数据权限 context :: 拿 principal 在 data 与 management 类型下的 (subject, action) 列表
+   * @keyword-en build-data-permission-context
+   */
+  private async buildDpContext(principal?: JwtPayload) {
+    const principalId = principal?.id ?? '';
+    const [dataPerms, mgmtPerms] = principalId
+      ? await Promise.all([
+          this.abilityService.listPermissionsByType(
+            principalId,
+            PermissionDefinitionType.Data,
+          ),
+          this.abilityService.listPermissionsByType(
+            principalId,
+            PermissionDefinitionType.Management,
+          ),
+        ])
+      : [[], []];
+    return this.dataPermissionContext.build({
+      principalId: principal?.id,
+      attributes: { principalType: principal?.type },
+      dataPermissions: dataPerms,
+      managementPermissions: mgmtPerms,
+    });
+  }
+
+  /**
    * @title 获取待办列表
-   * @description 支持按状态、跟进人、发起人过滤
+   * @description 支持按状态、跟进人、发起人过滤; 数据权限通过 applyTo 校验
    */
   async list(
     query: QueryTodoDto,
     principal?: JwtPayload,
   ): Promise<TodoEntity[]> {
+    const ctx = await this.buildDpContext(principal);
+    // 校验通过返原 payload, 否则抛 DataPermissionError (含 errorMsg)
+    await this.dataPermission.applyTo(QueryTodoDto, query, ctx);
+
     const where: Record<string, unknown> = { isDelete: false };
     if (query.status) where['status'] = query.status;
     if (query.initiatorId) where['initiatorId'] = query.initiatorId;
-    if (query.followerId) {
-      where['followerIds'] = query.followerId;
-    }
-    if (query.q) {
-      where['title'] = query.q;
-    }
-    const context = this.dataPermissionContext.build({
-      principalId: principal?.id,
-      attributes: {
-        principalType: principal?.type,
-      },
-    });
-    const permission = await this.dataPermission.resolve(
-      'todos',
-      QueryTodoDto,
-      context,
-      {
-        status: query.status,
-        followerId: query.followerId,
-        initiatorId: query.initiatorId,
-      },
-    );
-    if (!permission.allow) {
-      throw new ForbiddenException('todo list denied by data permission');
-    }
-    Object.assign(where, permission.where);
+    if (query.followerId) where['followerIds'] = query.followerId;
+    if (query.q) where['title'] = query.q;
+
     return await this.todoRepo.find({ where, order: { createdAt: 'DESC' } });
   }
 
@@ -93,23 +106,9 @@ export class TodoService {
     dto: CreateTodoDto,
     principal?: JwtPayload,
   ): Promise<TodoEntity> {
-    const context = this.dataPermissionContext.build({
-      principalId: principal?.id,
-      attributes: {
-        principalType: principal?.type,
-      },
-    });
-    const permission = await this.dataPermission.resolve(
-      'todos',
-      CreateTodoDto,
-      context,
-      {
-        initiatorId: dto.initiatorId,
-      },
-    );
-    if (!permission.allow) {
-      throw new ForbiddenException('todo create denied by data permission');
-    }
+    const ctx = await this.buildDpContext(principal);
+    await this.dataPermission.applyTo(CreateTodoDto, dto, ctx);
+
     const payload: DeepPartial<TodoEntity> = {
       initiatorId: dto.initiatorId,
       title: dto.title,
@@ -132,23 +131,9 @@ export class TodoService {
     dto: UpdateTodoDto,
     principal?: JwtPayload,
   ): Promise<TodoEntity> {
-    const context = this.dataPermissionContext.build({
-      principalId: principal?.id,
-      attributes: {
-        principalType: principal?.type,
-      },
-    });
-    const permission = await this.dataPermission.resolve(
-      'todos',
-      UpdateTodoDto,
-      context,
-      {
-        id,
-      },
-    );
-    if (!permission.allow) {
-      throw new ForbiddenException('todo update denied by data permission');
-    }
+    const ctx = await this.buildDpContext(principal);
+    await this.dataPermission.applyTo(UpdateTodoDto, dto, ctx);
+
     const entity = await this.todoRepo.findOneOrFail({ where: { id } });
     if (dto.title !== undefined) entity.title = dto.title;
     if (dto.description !== undefined) entity.description = dto.description;

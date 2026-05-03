@@ -184,51 +184,35 @@
       </div>
     </div>
 
-    <!-- Edit/Create Modal -->
-    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="closeModal"></div>
-      <div class="relative bg-white rounded-2xl shadow-xl w-[500px] max-w-[95vw] border border-gray-200 p-6 space-y-4">
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-900">{{ isEdit ? '编辑组织' : '新增组织' }}</h3>
-          <button class="text-gray-400 hover:text-gray-700" @click="closeModal">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-        
-        <div class="space-y-3">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">组织名称</label>
-            <input v-model="form.name" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10" placeholder="请输入组织名称" />
-          </div>
-          
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">组织代码</label>
-            <input v-model="form.code" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10" placeholder="ORG_CODE" />
-          </div>
+    <!-- Edit/Create Modal :: 用 BaseModal 统一外壳 -->
+    <BaseModal :open="showModal" :title="isEdit ? '编辑组织' : '新增组织'" size="md" @close="closeModal">
+      <div class="space-y-3">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">组织名称</label>
+          <input v-model="form.name" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10" placeholder="请输入组织名称" />
         </div>
 
-        <div class="pt-2 flex justify-end gap-2">
-          <button class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors" @click="closeModal">取消</button>
-          <button class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors" @click="handleSubmit">保存</button>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">组织代码</label>
+          <input v-model="form.code" class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10" placeholder="ORG_CODE" />
         </div>
       </div>
-    </div>
 
-    <!-- Members Modal -->
-    <div v-if="showMembersModal" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="closeMembersModal"></div>
-      <div class="relative bg-white rounded-2xl shadow-xl w-[800px] max-w-[95vw] border border-gray-200 p-6 flex flex-col h-[600px]">
-        <div class="flex items-center justify-between mb-4 flex-shrink-0">
-          <div>
-            <h3 class="text-lg font-bold text-gray-900">成员管理</h3>
-            <p class="text-sm text-gray-500">组织：{{ currentOrg?.name }}</p>
-          </div>
-          <button class="text-gray-400 hover:text-gray-700" @click="closeMembersModal">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
+      <template #footer>
+        <button class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors" @click="closeModal">取消</button>
+        <button class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors" @click="handleSubmit">保存</button>
+      </template>
+    </BaseModal>
 
-        <div class="flex gap-2 mb-4 flex-shrink-0">
+    <!-- Members Modal :: 用 BaseModal 统一外壳 -->
+    <BaseModal
+      :open="showMembersModal"
+      title="成员管理"
+      :subtitle="`组织：${currentOrg?.name ?? ''}`"
+      size="lg"
+      @close="closeMembersModal"
+    >
+      <div class="flex gap-2 mb-4 flex-shrink-0">
           <input v-model="newMemberId" class="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm" placeholder="输入用户 ID 添加" />
           <select v-model="newMemberRole" class="px-3 py-2 rounded-lg border border-gray-200 text-sm">
             <option value="member">成员</option>
@@ -263,8 +247,7 @@
             </tbody>
           </table>
         </div>
-      </div>
-    </div>
+    </BaseModal>
   </div>
 </template>
 
@@ -277,6 +260,7 @@
  */
 
 import { ref, onMounted, reactive } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import IdentitySectionHeader from './IdentitySectionHeader.vue';
 import { useOrganizations } from '../hooks/useOrganizations';
 import { useMemberships } from '../hooks/useMemberships';

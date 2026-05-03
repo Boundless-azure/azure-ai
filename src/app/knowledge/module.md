@@ -37,6 +37,7 @@ src/app/knowledge/
 |----|------|------|
 | `local_conversation_hook_skill` | 对话 Hook 技能手册 | skill |
 | `local_web_control_skill` | Web Control 技能手册 | skill |
+| `local_saas_system_hook_skill` | Saas 系统hook技能手册 | skill |
 
 ## 核心文件与函数
 

@@ -137,14 +137,22 @@ export interface RolePermissionItem {
   roleId: string;
   subject: string;
   action: string;
-  conditions?: Record<string, unknown> | null;
+  /**
+   * 权限类型 :: management / data / menu, 兼容期默认 'management'
+   * @keyword-en role-permission-item-type
+   */
+  permissionType?: PermissionDefinitionType;
 }
 
 export interface UpsertRolePermissionsDto {
   items: Array<{
     subject: string;
     action: string;
-    conditions?: Record<string, unknown> | null;
+    /**
+     * 权限类型, 后端默认 'management' 兼容旧入参; 数据/菜单类型必须显式传
+     * @keyword-en upsert-permission-type
+     */
+    permissionType?: PermissionDefinitionType;
   }>;
 }
 
@@ -153,10 +161,15 @@ export interface MembershipItem {
   organizationId: string;
   principalId: string;
   /**
-   * 角色字段 :: 内置三档 owner/admin/member 或自定义 RoleEntity.code (Agent 角色分配场景)。
-   * 展示侧需自行做中文映射, 落盘时统一是 RoleEntity.code。
+   * 角色 code :: 内置三档 owner/admin/member 或自定义 RoleEntity.code。
+   * 给业务判断用 (e.g. 是否 admin 走通配)。
    */
   role: MembershipRole | string;
+  /**
+   * 角色显示名 :: 来自 RoleEntity.name (用户在 RoleManagement 配的"管理员"/"Administrator"等)。
+   * 给前端展示用; 后端找不到关联 role 时为 null, 此时前端按 fallback 提示。
+   */
+  roleName?: string | null;
   department?: string | null;
   tags?: string[] | null;
   active: boolean;
@@ -333,7 +346,10 @@ export const UpsertRolePermissionsSchema = z.object({
     z.object({
       subject: z.string().min(1),
       action: z.string().min(1),
-      conditions: z.record(z.any()).nullable().optional(),
+      permissionType: z
+        .enum(['management', 'data', 'menu'])
+        .optional()
+        .describe('权限类型, 默认 management 兼容旧入参'),
     }),
   ),
 });

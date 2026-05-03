@@ -1,12 +1,15 @@
 import { IsEnum, IsOptional, IsString, IsArray } from 'class-validator';
 import { TodoStatus } from '../enums/todo.enums';
-import { BindDataPermissionNode } from '@core/data-permission/decorators/data-permission-node.decorator';
+import {
+  DataPermissionNode,
+  type DataPermissionNodeArgs,
+} from '@core/data-permission';
 
 /**
  * @title 待办创建请求
- * @description 创建待办事项所需的字段。
- * @keywords-cn 待办创建, DTO
- * @keywords-en todo-create, dto
+ * @description 创建待办事项所需的字段, 含数据权限节点声明 (新范式: 静态方法 = handler)。
+ * @keywords-cn 待办创建, DTO, 数据权限节点
+ * @keywords-en todo-create, dto, data-permission-node
  */
 export class CreateTodoDto {
   @IsString()
@@ -35,9 +38,24 @@ export class CreateTodoDto {
   @IsEnum(TodoStatus)
   status?: TodoStatus;
 
-  @BindDataPermissionNode('todo:create-only-myself')
-  dataPermissionNodeCreateOnlyMyself(): string {
-    return 'todo:create-only-myself';
+  /**
+   * 数据权限节点 :: 创建 todo 时 initiatorId 必须等于当前登录用户
+   * @keyword-en todo-create-only-myself
+   */
+  @DataPermissionNode({
+    subject: 'todo',
+    action: 'create-only-myself',
+    weight: 30,
+    errorMsg: 'initiatorId 必须等于当前登录用户 (只能创建自己的 todo)',
+  })
+  static createOnlyMyself({
+    ctx,
+    payload,
+  }: DataPermissionNodeArgs<CreateTodoDto>): boolean | string {
+    if (!ctx.principalId) {
+      return '当前未登录, 无法识别 principalId';
+    }
+    return payload.initiatorId === ctx.principalId;
   }
 }
 
@@ -72,9 +90,21 @@ export class UpdateTodoDto {
   @IsEnum(TodoStatus)
   status?: TodoStatus;
 
-  @BindDataPermissionNode('todo:update-only-myself')
-  dataPermissionNodeUpdateOnlyMyself(): string {
-    return 'todo:update-only-myself';
+  /**
+   * 数据权限节点 :: 更新动作上 payload 不携带 owner 信息, 这里仅做 principal 存在性的硬保障,
+   *                 真正的"只能改自己的" 限制在 service 层通过 (initiatorId = principalId) where 条件落实
+   * @keyword-en todo-update-only-myself
+   */
+  @DataPermissionNode({
+    subject: 'todo',
+    action: 'update-only-myself',
+    weight: 30,
+    errorMsg: '当前未登录, 无法识别 principalId',
+  })
+  static updateOnlyMyself({
+    ctx,
+  }: DataPermissionNodeArgs<UpdateTodoDto>): boolean | string {
+    return Boolean(ctx.principalId);
   }
 }
 
@@ -101,9 +131,30 @@ export class QueryTodoDto {
   @IsString()
   q?: string;
 
-  @BindDataPermissionNode('todo:read-only-myself')
-  dataPermissionNodeReadOnlyMyself(): string {
-    return 'todo:read-only-myself';
+  /**
+   * 数据权限节点 :: 查询时 query 中若指定 initiatorId / followerId, 必须是自己
+   *                 不指定 → 表示"看自己的", service 层会自动补 principalId 作为 initiator/follower OR 条件
+   *                 这里 handler 仅做一致性校验, payload 不被改写
+   * @keyword-en todo-read-only-myself
+   */
+  @DataPermissionNode({
+    subject: 'todo',
+    action: 'read-only-myself',
+    weight: 30,
+    errorMsg: 'initiatorId / followerId 若指定必须等于当前登录用户',
+  })
+  static readOnlyMyself({
+    ctx,
+    payload,
+  }: DataPermissionNodeArgs<QueryTodoDto>): boolean | string {
+    if (!ctx.principalId) return '当前未登录, 无法识别 principalId';
+    if (payload.initiatorId && payload.initiatorId !== ctx.principalId) {
+      return `initiatorId 必须等于当前登录用户 (${ctx.principalId})`;
+    }
+    if (payload.followerId && payload.followerId !== ctx.principalId) {
+      return `followerId 必须等于当前登录用户 (${ctx.principalId})`;
+    }
+    return true;
   }
 }
 

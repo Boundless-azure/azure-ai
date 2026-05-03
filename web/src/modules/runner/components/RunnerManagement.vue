@@ -265,31 +265,14 @@
       </div>
     </div>
 
-    <div v-if="showDialog" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        @click="showDialog = false"
-      ></div>
-      <div
-        class="relative bg-white rounded-2xl shadow-xl w-[640px] max-w-[95vw] border border-gray-200"
-      >
-        <div
-          class="px-6 py-4 border-b border-gray-100 flex items-center justify-between"
-        >
-          <div>
-            <h3 class="text-lg font-bold text-gray-900">
-              {{ editingId ? '编辑 Runner' : '新增 Runner' }}
-            </h3>
-            <p class="text-sm text-gray-500">
-              {{ editingId ? '更新 Runner 信息与可用状态' : '创建新 Runner 并生成绑定密钥' }}
-            </p>
-          </div>
-          <button class="text-gray-400 hover:text-gray-700" @click="showDialog = false">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-
-        <div class="p-6 space-y-4">
+    <BaseModal
+      :open="showDialog"
+      :title="editingId ? '编辑 Runner' : '新增 Runner'"
+      :subtitle="editingId ? '更新 Runner 信息与可用状态' : '创建新 Runner 并生成绑定密钥'"
+      size="lg"
+      @close="showDialog = false"
+    >
+      <div class="space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Runner 别名</label>
@@ -318,53 +301,39 @@
             />
           </div>
 
-          <label
-            v-if="editingId"
-            class="text-sm text-gray-700 inline-flex items-center gap-2"
-          >
-            <input type="checkbox" v-model="form.active" />
-            启用该 Runner
-          </label>
-        </div>
-
-        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-          <button
-            class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-            @click="showDialog = false"
-          >
-            取消
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800"
-            @click="submit"
-          >
-            保存
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="showKeyDialog" class="fixed inset-0 z-[60] flex items-center justify-center">
-      <div
-        class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        @click="closeKeyDialog"
-      ></div>
-      <div
-        class="relative bg-white rounded-2xl shadow-xl w-[560px] max-w-[95vw] border border-gray-200"
-      >
-        <div
-          class="px-6 py-4 border-b border-gray-100 flex items-center justify-between"
+        <label
+          v-if="editingId"
+          class="text-sm text-gray-700 inline-flex items-center gap-2"
         >
-          <div>
-            <h3 class="text-lg font-bold text-gray-900">Runner Key</h3>
-            <p class="text-sm text-gray-500">{{ keyDialogAlias || '-' }}</p>
-          </div>
-          <button class="text-gray-400 hover:text-gray-700" @click="closeKeyDialog">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
+          <input type="checkbox" v-model="form.active" />
+          启用该 Runner
+        </label>
+      </div>
 
-        <div class="p-6 space-y-3">
+      <template #footer>
+        <button
+          class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+          @click="showDialog = false"
+        >
+          取消
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800"
+          @click="submit"
+        >
+          保存
+        </button>
+      </template>
+    </BaseModal>
+
+    <BaseModal
+      :open="showKeyDialog"
+      title="Runner Key"
+      :subtitle="keyDialogAlias || '-'"
+      size="md"
+      @close="closeKeyDialog"
+    >
+      <div class="space-y-3">
           <div
             class="w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-sm font-mono break-all"
           >
@@ -386,11 +355,10 @@
               <i class="fa-regular fa-copy"></i>
               <span>复制</span>
             </button>
-            <span v-if="copyNotice" class="text-xs text-green-700">{{ copyNotice }}</span>
-          </div>
+          <span v-if="copyNotice" class="text-xs text-green-700">{{ copyNotice }}</span>
         </div>
       </div>
-    </div>
+    </BaseModal>
   </div>
 </template>
 
@@ -402,6 +370,7 @@
  * @keywords-en runner-management, crud, key-display
  */
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import { RUNNER_STATUS_LABEL } from '../constants/runner.constants';
 import { useRunners } from '../hooks/useRunners';
 import { useRightPanelStore } from '../../agent/store/right-panel.store';

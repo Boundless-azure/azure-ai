@@ -1,26 +1,6 @@
 <template>
-  <div
-    v-if="open"
-    class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-    @click.self="close"
-  >
-    <div
-      class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl p-6 flex flex-col max-h-[90vh]"
-    >
-      <div class="flex items-center justify-between mb-4 flex-shrink-0">
-        <h3 class="text-lg font-bold text-gray-900">
-          {{ title || '裁剪图片' }}
-        </h3>
-        <button
-          class="text-gray-400 hover:text-gray-700 transition-colors"
-          type="button"
-          @click="close"
-        >
-          <i class="fa-solid fa-xmark text-xl"></i>
-        </button>
-      </div>
-
-      <div class="flex-1 overflow-y-auto min-h-0">
+  <BaseModal :open="open" :title="title || '裁剪图片'" size="xl" @close="close">
+    <div>
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 h-full">
           <!-- Left: Crop Area -->
           <div class="lg:col-span-2 flex flex-col">
@@ -290,33 +270,30 @@
                   <span>支持90度旋转修正</span>
                 </div>
               </div>
-            </div>
           </div>
         </div>
       </div>
-
-      <div
-        class="mt-6 pt-4 border-t border-gray-100 flex justify-end gap-3 flex-shrink-0"
-      >
-        <button
-          type="button"
-          class="px-6 py-2.5 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors font-medium"
-          @click="close"
-        >
-          取消
-        </button>
-        <button
-          type="button"
-          class="px-8 py-2.5 rounded-xl bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-gray-900/20 font-medium flex items-center gap-2"
-          :disabled="!imageObjectUrl || !imgNaturalWidth || !imgNaturalHeight"
-          @click="confirm"
-        >
-          <i v-if="processing" class="fa-solid fa-circle-notch fa-spin"></i>
-          <span>{{ processing ? '处理中...' : '确认使用' }}</span>
-        </button>
-      </div>
     </div>
-  </div>
+
+    <template #footer>
+      <button
+        type="button"
+        class="px-6 py-2.5 rounded-xl text-gray-600 hover:bg-gray-100 transition-colors font-medium"
+        @click="close"
+      >
+        取消
+      </button>
+      <button
+        type="button"
+        class="px-8 py-2.5 rounded-xl bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-gray-900/20 font-medium flex items-center gap-2"
+        :disabled="!imageObjectUrl || !imgNaturalWidth || !imgNaturalHeight"
+        @click="confirm"
+      >
+        <i v-if="processing" class="fa-solid fa-circle-notch fa-spin"></i>
+        <span>{{ processing ? '处理中...' : '确认使用' }}</span>
+      </button>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -335,6 +312,7 @@ import {
   onMounted,
   nextTick,
 } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 
 const props = defineProps<{
   open: boolean;

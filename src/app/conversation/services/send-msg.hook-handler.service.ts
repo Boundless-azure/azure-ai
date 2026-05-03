@@ -2,6 +2,7 @@ import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { z } from 'zod';
 import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
+import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
 import { ImMessageService } from './im-message.service';
 
@@ -53,6 +54,7 @@ export class SendMsgHookHandlerService {
       '向 IM 会话发送消息。messageType=text 为普通消息, notification 为 AI 可见用户端隐藏的通知。',
     payloadSchema: sendMsgSchema,
   })
+  @CheckAbility('create', 'message')
   async handleSendMsg(
     event: HookEvent<SendMsgPayload>,
   ): Promise<HookResult> {

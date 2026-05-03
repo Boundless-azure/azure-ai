@@ -26,6 +26,14 @@ Hook 注册（由 HookDecoratorExplorerService 自动发现, 全部声明 payloa
 - saas.app.conversation.webControlStatus  — 查询 MCP 连接状态 (sessionId)
 - saas.app.conversation.sendMsg           — 主动对话: LLM 通过 call_hook('saas.app.conversation.sendMsg') 发消息 (sessionId / content / senderPrincipalId / replyToId)
   · payload schema 走 zod, handler 签名通过 z.infer 复用类型 (SSOT)
+- saas.app.conversation.sessionData.save   — AI 自管 session_data: 写入/覆盖跨轮键值 (sessionId / key / value / **title 必填且必须描述性强, ≥8 字符**)
+- saas.app.conversation.sessionData.get    — 读单条完整 value (sessionId / key)
+- saas.app.conversation.sessionData.list   — 列出本会话所有记忆的轻量元数据 (sessionId), 返回 { count, listing }; listing 是分行 markdown 文本 (每行 `- \`key\` :: title  (MM-DD, NB)`), **不含 value**, 凭 title 命中后调 get 取完整内容
+- saas.app.conversation.sessionData.delete — 软删单条 (sessionId / key)
+  · ⚠ 不再注入 systemPrompt :: 早期版本拼到 systemPrompt 中段, LLM 注意力衰减用不起来, 已废弃
+  · ✅ 改为 messages 流注入 :: AgentRuntimeService.startDialogue → enrichWithSessionRecall 在每轮 LLM 请求前主动 hookBus.emit 调 sessionData.list (source: 'system' 绕权), 把 listing 包在 `[session-data-recall]…[/session-data-recall]` 标签内作为 system message 追加到 messages 数组**末尾** (紧贴 user 最新消息, 注意力强); LLM 不再需要主动 list
+  · ⚠ list 不返 value/preview :: 后期记忆量上来 list 输出仍可控; 命中后调 get 拿完整 value; **这要求 title 必须写得足够描述性, 否则 list 视图无效**
+  · key 字符集 `[a-zA-Z0-9_.-]` 1-128 字符; 上限 单 key 10KB, 总量 200KB, 50 个 key
     - GET  /conversation/groups（分页：page/pageSize；每组附带 latestMessage；不支持日期筛选）
     - GET  /conversation/groups/:groupId（组详情）
     - POST /conversation/groups（创建组，入参：date 或 dayGroupId）

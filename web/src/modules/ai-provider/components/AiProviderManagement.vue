@@ -273,24 +273,14 @@
       </div>
     </div>
 
-    <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="closeModal"></div>
-      <div class="relative bg-white rounded-2xl shadow-xl w-[720px] max-w-[95vw] border border-gray-200 max-h-[90vh] overflow-hidden flex flex-col">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h3 class="text-lg font-bold text-gray-900">
-              {{ isEdit ? '编辑模型' : '新增模型' }}
-            </h3>
-            <p class="text-sm text-gray-500">
-              {{ isEdit ? '更新模型配置与密钥' : '添加新的模型配置' }}
-            </p>
-          </div>
-          <button class="text-gray-400 hover:text-gray-700" @click="closeModal">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-
-        <div class="p-6 overflow-y-auto space-y-4">
+    <BaseModal
+      :open="showModal"
+      :title="isEdit ? '编辑模型' : '新增模型'"
+      :subtitle="isEdit ? '更新模型配置与密钥' : '添加新的模型配置'"
+      size="lg"
+      @close="closeModal"
+    >
+      <div class="space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">提供商</label>
@@ -410,28 +400,27 @@
           >
             {{ testResult.message }}
           </div>
-        </div>
-
-        <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-          <button class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100" @click="closeModal">
-            取消
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
-            :disabled="testingConnection"
-            @click="handleTestConnection"
-          >
-            {{ testingConnection ? '测试中' : '连通测试' }}
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800"
-            @click="handleSubmit"
-          >
-            保存
-          </button>
-        </div>
       </div>
-    </div>
+
+      <template #footer>
+        <button class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100" @click="closeModal">
+          取消
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+          :disabled="testingConnection"
+          @click="handleTestConnection"
+        >
+          {{ testingConnection ? '测试中' : '连通测试' }}
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800"
+          @click="handleSubmit"
+        >
+          保存
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -443,6 +432,7 @@
  * @keywords-en ai-provider-management, model-config, model-list
  */
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import { useAiProviders } from '../hooks/useAiProviders';
 import type { AiModelItem } from '../types/ai-provider.types';
 import {

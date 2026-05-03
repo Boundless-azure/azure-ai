@@ -1,30 +1,62 @@
 import type { Type } from '@nestjs/common';
 
 /**
+ * @title 数据权限节点处理器返回值
+ * @description handler 纯验证, 无副作用; 不再修改 payload。
+ *              - true                 :: 通过
+ *              - false                :: 失败 (用装饰器声明的 errorMsg)
+ *              - string               :: 失败 (动态 errorMsg, 覆盖装饰器声明值)
+ * @keywords-cn 节点结果, 验证, 错误消息
+ * @keywords-en node-result, validation, error-msg
+ */
+export type DataPermissionNodeResult = boolean | string;
+
+/**
+ * @title 数据权限节点元数据
+ * @description 装饰器 @DataPermissionNode 声明数据权限节点时携带的元信息。
+ *              - subject :: 节点关联的资源/表 (跟 PermissionDefinition root 关联)
+ *              - action  :: 节点 nodeKey, 同 subject 下唯一
+ *              - weight  :: 权重 (用于配置时越权防护)
+ *              - global  :: 全局强制节点, applyTo 时无视 ctx 是否拥有, 全员必跑
+ *              - errorMsg :: 失败时默认 errorMsg, handler 返 false 时使用
+ * @keywords-cn 节点元数据, 装饰器, 权重, 全局强制
+ * @keywords-en node-meta, decorator, weight, global-mandatory
+ */
+export interface DataPermissionNodeMeta {
+  subject: string;
+  action: string;
+  weight?: number;
+  global?: boolean;
+  errorMsg?: string;
+}
+
+/**
  * @title 数据权限上下文
- * @description 执行数据权限节点时使用的上下文信息，包含主体身份与权限数据。
- * @keywords-cn 数据权限上下文, 主体信息, 权限信息
- * @keywords-en data-permission-context, principal-context, permission-context
+ * @description applyTo 时传入的运行时上下文。
+ *              rolePermissions 按 permissionType 分组, 'data' 决定哪些节点对当前 ctx 生效。
+ * @keywords-cn 数据权限上下文, 角色权限, 类型分组
+ * @keywords-en data-permission-context, role-perms, type-grouped
  */
 export interface DataPermissionContext {
   principalId?: string;
   tenantId?: string;
-  roles: string[];
-  permissions: string[];
+  /** ctx 拥有的所有数据权限节点 (subject, action) :: 决定 applyTo 时哪些节点生效 */
+  dataPermissions: Array<{ subject: string; action: string }>;
+  /** ctx 拥有的所有管理权限 (subject, action) :: 用于 maxWeight 计算 / 通配判定 */
+  managementPermissions: Array<{ subject: string; action: string }>;
   attributes: Record<string, unknown>;
 }
 
 /**
  * @title 数据权限上下文输入
- * @description 用于构建数据权限上下文的原始输入，字段可选。
- * @keywords-cn 上下文输入, 权限构建, 用户上下文
- * @keywords-en context-input, permission-build, user-context
+ * @description 用于构建 DataPermissionContext 的原始输入。dataPermissions / managementPermissions
+ *              通常由 ContextService 从 db 查询填充, 调用方仅需提供 principalId。
+ * @keywords-cn 上下文输入, 权限构建
+ * @keywords-en context-input, permission-build
  */
 export interface DataPermissionContextInput {
   principalId?: string;
   tenantId?: string;
-  roles?: string[];
-  permissions?: string[];
   attributes?: Record<string, unknown>;
 }
 
@@ -38,61 +70,45 @@ export type DataPermissionDtoClass = Type<object>;
 
 /**
  * @title 数据权限节点执行参数
- * @description 节点执行时输入的表名、DTO、上下文与可选请求数据。
- * @keywords-cn 节点参数, 表名, DTO, 上下文
- * @keywords-en node-params, table-name, dto, context
+ * @description handler 接收的统一参数: ctx + payload。
+ * @keywords-cn 节点参数, 上下文, payload
+ * @keywords-en node-params, context, payload
  */
-export interface DataPermissionNodeParams {
-  table: string;
-  dtoClass: DataPermissionDtoClass;
-  context: DataPermissionContext;
-  payload?: Record<string, unknown>;
-}
-
-/**
- * @title 数据权限节点执行结果
- * @description 节点返回 allow 与 where 限制条件，用于服务层合并查询条件。
- * @keywords-cn 节点结果, 允许标识, 查询条件
- * @keywords-en node-result, allow-flag, where-condition
- */
-export interface DataPermissionNodeResult {
-  allow: boolean;
-  where?: Record<string, unknown>;
+export interface DataPermissionNodeArgs<TPayload = unknown> {
+  ctx: DataPermissionContext;
+  payload: TPayload;
 }
 
 /**
  * @title 数据权限节点处理器
- * @description 业务方注入的节点函数签名，按节点键执行权限裁决。
- * @keywords-cn 节点处理器, 业务函数, 权限裁决
- * @keywords-en node-handler, business-function, permission-decision
+ * @description 纯验证函数 :: 接收 (ctx, payload), 返回 boolean | string。无副作用。
+ * @keywords-cn 节点处理器, 纯验证
+ * @keywords-en node-handler, pure-validator
  */
-export type DataPermissionNodeHandler = (
-  params: DataPermissionNodeParams,
+export type DataPermissionNodeHandler<TPayload = unknown> = (
+  args: DataPermissionNodeArgs<TPayload>,
 ) => DataPermissionNodeResult | Promise<DataPermissionNodeResult>;
 
 /**
- * @title 数据权限模块配置
- * @description forRoot 注入配置，包含表与 DTO 映射及节点处理器映射。
- * @keywords-cn 模块配置, forRoot, 表DTO映射, 节点映射
- * @keywords-en module-options, for-root, table-dto-map, node-map
+ * @title 数据权限节点注册项
+ * @description 装饰器扫描后写入 Registry 的内部结构, 关联元数据 + handler 引用。
+ * @keywords-cn 节点注册项, 装饰器扫描
+ * @keywords-en node-registration, decorator-scan
  */
-export interface DataPermissionModuleOptions {
-  isGlobal?: boolean;
-  tableDtoMap: Record<string, DataPermissionDtoClass[]>;
-  nodes: Record<string, DataPermissionNodeHandler>;
+export interface DataPermissionNodeRegistration {
+  meta: DataPermissionNodeMeta;
+  handler: DataPermissionNodeHandler;
+  /** 仅用于诊断, 记录是哪个 DTO 类的哪个静态方法 */
+  source: { dtoClassName: string; methodName: string };
 }
 
 /**
- * @title 数据权限解析结果
- * @description 根据 DTO 与上下文执行后得到的汇总结果。
- * @keywords-cn 解析结果, 命中节点, 拒绝节点, 查询条件
- * @keywords-en resolve-result, matched-nodes, denied-nodes, query-condition
+ * @title 数据权限模块配置
+ * @description forRoot 配置, 当前阶段保留兼容旧 API 但实际不再使用 nodes/tableDtoMap。
+ *              新范式靠 @DataPermissionNode 装饰器扫描完成 SSOT。
+ * @keywords-cn 模块配置, forRoot, 兼容
+ * @keywords-en module-options, for-root, compat
  */
-export interface DataPermissionResolveResult {
-  table: string;
-  dtoName: string;
-  allow: boolean;
-  where: Record<string, unknown>;
-  matchedNodes: string[];
-  deniedNodes: string[];
+export interface DataPermissionModuleOptions {
+  isGlobal?: boolean;
 }

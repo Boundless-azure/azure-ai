@@ -24,6 +24,7 @@ export function useMemberships() {
     organizationId: string;
     principalId: string;
     role: string;
+    roleName?: string | null;
     department?: string | null;
     tags?: string[] | null;
     active: boolean;
@@ -33,6 +34,7 @@ export function useMemberships() {
       organizationId: r.organizationId,
       principalId: r.principalId,
       role: r.role || 'member',
+      roleName: r.roleName ?? null,
       department: r.department ?? null,
       tags: r.tags ?? null,
       active: r.active,

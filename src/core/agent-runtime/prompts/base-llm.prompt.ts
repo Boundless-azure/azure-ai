@@ -1,10 +1,11 @@
 /**
  * @title LLM 基础工具系统提示词
  * @description 注入到所有 LLM 层的基础系统提示, 描述 5 个 hook 工具 (call_hook + call_hook_async +
- *              search_hook + get_hook_tag + get_hook_info) 的使用流程, 以及知识库读取方式。
+ *              search_hook + get_hook_tag + get_hook_info) 的使用流程, 知识库读取方式,
+ *              session_data 复用规则, 以及"批量+并行"调用范式。
  *              通用发现模式 (tag-first) 在 hook / 知识库两域对称展开, 避免漫无目的全量扫。
- * @keywords-cn 基础提示词, 知识读取, call_hook, search_hook, 元工具, 发现流程, tag优先, 对称
- * @keywords-en base-system-prompt, knowledge-read, call-hook, search-hook, meta-tools, discovery-flow, tag-first, symmetric
+ * @keywords-cn 基础提示词, 知识读取, call_hook, search_hook, 元工具, 发现流程, tag优先, 对称, 会话数据, 批量并行
+ * @keywords-en base-system-prompt, knowledge-read, call-hook, search-hook, meta-tools, discovery-flow, tag-first, symmetric, session-data, batch-parallel
  */
 
 /**
@@ -117,6 +118,41 @@ export function buildBaseLlmSystemPrompt(): string {
     'call_hook({ target: "saas", hookName: "saas.app.knowledge.getChapter", payload: { bookIds: [...], chapterIds: [...] } })',
     '```',
     '`isLmRequired=true` 的章节自动返回, 无需显式指定; 其他章节传入 chapterIds.',
+    '',
+    '---',
+    '',
+    '## 调用范式 :: 批量优先 + 并行优先 (硬约束)',
+    '',
+    '同一轮内若有多个**互相独立**的 hook 调用, **必须在同一次回合一次性发起多个 tool_use**, 不要串行等结果。',
+    '典型场景:',
+    '- 取多本书目录 → `getToc({bookIds:[a,b,c]})` 一次拿完, 不要每本一次',
+    '- 取多个 hook 的 schema → `get_hook_info({hookNames:[x,y,z]})` 数组形参一次拿完',
+    '- 多条不依赖前序结果的 list / read → 同回合多个 `call_hook` 并行 tool_use',
+    '- 仅触发后台动作不关心结果 → 用 `call_hook_async` 而不是 `call_hook`',
+    '',
+    '反例 (禁止): 串行 N 次 call_hook 一一查 schema / 一一取章节 / 一一查列表. 每串行一次 = 浪费一轮 token + 拖慢响应.',
+    '',
+    '---',
+    '',
+    '## ⚡ session_data :: 经验沉淀本 (说明位)',
+    '',
+    'session_data 是本会话的**长期工作笔记** (跨轮持久化)。每轮系统会在最近一条用户消息开头自动拼入一段 `[session-data-recall]…[/session-data-recall]` 块, 列出本会话所有记忆 (key + title + 时间), 并附完整的"查 / 用 / 存"hook 模板。**详细使用规则与示例都在那块里**, 直接读, 不要在本系统提示里反复找。',
+    '',
+    '### 业务 hook 失败 / 找不到 hook 时的回退路径',
+    '',
+    '当某个业务 hook 返回 `errorMsg` 含 `hook-not-found` / `payload-validation` / `hook-skipped`, 或者你想做的事情**根本找不到现成 hook**, **先查知识库**, 不要硬猜:',
+    '',
+    '```',
+    'call_hook({',
+    '  target: "saas",',
+    '  hookName: "saas.app.knowledge.search",',
+    '  payload: { q: "<关键词, 例如 \'membership\' / \'storage 分享\' / \'solution 安装\'>", type: "skill" }',
+    '})',
+    '```',
+    '',
+    '命中相关书 → 用 `saas.app.knowledge.getToc({ bookIds: […] })` 拿目录, 再 `getChapter({ bookIds, chapterIds })` 取章节。**本地手册 (bookId 以 `local_` 开头) 才是 SSOT**, 列了内置 hook 的 payload 形态 / 调用约定 / 场景示例; 凭名字猜字段 = 大概率失败。',
+    '',
+    '查到知识章节后, 推荐顺手 save 一条 `knowledge.<bookId>.<chapterSlug>` 摘要, 下次同类问题 [session-data-recall] 块里直接命中。',
     '',
     '---',
     '',

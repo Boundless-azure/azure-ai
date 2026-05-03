@@ -236,28 +236,9 @@
       </div>
     </div>
 
-    <!-- Edit/Create Modal -->
-    <div
-      v-if="showModal"
-      class="fixed inset-0 z-50 flex items-center justify-center"
-    >
-      <div
-        class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        @click="closeModal"
-      ></div>
-      <div
-        class="relative bg-white rounded-2xl shadow-xl w-[500px] max-w-[95vw] border border-gray-200 p-6 space-y-4"
-      >
-        <div class="flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-900">
-            {{ isEdit ? '编辑角色' : '新增角色' }}
-          </h3>
-          <button class="text-gray-400 hover:text-gray-700" @click="closeModal">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-
-        <div class="space-y-3">
+    <!-- Edit/Create Modal :: 用 BaseModal 统一外壳 -->
+    <BaseModal :open="showModal" :title="isEdit ? '编辑角色' : '新增角色'" size="md" @close="closeModal">
+      <div class="space-y-3">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1"
               >角色名称</label
@@ -292,59 +273,34 @@
               placeholder="角色描述..."
             ></textarea>
           </div>
-        </div>
-
-        <div class="pt-2 flex justify-end gap-2">
-          <button
-            class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
-            @click="closeModal"
-          >
-            取消
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
-            @click="handleSubmit"
-          >
-            保存
-          </button>
-        </div>
       </div>
-    </div>
 
-    <!-- Permissions Modal -->
-    <div
-      v-if="showPermModal"
-      class="fixed inset-0 z-50 flex items-center justify-center"
-    >
-      <div
-        class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        @click="closePermModal"
-      ></div>
-      <div
-        class="relative bg-white rounded-2xl shadow-xl w-[900px] max-w-[95vw] border border-gray-200 flex flex-col h-[85vh] max-h-[85vh]"
-      >
-        <div
-          class="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0"
+      <template #footer>
+        <button
+          class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+          @click="closeModal"
         >
-          <div>
-            <h3 class="text-lg font-bold text-gray-900">权限配置</h3>
-            <p class="text-sm text-gray-500">
-              角色：{{ currentRole?.name }} ({{ currentRole?.code }})
-            </p>
-          </div>
-          <button
-            class="text-gray-400 hover:text-gray-700"
-            @click="closePermModal"
-          >
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
+          取消
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+          @click="handleSubmit"
+        >
+          保存
+        </button>
+      </template>
+    </BaseModal>
 
-        <div class="flex-1 overflow-hidden">
-          <RolePermissionAssign v-if="currentRole" :roleId="currentRole.id" />
-        </div>
-      </div>
-    </div>
+    <!-- Permissions Modal :: 用 BaseModal 统一外壳 (xl 大尺寸, 内嵌 RolePermissionAssign) -->
+    <BaseModal
+      :open="showPermModal"
+      title="权限配置"
+      :subtitle="`角色：${currentRole?.name ?? ''} (${currentRole?.code ?? ''})`"
+      size="xl"
+      @close="closePermModal"
+    >
+      <RolePermissionAssign v-if="currentRole" :roleId="currentRole.id" />
+    </BaseModal>
   </div>
 </template>
 
@@ -357,6 +313,7 @@
  */
 
 import { ref, onMounted, reactive, computed } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import IdentitySectionHeader from './IdentitySectionHeader.vue';
 import RolePermissionAssign from './RolePermissionAssign.vue';
 import { useRoles } from '../hooks/useRoles';

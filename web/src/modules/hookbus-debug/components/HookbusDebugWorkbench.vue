@@ -125,55 +125,44 @@
       </section>
     </main>
 
-    <!-- Hook 选择弹窗 hook-picker-modal -->
-    <div
-      v-if="showHooksModal"
-      class="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center"
-      @click.self="showHooksModal = false"
+    <!-- Hook 选择弹窗 :: BaseModal hook-picker-modal -->
+    <BaseModal
+      :open="showHooksModal"
+      :title="`选择 Hook（${hooks.length}）`"
+      size="xl"
+      @close="showHooksModal = false"
     >
-      <div class="bg-white w-[860px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-xl border border-gray-200">
-        <!-- 弹窗标题栏 -->
-        <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between shrink-0">
-          <div class="font-semibold">选择 Hook（{{ hooks.length }}）</div>
-          <button class="text-gray-500 hover:text-gray-900" @click="showHooksModal = false">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-        <!-- Hook 宫格列表 -->
-        <div class="flex-1 overflow-auto p-4">
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <button
-              v-for="item in hooks"
-              :key="item.name"
-              class="text-left rounded-lg border p-3 hover:bg-gray-50 transition-colors"
-              :class="selectedHook === item.name ? 'border-gray-900 bg-gray-50 ring-1 ring-gray-900' : 'border-gray-200'"
-              @click="selectedHook = item.name; showHooksModal = false"
-            >
-              <!-- hook 编码 -->
-              <div class="font-mono text-sm font-medium truncate">{{ item.name }}</div>
-              <!-- hook 描述 -->
-              <div class="text-xs text-gray-500 mt-1 line-clamp-2">
-                {{ item.metadata?.description || item.metadata?.pluginName || '暂无描述' }}
-              </div>
-              <!-- 来源插件 / 标签 -->
-              <div v-if="item.metadata?.pluginName" class="mt-2 flex flex-wrap gap-1">
-                <span class="text-[10px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">
-                  {{ item.metadata.pluginName }}
-                </span>
-                <span
-                  v-for="tag in item.metadata?.tags ?? []"
-                  :key="tag"
-                  class="text-[10px] bg-blue-50 text-blue-500 rounded px-1.5 py-0.5"
-                >
-                  {{ tag }}
-                </span>
-              </div>
-            </button>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <button
+          v-for="item in hooks"
+          :key="item.name"
+          class="text-left rounded-lg border p-3 hover:bg-gray-50 transition-colors"
+          :class="selectedHook === item.name ? 'border-gray-900 bg-gray-50 ring-1 ring-gray-900' : 'border-gray-200'"
+          @click="selectedHook = item.name; showHooksModal = false"
+        >
+          <!-- hook 编码 -->
+          <div class="font-mono text-sm font-medium truncate">{{ item.name }}</div>
+          <!-- hook 描述 -->
+          <div class="text-xs text-gray-500 mt-1 line-clamp-2">
+            {{ item.metadata?.description || item.metadata?.pluginName || '暂无描述' }}
           </div>
-          <div v-if="hooks.length === 0" class="text-sm text-gray-400 py-8 text-center">暂无 hook</div>
-        </div>
+          <!-- 来源插件 / 标签 -->
+          <div v-if="item.metadata?.pluginName" class="mt-2 flex flex-wrap gap-1">
+            <span class="text-[10px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">
+              {{ item.metadata.pluginName }}
+            </span>
+            <span
+              v-for="tag in item.metadata?.tags ?? []"
+              :key="tag"
+              class="text-[10px] bg-blue-50 text-blue-500 rounded px-1.5 py-0.5"
+            >
+              {{ tag }}
+            </span>
+          </div>
+        </button>
       </div>
-    </div>
+      <div v-if="hooks.length === 0" class="text-sm text-gray-400 py-8 text-center">暂无 hook</div>
+    </BaseModal>
   </div>
 </template>
 
@@ -185,6 +174,7 @@
  * @keywords-en hookbus-debug-workbench, debug-workbench, request-history
  */
 import { onMounted, ref } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import { useHookbusDebug } from '../hooks/useHookbusDebug';
 
 const showHooksModal = ref(false);

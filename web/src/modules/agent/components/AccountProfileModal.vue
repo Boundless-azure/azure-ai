@@ -1,27 +1,7 @@
 <template>
-  <Teleport to="body">
-    <div class="fixed inset-0 z-50 flex items-center justify-center">
-    <div
-      class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-      @click="$emit('close')"
-    ></div>
-    <div
-      class="relative bg-white rounded-2xl shadow-xl w-[520px] max-w-[95vw] border border-gray-200 flex flex-col max-h-[85vh]"
-    >
-      <div
-        class="px-6 py-4 border-b border-gray-100 flex items-center justify-between"
-      >
-        <div>
-          <h3 class="text-lg font-bold text-gray-900">账户信息</h3>
-          <p class="text-sm text-gray-500">编辑个人资料与登录密码</p>
-        </div>
-        <button class="text-gray-400 hover:text-gray-700" @click="$emit('close')">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <div class="flex-1 overflow-y-auto p-6 space-y-6">
-        <div class="flex items-center gap-4">
+  <BaseModal :open="true" title="账户信息" subtitle="编辑个人资料与登录密码" size="md" @close="$emit('close')">
+    <div class="space-y-6">
+      <div class="flex items-center gap-4">
           <div
             class="w-16 h-16 rounded-full bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center"
           >
@@ -120,37 +100,35 @@
         </div>
       </div>
 
-      <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-        <button
-          class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
-          @click="$emit('close')"
-        >
-          取消
-        </button>
-        <button
-          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
-          @click="saveProfile"
-          :disabled="saving"
-        >
-          保存资料
-        </button>
-        <button
-          class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-          @click="changePassword"
-          :disabled="saving"
-        >
-          更新密码
-        </button>
-      </div>
-    </div>
-  </div>
+    <template #footer>
+      <button
+        class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+        @click="$emit('close')"
+      >
+        取消
+      </button>
+      <button
+        class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+        @click="saveProfile"
+        :disabled="saving"
+      >
+        保存资料
+      </button>
+      <button
+        class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+        @click="changePassword"
+        :disabled="saving"
+      >
+        更新密码
+      </button>
+    </template>
+  </BaseModal>
 
-    <SquareAvatarCropModal
-      v-if="showAvatarModal"
-      @close="showAvatarModal = false"
-      @confirm="onAvatarConfirm"
-    />
-  </Teleport>
+  <SquareAvatarCropModal
+    v-if="showAvatarModal"
+    @close="showAvatarModal = false"
+    @confirm="onAvatarConfirm"
+  />
 </template>
 
 <script setup lang="ts">
@@ -161,6 +139,7 @@
  * @keywords-en account-profile, password-change, account-settings
  */
 import { computed, reactive, ref } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import { useAuthStore } from '../../auth/store/auth.store';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';
 import { useUIStore } from '../store/ui.store';

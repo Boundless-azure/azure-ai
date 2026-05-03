@@ -1,112 +1,91 @@
 <template>
-  <!-- 角色分配 Modal :: 与 UserManagement 同构, 落点 principalId 由 props 传入 -->
-  <div
-    v-if="open"
-    class="fixed inset-0 z-50 flex items-center justify-center"
+  <!-- 角色分配 Modal :: 用通用 BaseModal, backdrop / z-index / ESC / 关闭按钮 全部由 BaseModal 接管 -->
+  <BaseModal
+    :open="open"
+    title="分配角色"
+    :subtitle="`Agent: ${agentName || '-'}`"
+    size="lg"
+    @close="handleClose"
   >
+    <!-- 警告条 :: principal 缺失 -->
     <div
-      class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-      @click="handleClose"
-    ></div>
-    <div
-      class="relative bg-white rounded-2xl shadow-xl w-[820px] max-w-[95vw] border border-gray-200 p-6 flex flex-col h-[620px]"
+      v-if="!principalId"
+      class="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700 flex items-center gap-1.5"
     >
-      <!-- 头部 :: 标题 + 关闭 -->
-      <div class="flex items-center justify-between mb-4 flex-shrink-0">
-        <div>
-          <h3 class="text-lg font-bold text-gray-900">分配角色</h3>
-          <p class="text-sm text-gray-500">
-            Agent: {{ agentName || '-' }}
-          </p>
-          <p
-            v-if="!principalId"
-            class="text-xs text-amber-600 mt-1 flex items-center gap-1"
-          >
-            <i class="fa-solid fa-triangle-exclamation"></i>
-            该 Agent 尚未关联 principal, 暂无法分配角色
-          </p>
-        </div>
-        <button
-          class="text-gray-400 hover:text-gray-700"
-          @click="handleClose"
-        >
-          <i class="fa-solid fa-xmark"></i>
-        </button>
-      </div>
-
-      <!-- 新增成员行 :: 选组织 + 选角色 + 添加 -->
-      <div class="flex gap-2 mb-4 flex-shrink-0">
-        <select
-          v-model="newOrgId"
-          class="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm"
-          :disabled="!principalId"
-        >
-          <option value="" disabled>请选择组织</option>
-          <option v-for="org in organizations" :key="org.id" :value="org.id">
-            {{ org.name }}
-          </option>
-        </select>
-        <select
-          v-model="newRoleId"
-          class="px-3 py-2 rounded-lg border border-gray-200 text-sm min-w-[180px]"
-          :disabled="!principalId"
-        >
-          <option value="" disabled>请选择角色</option>
-          <option v-for="role in roles" :key="role.id" :value="role.id">
-            {{ role.name }} · {{ role.code }}
-          </option>
-        </select>
-        <button
-          class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm hover:bg-gray-800 disabled:opacity-50"
-          :disabled="!principalId || !newOrgId || !newRoleId || saving"
-          @click="addRole"
-        >
-          <i v-if="saving" class="fa-solid fa-spinner fa-spin mr-1"></i>
-          添加
-        </button>
-      </div>
-
-      <!-- 当前角色列表 -->
-      <div
-        class="flex-1 overflow-y-auto min-h-0 border border-gray-100 rounded-xl"
-      >
-        <table class="w-full text-left text-sm">
-          <thead class="bg-gray-50 sticky top-0 z-10">
-            <tr>
-              <th class="px-4 py-2 font-semibold text-gray-700">组织</th>
-              <th class="px-4 py-2 font-semibold text-gray-700">角色</th>
-              <th class="px-4 py-2 font-semibold text-gray-700 text-right">
-                操作
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-100">
-            <tr v-for="m in memberships" :key="m.id">
-              <td class="px-4 py-2">{{ getOrgName(m.organizationId) }}</td>
-              <td class="px-4 py-2">
-                <span class="px-2 py-0.5 rounded text-xs bg-gray-100">
-                  {{ formatRoleLabel(m) }}
-                </span>
-              </td>
-              <td class="px-4 py-2 text-right">
-                <button
-                  class="text-red-600 hover:text-red-800 text-xs"
-                  @click="removeRole(m.id)"
-                >
-                  移除
-                </button>
-              </td>
-            </tr>
-            <tr v-if="memberships.length === 0">
-              <td colspan="3" class="px-4 py-8 text-center text-gray-400">
-                暂无角色
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      该 Agent 尚未关联 principal, 暂无法分配角色
     </div>
-  </div>
+
+    <!-- 新增成员行 :: 选组织 + 选角色 + 添加 -->
+    <div class="flex gap-2 mb-4 flex-shrink-0">
+      <select
+        v-model="newOrgId"
+        class="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm"
+        :disabled="!principalId"
+      >
+        <option value="" disabled>请选择组织</option>
+        <option v-for="org in organizations" :key="org.id" :value="org.id">
+          {{ org.name }}
+        </option>
+      </select>
+      <select
+        v-model="newRoleId"
+        class="px-3 py-2 rounded-lg border border-gray-200 text-sm min-w-[180px]"
+        :disabled="!principalId"
+      >
+        <option value="" disabled>请选择角色</option>
+        <option v-for="role in roles" :key="role.id" :value="role.id">
+          {{ role.name }}
+        </option>
+      </select>
+      <button
+        class="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm hover:bg-gray-800 disabled:opacity-50"
+        :disabled="!principalId || !newOrgId || !newRoleId || saving"
+        @click="addRole"
+      >
+        <i v-if="saving" class="fa-solid fa-spinner fa-spin mr-1"></i>
+        添加
+      </button>
+    </div>
+
+    <!-- 当前角色列表 -->
+    <div class="border border-gray-100 rounded-xl overflow-hidden">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-2 font-semibold text-gray-700">组织</th>
+            <th class="px-4 py-2 font-semibold text-gray-700">角色</th>
+            <th class="px-4 py-2 font-semibold text-gray-700 text-right">
+              操作
+            </th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr v-for="m in memberships" :key="m.id">
+            <td class="px-4 py-2">{{ getOrgName(m.organizationId) }}</td>
+            <td class="px-4 py-2">
+              <span class="px-2 py-0.5 rounded text-xs bg-gray-100">
+                {{ formatRoleLabel(m) }}
+              </span>
+            </td>
+            <td class="px-4 py-2 text-right">
+              <button
+                class="text-red-600 hover:text-red-800 text-xs"
+                @click="removeRole(m.id)"
+              >
+                移除
+              </button>
+            </td>
+          </tr>
+          <tr v-if="memberships.length === 0">
+            <td colspan="3" class="px-4 py-8 text-center text-gray-400">
+              暂无角色
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -118,6 +97,7 @@
  * @keywords-en agent-role-assign, principal-role, membership
  */
 import { ref, watch } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import { useOrganizations } from '../../identity/hooks/useOrganizations';
 import { useRoles } from '../../identity/hooks/useRoles';
 import { useMemberships } from '../../identity/hooks/useMemberships';
@@ -204,17 +184,18 @@ function getOrgName(id: string): string {
 }
 
 /**
- * 角色展示文案 :: 后端 normalize 成 owner/admin/member 之一, 取本地中文映射;
- *                 同时若 roleId 命中 roles 列表, 拼上自定义角色名以便区分。
+ * 角色展示文案 :: 直接用后端返回的 roleName (来自 RoleEntity.name);
+ *                 fallback 路径: roleName 为空 → 通过 code 反查 roles 列表 → 'guest' 历史数据提示
  * @keyword-en format-role-label
  */
 function formatRoleLabel(m: MembershipItem): string {
-  const map: Record<string, string> = {
-    owner: '所有者',
-    admin: '管理员',
-    member: '成员',
-  };
-  return map[m.role] ?? m.role;
+  // 直接用后端 list 返回的 RoleEntity.name (用户在 RoleManagement 配的真实名字)
+  if (m.roleName && m.roleName.trim()) return m.roleName;
+  // 'guest' 是后端 fallback (找不到 roleId 对应 role) :: 历史数据明确提示
+  if (m.role === 'guest') return '未关联角色 (历史数据, 请重新分配)';
+  // 兜底 :: 通过 code 反查 roles 列表 (老接口可能没回 roleName)
+  const matched = roles.value.find((r) => r.code === m.role);
+  return matched?.name ?? m.role;
 }
 
 async function addRole() {

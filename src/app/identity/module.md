@@ -55,14 +55,14 @@
 - HookAbilityMiddlewareService
   - onModuleInit()  -- 注入 invoker.use, 把 @CheckAbility 语义平移到 Hook 调用链 (仅 source==='llm')
 - Identity Controllers
-  - HookLifecycle on RBAC CRUD: 全部声明 zod payloadSchema (input 形状), lifecycle-registration 自动包成 envelope
+  - HookLifecycle on RBAC CRUD: 全部声明 zod payloadSchema (input 形状), 每个字段带 .describe(), lifecycle-registration 自动包成 envelope
     · 命名遵循 saas.app.identity.<resource><Action>:
-    · saas.app.identity.userList/userCreate/userUpdate/userDelete (× 4)
-    · saas.app.identity.roleList/roleCreate/roleUpdate/roleDelete + rolePermissionList/rolePermissionUpsert (× 6)
-    · saas.app.identity.principalList/principalCreate/principalUpdate/principalDelete (× 4)
-    · saas.app.identity.permissionDefinitionList/Create/Update/Delete (× 4)
-    · saas.app.identity.organizationList/Create/Update/Delete (× 4)
-    · saas.app.identity.membershipList/membershipCreate/membershipDelete (× 3)
+    · saas.app.identity.userList/userCreate/userUpdate/userDelete (× 4)  filter :: q / tenantId / type
+    · saas.app.identity.roleList/roleCreate/roleUpdate/roleDelete + rolePermissionList/rolePermissionUpsert (× 6)  list filter :: q (LIKE name/code) / organizationId ("null"=系统级)
+    · saas.app.identity.principalList/principalCreate/principalUpdate/principalDelete (× 4)  list filter :: q / type / tenantId
+    · saas.app.identity.permissionDefinitionList/Create/Update/Delete (× 4)  list filter :: permissionType / nodeKey / fid (null=root); extraData 用 catchall schema 替代裸 z.record
+    · saas.app.identity.organizationList/Create/Update/Delete (× 4)  list filter :: q (LIKE name/code)
+    · saas.app.identity.membershipList/membershipCreate/membershipDelete (× 3)  list filter :: organizationId / principalId / roleId / active
 
 关键词索引（中文 / English Keyword Index）
 统一主体 -> app/identity/entities/principal.entity.ts

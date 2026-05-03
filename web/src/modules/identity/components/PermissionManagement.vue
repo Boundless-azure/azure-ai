@@ -176,19 +176,8 @@
       </div>
     </div>
 
-    <div
-      v-if="showResourceModal"
-      class="fixed inset-0 z-50 flex items-center justify-center"
-    >
-      <div
-        class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        @click="showResourceModal = false"
-      ></div>
-      <div
-        class="relative bg-white rounded-2xl shadow-xl w-[420px] max-w-[95vw] border border-gray-200 p-6"
-      >
-        <h3 class="text-lg font-bold text-gray-900 mb-4">添加 Subject</h3>
-        <div class="space-y-4">
+    <BaseModal :open="showResourceModal" title="添加 Subject" size="sm" @close="showResourceModal = false">
+      <div class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Subject</label>
             <input
@@ -225,39 +214,30 @@
               placeholder="例如：允许读取组织成员列表"
             ></textarea>
           </div>
-        </div>
-        <div class="mt-6 flex justify-end gap-2">
-          <button
-            class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
-            @click="showResourceModal = false"
-          >
-            取消
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
-            @click="submitNewResource"
-          >
-            添加
-          </button>
-        </div>
       </div>
-    </div>
+      <template #footer>
+        <button
+          class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+          @click="showResourceModal = false"
+        >
+          取消
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+          @click="submitNewResource"
+        >
+          添加
+        </button>
+      </template>
+    </BaseModal>
 
-    <div
-      v-if="showActionModal"
-      class="fixed inset-0 z-50 flex items-center justify-center"
+    <BaseModal
+      :open="showActionModal"
+      :title="`添加权限节点 (${actionTargetSubjectName})`"
+      size="sm"
+      @close="showActionModal = false"
     >
-      <div
-        class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        @click="showActionModal = false"
-      ></div>
-      <div
-        class="relative bg-white rounded-2xl shadow-xl w-[420px] max-w-[95vw] border border-gray-200 p-6"
-      >
-        <h3 class="text-lg font-bold text-gray-900 mb-4">
-          添加权限节点 ({{ actionTargetSubjectName }})
-        </h3>
-        <div class="space-y-4">
+      <div class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Action</label>
             <input
@@ -274,38 +254,30 @@
               rows="3"
             ></textarea>
           </div>
-        </div>
-        <div class="mt-6 flex justify-end gap-2">
-          <button
-            class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
-            @click="showActionModal = false"
-          >
-            取消
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
-            @click="submitNewAction"
-          >
-            添加
-          </button>
-        </div>
       </div>
-    </div>
-    <div
-      v-if="showEditSubjectModal"
-      class="fixed inset-0 z-50 flex items-center justify-center"
+      <template #footer>
+        <button
+          class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+          @click="showActionModal = false"
+        >
+          取消
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+          @click="submitNewAction"
+        >
+          添加
+        </button>
+      </template>
+    </BaseModal>
+
+    <BaseModal
+      :open="showEditSubjectModal"
+      :title="`编辑 Subject: ${editSubjectForm.nodeKey}`"
+      size="sm"
+      @close="showEditSubjectModal = false"
     >
-      <div
-        class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        @click="showEditSubjectModal = false"
-      ></div>
-      <div
-        class="relative bg-white rounded-2xl shadow-xl w-[420px] max-w-[95vw] border border-gray-200 p-6"
-      >
-        <h3 class="text-lg font-bold text-gray-900 mb-4">
-          编辑 Subject: {{ editSubjectForm.nodeKey }}
-        </h3>
-        <div class="space-y-4">
+      <div class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Subject 名称</label>
             <input
@@ -323,39 +295,30 @@
               rows="3"
             ></textarea>
           </div>
-        </div>
-        <div class="mt-6 flex justify-end gap-2">
-          <button
-            class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
-            @click="showEditSubjectModal = false"
-          >
-            取消
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
-            @click="submitEditSubject"
-          >
-            保存
-          </button>
-        </div>
       </div>
-    </div>
+      <template #footer>
+        <button
+          class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+          @click="showEditSubjectModal = false"
+        >
+          取消
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+          @click="submitEditSubject"
+        >
+          保存
+        </button>
+      </template>
+    </BaseModal>
 
-    <div
-      v-if="showEditActionModal"
-      class="fixed inset-0 z-50 flex items-center justify-center"
+    <BaseModal
+      :open="showEditActionModal"
+      :title="`编辑权限节点: ${editActionForm.nodeKey}`"
+      size="sm"
+      @close="showEditActionModal = false"
     >
-      <div
-        class="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        @click="showEditActionModal = false"
-      ></div>
-      <div
-        class="relative bg-white rounded-2xl shadow-xl w-[420px] max-w-[95vw] border border-gray-200 p-6"
-      >
-        <h3 class="text-lg font-bold text-gray-900 mb-4">
-          编辑权限节点: {{ editActionForm.nodeKey }}
-        </h3>
-        <div class="space-y-4">
+      <div class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1"
               >节点标识</label
@@ -375,23 +338,22 @@
               rows="3"
             ></textarea>
           </div>
-        </div>
-        <div class="mt-6 flex justify-end gap-2">
-          <button
-            class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
-            @click="showEditActionModal = false"
-          >
-            取消
-          </button>
-          <button
-            class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
-            @click="submitEditAction"
-          >
-            保存
-          </button>
-        </div>
       </div>
-    </div>
+      <template #footer>
+        <button
+          class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+          @click="showEditActionModal = false"
+        >
+          取消
+        </button>
+        <button
+          class="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+          @click="submitEditAction"
+        >
+          保存
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -403,6 +365,7 @@
  * @keywords-en permission-definition, permission-node, data-node, menu-node, subject-card
  */
 import { ref, computed, onMounted, reactive } from 'vue';
+import BaseModal from '../../../components/BaseModal.vue';
 import IdentitySectionHeader from './IdentitySectionHeader.vue';
 import { usePermissionDefinitions } from '../hooks/usePermissionDefinitions';
 import { useUIStore } from '../../agent/store/ui.store';

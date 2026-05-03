@@ -7,7 +7,12 @@ import {
   SessionDataType,
 } from '@core/ai/entities/chat-session-data.entity';
 
-const KEY_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+/**
+ * 允许的 key 字符 :: 字母数字 + 下划线 + 短横 + **点号** (用于分层命名 entity.principal.admin / progress.todo.demo);
+ * 之前缺 \\. 导致 LLM 用自然分层 key 一次就被拒, 是 session_data 用不起来的关键阻力之一.
+ * @keyword-en session-data-key-regex layered-key
+ */
+const KEY_RE = /^[a-zA-Z0-9_.-]{1,128}$/;
 const MAX_KEYS = 50;
 const MAX_VALUE_BYTES = 10_000;
 const MAX_TOTAL_BYTES = 200_000;
@@ -39,7 +44,7 @@ export class AiSessionDataService {
   ): Promise<void> {
     if (!KEY_RE.test(key)) {
       throw new Error(
-        `invalid key "${key}": must match ^[a-zA-Z0-9_-]{1,128}$`,
+        `invalid key "${key}": must match ^[a-zA-Z0-9_.-]{1,128}$`,
       );
     }
     if (title !== undefined && title.length > 255) {
@@ -138,12 +143,20 @@ export class AiSessionDataService {
   }
 
   /**
-   * 列出所有 key 概要（含 title，不含 value）
-   * @keyword-en list-keys
+   * 列出本会话全部 session_data 的轻量元数据 :: { key, title, updatedAt, sizeBytes }
+   * **不返 value / 不返 preview** — 记忆数量增多时 list 输出仍保持小体积。
+   * LLM 凭 key + title 决定哪条命中, 命中再调 sessionData.get 取完整 value。
+   * 这要求每条记录的 title 必须**写得足够描述性**, 否则 list 视图无效。
+   * @keyword-en list-keys metadata-only lightweight-recall
    */
-  async list(
-    sessionId: string,
-  ): Promise<Array<{ key: string; title: string | null; updatedAt: Date; sizeBytes: number }>> {
+  async list(sessionId: string): Promise<
+    Array<{
+      key: string;
+      title: string | null;
+      updatedAt: Date;
+      sizeBytes: number;
+    }>
+  > {
     const rows = await this.dataRepo.find({
       where: {
         forSessionId: sessionId,
@@ -177,36 +190,5 @@ export class AiSessionDataService {
     return (result.affected ?? 0) > 0;
   }
 
-  /**
-   * 生成 [session data]...[/session data] prompt 文本块，无数据时返回 null
-   * @keyword-en build-prompt-block
-   */
-  async getAllAsPromptBlock(sessionId: string): Promise<string | null> {
-    const rows = await this.dataRepo.find({
-      where: {
-        forSessionId: sessionId,
-        dataType: SessionDataType.AiSession,
-        isDelete: false,
-      },
-      order: { updatedAt: 'DESC' },
-    });
-    if (rows.length === 0) return null;
-
-    const entries = rows.map((r) => {
-      const titleSuffix = r.dataTitle ? ` | title: "${r.dataTitle}"` : '';
-      const date = r.updatedAt.toISOString().slice(0, 10);
-      let parsed: unknown;
-      try { parsed = JSON.parse(r.dataVal); } catch { parsed = r.dataVal; }
-      return `- key: "${r.dataKey}"${titleSuffix} (updated: ${date})\n  \`\`\`json\n${JSON.stringify(parsed, null, 2)}\n  \`\`\``;
-    });
-
-    return [
-      '[session data]',
-      '当前会话有以下持久化数据（跨轮次可用，每轮自动注入）：',
-      '如需更新，调用 saas.app.conversation.sessionData.save；删除调用 .delete。',
-      '---',
-      ...entries,
-      '[/session data]',
-    ].join('\n');
-  }
 }
+

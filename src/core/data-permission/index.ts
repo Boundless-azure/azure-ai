@@ -3,6 +3,7 @@ export * from './services/data-permission.service';
 export * from './services/data-permission-context.service';
 export * from './services/data-permission.registry.service';
 export * from './decorators/data-permission-node.decorator';
+export * from './errors/data-permission.error';
 export * from './types/data-permission.types';
 export * from './types/tokens';
 export * from './enums/data-permission.enums';

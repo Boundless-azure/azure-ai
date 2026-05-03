@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
+import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
 import { KnowledgeService } from './knowledge.service';
 import { KnowledgeBookType } from '../enums/knowledge.enums';
@@ -98,6 +99,7 @@ export class KnowledgeHookHandlerService {
       '获取指定书本 ID 列表的知识目录（不含章节内容）。返回每本书的标题、类型、描述和章节列表（无正文）。',
     payloadSchema: getKnowledgeTocSchema,
   })
+  @CheckAbility('read', 'knowledge')
   async handleGetToc(
     event: HookEvent<GetKnowledgeTocPayload>,
   ): Promise<HookResult> {
@@ -134,6 +136,7 @@ export class KnowledgeHookHandlerService {
       '获取指定书本的章节正文内容。bookIds 必填; chapterIds 可选, 不传则只返回 LM 必读, 传入则在 LM 必读基础上额外返回指定章节。',
     payloadSchema: getKnowledgeChapterSchema,
   })
+  @CheckAbility('read', 'knowledge')
   async handleGetChapter(
     event: HookEvent<GetKnowledgeChapterPayload>,
   ): Promise<HookResult> {
@@ -178,6 +181,7 @@ export class KnowledgeHookHandlerService {
       '聚合 db 书本 + 本地预置书本; 超过 400 用 cursor 翻页; type 可选过滤。',
     payloadSchema: getKnowledgeTagSchema,
   })
+  @CheckAbility('read', 'knowledge')
   async handleGetTag(
     event: HookEvent<GetKnowledgeTagPayload>,
   ): Promise<HookResult> {
@@ -224,6 +228,7 @@ export class KnowledgeHookHandlerService {
       '若全部不存在 hook 会直接 error 阻止瞎猜; type 可选 (skill / lore)。',
     payloadSchema: searchKnowledgeSchema,
   })
+  @CheckAbility('read', 'knowledge')
   async handleSearch(
     event: HookEvent<SearchKnowledgePayload>,
   ): Promise<HookResult> {
