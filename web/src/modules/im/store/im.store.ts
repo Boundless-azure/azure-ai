@@ -15,6 +15,7 @@ import {
 } from '../../../api/im';
 import type { ImSocketCallbacks } from '../services/im.socket.service';
 import { imSocketService } from '../services/im.socket.service';
+import { pickWaitingPhrase } from '../constants/im.constants';
 
 export const useImStore = defineStore('im', () => {
   const connected = ref(false);
@@ -45,6 +46,116 @@ export const useImStore = defineStore('im', () => {
    * @keyword-en typing-by-session agent-typing-indicator
    */
   const typingBySession = ref<Record<string, Set<string>>>({});
+
+  /**
+   * AI 待响应队列状态 :: 后端 agentTriggerQueue 的镜像 (sessionId + agentPrincipalId 联合 key)
+   *  - messageIds: 该队列累积的 awaiting trigger msg id 集合
+   *  - phrase: 该队列实例的等待语 (entry 创建时随机一次, 整个生命周期不变)
+   *  - createdAt: entry 创建时间戳, 用于最小可见时长保障 (避免 LLM 极快回复导致 emoji 闪过)
+   *  - 后端 ai:awaiting:add → 入 messageIds (entry 不存在则创建 + 选 phrase + 记 createdAt)
+   *  - 后端 ai:awaiting:end → 若寿命 < 最小可见时长则延迟清, 否则立即清
+   * @keyword-en awaiting-ai-by-queue queue-mirror
+   */
+  const awaitingAiByQueue = ref<
+    Record<
+      string,
+      { messageIds: Set<string>; phrase: string; createdAt: number }
+    >
+  >({});
+
+  /** awaiting 最小可见时长 (ms) :: LLM 极快回复时兜底, 防 emoji 闪过 */
+  const MIN_AWAITING_VISIBLE_MS = 1500;
+  const awaitingClearTimers = new Map<string, number>();
+
+  function awaitingQueueKey(
+    sessionId: string,
+    agentPrincipalId: string,
+  ): string {
+    return `${sessionId}:${agentPrincipalId}`;
+  }
+
+  /**
+   * 标某条用户消息为 awaiting (后端 ai:awaiting:add 触发)
+   * @keyword-en mark-awaiting-trigger-msg
+   */
+  function markAwaiting(
+    sessionId: string,
+    agentPrincipalId: string,
+    triggerMessageId: string,
+  ): void {
+    const key = awaitingQueueKey(sessionId, agentPrincipalId);
+    // 重新 add 时取消任何挂起的延迟清, 让 entry 继续存活
+    const pendingTimer = awaitingClearTimers.get(key);
+    if (pendingTimer) {
+      window.clearTimeout(pendingTimer);
+      awaitingClearTimers.delete(key);
+    }
+    const existing = awaitingAiByQueue.value[key];
+    const next = existing
+      ? {
+          messageIds: new Set([...existing.messageIds, triggerMessageId]),
+          phrase: existing.phrase,
+          createdAt: existing.createdAt,
+        }
+      : {
+          messageIds: new Set([triggerMessageId]),
+          phrase: pickWaitingPhrase(),
+          createdAt: Date.now(),
+        };
+    awaitingAiByQueue.value = { ...awaitingAiByQueue.value, [key]: next };
+  }
+
+  /**
+   * 清掉整个队列的 awaiting (后端 ai:awaiting:end 触发)
+   * @keyword-en clear-awaiting-queue
+   */
+  function clearAwaitingQueue(
+    sessionId: string,
+    agentPrincipalId: string,
+  ): void {
+    const key = awaitingQueueKey(sessionId, agentPrincipalId);
+    const entry = awaitingAiByQueue.value[key];
+    if (!entry) return;
+    const elapsed = Date.now() - entry.createdAt;
+    if (elapsed < MIN_AWAITING_VISIBLE_MS) {
+      // 寿命不够: 延迟清, 保证 emoji 至少可见 MIN_AWAITING_VISIBLE_MS (LLM 极快回复时兜底)
+      const remaining = MIN_AWAITING_VISIBLE_MS - elapsed;
+      const existingTimer = awaitingClearTimers.get(key);
+      if (existingTimer) window.clearTimeout(existingTimer);
+      const timer = window.setTimeout(() => {
+        awaitingClearTimers.delete(key);
+        doClearAwaitingQueue(key);
+      }, remaining);
+      awaitingClearTimers.set(key, timer);
+      return;
+    }
+    doClearAwaitingQueue(key);
+  }
+
+  function doClearAwaitingQueue(key: string): void {
+    if (!(key in awaitingAiByQueue.value)) return;
+    const next = { ...awaitingAiByQueue.value };
+    delete next[key];
+    awaitingAiByQueue.value = next;
+  }
+
+  /**
+   * 取某条消息当前的 awaiting 状态 (供组件渲染)
+   *  - 返回 phrase 时该消息正等待 AI; null 表示无 awaiting
+   *  - 同一 messageId 可能在多个队列里 (多 agent 群聊场景), 返回首个命中的 phrase
+   * @keyword-en get-awaiting-phrase-for-message
+   */
+  function getAwaitingPhrase(
+    sessionId: string,
+    messageId: string,
+  ): string | null {
+    const prefix = `${sessionId}:`;
+    for (const [k, v] of Object.entries(awaitingAiByQueue.value)) {
+      if (!k.startsWith(prefix)) continue;
+      if (v.messageIds.has(messageId)) return v.phrase;
+    }
+    return null;
+  }
 
   let userNotifyTimeout: number | null = null;
   let sessionsPullTimeout: number | null = null;
@@ -1298,6 +1409,14 @@ export const useImStore = defineStore('im', () => {
       onAiStreamStart: callbacks?.onAiStreamStart,
       onAiToken: callbacks?.onAiToken,
       onAiStreamEnd: callbacks?.onAiStreamEnd,
+      onAiAwaitingAdd: (payload, sessionId) => {
+        markAwaiting(sessionId, payload.agentPrincipalId, payload.triggerMessageId);
+        callbacks?.onAiAwaitingAdd?.(payload, sessionId);
+      },
+      onAiAwaitingEnd: (payload, sessionId) => {
+        clearAwaitingQueue(sessionId, payload.agentPrincipalId);
+        callbacks?.onAiAwaitingEnd?.(payload, sessionId);
+      },
       onUserPush: (data) => {
         if (userNotifyTimeout !== null) {
           clearTimeout(userNotifyTimeout);
@@ -1338,6 +1457,8 @@ export const useImStore = defineStore('im', () => {
     principalId,
     connected,
     typingBySession,
+    awaitingAiByQueue,
+    getAwaitingPhrase,
     error,
     sessions,
     sessionsCursor,

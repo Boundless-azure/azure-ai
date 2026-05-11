@@ -12,12 +12,14 @@ import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
 import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
 import { ChatSessionMemberEntity } from '@core/ai/entities/chat-session-member.entity';
 import { PrincipalEntity } from '@/app/identity/entities/principal.entity';
+import { SYSTEM_NOTIFIER_ID } from '@/app/identity/constants/system-principals';
 import { AgentEntity } from '@/app/agent/entities/agent.entity';
 import { AgentRuntimeService } from '@core/agent-runtime/services/agent-runtime.service';
 import { ChatMessageType, ChatSessionType } from '@core/ai/enums/chat.enums';
 import type { ChatMessage } from '@core/ai/types';
 import { ImSessionService } from './im-session.service';
 import { ImGateway } from '../controllers/im.gateway';
+import { AiSessionDataService } from './ai-session-data.service';
 import type {
   SendMessageDto,
   ImMessageInfo,
@@ -61,6 +63,7 @@ export class ImMessageService {
     @Inject(forwardRef(() => ImGateway))
     private readonly imGateway: ImGateway,
     private readonly agentRuntimeService: AgentRuntimeService,
+    private readonly aiSessionDataService: AiSessionDataService,
   ) {}
 
   // ===== agent 触发队列：执行锁（运行中保存最新 pending，完成后 5s 防抖再消费）=====
@@ -79,6 +82,14 @@ export class ImMessageService {
       } | null;
       /** 输入端 5s 防抖定时器 */
       debounceTimer: ReturnType<typeof setTimeout> | null;
+      /**
+       * 该队列从入队到清空期间所有触发 trigger 的用户消息 id
+       *  - scheduleAgentTrigger 入口 add
+       *  - runAgentLocked finally 队列清空时 clear
+       *  - 用于客户端 join session room 时重放 (前端刷新后能恢复 awaiting emoji)
+       * @keyword-en awaiting-message-ids
+       */
+      awaitingMessageIds: Set<string>;
     }
   >();
 
@@ -100,9 +111,24 @@ export class ImMessageService {
     const key = `${payload.sessionId}:${payload.agentPrincipalId}`;
     let state = this.agentTriggerQueue.get(key);
     if (!state) {
-      state = { running: false, pending: null, debounceTimer: null };
+      state = {
+        running: false,
+        pending: null,
+        debounceTimer: null,
+        awaitingMessageIds: new Set(),
+      };
       this.agentTriggerQueue.set(key, state);
     }
+
+    // 记录到 awaitingMessageIds, 供 client 重连/刷新时重放
+    state.awaitingMessageIds.add(payload.triggerMessageId);
+
+    // 广播待响应队列入队 :: 前端挂"AI 已识别"emoji + 等待语
+    // 同一队列生命周期内可能多次 add (防抖窗口 / pending 期间), 都推 (前端 entry 已存在则只 add msgId, phrase 不变)
+    this.imGateway.broadcastAiAwaitingAdd(payload.sessionId, {
+      agentPrincipalId: payload.agentPrincipalId,
+      triggerMessageId: payload.triggerMessageId,
+    });
 
     if (state.running) {
       // LLM 运行中：覆盖 pending，完成后立即执行（不需要额外等待）
@@ -127,6 +153,37 @@ export class ImMessageService {
   }
 
   /**
+   * 客户端 join session room 时重放当前 awaiting 状态 :: 用于前端刷新后恢复"AI 已识别"emoji
+   *  - 扫 agentTriggerQueue 找该 sessionId 下所有 entry
+   *  - 返回每个 (agentPrincipalId, triggerMessageIds[]) 让 ImGateway 单 client emit
+   *  - 队列空时返回 []
+   * @keyword-en replay-awaiting-on-join
+   */
+  public replayAwaitingForSession(sessionId: string): Array<{
+    agentPrincipalId: string;
+    triggerMessageIds: string[];
+  }> {
+    const result: Array<{
+      agentPrincipalId: string;
+      triggerMessageIds: string[];
+    }> = [];
+    for (const [key, state] of this.agentTriggerQueue.entries()) {
+      const colonIdx = key.indexOf(':');
+      if (colonIdx < 0) continue;
+      const sid = key.slice(0, colonIdx);
+      const agentPrincipalId = key.slice(colonIdx + 1);
+      if (sid !== sessionId) continue;
+      if (!agentPrincipalId) continue;
+      if (state.awaitingMessageIds.size === 0) continue;
+      result.push({
+        agentPrincipalId,
+        triggerMessageIds: [...state.awaitingMessageIds],
+      });
+    }
+    return result;
+  }
+
+  /**
    * 防抖定时器触发：取出 pending 执行
    * @keyword-en fire-pending-debounce
    */
@@ -135,7 +192,14 @@ export class ImMessageService {
     if (!state) return;
     state.debounceTimer = null;
     if (!state.pending) {
+      // 兜底: 防抖到点但 pending 空 (理论上不应发生), 也要广播 end 让前端清状态
+      const [sessionId, agentPrincipalId] = key.split(':');
       this.agentTriggerQueue.delete(key);
+      if (sessionId && agentPrincipalId) {
+        this.imGateway.broadcastAiAwaitingEnd(sessionId, {
+          agentPrincipalId,
+        });
+      }
       return;
     }
     const next = state.pending;
@@ -169,6 +233,7 @@ export class ImMessageService {
       this.logger.log(`[agent-queue] done: ${key}`);
       if (state.pending) {
         // 执行期间积压的 pending → 立即执行（reply 已落库，DB 下界查询可正确取到）
+        // 此时不广播 end, 因为队列还没空, 前端 entry 保持 (复用同一个等待语)
         const next = state.pending;
         state.pending = null;
         this.logger.log(
@@ -176,7 +241,14 @@ export class ImMessageService {
         );
         void this.runAgentLocked(key, next);
       } else {
+        // 队列彻底空 → 广播 end, 前端清掉该队列下所有 awaiting 标记 + 等待语
+        const [sessionId, agentPrincipalId] = key.split(':');
         this.agentTriggerQueue.delete(key);
+        if (sessionId && agentPrincipalId) {
+          this.imGateway.broadcastAiAwaitingEnd(sessionId, {
+            agentPrincipalId,
+          });
+        }
       }
     }
   }
@@ -207,14 +279,20 @@ export class ImMessageService {
       throw new NotFoundException(`Session not found: ${dto.sessionId}`);
     }
 
-    // 验证发送者是会话成员
-    const isMember = await this.sessionService.isMember(session.id, senderId);
-    if (!isMember) {
-      throw new NotFoundException(`User is not a member of this session`);
+    // 验证发送者是会话成员 (SYSTEM_NOTIFIER 跨群共享, 跳过成员校验; 仅服务端隐藏通知场景使用)
+    if (senderId !== SYSTEM_NOTIFIER_ID) {
+      const isMember = await this.sessionService.isMember(session.id, senderId);
+      if (!isMember) {
+        throw new NotFoundException(`User is not a member of this session`);
+      }
     }
 
     // 提取 @mention 信息，存入 metadata（不依赖 content 解析，群聊过滤和通知均从此处读取）
-    const mentions = await this.extractMentions(dto.content);
+    // dto.mentions 显式传入时优先 (服务端隐藏通知场景, 1.8.4 命门修复) — 绕过 content 解析的 displayName 依赖
+    const mentions =
+      dto.mentions && dto.mentions.length > 0
+        ? dto.mentions
+        : await this.extractMentions(dto.content);
 
     // 创建消息
     const resolvedMessageType =
@@ -277,7 +355,24 @@ export class ImMessageService {
 
     // === AI 触发逻辑 ===
     if (!options?.skipAgentTrigger) {
-      await this.checkAndTriggerAgent(session, senderId, saved, dto.content);
+      if (dto.mentions && dto.mentions.length > 0) {
+        // explicit mentions 路径 (1.8.4 命门修复): 直接调度 mention 中的 agent, 跳过 content @ 解析
+        for (const m of dto.mentions) {
+          if (await this.isAgentPrincipal(m.principalId)) {
+            this.logger.log(
+              `Scheduling AI for explicit mention: ${m.principalId}`,
+            );
+            this.scheduleAgentTrigger({
+              sessionId: session.sessionId,
+              agentPrincipalId: m.principalId,
+              triggerMessageId: saved.id,
+              userContent: dto.content,
+            });
+          }
+        }
+      } else {
+        await this.checkAndTriggerAgent(session, senderId, saved, dto.content);
+      }
     }
 
     return messageInfo;
@@ -686,6 +781,41 @@ export class ImMessageService {
   }
 
   /**
+   * 起手前注入【知识手册】到 session_data, 让 LLM 在 sessionData.list 时一眼能看到可用手册。
+   * 同 key 已存在则直接 short-circuit 跳过, 避免每轮覆盖污染 dataTitle / 撑大无意义写入。
+   * value 故意只塞 bookId + name + hint, 真正章节正文还是走 saas.app.knowledge.getChapter 按需读。
+   * 任意写入失败仅 warn, 不阻塞对话主流程 — 手册引导是软提示, 缺失也不致命。
+   * @keyword-en ensure-knowledge-book-session-data handbook-hint-injection
+   */
+  private async ensureKnowledgeBookSessionData(
+    sessionId: string,
+    key: string,
+    bookId: string,
+    bookName: string,
+    title: string,
+  ): Promise<void> {
+    try {
+      const existing = await this.aiSessionDataService.get(sessionId, key);
+      if (existing) return;
+      await this.aiSessionDataService.save(
+        sessionId,
+        key,
+        {
+          bookId,
+          name: bookName,
+          hint: '通过 saas.app.knowledge.getToc({ bookIds: ["' + bookId + '"] }) 拿目录, 再 saas.app.knowledge.getChapter 取章节; 不要凭 hook 名或字段名猜。',
+        },
+        title,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(
+        `[handbook-inject] failed key=${key} session=${sessionId}: ${msg}`,
+      );
+    }
+  }
+
+  /**
    * 执行主动对话模式的一轮 LLM 请求, 结束后验证是否有 assistant 消息产生。
    * 若 LLM 没通过 call_hook(saas.app.conversation.sendMsg) 发消息, 则把流式收集到的文本直接当回复发出去 (前提: 该轮没发过)。
    * 不再注入提醒消息重试 — 一轮定胜负, 减少延迟和 token 浪费。
@@ -858,10 +988,28 @@ export class ImMessageService {
       triggerMessageId: payload.triggerMessageId,
     });
 
+    // === 起手前注入手册 session_data ::
+    // azure-ai 默认 agent 必读 SaaS 系统 hook 手册; 主动对话模式额外注入对话 hook 手册。
+    // 一次性写入即可, helper 自带"已存在则跳过"逻辑, 不会跨轮重复落库。
+    await this.ensureKnowledgeBookSessionData(
+      payload.sessionId,
+      'knowledge.book.saas_system_hook_skill',
+      'local_saas_system_hook_skill',
+      'Saas 系统hook技能手册',
+      'SaaS 系统 Hook 技能手册 :: identity / storage / solution / todo / runner 查询. bookId=local_saas_system_hook_skill, 调 saas.app.knowledge.getToc 拿目录后 getChapter 取章节',
+    );
+
     // === 主动对话模式 ===
     // proactiveChatEnabled 时 LLM 通过 call_hook('saas.app.conversation.sendMsg', ...) 自行决定何时发消息;
     // 没发的情况下 runProactiveDialogue 会用流式收集的文本兜底发, 不再注入提醒重试.
     if (agent.proactiveChatEnabled !== false) {
+      await this.ensureKnowledgeBookSessionData(
+        payload.sessionId,
+        'knowledge.book.conversation_hook_skill',
+        'local_conversation_hook_skill',
+        '对话 Hook 技能手册',
+        '对话 Hook 技能手册 :: 主动对话发消息必读, 含 saas.app.conversation.sendMsg payload + 历史检索 smart 三段式. bookId=local_conversation_hook_skill, getToc + getChapter 取章节',
+      );
       await this.runProactiveDialogue(agent, payload, messages);
       return;
     }

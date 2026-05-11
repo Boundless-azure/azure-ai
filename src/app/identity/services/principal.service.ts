@@ -19,7 +19,7 @@ import type {
   UpdateUserDto,
 } from '../types/identity.types';
 import type { Db, Collection } from 'mongodb';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from 'uuidv7';
 import { PrincipalType } from '../enums/principal.enums';
 
 /**

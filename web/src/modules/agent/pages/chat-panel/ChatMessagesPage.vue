@@ -18,6 +18,22 @@
       />
     </div>
 
+    <!-- 新消息浮动按钮 :: 锚在 chatContainer 跟 InputArea 边界上方
+         h-0 父 div 不占 flex 空间, 不影响任何 scroll 计算, button absolute 相对它定位 -->
+    <div class="relative h-0 z-20">
+      <Transition name="new-msg-fade">
+        <button
+          v-if="unreadNewCount > 0"
+          type="button"
+          class="absolute -top-12 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-[linear-gradient(180deg,#262626_0%,#111111_100%)] text-white text-xs font-medium shadow-[0_8px_20px_rgba(0,0,0,0.25)] flex items-center gap-1.5 hover:bg-black transition-colors border border-white/10 whitespace-nowrap"
+          @click="onClickJumpToBottom"
+        >
+          <span>新消息 {{ unreadNewCount }} 条</span>
+          <span class="text-white/70">↓</span>
+        </button>
+      </Transition>
+    </div>
+
     <div class="p-4 bg-white border-t border-gray-200 flex-shrink-0 z-20">
       <div class="max-w-4xl mx-auto">
         <InputArea
@@ -87,6 +103,7 @@ const {
   activeLoadingMessages,
   activeSendStatusByMessageId,
   typingBySession,
+  awaitingAiByQueue,
 } = storeToRefs(imStore);
 
 const chatContainer = ref<HTMLElement | null>(null);
@@ -94,11 +111,29 @@ const chatContainer = ref<HTMLElement | null>(null);
 const isPinnedToBottom = ref(true);
 const bottomThresholdPx = 80;
 
+/** 上滚看历史期间累积的新消息条数 :: 回到底部 / 主动跳到底 时清零 */
+const unreadNewCount = ref(0);
+
 const updatePinnedState = () => {
   const el = chatContainer.value;
   if (!el) return;
   const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+  const wasPinned = isPinnedToBottom.value;
   isPinnedToBottom.value = distance <= bottomThresholdPx;
+  // 滚回底部 → 清零未读
+  if (!wasPinned && isPinnedToBottom.value) {
+    unreadNewCount.value = 0;
+  }
+};
+
+/**
+ * 主动跳到底部按钮: 强制 pin + 清零未读 + 滚到底
+ * @keyword-en jump-to-bottom-on-click
+ */
+const onClickJumpToBottom = () => {
+  isPinnedToBottom.value = true;
+  unreadNewCount.value = 0;
+  scrollToBottom();
 };
 
 const isProcessing = ref(false);
@@ -239,6 +274,7 @@ const openSessionAndLoadHistory = async (
   }
 
   isPinnedToBottom.value = true;
+  unreadNewCount.value = 0;
   scrollToBottom();
 };
 
@@ -265,6 +301,53 @@ const onScroll = () => {
   updatePinnedState();
 };
 
+/**
+ * 内容高度持续变化时跟随到底 :: ResizeObserver 监听消息列表 root div
+ * 关键场景: temp 插入后 markdown/图片慢渲染, 高度持续增长, 单次 scrollToBottom 滚不到真正底部
+ *  - pinned=true 时, 高度任何变化都跟随
+ *  - pinned=false 时, 高度变化无视, 不打扰用户阅读历史
+ *  - inner 第一次可能还没渲染 (chatContainer 先 mount, ChatMessageList 后 render),
+ *    用 MutationObserver 监听 chatContainer 子节点出现, 出现后才装 ResizeObserver
+ * @keyword-en content-resize-follow scroll-to-bottom-tracker
+ */
+let containerResizeObserver: ResizeObserver | null = null;
+let containerMutationObserver: MutationObserver | null = null;
+
+const attachContainerResizeObserver = (el: HTMLElement | null) => {
+  containerResizeObserver?.disconnect();
+  containerResizeObserver = null;
+  containerMutationObserver?.disconnect();
+  containerMutationObserver = null;
+  if (!el || typeof ResizeObserver === 'undefined') return;
+
+  const observeInner = (inner: HTMLElement) => {
+    containerResizeObserver?.disconnect();
+    containerResizeObserver = new ResizeObserver(() => {
+      if (isPinnedToBottom.value && chatContainer.value) {
+        chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
+      }
+    });
+    containerResizeObserver.observe(inner);
+  };
+
+  const tryAttach = (): boolean => {
+    const inner = el.firstElementChild as HTMLElement | null;
+    if (!inner) return false;
+    observeInner(inner);
+    return true;
+  };
+
+  if (tryAttach()) return;
+  // inner 还没渲染, MutationObserver 等子元素出现
+  containerMutationObserver = new MutationObserver(() => {
+    if (tryAttach()) {
+      containerMutationObserver?.disconnect();
+      containerMutationObserver = null;
+    }
+  });
+  containerMutationObserver.observe(el, { childList: true });
+};
+
 watch(
   chatContainer,
   (el, prev) => {
@@ -272,6 +355,7 @@ watch(
     el?.addEventListener('scroll', onScroll, { passive: true });
     nextTick(() => {
       updatePinnedState();
+      attachContainerResizeObserver(el ?? null);
     });
   },
   { immediate: true },
@@ -279,6 +363,10 @@ watch(
 
 onUnmounted(() => {
   chatContainer.value?.removeEventListener('scroll', onScroll);
+  containerResizeObserver?.disconnect();
+  containerResizeObserver = null;
+  containerMutationObserver?.disconnect();
+  containerMutationObserver = null;
   imStore.leaveSession();
 });
 
@@ -286,8 +374,29 @@ watch(
   () => currentMessages.value.length,
   (len, prevLen) => {
     if (len <= prevLen) return;
-    if (!isPinnedToBottom.value) return;
-    scrollToBottom();
+    const delta = len - prevLen;
+    if (isPinnedToBottom.value) {
+      // 在底部: 自动滚到底, 未读清零
+      unreadNewCount.value = 0;
+      scrollToBottom();
+    } else {
+      // 上滚看历史: 累积未读计数, 不打扰当前阅读位置
+      unreadNewCount.value += delta;
+    }
+  },
+  { flush: 'post' },
+);
+
+/**
+ * AI 待响应胶囊渲染会改变气泡高度 (温度 +24px), WS event 比 temp 插入晚 100~300ms
+ * watch(currentMessages.length) 已经在 temp 插入时滚过, 胶囊后续插入需要单独补滚
+ * 这是独立的 reactive 触发, 不依赖 ResizeObserver 是否 attach 成功
+ * @keyword-en awaiting-pill-resize-tracker
+ */
+watch(
+  () => Object.keys(awaitingAiByQueue.value ?? {}).length,
+  () => {
+    if (isPinnedToBottom.value) scrollToBottom();
   },
   { flush: 'post' },
 );
@@ -383,11 +492,21 @@ const sendMessage = (payload: {
   const sessionId = sessionIds[0];
 
   // 水容发送：立即展示 temp 消息动画，接口异步处理，输入框不锁定
+  // 强制 pin + 清零未读, 实际滚动由 ResizeObserver / watch(length) 在 temp 插入后触发
   isPinnedToBottom.value = true;
-  scrollToBottom();
+  unreadNewCount.value = 0;
 
   void imStore.sendMessageOptimistic(sessionId, combinedContent).catch(() => {
     ui.showToast('发送失败', 'error');
+  });
+
+  // 兜底滚到底 :: temp 插入是异步的 (ensureSelfIsMember + mergeMessagesIncremental 各 await)
+  // 50ms / 200ms / 500ms 三次兜底, 覆盖快速 / 中速 / 慢速 (markdown 渲染) 场景
+  // 每次只在 isPinnedToBottom=true 时滚, 避免用户期间手动上滚被打扰
+  [50, 200, 500].forEach((delay) => {
+    window.setTimeout(() => {
+      if (isPinnedToBottom.value) scrollToBottom();
+    }, delay);
   });
 };
 </script>
@@ -406,5 +525,23 @@ const sendMessage = (payload: {
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: #d1d5db;
+}
+
+/* 新消息浮动按钮 :: fade + 微弹起 */
+.new-msg-fade-enter-active,
+.new-msg-fade-leave-active {
+  transition:
+    opacity 0.18s ease-out,
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.new-msg-fade-enter-from,
+.new-msg-fade-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 6px);
+}
+.new-msg-fade-enter-to,
+.new-msg-fade-leave-from {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 </style>

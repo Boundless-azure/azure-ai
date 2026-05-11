@@ -69,6 +69,17 @@ export class AIModelEntity extends BaseAuditedEntity {
     presencePenalty?: number;
   };
 
+  /**
+   * 思考模式开关 (think / reasoning) :: 独立 boolean 列, 便于 SQL 过滤 / 索引
+   *  - Anthropic Claude 4.x extended thinking (budget_tokens=4096)
+   *  - OpenAI o-series reasoning (reasoning_effort='medium')
+   *  - Gemini 2.5 thinking (thinkingBudget=4096)
+   *  - DeepSeek-R1 自带, 不需此字段
+   * @keyword-en thinking-mode-toggle
+   */
+  @Column({ name: 'thinking_enabled', type: 'boolean', default: false })
+  thinkingEnabled!: boolean;
+
   @Column({ type: 'text', nullable: true })
   description!: string;
 

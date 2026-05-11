@@ -20,8 +20,8 @@ import {
   RUNNER_WS_PING_TIMEOUT_MS,
 } from '../enums/runner.enums';
 import {
-  HookCallReply,
-  HookCallEnvelope,
+  type HookCallReply,
+  type HookCallEnvelope,
   RunnerRegisterDto,
 } from '../types/runner.types';
 import { HookBusService } from '@/core/hookbus/services/hook.bus.service';

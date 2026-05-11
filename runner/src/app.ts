@@ -22,6 +22,8 @@ import { UnitCoreService } from './unit-core/services/unit-core.service';
 import { registerWebMcpRoutes } from './modules/webmcp/routes/webmcp.routes';
 import { registerSolutionRoutes } from './modules/solution/routes/solution.routes';
 import { registerSolutionHooks } from './modules/solution/hooks/solution.hooks';
+import { registerDataTouchpointHooks } from './modules/data-touchpoint/hooks/data-touchpoint.hooks';
+import { RunnerTouchpointTriggerService } from './modules/data-touchpoint/services/touchpoint-trigger.service';
 import { registerProxyRoutes } from './modules/proxy/proxy.routes';
 import { registerFrpcRoutes } from './modules/frpc/routes/frpc.routes';
 import { registerRunnerControlRoutes } from './modules/runner-control/runner-control.routes';
@@ -54,6 +56,11 @@ export async function createRunnerApp() {
     runnerDbName: cfg.runnerDbName || 'runner',
     mongoClient,
   });
+  // 数据触点触发服务 (BullMQ 异步队列 + 沙箱执行 + SYSTEM_NOTIFIER 跨进程 sendMsg)
+  // 实例化在前以便 socket 回调注入 callSaaSHook; queue/worker 在 redis 连上后 start
+  const touchpointTrigger = cfg.redisUri
+    ? new RunnerTouchpointTriggerService(cfg.redisUri, hookBus, mongoClient)
+    : undefined;
 
   await app.register(cors, { origin: true });
   await app.register(fastifyStatic, {
@@ -61,7 +68,7 @@ export async function createRunnerApp() {
     prefix: '/',
   });
 
-  // socket connect 后挂 hook-rpc 协议 (attach 内部幂等)
+  // socket connect 后挂 hook-rpc 协议 (attach 内部幂等; 同时把 callSaaSHook 注入 hookBus.setForwardToSaaS, saas.* hook 调用自动转发)
   registrationService.setOnSocketReady((socket: ClientSocket) =>
     attachHookRpc(socket, hookBus, unitCore),
   );
@@ -122,9 +129,21 @@ export async function createRunnerApp() {
     const runnerDb = new RunnerDbService(db);
     await unitCore.persistHooks(runnerDb);
     registerSolutionHooks(hookBus, mongoClient);
+    registerDataTouchpointHooks(hookBus, mongoClient, touchpointTrigger);
   }
   if (cfg.redisUri) {
     await redisClient.connect(cfg.redisUri);
+    // redis 就绪后启动数据触点队列 + Worker (并发 4); 然后扫表恢复 schedule (兜底 redis 数据丢失)
+    if (touchpointTrigger) {
+      await touchpointTrigger.start();
+      // 异步执行不 block 启动 — schedule 扫表失败不该挡 runner 启动
+      touchpointTrigger.bootstrapSchedules().catch((e: unknown) => {
+        app.log.warn(
+          { err: e instanceof Error ? e.message : e },
+          '[touchpoint] bootstrapSchedules failed',
+        );
+      });
+    }
   }
 
   return { app, io, hookbusIo };

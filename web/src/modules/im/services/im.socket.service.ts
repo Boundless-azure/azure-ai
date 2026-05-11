@@ -60,6 +60,26 @@ export interface AiStreamEndEvent extends ImWsEvent {
   messageId: string;
 }
 
+/**
+ * AI 待响应队列入队广播 :: 后端 scheduleAgentTrigger 时推, 前端挂"AI 已识别"emoji
+ * @keyword-en ai-awaiting-add-event
+ */
+export interface AiAwaitingAddEvent extends ImWsEvent {
+  type: 'ai:awaiting:add';
+  sessionId: string;
+  data: { agentPrincipalId: string; triggerMessageId: string };
+}
+
+/**
+ * AI 待响应队列彻底清空广播 :: 后端 agentTriggerQueue.delete 时推, 前端清掉该队列下所有 awaiting 标记 + 等待语
+ * @keyword-en ai-awaiting-end-event
+ */
+export interface AiAwaitingEndEvent extends ImWsEvent {
+  type: 'ai:awaiting:end';
+  sessionId: string;
+  data: { agentPrincipalId: string };
+}
+
 export interface ImErrorEvent extends ImWsEvent {
   type: 'error';
   error: string;
@@ -79,6 +99,8 @@ export type ImEvent =
   | AiStreamStartEvent
   | AiTokenEvent
   | AiStreamEndEvent
+  | AiAwaitingAddEvent
+  | AiAwaitingEndEvent
   | ImErrorEvent;
 
 export interface ImSocketCallbacks {
@@ -92,6 +114,16 @@ export interface ImSocketCallbacks {
   onAiStreamStart?: (agentId: string, sessionId: string) => void;
   onAiToken?: (text: string, sessionId: string) => void;
   onAiStreamEnd?: (messageId: string, sessionId: string) => void;
+  /** AI 队列入队 :: 用户消息触发 agent 调度时推, 前端挂"已识别"emoji */
+  onAiAwaitingAdd?: (
+    payload: { agentPrincipalId: string; triggerMessageId: string },
+    sessionId: string,
+  ) => void;
+  /** AI 队列彻底空 :: 该 (sessionId, agentPrincipalId) 队列回到空, 前端清掉所有 awaiting + 等待语 */
+  onAiAwaitingEnd?: (
+    payload: { agentPrincipalId: string },
+    sessionId: string,
+  ) => void;
   onNewMessageBeacon?: (payload: ImNewMessageBeaconPayload) => void;
   onError?: (error: string, sessionId?: string) => void;
   onUserPush?: (data: { sessionId: string }) => void;
@@ -336,6 +368,12 @@ export class ImSocketService {
         break;
       case 'ai:stream_end':
         this.callbacks.onAiStreamEnd?.(event.messageId, event.sessionId);
+        break;
+      case 'ai:awaiting:add':
+        this.callbacks.onAiAwaitingAdd?.(event.data, event.sessionId);
+        break;
+      case 'ai:awaiting:end':
+        this.callbacks.onAiAwaitingEnd?.(event.data, event.sessionId);
         break;
       case 'error':
         this.callbacks.onError?.(event.error, event.sessionId);

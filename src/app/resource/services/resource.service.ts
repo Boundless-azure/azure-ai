@@ -9,7 +9,7 @@ import { createHash } from 'crypto';
 import { createReadStream } from 'fs';
 import * as fs from 'fs';
 import * as path from 'path';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from 'uuidv7';
 import { ResourceEntity } from '../entities/resource.entity';
 import type {
   UploadResourceResponse,

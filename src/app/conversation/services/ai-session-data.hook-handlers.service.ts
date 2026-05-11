@@ -12,8 +12,20 @@ import { AiSessionDataService } from './ai-session-data.service';
  * @keywords-cn session-data-hook, payloadSchema, SSOT, zod-infer
  * @keywords-en session-data-hook, payload-schema, ssot, zod-infer
  */
+/**
+ * sessionId 字段统一描述 :: LLM 调用时**留空即可**, 服务端自动从 invocationContext.extras.sessionId 取当前会话.
+ * 仅在跨会话场景 (例如管理工具) 才显式传值.
+ * @keyword-en session-id-optional-from-ctx
+ */
+const sessionIdField = z
+  .string()
+  .optional()
+  .describe(
+    '目标会话 ID (LLM 留空即可, 服务端从 ctx.extras.sessionId 自动补当前会话; 仅跨会话场景显式传)',
+  );
+
 const saveSchema = z.object({
-  sessionId: z.string().describe('目标会话 ID'),
+  sessionId: sessionIdField,
   key: z
     .string()
     .regex(/^[a-zA-Z0-9_.-]{1,128}$/)
@@ -34,16 +46,16 @@ const saveSchema = z.object({
 });
 
 const getSchema = z.object({
-  sessionId: z.string().describe('目标会话 ID'),
+  sessionId: sessionIdField,
   key: z.string().describe('数据键名'),
 });
 
 const listSchema = z.object({
-  sessionId: z.string().describe('目标会话 ID'),
+  sessionId: sessionIdField,
 });
 
 const deleteSchema = z.object({
-  sessionId: z.string().describe('目标会话 ID'),
+  sessionId: sessionIdField,
   key: z.string().describe('数据键名'),
 });
 
@@ -76,12 +88,22 @@ export class AiSessionDataHookHandlersService {
     pluginName: 'ai-session-data',
     tags: ['session-data', 'conversation'],
     description:
-      '保存或更新当前会话的一条持久化数据。key 为唯一标识，value 任意 JSON，title 为可选描述。同 key 会覆盖旧值。每轮对话开始时已有数据自动注入 prompt，无需额外调用读取。',
+      '保存或更新当前会话的一条持久化数据。key 为唯一标识，value 任意 JSON，title 必填。同 key 会覆盖旧值。' +
+        'sessionId 留空 → 服务端从 ctx 自动补当前会话 (LLM 用法). ' +
+        '收尾**必须沉淀新经验** (hook 配方 / 知识章节摘要 / 实体 id / 用户偏好), 下次同类任务通过 list 命中即可跳过重复查询.',
     payloadSchema: saveSchema,
   })
   @CheckAbility('update', 'session')
   async handleSave(event: HookEvent<SavePayload>): Promise<HookResult> {
-    const { sessionId, key, value, title } = event.payload;
+    const { key, value, title } = event.payload;
+    const sessionId = resolveSessionId(event);
+    if (!sessionId) {
+      return {
+        status: HookResultStatus.Error,
+        error:
+          'sessionId 缺失: 请确保调用上下文 ctx.extras.sessionId 已注入, 或显式传 payload.sessionId',
+      };
+    }
     try {
       await this.service.save(sessionId, key, value, title);
       return { status: HookResultStatus.Success, data: { saved: true, key, title: title ?? null } };
@@ -103,12 +125,22 @@ export class AiSessionDataHookHandlersService {
     pluginName: 'ai-session-data',
     tags: ['session-data', 'conversation'],
     description:
-      '获取当前会话指定 key 的持久化数据。返回 { key, title, value, updatedAt }。',
+      '获取当前会话指定 key 的持久化数据 (含完整 value)。返回 { key, title, value, updatedAt }。' +
+        'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法). ' +
+        '通常配合 sessionData.list 使用 :: list 拿 title 列表 → 命中后 get 取详情.',
     payloadSchema: getSchema,
   })
   @CheckAbility('read', 'session')
   async handleGet(event: HookEvent<GetPayload>): Promise<HookResult> {
-    const { sessionId, key } = event.payload;
+    const { key } = event.payload;
+    const sessionId = resolveSessionId(event);
+    if (!sessionId) {
+      return {
+        status: HookResultStatus.Error,
+        error:
+          'sessionId 缺失: 请确保调用上下文 ctx.extras.sessionId 已注入, 或显式传 payload.sessionId',
+      };
+    }
     try {
       const data = await this.service.get(sessionId, key);
       if (!data) {
@@ -136,12 +168,20 @@ export class AiSessionDataHookHandlersService {
       '列出当前会话所有持久化数据的轻量元数据 (key + title + 更新时间 + 大小, **不含 value**)。' +
         '返回字段 :: { count, listing }; listing 是分行 markdown 文本, 直接读它即可。' +
         '凭 title 判断哪条命中 → 调 sessionData.get(key) 取完整 value。' +
-        '任何查询任务起手都应先调一次此 hook (体积小, 后期记忆增多也可控)。',
+        'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法). ' +
+        '【强约束】LLM 每轮收到用户消息**第一件事**调此 hook 拿全景, 再决定走业务还是用记忆.',
     payloadSchema: listSchema,
   })
   @CheckAbility('read', 'session')
   async handleList(event: HookEvent<ListPayload>): Promise<HookResult> {
-    const { sessionId } = event.payload;
+    const sessionId = resolveSessionId(event);
+    if (!sessionId) {
+      return {
+        status: HookResultStatus.Error,
+        error:
+          'sessionId 缺失: 请确保调用上下文 ctx.extras.sessionId 已注入, 或显式传 payload.sessionId',
+      };
+    }
     try {
       const items = await this.service.list(sessionId);
       return {
@@ -174,7 +214,15 @@ export class AiSessionDataHookHandlersService {
   })
   @CheckAbility('delete', 'session')
   async handleDelete(event: HookEvent<DeletePayload>): Promise<HookResult> {
-    const { sessionId, key } = event.payload;
+    const { key } = event.payload;
+    const sessionId = resolveSessionId(event);
+    if (!sessionId) {
+      return {
+        status: HookResultStatus.Error,
+        error:
+          'sessionId 缺失: 请确保调用上下文 ctx.extras.sessionId 已注入, 或显式传 payload.sessionId',
+      };
+    }
     try {
       const deleted = await this.service.delete(sessionId, key);
       if (!deleted) {
@@ -186,6 +234,23 @@ export class AiSessionDataHookHandlersService {
       return { status: HookResultStatus.Error, error: msg };
     }
   }
+}
+
+/**
+ * 取 sessionId :: 优先 payload, 缺失时从 invocationContext.extras.sessionId 兜底
+ *  - LLM 调用时 payload 留空, 服务端从 ctx 自动取当前会话 (LLM 不需要知道 sessionId)
+ *  - 跨会话场景或 HTTP 显式管理时, payload 主动传值
+ * @keyword-en resolve-session-id-from-ctx
+ */
+function resolveSessionId(event: {
+  payload: { sessionId?: string };
+  context?: { extras?: Record<string, unknown> };
+}): string | null {
+  const fromPayload = event.payload?.sessionId?.trim();
+  if (fromPayload) return fromPayload;
+  const fromCtx = event.context?.extras?.sessionId;
+  if (typeof fromCtx === 'string' && fromCtx.trim()) return fromCtx.trim();
+  return null;
 }
 
 /**

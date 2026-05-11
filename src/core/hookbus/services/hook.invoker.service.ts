@@ -8,6 +8,7 @@ import type {
 } from '../types/hook.types';
 import { HookCacheService } from '../cache/hook.cache';
 import { createHookLogSession } from '@core/observability/services/hook-log.factory';
+import { runWithHookLog } from '@core/observability/services/hook-log.context';
 
 /**
  * @title Hook 调用器服务
@@ -77,7 +78,8 @@ export class HookInvokerService {
           : {}),
       };
       try {
-        const res = await chain(decorated);
+        // ALS 包 chain 调用, 让 controller / service 内通过 getCurrentHookLog() 拿到 session.log
+        const res = await runWithHookLog(session.log, () => chain(decorated));
         const duration = Date.now() - start;
         await this.safeRecordStatus(event.name, res.status);
         const debugLog = session.finalize({

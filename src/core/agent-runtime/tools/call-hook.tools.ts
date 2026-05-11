@@ -8,6 +8,12 @@ import type {
   HookInvocationContext,
   HookRegistration,
 } from '@/core/hookbus/types/hook.types';
+import {
+  buildFailureKey,
+  recordHookFailure,
+  recordHookSuccess,
+  FAILURE_HINT_THRESHOLD,
+} from '@/core/agent-runtime/services/hook-failure-tracker';
 
 /** 工具层共用 logger, 所有 hook tool 调用都打印 name / target / runnerId / payload / duration / err 计数 */
 const toolLogger = new Logger('LlmHookTool');
@@ -254,6 +260,26 @@ function projectSaasRegistrations(regs: HookRegistration[]): Array<{
 /* =========================================================================
  * 1) call_hook  ::  同步, 等结果
  * ========================================================================= */
+
+/**
+ * call_hook 完成后的副作用回调 :: 主对话 runtime 用它接 SessionCallTracker 做记录 + 硬触发沉淀 LLM.
+ * SessionSaveLlmService 给独立 LLM 提供工具时不传(也通过 ctx.extras.disableTracker 防自我触发)。
+ * @keyword-en call-hook-side-effects
+ */
+export interface CallHookSideEffects {
+  onCallComplete?: (
+    record: {
+      hookName: string;
+      target: 'saas' | 'runner';
+      payload: unknown;
+      result: unknown | null;
+      errorMsg: string[];
+      ts: number;
+    },
+    ctx: HookInvocationContext,
+  ) => void;
+}
+
 /**
  * 构建 call_hook (同步) 工具
  * @keyword-en build-call-hook-tool
@@ -262,18 +288,79 @@ export function buildCallHookTool(
   hookBus: HookBusService,
   hookRpc: RunnerHookRpcService,
   getCtx: InvocationContextProvider,
+  sideEffects?: CallHookSideEffects,
 ) {
   return tool(
     async (input: HookCallInput): Promise<string> => {
       const start = Date.now();
-      const reply = await dispatchOne(hookBus, hookRpc, getCtx(), input);
+      const ctx = getCtx();
+      const reply = await dispatchOne(hookBus, hookRpc, ctx, input);
       const duration = Date.now() - start;
       const { ok, err } = countReply(reply);
+
+      // 失败追踪 :: 累计 ≥ FAILURE_HINT_THRESHOLD 次连续失败 → 提示 LLM 开 debug 拿 trace 自我诊断
+      // 已开 debug 时不再追加 hint, 避免循环引导
+      const sessionId = ctx.extras?.sessionId as string | undefined;
+      const failureKey = buildFailureKey(
+        sessionId,
+        ctx.principalId,
+        input.hookName,
+      );
+      if (err > 0) {
+        const failureCount = recordHookFailure(failureKey);
+        // payload-schema-invalid :: 一行 hint 让 LLM 调 get_hook_info 拿 schema, 不在 errorMsg 里塞 schema 本体
+        const hasSchemaError = reply.errorMsg.some((m) =>
+          /payload-schema-invalid/i.test(m),
+        );
+        if (hasSchemaError) {
+          const runnerHint =
+            input.target === RUNNER && input.runnerId
+              ? `, runnerId:"${input.runnerId}"`
+              : '';
+          reply.errorMsg.push(
+            `⚠ 立刻调 get_hook_info({ target:"${input.target}"${runnerHint}, hookNames:["${input.hookName}"] }) 拿 schema 再重试.`,
+          );
+        } else if (failureCount >= FAILURE_HINT_THRESHOLD && !input.debug) {
+          reply.errorMsg.push(
+            `⚠ 该 hook 在本会话已连续失败 ${failureCount} 次。建议下次调用时传 debug: true ` +
+              `启用 OTel trace, 拿 handler 内部日志 (debugLog 字段) 辅助诊断 — ` +
+              `errorMsg 之外可能有 service 层 warn/info 解释根因 (如 id 格式 / 不存在 / 越权拦截)。`,
+          );
+        }
+      } else {
+        recordHookSuccess(failureKey);
+      }
+
       toolLogger.log(
         `[call_hook] ${targetTag(input.target, input.runnerId)} ${input.hookName} ` +
           `payload=${preview(input.payload ?? {})} ok=${ok} err=${err} duration=${duration}ms` +
-          (err > 0 ? ` errMsg=${preview(reply.errorMsg, 200)}` : ''),
+          (err > 0
+            ? ` errMsg=${preview(reply.errorMsg, 200)}`
+            : ` data=${preview(reply.result, 240)}`),
       );
+
+      // 副作用 :: SessionCallTracker 记录 + 硬匹配触发沉淀 LLM
+      // ctx.extras.disableTracker=true 时跳过 (防独立沉淀 LLM 自我触发)
+      if (sideEffects?.onCallComplete && !ctx.extras?.disableTracker) {
+        try {
+          sideEffects.onCallComplete(
+            {
+              hookName: input.hookName,
+              target: input.target,
+              payload: input.payload ?? null,
+              result: reply.result ?? null,
+              errorMsg: reply.errorMsg ?? [],
+              ts: Date.now(),
+            },
+            ctx,
+          );
+        } catch (e) {
+          toolLogger.warn(
+            `[call_hook] sideEffect failed: ${e instanceof Error ? e.message : e}`,
+          );
+        }
+      }
+
       return JSON.stringify(reply);
     },
     {
@@ -497,6 +584,14 @@ export function buildGetHookTagTool(
  * 5) get_hook_info  ::  批量取 hook 描述+tags+payload schema
  * ========================================================================= */
 /**
+ * get_hook_info 完成后的副作用回调 :: SessionCallTracker 计数, 用于硬触发"探索过多"沉淀.
+ * @keyword-en get-hook-info-side-effects
+ */
+export interface GetHookInfoSideEffects {
+  onGetHookInfo?: (ctx: HookInvocationContext) => void;
+}
+
+/**
  * 构建 get_hook_info 工具 (target 路由)
  * @keyword-en build-get-hook-info-tool
  */
@@ -504,11 +599,23 @@ export function buildGetHookInfoTool(
   hookBus: HookBusService,
   hookRpc: RunnerHookRpcService,
   getCtx: InvocationContextProvider,
+  sideEffects?: GetHookInfoSideEffects,
 ) {
   return tool(
     async (input: GetHookInfoInput): Promise<string> => {
       const start = Date.now();
       const askCount = input.hookNames?.length ?? 0;
+      // 副作用 :: 统计 get_hook_info 调用次数; ctx.extras.disableTracker 防自我触发
+      const ctx = getCtx();
+      if (sideEffects?.onGetHookInfo && !ctx.extras?.disableTracker) {
+        try {
+          sideEffects.onGetHookInfo(ctx);
+        } catch (e) {
+          toolLogger.warn(
+            `[get_hook_info] sideEffect failed: ${e instanceof Error ? e.message : e}`,
+          );
+        }
+      }
       if (input.target === SAAS) {
         const want = new Set(input.hookNames ?? []);
         const all = hookBus.listRegistrations();

@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 import { RoleEntity } from '../entities/role.entity';
@@ -23,6 +28,8 @@ import type {
  */
 @Injectable()
 export class RoleService {
+  private readonly logger = new Logger(RoleService.name);
+
   constructor(
     @InjectRepository(RoleEntity)
     private readonly roleRepo: Repository<RoleEntity>,
@@ -34,10 +41,36 @@ export class RoleService {
   ) {}
 
   /**
+   * 取角色或抛 NotFoundException; 内部 helper, 集中"按 id 取角色"逻辑
+   *  - 入参原样保留 (含尾空格), 便于 LLM 看到自己传错的 id
+   *  - this.logger 由 HookAwareLogger 全局替换, 自动 fan-out 到当前 hook 调用的 OTel SpanEvent (debug=true 时进 result.debugLog)
+   * @keyword-en get-role-or-throw require-role
+   */
+  private async requireRole(id: string): Promise<RoleEntity> {
+    this.logger.debug(`requireRole:start id=${JSON.stringify(id)}`);
+    const role = await this.roleRepo.findOne({
+      where: { id, isDelete: false },
+    });
+    if (!role) {
+      this.logger.warn(
+        `requireRole:not-found id=${JSON.stringify(id)} hint=请调 saas.app.identity.roleList 先拿合法 id (角色 id 是 UUID 字符串)`,
+      );
+      throw new NotFoundException(
+        `Role not found :: id=${JSON.stringify(id)} (角色不存在或已删除, 请用 saas.app.identity.roleList 先确认 id)`,
+      );
+    }
+    this.logger.debug(
+      `requireRole:hit id=${id} name="${role.name}" code="${role.code}"`,
+    );
+    return role;
+  }
+
+  /**
    * 列出角色 :: 支持按 organizationId 过滤 (传 null 字符串 "null" 仅返回系统级)、按 q 模糊匹配 name/code
    * @keyword-en list-roles filter-organization filter-keyword
    */
   async list(query: QueryRoleDto = {}): Promise<RoleEntity[]> {
+    this.logger.log(`[list:start] payload=${JSON.stringify(query)}`);
     const qb = this.roleRepo
       .createQueryBuilder('r')
       .where('r.is_delete = false');
@@ -53,10 +86,15 @@ export class RoleService {
       qb.andWhere('(r.name LIKE :q OR r.code LIKE :q)', { q });
     }
     qb.orderBy('r.created_at', 'DESC');
-    return await qb.getMany();
+    const items = await qb.getMany();
+    this.logger.log(
+      `[list] q=${query.q ?? ''} org=${query.organizationId ?? ''} → ${items.length} records`,
+    );
+    return items;
   }
 
   async create(dto: CreateRoleDto): Promise<RoleEntity> {
+    this.logger.log(`[create:start] payload=${JSON.stringify(dto)}`);
     const entity = this.roleRepo.create({
       name: dto.name,
       code: dto.code,
@@ -65,25 +103,45 @@ export class RoleService {
       builtin: false,
       isDelete: false,
     });
-    return await this.roleRepo.save(entity);
+    const saved = await this.roleRepo.save(entity);
+    this.logger.log(
+      `[create] id=${saved.id} name="${dto.name}" code="${dto.code}" org=${dto.organizationId ?? 'null'}`,
+    );
+    return saved;
   }
 
   async update(id: string, dto: UpdateRoleDto): Promise<void> {
+    this.logger.log(
+      `[update:start] id=${JSON.stringify(id)} payload=${JSON.stringify(dto)}`,
+    );
+    await this.requireRole(id);
     const patch: Partial<RoleEntity> = {};
     if (dto.name !== undefined) patch.name = dto.name;
     if (dto.description !== undefined) patch.description = dto.description;
     await this.roleRepo.update({ id }, patch);
+    this.logger.log(
+      `[update] id=${id} fields=[${Object.keys(patch).join(',')}]`,
+    );
   }
 
   async delete(id: string): Promise<void> {
+    this.logger.log(`[delete:start] id=${JSON.stringify(id)}`);
+    await this.requireRole(id);
     await this.roleRepo.update({ id }, { isDelete: true });
+    this.logger.log(`[delete] id=${id} (soft)`);
   }
 
   async listPermissions(roleId: string): Promise<RolePermissionEntity[]> {
-    return await this.permRepo.find({
+    this.logger.log(`[listPermissions:start] roleId=${JSON.stringify(roleId)}`);
+    await this.requireRole(roleId);
+    const items = await this.permRepo.find({
       where: { roleId, isDelete: false },
       order: { createdAt: 'DESC' },
     });
+    this.logger.log(
+      `[listPermissions] roleId=${roleId} → ${items.length} permissions`,
+    );
+    return items;
   }
 
   /**
@@ -100,9 +158,20 @@ export class RoleService {
     dto: UpsertRolePermissionsDto,
     operatorId?: string,
   ): Promise<{ count: number }> {
+    this.logger.log(
+      `[upsertPermissions:start] roleId=${JSON.stringify(roleId)} operator=${operatorId ?? 'system'} payload=${JSON.stringify(dto)}`,
+    );
+    await this.requireRole(roleId);
+
     // 1) 越权防护 :: operator 不传时跳过 (兼容内部 seed 调用), 否则强校验
     if (operatorId) {
+      this.logger.debug(
+        `[upsertPermissions:weight-guard:start] roleId=${roleId} operator=${operatorId} items=${dto.items.length}`,
+      );
       await this.guardWeightEscalation(operatorId, dto);
+      this.logger.debug(
+        `[upsertPermissions:weight-guard:passed] roleId=${roleId}`,
+      );
     }
 
     // 2) 软删旧权限 + 批量插新 (replace 语义)
@@ -116,6 +185,9 @@ export class RoleService {
       }),
     );
     const saved = await this.permRepo.save(entities);
+    this.logger.log(
+      `[upsertPermissions] roleId=${roleId} operator=${operatorId ?? 'system'} replaced→${saved.length} items`,
+    );
     return { count: saved.length };
   }
 

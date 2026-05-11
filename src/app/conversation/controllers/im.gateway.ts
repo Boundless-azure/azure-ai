@@ -118,6 +118,19 @@ export class ImGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.debug(
       `Client ${client.id} joined room session:${dto.sessionId}`,
     );
+
+    // 重放当前 awaiting 队列状态 :: 前端刷新后能恢复"AI 已识别"emoji + 等待语
+    // 单 client emit (不广播), 跟队列内的 broadcastAiAwaitingAdd 用同一 event 外形
+    const awaiting = this.messageService.replayAwaitingForSession(dto.sessionId);
+    for (const { agentPrincipalId, triggerMessageIds } of awaiting) {
+      for (const triggerMessageId of triggerMessageIds) {
+        client.emit('im:event', {
+          type: 'ai:awaiting:add',
+          sessionId: dto.sessionId,
+          data: { agentPrincipalId, triggerMessageId },
+        });
+      }
+    }
   }
 
   /**
@@ -220,6 +233,36 @@ export class ImGateway implements OnGatewayConnection, OnGatewayDisconnect {
       type: 'im:typing',
       data: { userId, isTyping },
       sessionId,
+    });
+  }
+
+  /**
+   * 广播 AI 待响应队列入队 :: 用户消息触发 agent 调度时, 前端按此挂"AI 已识别"emoji + 等待语
+   * @keyword-en broadcast-ai-awaiting-add
+   */
+  public broadcastAiAwaitingAdd(
+    sessionId: string,
+    payload: { agentPrincipalId: string; triggerMessageId: string },
+  ): void {
+    this.broadcastToSession(sessionId, {
+      type: 'ai:awaiting:add',
+      sessionId,
+      data: payload,
+    });
+  }
+
+  /**
+   * 广播 AI 待响应队列彻底清空 :: agentTriggerQueue 该 entry 被 delete 时, 前端按此清掉该队列下所有 awaiting 标记
+   * @keyword-en broadcast-ai-awaiting-end
+   */
+  public broadcastAiAwaitingEnd(
+    sessionId: string,
+    payload: { agentPrincipalId: string },
+  ): void {
+    this.broadcastToSession(sessionId, {
+      type: 'ai:awaiting:end',
+      sessionId,
+      data: payload,
     });
   }
 

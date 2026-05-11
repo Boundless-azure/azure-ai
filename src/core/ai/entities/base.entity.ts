@@ -6,7 +6,7 @@ import {
   DeleteDateColumn,
   BeforeInsert,
 } from 'typeorm';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from 'uuidv7';
 
 /**
  * 统一基础实体字段

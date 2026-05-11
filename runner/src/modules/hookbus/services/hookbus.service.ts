@@ -2,6 +2,7 @@ import type {
   HookEvent,
   HookFilter,
   HookHandler,
+  HookInvocationContext,
   HookMetadata,
   HookMiddleware,
   HookBusOptions,
@@ -12,10 +13,22 @@ import type {
 import { createHookLogSession } from '../../observability/hook-log.factory';
 
 /**
+ * 跨进程 SaaS hook 调用器签名 (与 hook-rpc.client createCallSaaSHook 返回值同构)
+ *  - 由 attachHookRpc 在 socket connect 时通过 setForwardToSaaS 注入
+ *  - hook 名以 `saas.` 开头时, hookBus.emit 自动路由到此函数, 不再查本地 registrations
+ * @keyword-en forward-to-saas-fn
+ */
+export type ForwardToSaaSFn = (
+  hookName: string,
+  payload: unknown,
+  context?: HookInvocationContext,
+) => Promise<{ errorMsg?: string[]; result: unknown }>;
+
+/**
  * @title HookBus 服务
- * @description 提供 runner 内存型 Hook 注册与发布能力。
- * @keywords-cn HookBus服务, 注册, 发布, 过滤
- * @keywords-en hookbus-service, register, emit, filter
+ * @description 提供 runner 内存型 Hook 注册与发布能力; emit 入口对 `saas.*` 前缀 hook 自动转发到 SaaS (避免运行时探测和死循环)。
+ * @keywords-cn HookBus服务, 注册, 发布, 过滤, saas转发, 跨进程
+ * @keywords-en hookbus-service, register, emit, filter, saas-forward, cross-process
  */
 export class RunnerHookBusService {
   private readonly registrations = new Map<string, HookRegistration[]>();
@@ -28,6 +41,7 @@ export class RunnerHookBusService {
     resolve: (results: HookResult<unknown>[]) => void;
   }> = [];
   private runningWorkers = 0;
+  private forwardToSaaS?: ForwardToSaaSFn;
   private readonly options: HookBusOptions;
 
   constructor(options?: HookBusOptions) {
@@ -123,6 +137,16 @@ export class RunnerHookBusService {
     return this.bindingMap.get(hook) ?? null;
   }
 
+  /**
+   * 注入跨进程 SaaS hook 转发器 (由 attachHookRpc 在 socket connect 时调用)
+   * - hook 名以 `saas.` 开头的调用会自动路由到此函数
+   * - 重复注入安全, 后注入覆盖前者 (socket 重连场景)
+   * @keyword-en set-forward-to-saas
+   */
+  setForwardToSaaS(fn: ForwardToSaaSFn): void {
+    this.forwardToSaaS = fn;
+  }
+
   async emit<TPayload, TResult>(
     event: HookEvent<TPayload>,
   ): Promise<Array<HookResult<TResult>>> {
@@ -132,6 +156,12 @@ export class RunnerHookBusService {
       payload: event.payload,
       ts: Date.now(),
     });
+    // saas.* 前缀的 hook 直接转发 SaaS, 不查本地 registrations 也不入本地队列
+    // 死循环靠"前缀决定路由"避免: SaaS 端如果没找到 saas hook, 直接报错, 不会再回弹
+    if (event.name.startsWith('saas.')) {
+      const results = await this.forwardSaaSHook(event as HookEvent<unknown>);
+      return results as unknown as Array<HookResult<TResult>>;
+    }
     return await new Promise<Array<HookResult<TResult>>>((resolve) => {
       this.queue.push({
         event: event as HookEvent<unknown>,
@@ -139,6 +169,43 @@ export class RunnerHookBusService {
       });
       this.schedule();
     });
+  }
+
+  /**
+   * 走 forwardToSaaS 把 saas.* hook 调用转发到 SaaS, 把回包适配回 HookResult[]
+   *  - forwardToSaaS 未注入: 单条 error (可能是 socket 还没连上)
+   *  - errorMsg 非空: 单条 error 聚合所有报错
+   *  - SaaS 端 reply.result 通常是数组(多 handler 适配后), 数组就拍平成多条 success result
+   * @keyword-en forward-saas-hook
+   */
+  private async forwardSaaSHook(
+    event: HookEvent<unknown>,
+  ): Promise<Array<HookResult<unknown>>> {
+    if (!this.forwardToSaaS) {
+      return [
+        {
+          status: 'error',
+          error: `saas hook forwarder not ready: ${event.name} (saas socket 未连)`,
+        },
+      ];
+    }
+    try {
+      const reply = await this.forwardToSaaS(
+        event.name,
+        event.payload,
+        event.context,
+      );
+      if (reply.errorMsg && reply.errorMsg.length > 0) {
+        return [{ status: 'error', error: reply.errorMsg.join('; ') }];
+      }
+      if (Array.isArray(reply.result)) {
+        return reply.result.map((d) => ({ status: 'success', data: d }));
+      }
+      return [{ status: 'success', data: reply.result }];
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return [{ status: 'error', error: msg }];
+    }
   }
 
   /** event.context.extras.debug=true 时为本次调用造 OTel log 会话, 否则走 noop 单例 */

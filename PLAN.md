@@ -922,10 +922,537 @@ azure-ai 在私聊回答"我有几个项目在做" / "订单退款做完了吗" 
 
 ---
 
+### 1.8 数据触点(主动数据变动推送)
+
+**定位**:用户视角的"数据探针"。用户对某个数据维度有持续关注(如"最近 N 天订单是否大幅下降"),创建数据触点绑定 session/agent,源数据变动时触发器把它推进异步队列,胶水代码判定是否需要回调,**通过群聊艾特机制**把数据塞回 session,UI 不渲染但 agent 下一轮回话能感知并响应。
+
+**为什么要它**:这是 Phase 4.3 主动 AI 触发层的具体落地。原 4.3 是空概念,本节给它实体。优先级前置到 Phase 1 是因为这是"agent 被动响应数据"的基础对偶 — 没有它,agent 永远只能等用户开口。
+
+---
+
+#### 架构总览
+
+```
+ 业务代码 / Hook / 定时(P1+) ─► triggerTouchpoint(sourceName, payload)
+                                          │
+                                          ▼
+                            Runner BullMQ 异步队列(并发 = 4)
+                                          │
+                                          ▼
+                  按 sourceName 匹配 data_touchpoints 表 ─► 加载触点目录
+                                          │
+                                          ▼
+                  solutions/<sid>/touchpoints/<tid>/
+                  ├─ touchpoint.config.json   (受限 hook 白名单)
+                  └─ index.js                 (胶水代码,纯 JS + ES module)
+                                          │
+                                          ▼
+                  胶水代码内决定回调 ─► 沙箱 callHook (运行时白名单拦截)
+                                          │
+                                          ▼
+                  call_hook('saas.app.conversation.sendMsg', {
+                    sessionId: bindSessionId,
+                    senderPrincipalId: SYSTEM_NOTIFIER_ID,  ← 全局共享系统主体
+                    messageType: 'notification',            ← 已有,UI 隐藏 / agent 可见
+                    content: '[触点: <name>] @<bindAgentId> ...'
+                  })
+                                          │
+                                          ▼
+                  agent 下一轮对话感知数据,主动响应
+```
+
+---
+
+#### 数据模型(Runner mongo 集合 `data_touchpoints`)
+
+```ts
+interface DataTouchpoint {
+  _id: string;
+  solutionId: string;        // 必,挂在 solution 下,卸载时联动清理
+  name: string;
+  description: string;
+  sources: string[];         // ['user', 'order', 'custom:dailyRevenue']
+  bindSessionId: string;     // 创建时的 session,即回调目标(写死 = reportTo)
+  bindAgentId: string;       // 群聊艾特目标
+  filePath: string;          // 'touchpoints/<tid>/index.js' (相对 solution 根)
+  configPath: string;        // 'touchpoints/<tid>/touchpoint.config.json'
+  enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+**为什么不预留 `reportTo`**:跨 session 推送是 P5 的事,YAGNI。等真有需求再拆 `bindSessionId` → `reportTo: { sessionIds[] }`,迁移成本可控。
+
+---
+
+#### 触发器(P0 仅做主动触发)
+
+```ts
+// 业务代码 / 其他 hook 内任意位置调用
+await triggerTouchpoint('order', { orderId: '...', changedFields: ['status'] });
+```
+
+- 仅做**主动触发**:调用方自己决定何时调,带上 `sourceName` + `payload`
+- **不做** Mongo change stream / Redis pub-sub hook(P1+)
+- **不做** 定时轮询(P2+,给"最近 N 天聚合"兜底)
+
+队列层:
+- BullMQ(Runner 已有 redis,直接复用)
+- 并发 = 4(小并发,留资源给主流程)
+- 失败重试 3 次,死信队列写 `data_touchpoint_failures` 备查
+
+---
+
+#### 触点目录结构(挂在 solution 下)
+
+```
+runner/data/solutions/<sid>/touchpoints/<tid>/
+├── touchpoint.config.json     # 元数据 + 受限 hook 白名单
+├── index.js                   # 胶水代码,export default async function(ctx)
+└── (可选) helpers/...
+```
+
+**`touchpoint.config.json` 示例**:
+```json
+{
+  "name": "订单量大幅下降监测",
+  "allowedHooks": [
+    "runner.unitcore.mongo.find",
+    "runner.unitcore.mongo.aggregate",
+    "saas.app.conversation.sendMsg"
+  ],
+  "timeout": 10000
+}
+```
+
+**`index.js` 约束**:
+```js
+export default async function ({ payload, callHook, log, touchpoint }) {
+  // payload = triggerTouchpoint 传入
+  // callHook = 受白名单拦截的包装版,调用非白名单 hook 直接抛错
+  // log = OTel log.event 接口(对齐 Phase 0.1)
+  // touchpoint = { id, name, bindSessionId, bindAgentId, ... }
+
+  const recent = await callHook('runner.unitcore.mongo.aggregate', { ... });
+  if (recent.dropPct > 0.3) {
+    await callHook('saas.app.conversation.sendMsg', {
+      sessionId: touchpoint.bindSessionId,
+      senderPrincipalId: SYSTEM_NOTIFIER_ID,    // 全局系统通知主体
+      messageType: 'notification',              // 已有能力,UI 隐藏 / LLM 可见
+      content: `[触点: ${touchpoint.name}] @<agent> 近 7 天订单同比下降 ${(recent.dropPct * 100).toFixed(1)}%, ...`,
+    });
+  }
+}
+```
+
+---
+
+#### 沙箱实现(运行时拦截,不做 AST)
+
+加载触点代码时,把 `callHook` 包一层:
+
+```ts
+function createSandboxedCallHook(allowedHooks: string[]) {
+  return async (hookName: string, payload: unknown) => {
+    if (!allowedHooks.includes(hookName)) {
+      throw new TouchpointHookDeniedError(hookName, allowedHooks);
+    }
+    // saas.* / runner.* 一视同仁, 由 hookBus 内部按前缀路由
+    // (saas.* 自动跨进程转发, 见下方 hookBus 增强)
+    return runnerHookBus.emit({ name: hookName, payload, context: { source: 'system' } });
+  };
+}
+```
+
+**为什么不上 AST**:对齐 Phase 1 "限制的艺术",运行时拒绝足够。胶水代码很小,边界情况后续看实际报错再升级。
+
+##### hookBus 增强:saas.* 前缀路由(本节配套核心改造)
+
+落地 1.8 时连带做了一项**全局基础设施改造**,不止数据触点受益:
+
+```
+hookBus.emit('saas.app.foo.bar', payload)
+                      │
+              name 以 'saas.' 开头?
+                      │
+             ┌────────┴────────┐
+             是                否
+             │                 │
+             ▼                 ▼
+     forwardToSaaS         本地 registrations
+     (跨进程 socket RPC)   (本地 worker 池)
+```
+
+- `forwardToSaaS` 句柄由 `attachHookRpc` 在 socket connect 时调用 `hookBus.setForwardToSaaS(callSaaSHook)` 注入
+- **死循环避免**:前缀决定路由方向,SaaS 端找不到 `saas.*` hook 直接报错,**不会反向回弹**给 runner
+- 任意 runner 内代码调用 `saas.*` hook 都直接 `hookBus.emit` 即可,不再各自接 RPC;`unitCore.callSaaSHook` 是 legacy 路径,与新机制并存
+
+实现位置:[hookbus.service.ts setForwardToSaaS / forwardSaaSHook](runner/src/modules/hookbus/services/hookbus.service.ts) · [hook-rpc.client.ts attachHookRpc](runner/src/modules/hookbus/ws/hook-rpc.client.ts)。
+
+**好处**:数据触点胶水代码完全自治 — 想推送就在 `allowedHooks` 列上 `saas.app.conversation.sendMsg`,自己 `callHook` 调用,trigger.service 不再接管推送语义。
+
+---
+
+#### sendMsg 通道改造(复用现有能力,极小改动)
+
+**判定**:目标是"UI 不渲染 / agent 可见 / 跨 session 共享发送者身份"。读现有代码,这几个能力**已经全部就位**或只需 1 行改动:
+
+| 需求 | 现状 | 动作 |
+|---|---|---|
+| UI 隐藏 / agent 可见 | `messageType: 'notification'` 已实现(参见 [send-msg.hook-handler.service.ts:24](src/app/conversation/services/send-msg.hook-handler.service.ts#L24)) | 直接用,**无需新字段** |
+| 发送者身份(多场景共享) | `PrincipalType.System` 枚举已存在 | seed 一条**全局系统通知主体** |
+| 跨群发送 | `sendMessage` 现强制 `isMember` 校验 ([im-message.service.ts:211](src/app/conversation/services/im-message.service.ts#L211)) | System 类型放行(1 行) |
+| @mention agent | content 内 `@<displayName>` 已支持 | 内容里写 `@<bindAgent.displayName>` |
+
+##### 全局系统通知主体(`SYSTEM_NOTIFIER_ID = 'ai-notify'`)
+
+**定位**:不只服务数据触点 — **任何"系统主动发起、UI 隐藏、agent 可见"的隐藏通知场景都复用它**。后续主动 AI 推送、定时摘要、内部告警全走这一个主体。
+
+**好消息:这条 principal 项目里已经存在,无需新增 migration**。
+[migrations/1769912000000-SystemNotifyFixedEntry.ts](src/migrations/1769912000000-SystemNotifyFixedEntry.ts) 已 seed:
+
+```
+id            = 'ai-notify'              ← 固定字符串 ID,全系统硬约定
+principal_type = 'system'                ← PrincipalType.System
+display_name   = '系统通知'
+active         = true
+```
+
+(同 migration 还 seed 了一个固定 channel session 也叫 `ai-notify`,作为兜底入口,本节不依赖)
+
+**约定**:
+- ID 走常量文件 [src/app/identity/constants/system-principals.ts](src/app/identity/constants/system-principals.ts),导出 `SYSTEM_NOTIFIER_ID`(已建)
+- 全系统**仅此一条** System principal(数据触点 / 主动 AI / 告警 共用)
+- displayName 可后续允许租户级覆盖,但 ID 不变
+
+##### `isMember` 校验放行 SYSTEM_NOTIFIER
+
+[im-message.service.ts:211](src/app/conversation/services/im-message.service.ts#L211) 改造(已落地):
+
+```ts
+// 验证发送者是会话成员 (SYSTEM_NOTIFIER 跨群共享, 跳过成员校验; 仅服务端隐藏通知场景使用)
+if (senderId !== SYSTEM_NOTIFIER_ID) {
+  const isMember = await this.sessionService.isMember(session.id, senderId);
+  if (!isMember) throw new NotFoundException('User is not a member of this session');
+}
+```
+
+**为什么按 ID 等值判断而非 `principalType === System`**:
+- 全系统仅此一条 System principal,等值判断零额外 DB 查询
+- 后续即便扩展更多 System 主体,也应 case-by-case 评估是否允许跨群,白名单制比"按类型自动放行"更安全
+- 安全边界:System 主体只由受信任服务端代码触发(hook handler / migration / job),不接受 LLM 链路直接借用;`messageType: 'notification'` 兜底保证 UI 不渲染
+
+##### 前端 / agent prompt 零改动
+
+- 消息历史 join `principals` 正常拿到 displayName="系统通知" + avatarUrl
+- 前端按 `messageType=notification` 过滤渲染(已有逻辑)
+- agent prompt 拼接时 notification 消息正常进上下文
+
+---
+
+#### 改动位置
+
+- `runner/src/modules/data-touchpoint/`(新模块)
+  - `data-touchpoint.service.ts`(CRUD + 队列入口)
+  - `touchpoint-runner.service.ts`(加载胶水代码 + 沙箱 callHook)
+  - `touchpoint-queue.service.ts`(BullMQ 消费)
+  - `module.md`
+- `src/app/identity/constants/system-principals.ts`(**已建,导出 `SYSTEM_NOTIFIER_ID = 'ai-notify'` 常量,后续全局隐藏通知场景共用**)
+- ~~新增 migration~~ (**不需要**:[migrations/1769912000000-SystemNotifyFixedEntry.ts](src/migrations/1769912000000-SystemNotifyFixedEntry.ts) 已 seed `ai-notify` 主体)
+- `src/app/conversation/services/im-message.service.ts`(**已改,`isMember` 校验对 `senderId === SYSTEM_NOTIFIER_ID` 放行,1 处改动**)
+
+**显式不动**:
+- ❌ message 表(无新字段)
+- ❌ ChatMessageType 枚举(messageType=notification 已存在)
+- ❌ 前端消息渲染(过滤 notification 已有逻辑)
+- ❌ Agent / Principal 模型结构
+
+---
+
+#### 验收
+
+- [x] CRUD hook 跑通(`runner.app.dataTouchpoint.{create,update,delete,list}`),solution 卸载联动清理(待补 `deleteBySolution` hook 接入)
+- [x] `runner.app.dataTouchpoint.trigger` 能进队列,胶水代码被加载执行
+- [x] 沙箱拦截:白名单外的 hook 调用抛 `TouchpointHookDeniedError`
+- [x] `SYSTEM_NOTIFIER` principal 启动后存在,id 固定可被任意服务引用
+- [x] System 主体 sendMsg 跨群发送通过(无 `not a member` 拒绝)
+- [ ] **触点 sendMsg 后:UI 该 session 不显示新消息,但 agent 下一轮对话能拿到内容并响应**(端到端,1.8.4 补丁完成后跑)
+- [ ] 1.8.1 触点级线性锁:同触点并发 trigger 串行执行,`prevState` / `newState` 跨次可见
+- [ ] 1.8.2 `export const highFrequency = true` 胶水状态切到 redis,锁仍生效
+- [ ] 1.8.3 `export const schedule = { cron: '...' }` 胶水到点自动触发,Runner 重启自动恢复
+- [ ] 1.8.4 sendMsg `mentions` 字段:群聊场景 agent 被正确调度并能在 prompt 看到本条消息
+
+---
+
+### 1.8.1 触点的有状态执行 + 触点级线性化
+
+**抽象本质**:每次触点执行是一次"读 prevState → run → 写 newState"的事务,**同触点必须串行**(否则状态读写竞态)。这跟"上次数据 / 修改数据 / 同触点不并发"是同一抽象 — 都是状态正确性的前提。
+
+**核心契约**(胶水代码侧):
+
+```js
+// touchpoints/<id>/index.js
+export default async function ({ payload, prevState, callHook, log, touchpoint }) {
+  const lastValue = prevState?.lastValue ?? 0;        // 读上次状态
+  const recent = await callHook('runner.unitcore.mongo.aggregate', { /* ... */ });
+  const dropPct = lastValue ? (lastValue - recent.value) / lastValue : 0;
+
+  if (dropPct > 0.3) {
+    await callHook('saas.app.conversation.sendMsg', { /* ... 见 1.8.4 */ });
+  }
+
+  return { lastValue: recent.value, lastCheckedAt: Date.now() };  // 写入新状态
+}
+```
+
+`return undefined` → state 不更新,保留上次。
+
+**实现层**:
+
+```
+trigger.service.runOne(tp) ::
+   1. redis SET NX EX `tp:lock:<id>` <config.timeout+5000ms>  ← 抢锁
+      抢不到 → throw → BullMQ 指数退避重试
+   2. prevState = store.read(tp._id)
+   3. newState = await handler({ ..., prevState })            ← 胶水执行
+   4. store.write(tp._id, newState, { lastFiredAt, ... })
+   5. redis DEL token-matched (Lua 原子, 避免误释放)
+```
+
+**state 存储**:独立 mongo collection `data_touchpoint_states`(不动主触点表):
+
+```ts
+interface TouchpointState {
+  _id: string;             // = touchpointId
+  state: unknown;          // 胶水返回值, 系统不解析
+  lastFiredAt: number;
+  lastFiredBy: 'source' | 'schedule';
+  lastFiredPayload?: unknown;
+  lastResult?: unknown;
+  lastError?: { message: string; ts: number };
+  updatedAt: Date;
+}
+```
+
+只存最新一条,多版本/审计后续 P2 再做。
+
+**改动位置**:
+- 新建 `services/touchpoint-lock.ts`(redis SET NX EX + Lua 释放,~30 行)
+- 新建 `services/touchpoint-state.store.ts`(`MongoStateStore`)
+- 改造 `touchpoint-trigger.service.ts` `runOne`:锁 + read prev + run + write new + 释放
+- `loader` 的 ctx 加 `prevState` 注入,handler 返回值统一捕获为 newState
+
+**边界**:
+- 锁 TTL 设 `config.timeout + 5s`,胶水卡死也会自动释放
+- `data_touchpoint_states` 不入主触点表,因为状态写 vs 元数据写频率天差地别,分开避免锁竞争和文档膨胀
+- 触点 delete hook 内级联 `data_touchpoint_states.deleteOne({ _id })`
+
+---
+
+### 1.8.2 高频触点 — state 切到 redis
+
+**问题**:每秒级以上的高频触发场景,state 走 mongo IO 成本不低。
+
+**方案**:胶水代码**单一标志**`export const highFrequency = true`,核心层把 state 介质从 mongo 切到 redis,**锁仍开,胶水契约不变**。
+
+```js
+// 高频触点
+export const highFrequency = true;
+export const schedule = { interval: 5000 };
+
+export default async function ({ payload, prevState, callHook, log, touchpoint }) {
+  // 跟低频完全相同的契约, 不感知存储差异
+}
+```
+
+**抽象**:`TouchpointStateStore` 接口,两实现:
+
+```ts
+interface TouchpointStateStore {
+  read(touchpointId: string): Promise<unknown>;
+  write(touchpointId: string, state: unknown, meta: TouchpointStateMeta): Promise<void>;
+  remove(touchpointId: string): Promise<void>;
+}
+
+class MongoStateStore implements TouchpointStateStore { /* data_touchpoint_states */ }
+class RedisStateStore implements TouchpointStateStore { /* key: tp:state:<id>, hash 结构 */ }
+```
+
+`runOne` 根据 loader 元数据 `meta.highFrequency` 选 store,核心流程不变。
+
+**边界**:
+- redis state 没有持久保证 — Runner 重启 / redis 宕机 / TTL 过期都可能丢。胶水代码必须能容忍 `prevState === undefined`(首次执行同样如此)
+- 真高频(每秒数百+)不该用触点机制,改写为普通 hook handler 直接挂业务路径
+
+**改动位置**:
+- `services/touchpoint-state.store.ts` 加 `RedisStateStore`
+- `loader` 解析 `mod.highFrequency` 加入元数据返回
+- `touchpoint-trigger.service.ts` `runOne` 按元数据分流 store
+
+---
+
+### 1.8.3 触点定时触发 — 胶水 export schedule
+
+**问题**:用户希望"每天 9 点跑一次"这种定时任务,但**不能为每种 source 类型加表/字段**(反 OCP)。
+
+**正解**:胶水代码自己 export schedule,核心层读元数据挂 BullMQ Repeatable Job。**触点表 / driver 表全不要**。
+
+```js
+// touchpoints/<id>/index.js
+export const schedule = { cron: '0 9 * * *', timezone: 'Asia/Shanghai' };
+
+export default async function ({ payload, prevState, ... }) {
+  // 触发时跑这里, 定时还是业务事件触发都进同一处
+  // payload.firedBy 区分 ('schedule' | 'source')
+}
+```
+
+**schedule 形态**(zod 校验 union):
+```ts
+type Schedule =
+  | { cron: string; timezone?: string }      // '0 9 * * *'
+  | { interval: number }                      // 间隔 ms
+  | { once: string };                         // ISO 8601, 触发后自动 enabled=false
+```
+
+**运行时**:
+
+| 时机 | 动作 |
+|---|---|
+| Runner 启动 | 扫所有 `enabled=true` 触点 → loader 读 `schedule` → 有就挂 BullMQ Repeatable Job(jobName=`tp:<id>`)|
+| `dataTouchpoint.create` 后 | 单触点 reloadSchedule,挂 schedule |
+| `dataTouchpoint.update` 后 | `removeRepeatableByKey('tp:<id>')` → 重新加载 → 有 schedule 就重挂 |
+| `dataTouchpoint.delete` 后 | `removeRepeatableByKey('tp:<id>')` |
+| BullMQ Repeatable 到点 | enqueue 主队列,job 数据 `{ touchpointId, firedBy: 'schedule', scheduledAt, firedAt }`,Worker 识别 `tp:` 前缀直接 load + run 指定触点(**不走 sources 匹配**) |
+
+**业务事件触发与时间触发同 handler**,胶水代码通过 `payload.firedBy` 区分:
+
+```ts
+ctx.payload = {
+  firedBy: 'schedule' | 'source',
+  sourceName?: string,        // firedBy='source' 时
+  scheduledAt?: number,        // firedBy='schedule' 时
+  firedAt?: number,
+  ...userPayload,              // 业务自定义
+}
+```
+
+**边界**:
+- **不补发错过的 cron**:Runner 离线期间 miss 的不补,避免雪崩 + 避免一次性收 N 个旧通知。BullMQ 默认就是不补
+- **冷启动恢复**:BullMQ Repeatable 内部存 redis,重启自动恢复;但 Runner 启动仍扫一遍触点,**幂等重挂**(防 redis 数据丢失)
+- **时区**:cron 默认 UTC,租户级配置后续接 SaaS 拉,骨架阶段默认 `'Asia/Shanghai'`
+- **once 触发后自处理**:Worker 跑完 once 类型,自动 update 触点 `enabled=false`,保留历史
+
+**改动位置**:
+- 新建 `services/touchpoint-schedule.ts`(zod schema + BullMQ Repeatable 操作封装)
+- `loader` 解析 `mod.schedule` 加入元数据返回
+- `touchpoint-trigger.service.ts` 加 `reloadSchedule(tp)` / `removeSchedule(tp)`;Worker 识别 `tp:` 前缀走专项执行路径
+- `hooks/data-touchpoint.hooks.ts` create/update/delete hook 内调 `reloadSchedule`
+- Runner 启动 `app.ts` 扫表批量 reloadSchedule
+
+**为什么这个设计是真正的 OCP**:未来加任何"触点级行为开关"都是新加 `export const xxx`,核心 loader 读元数据照办即可。例如:
+- `export const dedup = { window: 60_000 }` — 60s 内同 entity 只触发一次
+- `export const rateLimit = 10` — 每秒上限 10 次
+- `export const onError = 'silent' | 'retry' | 'broken'`
+
+每个开关都是胶水代码自治,核心层永不动。
+
+---
+
+### 1.8.4 sendMsg explicit mentions 补丁(命门修复)
+
+**背景**:命门验证(注:见 1.8 主体最后部分)显示 notification 能进 LLM prompt,但 **agent 触发** 与 **群聊 pending 段 metadata.mentions** 都依赖 `extractMentions(content)` 解析 @mention 格式,胶水代码用裸 UUID `@<bindAgentId>` 不被识别。
+
+**解法**:`saas.app.conversation.sendMsg` hook 加 `mentions?: string[]` 字段,显式声明被 mention 的 principal ids,**绕过 content 解析**。
+
+**SaaS 端改动**:
+
+```ts
+// src/app/conversation/services/send-msg.hook-handler.service.ts
+const sendMsgSchema = z.object({
+  // ... 原字段
+  mentions: z
+    .array(z.string())
+    .optional()
+    .describe('显式 mention 的 principal ids; 优先于 content 解析触发 agent 调度 + 写 metadata.mentions'),
+});
+```
+
+```ts
+// src/app/conversation/services/im-message.service.ts
+async sendMessage(senderId, dto, options) {
+  // ... 原逻辑
+  const mentions = dto.mentions
+    ? dto.mentions.map((principalId) => ({ principalId, mentionText: '', startIndex: 0, endIndex: 0 }))
+    : await this.extractMentions(dto.content);
+  // ... 写 metadata.mentions
+
+  if (!options?.skipAgentTrigger) {
+    if (dto.mentions && dto.mentions.length > 0) {
+      // 显式 mentions 直接调度对应 agent, 跳过 extractMentions
+      for (const principalId of dto.mentions) {
+        if (await this.isAgentPrincipal(principalId)) {
+          this.scheduleAgentTrigger({ sessionId, agentPrincipalId: principalId, triggerMessageId, userContent: dto.content });
+        }
+      }
+    } else {
+      await this.checkAndTriggerAgent(session, senderId, saved, dto.content);  // 旧路径
+    }
+  }
+}
+```
+
+**胶水代码侧**:
+
+```js
+await callHook('saas.app.conversation.sendMsg', {
+  sessionId: touchpoint.bindSessionId,
+  senderPrincipalId: 'ai-notify',                  // SYSTEM_NOTIFIER
+  messageType: 'notification',
+  mentions: [touchpoint.bindAgentId],              // ← 显式声明, 不依赖 @ 解析
+  content: `[触点: ${touchpoint.name}] 近 7 天订单同比下降 30%`,
+});
+```
+
+**改动位置**:
+- `src/app/conversation/services/send-msg.hook-handler.service.ts`(schema 加字段 + payload 透传)
+- `src/app/conversation/services/im-message.service.ts`(`sendMessage` 接受 explicit mentions + 触发分流)
+- `runner/src/modules/data-touchpoint/module.md` 更新示例
+
+**好处**:
+- 胶水代码不需要查 agent displayName,UUID 直接传
+- 不破坏 extractMentions / checkAndTriggerAgent 现有逻辑(完全 backward-compatible)
+- 未来主动 AI 推送 / 系统告警可复用
+
+---
+
+### 1.8 当前落地进度
+
+| 步 | 内容 | 状态 |
+|---|---|---|
+| 1 | SaaS `SYSTEM_NOTIFIER_ID` 常量 + `isMember` 校验放行 | ✅ |
+| 2 | Runner `data_touchpoints` 集合 + 4 个 CRUD hook + module.md | ✅ |
+| 3 | `triggerTouchpoint` API + BullMQ 队列(并发 4)+ 沙箱 callHook + 5th hook `runner.app.dataTouchpoint.trigger` | ✅ |
+| 3.5 | hookBus `saas.*` 前缀路由(`setForwardToSaaS` + `forwardSaaSHook`)+ attachHookRpc 注入 | ✅(基础设施改造,跨模块受益)|
+| 4 | 1.8.1 触点级线性锁(`TouchpointLock` redis SET NX EX + Lua 释放)+ state 模型(`MongoStateStore`) | ✅ |
+| 5 | 1.8.2 `highFrequency` 元数据 + `RedisStateStore` 切换 | ✅ |
+| 6 | 1.8.3 `export schedule` 元数据 + BullMQ Repeatable + Runner 启动 `bootstrapSchedules` 扫表 | ✅ |
+| 7 | 1.8.4 sendMsg explicit `mentions` 字段(SaaS 端命门修复) | ✅ |
+
+**Phase 1.8 主体完整闭环已落地**。下一步:端到端手动验证 + 等 Phase 1.4 solution 物理结构落地后,把触点目录从 `process.cwd()` 相对路径迁移到 `solutions/<sid>/touchpoints/<tid>/`。
+
+---
+
+**优先级:P0**(本次 Phase 1 优先级最高 — 它是 agent 被动感知数据变化的唯一通道,不补则 agent 永远等待用户开口)
+
+---
+
 ### Phase 1 落地优先级
 
 | 优先级 | 子项 | 理由 |
 |---|---|---|
+| **P0★** | 1.8 数据触点(主动数据变动推送 + 群聊艾特回调) | agent 被动感知数据变化的唯一通道,补齐主动 AI 触发层 |
 | **P0** | 1.4 Terminal 物理安全闸门(命令白名单 / shell 越界检测 / env 隔离) | "限制的艺术"哲学的物理底线;不补则 prompt 约束是空中楼阁 |
 | **P0** | 1.1 群管 Agent 骨架 + 4 张 DB 表 + HookBus 拦截器 | 后续所有事的地基 |
 | **P0** | 1.4 Solution 物理结构 + git system-unit + git stash checkpoint | 代码归属层 + 崩溃恢复能力 |
@@ -936,9 +1463,9 @@ azure-ai 在私聊回答"我有几个项目在做" / "订单退款做完了吗" 
 | **P2** | 跨 solution 共享 app 模型(`isShared` 字段及对应交互) | 早期可不支持共享,等需求出现再做 |
 
 **开工建议(Phase 1 首三周)**:
-- 第 1 周:1.4 Terminal 安全 + 1.1 群管骨架 + DB — 物理底座
-- 第 2 周:1.4 Solution 物理结构 + git system-unit + 1.2 Dialogue State 机
-- 第 3 周:1.3 Graph 6 节点骨架(可暂用 mock LLM)+ 1.7 Todo 关联骨架(消息 tag + 自动状态)+ 1.5 硬拦拦截器
+- 第 1 周:**1.8 数据触点**(SYSTEM_NOTIFIER seed + isMember 放行 + Runner mongo 集合 + CRUD hook + BullMQ 队列 + 沙箱 callHook)+ 1.4 Terminal 安全
+- 第 2 周:1.1 群管骨架 + DB + 1.4 Solution 物理结构 + git system-unit
+- 第 3 周:1.2 Dialogue State 机 + 1.3 Graph 6 节点骨架(mock LLM)+ 1.7 Todo 关联骨架 + 1.5 硬拦拦截器
 
 Phase 1 不做完不进 Phase 2(代码生成流水线落地)。**Phase 1 是"把架构对齐",Phase 2 是"把节点内的 LLM/AST/QA 实现填满"**。
 

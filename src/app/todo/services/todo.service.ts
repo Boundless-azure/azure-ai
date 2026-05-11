@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DeepPartial } from 'typeorm';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from 'uuidv7';
 import { TodoEntity } from '../entities/todo.entity';
 import { TodoFollowupEntity } from '../entities/todo-followup.entity';
 import { TodoFollowupCommentEntity } from '../entities/todo-followup-comment.entity';

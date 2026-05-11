@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from 'uuidv7';
 import { SolutionEntity } from '../entities/solution.entity';
 import { SolutionPurchaseEntity } from '../entities/solution-purchase.entity';
 import {

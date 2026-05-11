@@ -139,6 +139,9 @@ Summary 接口
 - IM 系统消息 ↔ im system message ↔ services/im-message.service.ts
 - IM 通讯录分组 ↔ im contact groups ↔ controllers/im-contact-group.controller.ts
 - IM 分组成员维护 ↔ im contact group members ↔ services/im-contact-group.service.ts
+- 起手手册注入 ↔ handbook hint injection ↔ services/im-message.service.ts (ensureKnowledgeBookSessionData)
+- Azure 系统 hook 手册引用 ↔ azure system-hook handbook ref ↔ services/im-message.service.ts (generateAgentReplyAndSave)
+- 主动对话手册引用 ↔ proactive conversation handbook ref ↔ services/im-message.service.ts (generateAgentReplyAndSave)
 
 # 关键词到文件函数哈希映射（Keywords -> Function Hash）
 - ConversationGroupController.listGroups -> 98f1c2a7

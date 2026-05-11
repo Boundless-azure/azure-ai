@@ -86,6 +86,10 @@ export class CreateAiModelDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  thinkingEnabled?: boolean;
 }
 
 /**
@@ -142,6 +146,10 @@ export class UpdateAiModelDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  thinkingEnabled?: boolean;
 }
 
 /**

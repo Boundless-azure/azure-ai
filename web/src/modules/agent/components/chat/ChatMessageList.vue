@@ -128,7 +128,7 @@
                 <i class="fa-solid fa-circle-exclamation"></i>
               </div>
 
-              <!-- Bubble -->
+              <!-- Bubble :: AI 待响应胶囊放在气泡内底部 -->
               <div
                 class="message-panel w-full text-sm relative group transition-all break-words"
                 :class="
@@ -190,6 +190,24 @@
                 >
                   {{ msg.content }}
                 </p>
+
+                <!-- AI 待响应胶囊 :: 气泡内底部, emoji 翻转动效 + 等待语; phrase per 队列实例随机, AI 回完队列空时一起消失 -->
+                <div
+                  v-if="
+                    msg.senderId === selfId && getAwaitingPhraseFor(msg.id)
+                  "
+                  class="awaiting-pill mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] select-none animate-fade-in relative z-10"
+                  :class="
+                    msg.senderId === selfId
+                      ? 'bg-white/15 text-white/90 backdrop-blur-sm'
+                      : 'bg-gray-200/70 text-gray-700'
+                  "
+                >
+                  <span class="awaiting-emoji inline-block">{{
+                    AI_AWAITING_EMOJI
+                  }}</span>
+                  <span class="italic">{{ getAwaitingPhraseFor(msg.id) }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -258,6 +276,7 @@ import { useI18n } from '../../composables/useI18n';
 import { resolveResourceUrl } from '../../../../utils/http';
 import { usePanelStore } from '../../store/panel.store';
 import { useImStore } from '../../../im/im.module';
+import { AI_AWAITING_EMOJI } from '../../../im/constants/im.constants';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
@@ -290,7 +309,30 @@ const props = defineProps<Props>();
 type SessionMember = Props['sessionMembers'][number];
 
 const imStore = useImStore();
-const { activeSession } = storeToRefs(imStore);
+const { activeSession, awaitingAiByQueue } = storeToRefs(imStore);
+
+/**
+ * 取某条消息当前的 AI 等待语 (后端 ai:awaiting:add 入队后的状态)
+ *  - awaitingAiByQueue 作为响应式依赖, 后端推 add/end 时自动重渲染
+ *  - 不依赖 msg.sessionId (history 拉取路径未必填字段), 用 props.sessionId / activeSession.sessionId
+ *  - 私聊单 agent / 群聊多 agent @mention 都覆盖 (按 sessionId 前缀扫一遍队列)
+ * @keyword-en compute-awaiting-phrase-for-msg
+ */
+const getAwaitingPhraseFor = (messageId: string): string | null => {
+  const sid = (
+    props.sessionId ??
+    activeSession.value?.sessionId ??
+    ''
+  ).trim();
+  if (!sid) return null;
+  const prefix = `${sid}:`;
+  const map = awaitingAiByQueue.value;
+  for (const k in map) {
+    if (!k.startsWith(prefix)) continue;
+    if (map[k]?.messageIds?.has(messageId)) return map[k].phrase;
+  }
+  return null;
+};
 
 const { t } = useI18n();
 const panelStore = usePanelStore();
@@ -829,5 +871,41 @@ const renderMarkdown = (content: string): string => {
 }
 .animate-fade-in {
   animation: fade-in 0.5s ease-in-out forwards;
+}
+
+/* AI 待响应胶囊 :: emoji 翻转动效 (沙漏隐喻 — 倒一倒, 表示在工作) */
+@keyframes hourglass-flip {
+  0%,
+  45% {
+    transform: rotate(0deg);
+  }
+  50%,
+  95% {
+    transform: rotate(180deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+.awaiting-emoji {
+  animation: hourglass-flip 2.4s ease-in-out infinite;
+  transform-origin: center;
+  display: inline-block;
+}
+
+/* 胶囊整体淡入 + 轻微浮动 */
+@keyframes pill-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.awaiting-pill {
+  animation:
+    fade-in 0.3s ease-out,
+    pill-pulse 2.4s ease-in-out infinite;
 }
 </style>

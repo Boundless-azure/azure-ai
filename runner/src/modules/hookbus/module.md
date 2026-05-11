@@ -29,6 +29,8 @@ hook-lifecycle-registry -> modules/hookbus/lifecycle/registry.ts
 - HookLifecycleRegistry.undeclare -> runner_hookbus_lifecycle_undeclare_013
 - HookLifecycleRegistry.report -> runner_hookbus_lifecycle_report_014
 - HookLifecycleRegistry.list -> runner_hookbus_lifecycle_list_015
+- RunnerHookBusService.setForwardToSaaS -> runner_hookbus_set_forward_saas_016
+- RunnerHookBusService.forwardSaaSHook -> runner_hookbus_forward_saas_017
 
 类型导出（Types, 与 SaaS 端语义对齐）
 - HookEvent<T>           -- name + payload + context + filter + declaration + log
@@ -42,10 +44,18 @@ hook-lifecycle-registry -> modules/hookbus/lifecycle/registry.ts
 - HookLogEntry           -- drain 出来的单条 { ts, level, message, attrs? }; 写到 HookResult.debugLog
 - HookLogSession         -- { log, finalize({ ok?, error? }) => HookLogEntry[] }
 - HookResult.debugLog?   -- HookLogEntry[]; debug=true 时由 hookbus.service drain 注入
+- ForwardToSaaSFn        -- (hookName, payload, context?) => Promise<{errorMsg?, result}>; 由 attachHookRpc 调 hookBus.setForwardToSaaS 注入
 
 模块功能描述（Description）
 提供 runner Hook 注册与发布能力，采用生产者-消费者队列执行，支持声明式中间件与方法绑定缓存，
 并通过 HTTP 与 Socket.IO 暴露调试入口。handler / middleware 签名与 SaaS 端完全一致, 都是 (event, next?) => HookResult。
+
+跨进程 hook 调用 (saas.* 前缀路由):
+- emit 入口判定 hook 名前缀, `saas.` 开头自动走 forwardToSaaS 跨进程到 SaaS, 不查本地 registrations 也不入本地队列
+- 死循环避免: 前缀决定路由方向, SaaS 端找不到 saas hook 直接报错, 不会再回弹给 runner
+- forwardToSaaS 由 attachHookRpc 在 socket connect 时调用 hookBus.setForwardToSaaS 注入 (socket 重连场景重复注入安全)
+- forwardToSaaS 未注入 (saas socket 未连) 时 emit saas.* 返回单条 error, 不阻塞调用方
+- 任意 runner 内代码调用 saas.* hook 都直接 hookBus.emit 即可, 不再各自接 RPC; unitCore.callSaaSHook 是 legacy 路径, 与新机制并存
 
 日志通道 (event.log, OTel-backed, debug 开关) — 与 SaaS 同构:
 - HookEvent.log 由 hookbus.service.consumeTask 在每次命中 reg 派发前注入, 不会为 undefined

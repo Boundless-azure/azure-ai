@@ -18,12 +18,12 @@ import {
   CreateSolutionSchema,
   UpdateSolutionSchema,
   ListSolutionsQuerySchema,
-  CreateSolutionRequest,
-  UpdateSolutionRequest,
-  ListSolutionsQuery,
-  InstallSolutionRequest,
-  UninstallSolutionRequest,
-  PurchaseSolutionRequest,
+  type CreateSolutionRequest,
+  type UpdateSolutionRequest,
+  type ListSolutionsQuery,
+  type InstallSolutionRequest,
+  type UninstallSolutionRequest,
+  type PurchaseSolutionRequest,
 } from '../types/solution.types';
 
 type AuthedReq = Request & { user?: { id?: string; tenantId?: string } };

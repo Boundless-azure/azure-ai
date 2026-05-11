@@ -56,7 +56,11 @@ const onRbacRoleCreateInput = z.object({
 
 const onRbacRoleUpdateInput = z.object({
   name: z.string().optional().describe('新的角色显示名'),
-  description: z.string().nullable().optional().describe('新的描述, null 表示清空'),
+  description: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('新的描述, null 表示清空'),
 });
 
 const idParamInput = z.object({
@@ -128,7 +132,8 @@ export class RoleController {
   @CheckAbility('update', 'role')
   @HookLifecycle({
     hook: 'saas.app.identity.roleUpdate',
-    description: 'RBAC 角色更新 :: 仅支持改 name / description, code/organizationId 不可变',
+    description:
+      'RBAC 角色更新 :: 仅支持改 name / description, code/organizationId 不可变',
     payloadSchema: onRbacRoleUpdateInput,
     payloadSource: 'body',
   })

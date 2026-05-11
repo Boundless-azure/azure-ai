@@ -75,6 +75,7 @@ export class AiModelsService {
       defaultParams: dto.defaultParams,
       description: dto.description,
       enabled: dto.enabled ?? true,
+      thinkingEnabled: dto.thinkingEnabled ?? false,
     });
     return await this.repository.save(entity);
   }
@@ -96,6 +97,8 @@ export class AiModelsService {
       entity.defaultParams = dto.defaultParams;
     if (dto.description !== undefined) entity.description = dto.description;
     if (dto.enabled !== undefined) entity.enabled = dto.enabled;
+    if (dto.thinkingEnabled !== undefined)
+      entity.thinkingEnabled = dto.thinkingEnabled;
     await this.repository.save(entity);
   }
 

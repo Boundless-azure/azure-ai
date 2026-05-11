@@ -64,7 +64,7 @@
     "socket.io": "^4.8.1",
     "typeorm": "^0.3.27",
     "undici": "^7.16.0",
-    "uuid": "^13.0.0",
+    "uuidv7": "^1.2.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {

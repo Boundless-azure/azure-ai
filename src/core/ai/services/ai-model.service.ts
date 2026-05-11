@@ -97,6 +97,22 @@ export class AIModelService implements OnModuleInit {
       const aiConf: AIConfig = loadAIConfigFromEnv();
       const maxRetries = aiConf.client.maxRetries;
       // 代理已在 onModuleInit 通过 applyAIProxyFetchOverride 全局生效，无需在此重复设置
+      // thinking 模式 :: 独立 boolean 列 (thinking_enabled), enabled=true 时各 provider 用合理默认值
+      //  - Anthropic Claude 4.x :: budget_tokens = 4096
+      //  - OpenAI o-series :: reasoning_effort = 'medium'
+      //  - Gemini 2.5 :: thinkingBudget = 4096
+      //  - DeepSeek-R1 :: 模型自带, 不传
+      const thinkingEnabled = config.thinkingEnabled === true;
+      const anthropicThinkingKwargs = thinkingEnabled
+        ? { thinking: { type: 'enabled' as const, budget_tokens: 4096 } }
+        : undefined;
+      const openaiReasoningKwargs = thinkingEnabled
+        ? { reasoning_effort: 'medium' as const }
+        : undefined;
+      const geminiThinkingKwargs = thinkingEnabled
+        ? { thinkingConfig: { thinkingBudget: 4096 } }
+        : undefined;
+
       switch (config.provider) {
         case 'openai':
           model = new ChatOpenAI({
@@ -104,6 +120,7 @@ export class AIModelService implements OnModuleInit {
             modelName: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxTokens: config.defaultParams?.maxTokens || 4096,
+            ...(openaiReasoningKwargs && { modelKwargs: openaiReasoningKwargs }),
             ...(config.baseURL && {
               configuration: { baseURL: config.baseURL },
             }),
@@ -112,6 +129,7 @@ export class AIModelService implements OnModuleInit {
         case 'deepseek':
           {
             const baseURL = config.baseURL || 'https://api.deepseek.com';
+            // deepseek-reasoner / r1 自带 reasoning, 不需要传 thinking 参数
             model = new ChatOpenAI({
               apiKey: config.apiKey,
               modelName: config.name,
@@ -130,6 +148,7 @@ export class AIModelService implements OnModuleInit {
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
+              ...(openaiReasoningKwargs && { modelKwargs: openaiReasoningKwargs }),
               configuration: { baseURL },
             });
           }
@@ -141,6 +160,7 @@ export class AIModelService implements OnModuleInit {
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
+              ...(openaiReasoningKwargs && { modelKwargs: openaiReasoningKwargs }),
               ...(config.baseURL && {
                 configuration: { baseURL: config.baseURL },
               }),
@@ -155,6 +175,9 @@ export class AIModelService implements OnModuleInit {
             temperature: config.defaultParams?.temperature || 0.7,
             maxTokens: config.defaultParams?.maxTokens || 4096,
             maxRetries,
+            ...(anthropicThinkingKwargs && {
+              modelKwargs: anthropicThinkingKwargs,
+            }),
             ...(config.baseURL && {
               clientOptions: { baseURL: config.baseURL },
             }),
@@ -167,6 +190,7 @@ export class AIModelService implements OnModuleInit {
             model: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxOutputTokens: config.defaultParams?.maxTokens || 4096,
+            ...(geminiThinkingKwargs && { modelKwargs: geminiThinkingKwargs }),
           });
           break;
 
@@ -176,7 +200,44 @@ export class AIModelService implements OnModuleInit {
             model: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxOutputTokens: config.defaultParams?.maxTokens || 4096,
+            ...(geminiThinkingKwargs && { modelKwargs: geminiThinkingKwargs }),
           });
+          break;
+
+        case 'custom':
+          {
+            // 自定义 provider :: 按 apiProtocol 路由到 OpenAI / Anthropic SDK
+            // 用户可接任何 OpenAI / Anthropic 兼容服务 :: xai (grok) / moonshot / qwen (dashscope) / zhipu / mistral / 自部署 等
+            // thinking 同步按 protocol 透传 (openai → reasoning_effort; anthropic → thinking budget)
+            if (config.apiProtocol === 'anthropic') {
+              model = new ChatAnthropic({
+                anthropicApiKey: config.apiKey,
+                modelName: config.name,
+                temperature: config.defaultParams?.temperature || 0.7,
+                maxTokens: config.defaultParams?.maxTokens || 4096,
+                maxRetries,
+                ...(anthropicThinkingKwargs && {
+                  modelKwargs: anthropicThinkingKwargs,
+                }),
+                ...(config.baseURL && {
+                  clientOptions: { baseURL: config.baseURL },
+                }),
+              });
+            } else {
+              model = new ChatOpenAI({
+                apiKey: config.apiKey,
+                modelName: config.name,
+                temperature: config.defaultParams?.temperature || 0.7,
+                maxTokens: config.defaultParams?.maxTokens || 4096,
+                ...(openaiReasoningKwargs && {
+                  modelKwargs: openaiReasoningKwargs,
+                }),
+                ...(config.baseURL && {
+                  configuration: { baseURL: config.baseURL },
+                }),
+              });
+            }
+          }
           break;
 
         default:
@@ -441,15 +502,39 @@ export class AIModelService implements OnModuleInit {
             const chunk = data?.chunk;
             if (!chunk) break;
             const addKw = chunk.additional_kwargs;
-            const reasoning = addKw?.['reasoning_content'];
-            if (typeof reasoning === 'string' && reasoning.length > 0) {
-              yield { type: 'reasoning', data: { text: reasoning } };
+            // 提取 reasoning/thinking 文本 :: 各 provider 字段名不同, 多 candidate fallback
+            //  - DeepSeek-R1 :: additional_kwargs.reasoning_content (已有)
+            //  - Anthropic Claude 4.x :: chunk.content 是数组, 含 { type: 'thinking', thinking } block
+            //                            或 additional_kwargs.thinking
+            //  - OpenAI o-series :: additional_kwargs.reasoning_content / reasoning
+            //  - Gemini 2.5 :: additional_kwargs.thoughts
+            const reasoningText = extractReasoningChunk(chunk, addKw);
+            if (reasoningText) {
+              yield { type: 'reasoning', data: { text: reasoningText } };
               break;
             }
             if (typeof chunk.content === 'string') {
               const tags = (event as { tags?: string[] }).tags;
               if (Array.isArray(tags) && tags.includes('subagent')) break;
               yield { type: 'token', data: { text: chunk.content } };
+              break;
+            }
+            // chunk.content 是数组时 (Anthropic thinking 模式), 提取 type='text' 的 token
+            if (Array.isArray(chunk.content)) {
+              const tags = (event as { tags?: string[] }).tags;
+              if (Array.isArray(tags) && tags.includes('subagent')) break;
+              for (const block of chunk.content) {
+                if (
+                  block &&
+                  typeof block === 'object' &&
+                  (block as { type?: string }).type === 'text'
+                ) {
+                  const text = (block as { text?: string }).text;
+                  if (typeof text === 'string' && text.length > 0) {
+                    yield { type: 'token', data: { text } };
+                  }
+                }
+              }
               break;
             }
             const tChunks = (
@@ -829,4 +914,47 @@ export class AIModelService implements OnModuleInit {
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
+}
+
+/**
+ * 从 chat_model_stream chunk 中提取 reasoning/thinking 文本.
+ * 各 provider 字段名差异大, 多 candidate fallback :
+ *  - DeepSeek-R1 :: additional_kwargs.reasoning_content
+ *  - Anthropic Claude 4.x extended thinking ::
+ *      chunk.content 是数组, 含 { type: 'thinking', thinking: '...' } block
+ *      或 additional_kwargs.thinking_content
+ *  - OpenAI o-series :: additional_kwargs.reasoning_content / reasoning
+ *  - Gemini 2.5 thinking :: additional_kwargs.thoughts
+ * 返回纯文本; 没有 reasoning 则返回 null
+ * @keyword-en extract-reasoning-chunk
+ */
+function extractReasoningChunk(
+  chunk: { content?: unknown; additional_kwargs?: Record<string, unknown> },
+  addKw?: Record<string, unknown>,
+): string | null {
+  // 1) 字符串字段候选 (DeepSeek / OpenAI / 其他 reasoning_content)
+  const stringCandidates: Array<unknown> = [
+    addKw?.['reasoning_content'],
+    addKw?.['reasoning'],
+    addKw?.['thinking_content'],
+    addKw?.['thinking'],
+    addKw?.['thoughts'],
+  ];
+  for (const v of stringCandidates) {
+    if (typeof v === 'string' && v.length > 0) return v;
+  }
+  // 2) chunk.content 数组 (Anthropic thinking 模式)
+  if (Array.isArray(chunk.content)) {
+    const parts: string[] = [];
+    for (const block of chunk.content) {
+      if (block && typeof block === 'object') {
+        const obj = block as { type?: string; thinking?: string; text?: string };
+        if (obj.type === 'thinking' && typeof obj.thinking === 'string') {
+          parts.push(obj.thinking);
+        }
+      }
+    }
+    if (parts.length > 0) return parts.join('');
+  }
+  return null;
 }

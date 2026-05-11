@@ -393,6 +393,19 @@
             </div>
           </div>
 
+          <!-- 思考模式 :: 只有开/不开, 后端各 provider 用合理默认值 -->
+          <div class="h-10 px-3 rounded-lg border border-gray-200 flex items-center gap-3">
+            <input
+              id="ai-model-thinking-enabled"
+              v-model="form.thinkingEnabled"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900/20"
+            />
+            <label for="ai-model-thinking-enabled" class="text-sm text-gray-700">
+              启用思考模式 (Anthropic / OpenAI o-series / Gemini 2.5 等)
+            </label>
+          </div>
+
           <div
             v-if="testResult"
             class="px-3 py-2 rounded-lg text-sm"
@@ -467,6 +480,8 @@ const form = reactive({
   baseURL: '',
   description: '',
   enabled: true,
+  // 思考模式 :: 独立 thinking_enabled 列, 只有开/不开, 后端用合理默认值
+  thinkingEnabled: false,
 });
 
 const testingConnection = ref(false);
@@ -556,6 +571,7 @@ function openCreateModal() {
   form.displayName = '';
   form.description = '';
   form.enabled = true;
+  form.thinkingEnabled = false;
   testResult.value = null;
   showModal.value = true;
 }
@@ -578,6 +594,8 @@ function openEditModal(item: AiModelItem) {
   form.baseURL = item.baseURL || '';
   form.description = item.description || '';
   form.enabled = item.enabled;
+  // 思考模式 :: 直接读独立 thinkingEnabled 列
+  form.thinkingEnabled = item.thinkingEnabled === true;
   testResult.value = null;
   showModal.value = true;
 }
@@ -604,6 +622,7 @@ async function handleSubmit() {
       baseURL: form.baseURL || null,
       description: form.description || null,
       enabled: form.enabled,
+      thinkingEnabled: form.thinkingEnabled,
     };
     if (form.apiKey && form.apiKey.trim()) {
       payload.apiKey = form.apiKey.trim();
@@ -621,6 +640,7 @@ async function handleSubmit() {
       baseURL: form.baseURL || null,
       description: form.description || null,
       enabled: form.enabled,
+      thinkingEnabled: form.thinkingEnabled,
     });
   }
   closeModal();

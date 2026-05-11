@@ -330,6 +330,24 @@ export type ImWsEvent =
   | { type: 'ai:stream_start'; sessionId: string; agentId: string }
   | { type: 'ai:token'; data: { text: string }; sessionId: string }
   | { type: 'ai:stream_end'; sessionId: string; messageId: string }
+  /**
+   * AI 待响应队列入队广播 :: 用户消息触发 agent 调度时推一次, 一个 (sessionId, agentPrincipalId) 队列在生命周期内可能多次 add (防抖窗口 / pending 期间收到新消息)
+   * @keyword-en ai-awaiting-add agent-queue-enqueue
+   */
+  | {
+      type: 'ai:awaiting:add';
+      sessionId: string;
+      data: { agentPrincipalId: string; triggerMessageId: string };
+    }
+  /**
+   * AI 待响应队列彻底清空广播 :: agentTriggerQueue 该 (sessionId, agentPrincipalId) entry 被 delete 时推, 前端按此清掉该队列下所有 awaiting 标记 + phrase
+   * @keyword-en ai-awaiting-end agent-queue-empty
+   */
+  | {
+      type: 'ai:awaiting:end';
+      sessionId: string;
+      data: { agentPrincipalId: string };
+    }
   | { type: 'error'; error: string; sessionId?: string };
 
 /**

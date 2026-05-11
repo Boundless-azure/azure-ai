@@ -20,6 +20,7 @@ export interface AiModelItem {
   defaultParams?: Record<string, unknown> | null;
   description?: string | null;
   enabled: boolean;
+  thinkingEnabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -62,6 +63,7 @@ export const CreateAiModelSchema = z.object({
   defaultParams: z.record(z.any()).optional().nullable(),
   description: z.string().optional().nullable(),
   enabled: z.boolean().optional(),
+  thinkingEnabled: z.boolean().optional(),
 });
 
 export const UpdateAiModelSchema = z.object({
@@ -77,6 +79,7 @@ export const UpdateAiModelSchema = z.object({
   defaultParams: z.record(z.any()).optional().nullable(),
   description: z.string().optional().nullable(),
   enabled: z.boolean().optional(),
+  thinkingEnabled: z.boolean().optional(),
 });
 
 export const TestAiModelConnectionSchema = z.object({

@@ -24,6 +24,12 @@ const sendMsgSchema = z.object({
     .enum(['text', 'notification'])
     .optional()
     .describe('消息类型, 默认 text; notification 为 AI 可见用户端隐藏的通知'),
+  mentions: z
+    .array(z.string())
+    .optional()
+    .describe(
+      '显式 mention 的 principal ids; 提供时优先于 content 解析触发 agent 调度 + 写 metadata.mentions, 用于服务端隐藏通知场景 (数据触点 / 主动 AI 推送) 不依赖 displayName 也能可靠艾特 agent',
+    ),
 });
 
 type SendMsgPayload = z.infer<typeof sendMsgSchema>;
@@ -64,6 +70,7 @@ export class SendMsgHookHandlerService {
       senderPrincipalId,
       replyToId,
       messageType,
+      mentions,
     } = event.payload;
 
     // replyToId 存在时检查回复数量限制
@@ -88,10 +95,27 @@ export class SendMsgHookHandlerService {
     try {
       const msg = await this.imMessageService.sendMessage(
         senderPrincipalId,
-        { sessionId, content, replyToId },
         {
+          sessionId,
+          content,
+          replyToId,
+          // 显式 mentions 透传给 sendMessage, 优先于 content @ 解析
+          ...(mentions && mentions.length > 0
+            ? {
+                mentions: mentions.map((principalId) => ({
+                  principalId,
+                  mentionText: '',
+                  startIndex: 0,
+                  endIndex: 0,
+                })),
+              }
+            : {}),
+        },
+        {
+          // 隐藏通知场景需要触发 agent 调度, 因此不再 skipAgentTrigger
+          // (extractMentions 走旧路径, mentions 数组走新分支, 见 sendMessage 内部)
           role: 'assistant',
-          skipAgentTrigger: true,
+          skipAgentTrigger: !mentions || mentions.length === 0 ? true : false,
           messageType: messageType as 'text' | 'notification' | undefined,
         },
       );

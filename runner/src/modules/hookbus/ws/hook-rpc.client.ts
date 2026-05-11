@@ -266,7 +266,7 @@ function createCallSaaSHook(socket: Socket) {
  * @description 监听 hook:call, 维护 in-flight Map, 推 ack 后启 3s tick 推 progress, 结果用 hook:result 回包。
  *              重复挂载安全: 通过 socket 已绑定标记避免双注册。
  *              envelope.context 透传给 hookBus.emit, 让 handler 通过 event.context 读 token 等环境信息。
- *              同时注入 callSaaSHook 到 unitCore, 使 unit handler 可反向调用 SaaS hook。
+ *              同时把 callSaaSHook 注入: ① unitCore (legacy, unit handler 直接反向调) ② hookBus.setForwardToSaaS (统一保底, hookBus.emit 见 saas.* 前缀自动转发)。
  * @keyword-en attach-hook-rpc
  */
 export function attachHookRpc(
@@ -280,7 +280,9 @@ export function attachHookRpc(
   s.__hookRpcAttached = true;
 
   // 注入 Runner→SaaS hook 调用能力
-  unitCore?.setCallSaaSHook(createCallSaaSHook(socket));
+  const callSaaSHook = createCallSaaSHook(socket);
+  unitCore?.setCallSaaSHook(callSaaSHook);
+  hookBus.setForwardToSaaS(callSaaSHook);
 
   registerMetaHooks(hookBus);
 

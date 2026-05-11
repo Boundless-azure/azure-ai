@@ -24,16 +24,16 @@ import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorato
 import { StorageService } from '../services/storage.service';
 import { ResourceService } from '../../resource/services/resource.service';
 import {
-  CreateStorageNodeRequest,
+  type CreateStorageNodeRequest,
   CreateStorageNodeSchema,
-  UpdateStorageNodeRequest,
+  type UpdateStorageNodeRequest,
   UpdateStorageNodeSchema,
-  CreateShareRequest,
+  type CreateShareRequest,
   CreateShareSchema,
-  ListStorageNodesQuery,
+  type ListStorageNodesQuery,
   ListStorageNodesSchema,
   StorageNodeType,
-  CopyNodesRequest,
+  type CopyNodesRequest,
   CopyNodesSchema,
 } from '../types/storage.types';
 

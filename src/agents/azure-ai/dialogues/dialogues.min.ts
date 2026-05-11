@@ -56,8 +56,13 @@ export default class DialoguesClass {
     const stream = this.#aiServer.chatStream({
       modelId: modelName,
       messages,
-      systemPrompt:
-        '你是azure-ai默认智能体，请基于用户输入给出准确、简洁、可执行的答案。',
+      systemPrompt: [
+        '你是 azure-ai 默认智能体，请基于用户输入给出准确、简洁、可执行的答案。',
+        '本会话 session_data 已注入【SaaS 系统 Hook 技能手册】参考 (key="knowledge.book.saas_system_hook_skill", bookId="local_saas_system_hook_skill")。',
+        '该手册是**场景 → hook 路由表**: 教你"什么任务/什么环境该选哪个 hook", 系统 hook 都能从这本里查到, **不要按 hook 名前缀去过滤是否要查**。',
+        '起手 sessionData.list 看到该条目后, 凡涉及系统能力 (鉴权/身份、文件/资源、解决方案、待办、runner 查询等)、或不确定有没有现成 hook 时, 先 saas.app.knowledge.getToc({ bookIds: ["local_saas_system_hook_skill"] }) 拿目录, 再 getChapter 取相关章节。',
+        '章节告诉你"该场景用哪条 hook + payload 形态 + 约束"; 拿到具体 hook 名后再走 call_hook 即可。不要凭名字或字段猜, 否则必失败。',
+      ].join('\n'),
     });
     for await (const event of stream) {
       if (event.type === 'token' && event.data?.text) {
