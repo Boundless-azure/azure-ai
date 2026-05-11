@@ -66,7 +66,7 @@ export class AgentRuntimeService {
         hookName: string;
         target: 'saas' | 'runner';
         payload: unknown;
-        result: unknown | null;
+        result: unknown;
         errorMsg: string[];
         ts: number;
       },
@@ -246,7 +246,11 @@ export class AgentRuntimeService {
         params?: Record<string, unknown>;
       }) => {
         const basePrompt = buildBaseLlmSystemPrompt();
-        const mergedSystemPrompt = [basePrompt, injectedPrefix, req.systemPrompt]
+        const mergedSystemPrompt = [
+          basePrompt,
+          injectedPrefix,
+          req.systemPrompt,
+        ]
           .filter(Boolean)
           .join('\n');
 
