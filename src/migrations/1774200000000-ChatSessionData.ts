@@ -26,8 +26,12 @@ export class ChatSessionData1774200000000 implements MigrationInterface {
         PRIMARY KEY (id)
       )
     `);
-    await queryRunner.query(`CREATE INDEX idx_csd_session  ON chat_sessions_data (for_session_id)`);
-    await queryRunner.query(`CREATE INDEX idx_csd_type     ON chat_sessions_data (for_session_id, data_type)`);
+    await queryRunner.query(
+      `CREATE INDEX idx_csd_session  ON chat_sessions_data (for_session_id)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_csd_type     ON chat_sessions_data (for_session_id, data_type)`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

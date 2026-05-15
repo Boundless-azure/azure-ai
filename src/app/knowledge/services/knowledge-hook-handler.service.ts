@@ -321,9 +321,7 @@ export class KnowledgeHookHandlerService {
       if (realSet.has(t.toLowerCase())) known.push(t);
       else unknown.push(t);
     }
-    const availableSample = (all?.items ?? [])
-      .slice(0, 8)
-      .map((it) => it.name);
+    const availableSample = (all?.items ?? []).slice(0, 8).map((it) => it.name);
     return { known, unknown, availableSample };
   }
 }

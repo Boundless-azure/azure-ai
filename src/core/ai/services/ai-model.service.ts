@@ -39,6 +39,7 @@ import type {
 } from '../types';
 import { AIProvider } from '../types';
 import { AIModelStatus } from '../types';
+import { AIModelApiSpec } from '../types/ai-model.types';
 import { AIModelEntity } from '../entities';
 import { ContextService } from './context.service';
 import {
@@ -69,7 +70,7 @@ export class AIModelService implements OnModuleInit {
     @Inject('AI_CORE_OPTIONS')
     private readonly aiCoreOptions: AICoreModuleOptions,
     private moduleRef: ModuleRef,
-  ) { }
+  ) {}
 
   onModuleInit(): void {
     // Apply proxy configuration via lifecycle hook
@@ -120,7 +121,9 @@ export class AIModelService implements OnModuleInit {
             modelName: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxTokens: config.defaultParams?.maxTokens || 4096,
-            ...(openaiReasoningKwargs && { modelKwargs: openaiReasoningKwargs }),
+            ...(openaiReasoningKwargs && {
+              modelKwargs: openaiReasoningKwargs,
+            }),
             ...(config.baseURL && {
               configuration: { baseURL: config.baseURL },
             }),
@@ -148,7 +151,9 @@ export class AIModelService implements OnModuleInit {
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
-              ...(openaiReasoningKwargs && { modelKwargs: openaiReasoningKwargs }),
+              ...(openaiReasoningKwargs && {
+                modelKwargs: openaiReasoningKwargs,
+              }),
               configuration: { baseURL },
             });
           }
@@ -160,7 +165,9 @@ export class AIModelService implements OnModuleInit {
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
-              ...(openaiReasoningKwargs && { modelKwargs: openaiReasoningKwargs }),
+              ...(openaiReasoningKwargs && {
+                modelKwargs: openaiReasoningKwargs,
+              }),
               ...(config.baseURL && {
                 configuration: { baseURL: config.baseURL },
               }),
@@ -209,7 +216,7 @@ export class AIModelService implements OnModuleInit {
             // 自定义 provider :: 按 apiProtocol 路由到 OpenAI / Anthropic SDK
             // 用户可接任何 OpenAI / Anthropic 兼容服务 :: xai (grok) / moonshot / qwen (dashscope) / zhipu / mistral / 自部署 等
             // thinking 同步按 protocol 透传 (openai → reasoning_effort; anthropic → thinking budget)
-            if (config.apiProtocol === 'anthropic') {
+            if (config.apiProtocol === AIModelApiSpec.ANTHROPIC) {
               model = new ChatAnthropic({
                 anthropicApiKey: config.apiKey,
                 modelName: config.name,
@@ -254,7 +261,9 @@ export class AIModelService implements OnModuleInit {
       const extraTools = Array.isArray(request.tools) ? request.tools : [];
       const Agent = createAgent({
         model: model,
-        tools: [...openFunction, ...extraTools] as Parameters<typeof createAgent>[0]['tools'],
+        tools: [...openFunction, ...extraTools] as Parameters<
+          typeof createAgent
+        >[0]['tools'],
         checkpointer: request.checkpointer,
         systemPrompt: request.systemPrompt,
       });
@@ -315,9 +324,9 @@ export class AIModelService implements OnModuleInit {
       const responseTo =
         'messages' in (response as Record<string, unknown>)
           ? this.handleMessage(
-            (response as { messages: BaseMessage[] }).messages,
-            'assistant',
-          )
+              (response as { messages: BaseMessage[] }).messages,
+              'assistant',
+            )
           : undefined;
 
       if (responseTo) {
@@ -414,10 +423,10 @@ export class AIModelService implements OnModuleInit {
     const messages =
       typeof windowSize === 'number' && windowSize > 0
         ? await this.contextService.getRecentMessages(
-          sessionId,
-          windowSize,
-          includeSystem,
-        )
+            sessionId,
+            windowSize,
+            includeSystem,
+          )
         : await this.contextService.getAnalysisWindow(sessionId, includeSystem);
 
     return this.chat({ modelId, messages, params, sessionId });
@@ -848,15 +857,15 @@ export class AIModelService implements OnModuleInit {
     request: AIModelRequest,
   ):
     | (ChatOpenAICompletionsCallOptions &
-      ChatOpenAIResponsesCallOptions &
-      ChatAnthropicCallOptions &
-      GoogleGenerativeAIChatCallOptions)
+        ChatOpenAIResponsesCallOptions &
+        ChatAnthropicCallOptions &
+        GoogleGenerativeAIChatCallOptions)
     | undefined {
     const callOptions = request.params
       ? this.applyModelParams(
-        model,
-        request.params as Partial<ModelParameters> & { stop?: string[] },
-      )
+          model,
+          request.params as Partial<ModelParameters> & { stop?: string[] },
+        )
       : {};
     let threadId: string | undefined = request.conversationGroupId;
     if (!threadId && request.sessionId) {
@@ -948,7 +957,11 @@ function extractReasoningChunk(
     const parts: string[] = [];
     for (const block of chunk.content) {
       if (block && typeof block === 'object') {
-        const obj = block as { type?: string; thinking?: string; text?: string };
+        const obj = block as {
+          type?: string;
+          thinking?: string;
+          text?: string;
+        };
         if (obj.type === 'thinking' && typeof obj.thinking === 'string') {
           parts.push(obj.thinking);
         }

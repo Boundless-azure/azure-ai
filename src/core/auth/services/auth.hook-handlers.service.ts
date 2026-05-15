@@ -45,9 +45,7 @@ export class AuthHookHandlersService {
     description: '登录成功事件 Hook（系统触发，非 AI 主动调用）。',
     payloadSchema: onAuthLoginSuccessSchema,
   })
-  handleLoginSuccess(
-    event: HookEvent<OnAuthLoginSuccessPayload>,
-  ): HookResult {
+  handleLoginSuccess(event: HookEvent<OnAuthLoginSuccessPayload>): HookResult {
     const { principalId, userId, loginAt } = event.payload;
     return {
       status: HookResultStatus.Success,
@@ -66,9 +64,7 @@ export class AuthHookHandlersService {
     description: '登录失败事件 Hook（系统触发，非 AI 主动调用）。',
     payloadSchema: onAuthLoginFailedSchema,
   })
-  handleLoginFailed(
-    event: HookEvent<OnAuthLoginFailedPayload>,
-  ): HookResult {
+  handleLoginFailed(event: HookEvent<OnAuthLoginFailedPayload>): HookResult {
     const { identifier, reason } = event.payload;
     return {
       status: HookResultStatus.Success,

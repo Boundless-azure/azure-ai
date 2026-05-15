@@ -24,10 +24,7 @@ import type {
  * @keywords-en organization-hook, payload-schema, input
  */
 const onRbacOrganizationListInput = z.object({
-  q: z
-    .string()
-    .optional()
-    .describe('模糊匹配 name / code (LIKE %q%)'),
+  q: z.string().optional().describe('模糊匹配 name / code (LIKE %q%)'),
 });
 
 const onRbacOrganizationCreateInput = z.object({

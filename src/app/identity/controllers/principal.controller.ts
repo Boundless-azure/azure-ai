@@ -59,7 +59,10 @@ const onRbacPrincipalUpdateInput = z.object({
   avatarUrl: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
-  active: z.boolean().optional().describe('启用/停用; false 不会软删, 仅冻结登录'),
+  active: z
+    .boolean()
+    .optional()
+    .describe('启用/停用; false 不会软删, 仅冻结登录'),
 });
 
 const idParamInput = z.object({

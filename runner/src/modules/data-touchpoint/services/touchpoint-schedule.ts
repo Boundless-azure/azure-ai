@@ -41,33 +41,35 @@ export interface ScheduleJobData {
 
 /**
  * 每个触点的 scheduler 唯一 key (BullMQ 5+ jobScheduler id)
+ *  - 加 runnerId 前缀, 多 runner 共享 BullMQ Queue 时不串
  * @keyword-en scheduler-key
  */
-function schedulerKey(touchpointId: string): string {
-  return `tp:schedule:${touchpointId}`;
+function schedulerKey(runnerId: string, touchpointId: string): string {
+  return `tp:schedule:${runnerId}:${touchpointId}`;
 }
 
-function onceJobId(touchpointId: string): string {
-  return `tp:once:${touchpointId}`;
+function onceJobId(runnerId: string, touchpointId: string): string {
+  return `tp:once:${runnerId}:${touchpointId}`;
 }
 
 /**
  * 注册/更新触点的 schedule (cron/interval Repeatable, once 走 delayed job).
- * 先移除旧的, 再注册新的, 保证幂等.
+ * 先移除旧的, 再注册新的, 保证幂等. runnerId 做多租户 key 隔离.
  * @keyword-en upsert-touchpoint-schedule
  */
 export async function upsertTouchpointSchedule(
   queue: Queue,
+  runnerId: string,
   touchpointId: string,
   schedule: Schedule,
 ): Promise<void> {
-  await removeTouchpointSchedule(queue, touchpointId);
+  await removeTouchpointSchedule(queue, runnerId, touchpointId);
 
   const data: ScheduleJobData = { touchpointId };
 
   if ('cron' in schedule) {
     await queue.upsertJobScheduler(
-      schedulerKey(touchpointId),
+      schedulerKey(runnerId, touchpointId),
       {
         pattern: schedule.cron,
         ...(schedule.timezone ? { tz: schedule.timezone } : {}),
@@ -86,7 +88,7 @@ export async function upsertTouchpointSchedule(
 
   if ('interval' in schedule) {
     await queue.upsertJobScheduler(
-      schedulerKey(touchpointId),
+      schedulerKey(runnerId, touchpointId),
       { every: schedule.interval },
       {
         name: 'schedule',
@@ -112,7 +114,7 @@ export async function upsertTouchpointSchedule(
       { ...data, once: true } satisfies ScheduleJobData,
       {
         delay,
-        jobId: onceJobId(touchpointId),
+        jobId: onceJobId(runnerId, touchpointId),
         removeOnComplete: { age: 3_600 },
         removeOnFail: { age: 24 * 3_600 },
       },
@@ -127,6 +129,7 @@ export async function upsertTouchpointSchedule(
  */
 export async function removeTouchpointSchedule(
   queue: Queue,
+  runnerId: string,
   touchpointId: string,
 ): Promise<void> {
   // BullMQ 5+ 新 API
@@ -135,13 +138,13 @@ export async function removeTouchpointSchedule(
       removeJobScheduler?: (id: string) => Promise<unknown>;
     }).removeJobScheduler;
     if (typeof removeFn === 'function') {
-      await removeFn.call(queue, schedulerKey(touchpointId));
+      await removeFn.call(queue, schedulerKey(runnerId, touchpointId));
     }
   } catch {
     // ignore
   }
   try {
-    const onceJob = await queue.getJob(onceJobId(touchpointId));
+    const onceJob = await queue.getJob(onceJobId(runnerId, touchpointId));
     if (onceJob) {
       await onceJob.remove();
     }

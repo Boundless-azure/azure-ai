@@ -64,7 +64,15 @@ export const LOCAL_BOOK_SAAS_SYSTEM_HOOK: KnowledgeBookInfo = {
   creatorId: null,
   isEmbedded: false,
   active: true,
-  tags: ['本地知识', 'SaaS', 'Hook', '鉴权管理', '文件管理', '解决方案', '待办'],
+  tags: [
+    '本地知识',
+    'SaaS',
+    'Hook',
+    '鉴权管理',
+    '文件管理',
+    '解决方案',
+    '待办',
+  ],
   createdAt: new Date('2025-01-01T00:00:00.000Z'),
   updatedAt: new Date('2025-01-01T00:00:00.000Z'),
 };

@@ -35,10 +35,7 @@ const onRbacUserListInput = z.object({
     .string()
     .optional()
     .describe('模糊匹配 displayName / email / phone (LIKE %q%)'),
-  tenantId: z
-    .string()
-    .optional()
-    .describe('按所属租户/组织 ID 过滤'),
+  tenantId: z.string().optional().describe('按所属租户/组织 ID 过滤'),
   type: userPrincipalTypeSchema
     .optional()
     .describe('按类型过滤; 不传时默认返回 user + user_consumer + system'),
@@ -58,7 +55,10 @@ const onRbacUserCreateInput = z.object({
 
 const onRbacUserUpdateInput = z.object({
   displayName: z.string().optional(),
-  email: z.string().optional().describe('改邮箱会同步 users 表, 仍受全局唯一约束'),
+  email: z
+    .string()
+    .optional()
+    .describe('改邮箱会同步 users 表, 仍受全局唯一约束'),
   phone: z.string().nullable().optional(),
   avatarUrl: z.string().nullable().optional(),
   active: z.boolean().optional().describe('启停; 不会软删主体'),

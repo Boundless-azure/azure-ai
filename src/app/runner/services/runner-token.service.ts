@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
-import { randomBytes } from 'node:crypto';
 
 /**
  * @title Runner Token 数据结构
@@ -163,8 +162,11 @@ export class RunnerTokenService {
   private getRunnerSocket(io: Server, runnerId: string): Socket | null {
     const socketId = this.runnerSocketMap.get(runnerId);
     if (!socketId) return null;
-    // @ts-expect-error - sockets 是 socket.io 内部属性
-    const socket: Socket = io?.sockets?.get(socketId);
-    return socket ?? null;
+    // socket.io v4 运行时形状: Server.sockets = 默认 Namespace, Namespace.sockets = SocketId→Socket Map.
+    // 本项目 NestJS + socket.io 类型 augmentation 链路下 Server 属性被擦, 整体 cast 一次拿到稳定结构.
+    const wrapped = io as unknown as {
+      sockets: { sockets: Map<string, Socket> };
+    };
+    return wrapped.sockets.sockets.get(socketId) ?? null;
   }
 }

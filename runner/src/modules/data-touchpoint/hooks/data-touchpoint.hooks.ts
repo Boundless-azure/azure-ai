@@ -130,7 +130,8 @@ export function registerDataTouchpointHooks(
         return { status: 'success', data: { deleted } };
       },
       {
-        description: '删除数据触点元数据 + 联动清理触点状态 + 移除 schedule (物理胶水代码由调用方清理)',
+        description:
+          '删除数据触点元数据 + 联动清理触点状态 (mongo + redis) + 运行历史 + 移除 schedule (物理胶水代码由调用方清理)',
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: DeleteDataTouchpointSchema,
@@ -170,7 +171,7 @@ export function registerDataTouchpointHooks(
       },
       {
         description:
-          '触发数据触点: 按 sourceName 异步派发到队列, 命中触点逐个加载执行胶水代码; 可选 solutionId 限定范围',
+          '触发数据触点: 按 sources (单字符串或数组) 异步派发到队列, 命中触点逐个加载执行胶水代码 (同时订阅多 source 的触点自然去重仅跑一次, 胶水 ctx 拿 matchedSources/payloadsBySource); 可选 solutionId 限定范围',
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: TriggerTouchpointSchema,

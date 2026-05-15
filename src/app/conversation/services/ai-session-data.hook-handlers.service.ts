@@ -89,8 +89,8 @@ export class AiSessionDataHookHandlersService {
     tags: ['session-data', 'conversation'],
     description:
       '保存或更新当前会话的一条持久化数据。key 为唯一标识，value 任意 JSON，title 必填。同 key 会覆盖旧值。' +
-        'sessionId 留空 → 服务端从 ctx 自动补当前会话 (LLM 用法). ' +
-        '收尾**必须沉淀新经验** (hook 配方 / 知识章节摘要 / 实体 id / 用户偏好), 下次同类任务通过 list 命中即可跳过重复查询.',
+      'sessionId 留空 → 服务端从 ctx 自动补当前会话 (LLM 用法). ' +
+      '收尾**必须沉淀新经验** (hook 配方 / 知识章节摘要 / 实体 id / 用户偏好), 下次同类任务通过 list 命中即可跳过重复查询.',
     payloadSchema: saveSchema,
   })
   @CheckAbility('update', 'session')
@@ -106,7 +106,10 @@ export class AiSessionDataHookHandlersService {
     }
     try {
       await this.service.save(sessionId, key, value, title);
-      return { status: HookResultStatus.Success, data: { saved: true, key, title: title ?? null } };
+      return {
+        status: HookResultStatus.Success,
+        data: { saved: true, key, title: title ?? null },
+      };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return { status: HookResultStatus.Error, error: msg };
@@ -126,8 +129,8 @@ export class AiSessionDataHookHandlersService {
     tags: ['session-data', 'conversation'],
     description:
       '获取当前会话指定 key 的持久化数据 (含完整 value)。返回 { key, title, value, updatedAt }。' +
-        'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法). ' +
-        '通常配合 sessionData.list 使用 :: list 拿 title 列表 → 命中后 get 取详情.',
+      'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法). ' +
+      '通常配合 sessionData.list 使用 :: list 拿 title 列表 → 命中后 get 取详情.',
     payloadSchema: getSchema,
   })
   @CheckAbility('read', 'session')
@@ -144,7 +147,10 @@ export class AiSessionDataHookHandlersService {
     try {
       const data = await this.service.get(sessionId, key);
       if (!data) {
-        return { status: HookResultStatus.Error, error: `key "${key}" not found` };
+        return {
+          status: HookResultStatus.Error,
+          error: `key "${key}" not found`,
+        };
       }
       return { status: HookResultStatus.Success, data };
     } catch (e) {
@@ -166,10 +172,10 @@ export class AiSessionDataHookHandlersService {
     tags: ['session-data', 'conversation'],
     description:
       '列出当前会话所有持久化数据的轻量元数据 (key + title + 更新时间 + 大小, **不含 value**)。' +
-        '返回字段 :: { count, listing }; listing 是分行 markdown 文本, 直接读它即可。' +
-        '凭 title 判断哪条命中 → 调 sessionData.get(key) 取完整 value。' +
-        'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法). ' +
-        '【强约束】LLM 每轮收到用户消息**第一件事**调此 hook 拿全景, 再决定走业务还是用记忆.',
+      '返回字段 :: { count, listing }; listing 是分行 markdown 文本, 直接读它即可。' +
+      '凭 title 判断哪条命中 → 调 sessionData.get(key) 取完整 value。' +
+      'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法). ' +
+      '【强约束】LLM 每轮收到用户消息**第一件事**调此 hook 拿全景, 再决定走业务还是用记忆.',
     payloadSchema: listSchema,
   })
   @CheckAbility('read', 'session')
@@ -208,8 +214,7 @@ export class AiSessionDataHookHandlersService {
   @HookHandler('saas.app.conversation.sessionData.delete', {
     pluginName: 'ai-session-data',
     tags: ['session-data', 'conversation'],
-    description:
-      '删除当前会话指定 key 的持久化数据。',
+    description: '删除当前会话指定 key 的持久化数据。',
     payloadSchema: deleteSchema,
   })
   @CheckAbility('delete', 'session')
@@ -226,7 +231,10 @@ export class AiSessionDataHookHandlersService {
     try {
       const deleted = await this.service.delete(sessionId, key);
       if (!deleted) {
-        return { status: HookResultStatus.Error, error: `key "${key}" not found` };
+        return {
+          status: HookResultStatus.Error,
+          error: `key "${key}" not found`,
+        };
       }
       return { status: HookResultStatus.Success, data: { deleted: true, key } };
     } catch (e) {
@@ -285,7 +293,9 @@ function renderListing(
 
   const lines = items.map((it) => {
     const date = it.updatedAt.toISOString().slice(5, 10); // MM-DD
-    const title = it.title ?? '(⚠ 无 title — 这条记忆下次自己也认不出, 建议覆盖 save 补一个描述性标题)';
+    const title =
+      it.title ??
+      '(⚠ 无 title — 这条记忆下次自己也认不出, 建议覆盖 save 补一个描述性标题)';
     return `- \`${it.key}\` :: ${title}  (${date}, ${it.sizeBytes}B)`;
   });
 

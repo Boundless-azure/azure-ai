@@ -7,17 +7,17 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * @keywords-en migration, knowledge, tags
  */
 export class KnowledgeBookTags1774200000002 implements MigrationInterface {
-    name = 'KnowledgeBookTags1774200000002';
+  name = 'KnowledgeBookTags1774200000002';
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       ALTER TABLE knowledge_books ADD COLUMN IF NOT EXISTS tags TEXT
     `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
       ALTER TABLE knowledge_books DROP COLUMN IF EXISTS tags
     `);
-    }
+  }
 }

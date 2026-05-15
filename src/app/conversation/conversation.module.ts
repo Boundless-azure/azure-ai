@@ -91,6 +91,13 @@ import { AuthModule } from '@/core/auth/auth.module';
     AiSessionDataService,
     AiSessionDataHookHandlersService,
   ],
-  exports: [ConversationService, ImSessionService, ImMessageService, WebMcpGateway, WebMcpSessionDataService, AiSessionDataService],
+  exports: [
+    ConversationService,
+    ImSessionService,
+    ImMessageService,
+    WebMcpGateway,
+    WebMcpSessionDataService,
+    AiSessionDataService,
+  ],
 })
 export class ConversationModule {}

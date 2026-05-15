@@ -3,7 +3,8 @@ import IORedis from 'ioredis';
 import type { RunnerHookBusService } from '../../hookbus/services/hookbus.service';
 import type { RunnerMongoClient } from '../../mongo/mongo.client';
 import { RunnerDataTouchpointService } from './data-touchpoint.service';
-import { loadTouchpoint } from './touchpoint-loader';
+import { loadTouchpoint, type LoadedTouchpoint } from './touchpoint-loader';
+import { runTouchpointInWorker } from './touchpoint-executor';
 import { TouchpointLock } from './touchpoint-lock';
 import {
   MongoStateStore,
@@ -15,26 +16,50 @@ import {
   upsertTouchpointSchedule,
   type ScheduleJobData,
 } from './touchpoint-schedule';
+import {
+  RunnerTouchpointRunLog,
+  summarizePayload,
+  type RunOutcome,
+} from './touchpoint-run-log';
+import { createTouchpointLogSession } from './touchpoint-otel';
 import type {
   DataTouchpoint,
-  LoadedTouchpoint,
   TriggerTouchpointInput,
 } from '../types/data-touchpoint.types';
 
 /**
  * @title 数据触点触发服务
- * @description BullMQ 异步队列 (并发 4) + 触点级 redis 锁串行化 + state 双 store (mongo 持久 / redis 高频) + 单触点失败回写 status=broken. 胶水代码完全自治: 自己用 callHook 调任何白名单内的 hook, 推送决策不在这一层. ctx 注入 prevState, return 即 newState.
- * @keywords-cn 触发器, 异步队列, BullMQ, 触点锁, 线性化, 状态存储, 双store, 高频
- * @keywords-en touchpoint-trigger, async-queue, bullmq, touchpoint-lock, linearization, state-store, dual-store, high-frequency
+ * @description BullMQ 异步队列 + 触点级 redis 锁串行化 + state 双 store (mongo / redis 高频) + worker_thread 执行 + OTel + 运行历史。
+ *              attempts=1, 不重试: 单触点失败仅写 `data_touchpoint_runs` 记录, 不影响其他触点, 也不回写元数据 status。
+ *              所有 redis key + BullMQ queue prefix 均加 runnerId 前缀, 多 runner 共享 redis 不互串。
+ * @keywords-cn 触发器, 异步队列, BullMQ, 触点锁, 线性化, 状态存储, 双store, 高频, 多租户, 不重试, 运行历史
+ * @keywords-en touchpoint-trigger, async-queue, bullmq, touchpoint-lock, linearization, state-store, dual-store, high-frequency, multi-tenant, no-retry, run-history
  */
 
 const QUEUE_NAME = 'data-touchpoint-trigger';
 const WORKER_CONCURRENCY = 4;
 const LOCK_RETRY_BACKOFF_MS = 200;
+const LOCK_TTL_MS = 60_000;
 
+/**
+ * 规范化 trigger 入参的 sources (单字符串或数组), 输出去重后的 string[]
+ * @keyword-en normalize-trigger-sources
+ */
+function normalizeTriggerSources(input: TriggerTouchpointInput): string[] {
+  const raw = Array.isArray(input.sources) ? input.sources : [input.sources];
+  return Array.from(
+    new Set(raw.filter((s) => typeof s === 'string' && s.length > 0)),
+  );
+}
+
+/**
+ * 业务事件 trigger job 数据
+ * @keyword-en trigger-job-data
+ */
 interface TriggerJobData {
-  sourceName: string;
+  sources: string[];
   payload?: unknown;
+  payloadsBySource?: Record<string, unknown>;
   solutionId?: string;
   ts: number;
 }
@@ -44,9 +69,9 @@ type AnyJobData = TriggerJobData | ScheduleJobData;
 
 /**
  * Runner 数据触点触发服务
- * - start() :: 创建 Queue + Worker + 锁服务 + 双 state store (需 redis 已连)
- * - trigger() :: 业务代码主入口, 入队后立即返回
- * - 单触点失败不影响其他触点; status 回写 broken; lastError 写入 state 元数据
+ *  - start() :: 创建 Queue + Worker + 锁服务 + 双 state store + runLog 索引
+ *  - trigger() :: 业务代码主入口, 入队后立即返回
+ *  - attempts=1 不重试; 单触点失败只追加 run 记录, 不抛错
  * @keyword-en touchpoint-trigger-service
  */
 export class RunnerTouchpointTriggerService {
@@ -56,15 +81,23 @@ export class RunnerTouchpointTriggerService {
   private lock?: TouchpointLock;
   private mongoStore?: TouchpointStateStore;
   private redisStore?: TouchpointStateStore;
+  private runLog?: RunnerTouchpointRunLog;
 
   constructor(
     private readonly redisUri: string,
     private readonly hookBus: RunnerHookBusService,
     private readonly mongoClient: RunnerMongoClient,
-  ) {}
+    private readonly runnerId: string,
+  ) {
+    if (!runnerId) {
+      throw new Error(
+        'RunnerTouchpointTriggerService requires non-empty runnerId for multi-tenant key isolation',
+      );
+    }
+  }
 
   /**
-   * 启动队列 + Worker + 锁 + state store; 重复调用安全
+   * 启动队列 + Worker + 锁 + state store + runLog 索引; 重复调用安全
    * @keyword-en start-trigger
    */
   async start(): Promise<void> {
@@ -75,21 +108,28 @@ export class RunnerTouchpointTriggerService {
     const workerConn = new IORedis(this.redisUri, {
       maxRetriesPerRequest: null,
     });
-    // 共享一个 redis 连接给锁 + redisStore (避免一个进程开太多连接)
     this.redis = new IORedis(this.redisUri, { maxRetriesPerRequest: null });
-    this.lock = new TouchpointLock(this.redis);
-    this.redisStore = new RedisStateStore(this.redis);
+    this.lock = new TouchpointLock(this.redis, this.runnerId);
+    this.redisStore = new RedisStateStore(this.redis, this.runnerId);
     const db = this.mongoClient.getDb();
     if (db) {
       this.mongoStore = new MongoStateStore(db);
+      this.runLog = new RunnerTouchpointRunLog(db);
+      await RunnerTouchpointRunLog.ensureIndexes(db).catch(() => undefined);
     }
+    const queuePrefix = `tp:${this.runnerId}`;
     this.queue = new Queue<AnyJobData>(QUEUE_NAME, {
       connection: queueConn,
+      prefix: queuePrefix,
     });
     this.worker = new Worker<AnyJobData>(
       QUEUE_NAME,
       (job) => this.dispatch(job),
-      { connection: workerConn, concurrency: WORKER_CONCURRENCY },
+      {
+        connection: workerConn,
+        concurrency: WORKER_CONCURRENCY,
+        prefix: queuePrefix,
+      },
     );
     this.worker.on('failed', (job, err) => {
       // eslint-disable-next-line no-console
@@ -114,27 +154,35 @@ export class RunnerTouchpointTriggerService {
     this.lock = undefined;
     this.mongoStore = undefined;
     this.redisStore = undefined;
+    this.runLog = undefined;
   }
 
   /**
-   * 触发器入口: 业务代码 / hook handler 调用此处入队
+   * 触发器入口: 业务代码 / hook handler 调用此处入队.
+   * attempts=1 不重试: 单触点失败由内部捕获并写运行记录, 不靠 BullMQ retry.
    * @keyword-en trigger-touchpoint
    */
   async trigger(input: TriggerTouchpointInput): Promise<{ jobId: string }> {
     if (!this.queue) {
       throw new Error('touchpoint trigger not started');
     }
+    const sources = normalizeTriggerSources(input);
+    if (sources.length === 0) {
+      throw new Error('trigger requires non-empty sources');
+    }
     const job = await this.queue.add(
       'trigger',
       {
-        sourceName: input.sourceName,
+        sources,
         payload: input.payload,
+        ...(input.payloadsBySource
+          ? { payloadsBySource: input.payloadsBySource }
+          : {}),
         ...(input.solutionId ? { solutionId: input.solutionId } : {}),
         ts: Date.now(),
       },
       {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1_000 },
+        attempts: 1,
         removeOnComplete: { age: 3_600, count: 1_000 },
         removeOnFail: { age: 24 * 3_600 },
       },
@@ -143,56 +191,74 @@ export class RunnerTouchpointTriggerService {
   }
 
   /**
-   * 联动清理触点状态 (触点 delete hook 调用); 同时清两个 store, 冗余删无副作用
+   * 联动清理触点状态 + 运行历史 (delete hook 调用)
    * @keyword-en remove-touchpoint-state
    */
   async removeState(touchpointId: string): Promise<void> {
     await Promise.all([
       this.mongoStore?.remove(touchpointId).catch(() => undefined),
       this.redisStore?.remove(touchpointId).catch(() => undefined),
+      this.runLog?.removeByTouchpoint(touchpointId).catch(() => undefined),
     ]);
   }
 
   /**
    * 重载触点的 schedule (create/update 后调用 + Runner 启动批量调用)
-   * - 加载胶水拿 schedule 元数据; 有则 upsert, 无则确保移除
-   * - 触点 enabled=false 时统一 remove (即便胶水声明了 schedule)
-   * - 加载失败 (status broken) 不抛, 避免一个坏触点拖死启动扫表
+   *  - 触点 enabled=false 时统一 remove
+   *  - 加载失败不抛, 仅写一条 run 记录 outcome='error', 避免一个坏触点拖死启动扫表
    * @keyword-en reload-touchpoint-schedule
    */
   async reloadSchedule(tp: DataTouchpoint): Promise<void> {
     if (!this.queue) return;
     if (!tp.enabled) {
-      await removeTouchpointSchedule(this.queue, tp._id);
+      await removeTouchpointSchedule(this.queue, this.runnerId, tp._id);
       return;
     }
     let loaded: LoadedTouchpoint;
     try {
       loaded = await loadTouchpoint(tp, this.hookBus);
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       // eslint-disable-next-line no-console
       console.warn(
-        `[touchpoint-trigger] reloadSchedule load failed for ${tp._id} (${tp.name}):`,
-        e instanceof Error ? e.message : e,
+        `[touchpoint-trigger] reloadSchedule load failed for ${tp._id} (${tp.name}): ${msg}`,
       );
-      // 加载失败也尝试清掉残留 schedule
-      await removeTouchpointSchedule(this.queue, tp._id);
+      await this.runLog
+        ?.write({
+          touchpointId: tp._id,
+          runnerId: this.runnerId,
+          startedAt: new Date(),
+          durationMs: 0,
+          firedBy: 'schedule',
+          matchedSources: [],
+          outcome: 'error',
+          payloadSummary: summarizePayload(undefined),
+          error: { message: `reloadSchedule load failed: ${msg}` },
+          log: [],
+        })
+        .catch(() => undefined);
+      await removeTouchpointSchedule(this.queue, this.runnerId, tp._id);
       return;
     }
     if (loaded.schedule) {
-      await upsertTouchpointSchedule(this.queue, tp._id, loaded.schedule);
+      await upsertTouchpointSchedule(
+        this.queue,
+        this.runnerId,
+        tp._id,
+        loaded.schedule,
+      );
     } else {
-      await removeTouchpointSchedule(this.queue, tp._id);
+      await removeTouchpointSchedule(this.queue, this.runnerId, tp._id);
     }
   }
 
   /**
-   * 触点 delete 时调用, 移除该触点所有 schedule
+   * 触点 delete 时移除 schedule
    * @keyword-en remove-touchpoint-schedule-by-id
    */
   async removeSchedule(touchpointId: string): Promise<void> {
     if (!this.queue) return;
-    await removeTouchpointSchedule(this.queue, touchpointId);
+    await removeTouchpointSchedule(this.queue, this.runnerId, touchpointId);
   }
 
   /**
@@ -218,12 +284,12 @@ export class RunnerTouchpointTriggerService {
       await this.consumeSchedule(job as Job<ScheduleJobData>);
       return;
     }
-    // 默认按 trigger 处理
     await this.consumeTrigger(job as Job<TriggerJobData>);
   }
 
   /**
-   * 业务事件触发 (job.name='trigger'): 按 source/solutionId 拉所有命中触点 → 逐个跑
+   * 业务事件触发: 按 sources $in 拉所有命中触点 → 逐个跑.
+   * 单触点失败只写 run 记录, 不抛出, 不影响其他触点 (attempts=1, 也不依赖 retry).
    * @keyword-en consume-trigger-job
    */
   private async consumeTrigger(job: Job<TriggerJobData>): Promise<void> {
@@ -232,24 +298,33 @@ export class RunnerTouchpointTriggerService {
       throw new Error('mongo not connected');
     }
     const svc = new RunnerDataTouchpointService(db);
+    const requestedSources = job.data.sources ?? [];
+    if (requestedSources.length === 0) return;
     const touchpoints = await svc.list({
-      source: job.data.sourceName,
+      sourceIn: requestedSources,
       enabled: true,
       ...(job.data.solutionId ? { solutionId: job.data.solutionId } : {}),
     });
 
+    const requestedSet = new Set(requestedSources);
+    const allPayloads = job.data.payloadsBySource ?? {};
+
     for (const tp of touchpoints) {
-      try {
-        await this.runOne(tp, job.data.sourceName, job.data.payload, 'source');
-      } catch (e) {
-        await this.markBroken(svc, tp, e);
+      const matched = tp.sources.filter((s) => requestedSet.has(s));
+      if (matched.length === 0) continue;
+      const slicedPayloads: Record<string, unknown> = {};
+      for (const s of matched) {
+        if (s in allPayloads) {
+          slicedPayloads[s] = allPayloads[s];
+        }
       }
+      // 单触点完全自治, 永远不抛 — 错误已落进 run 记录
+      await this.runOne(tp, matched, slicedPayloads, job.data.payload, 'source');
     }
   }
 
   /**
-   * 时间调度触发 (job.name='schedule'): 直接对指定触点跑, 不查 sources;
-   * once 类型完成后自动 enabled=false
+   * 时间调度触发: 直接对指定触点跑; once 类型完成后自动 enabled=false
    * @keyword-en consume-schedule-job
    */
   private async consumeSchedule(job: Job<ScheduleJobData>): Promise<void> {
@@ -268,142 +343,149 @@ export class RunnerTouchpointTriggerService {
       return;
     }
     if (!tp.enabled) {
-      // 触点已禁用却 scheduler 还在, 清掉
       await this.removeSchedule(tp._id);
       return;
     }
     const firedAt = Date.now();
     const payload = { firedBy: 'schedule', firedAt };
-    try {
-      await this.runOne(tp, undefined, payload, 'schedule');
-    } catch (e) {
-      await this.markBroken(svc, tp, e);
-    } finally {
-      // once 类型: 跑完自动 enabled=false 防再次触发 (delayed job 本身不会再发, 但元数据要同步)
-      if (job.data.once) {
-        try {
-          await svc.update({ id: tp._id, enabled: false });
-        } catch {
-          // ignore
-        }
+    await this.runOne(tp, [], {}, payload, 'schedule');
+    if (job.data.once) {
+      try {
+        await svc.update({ id: tp._id, enabled: false });
+      } catch {
+        // ignore
       }
     }
   }
 
-  private async markBroken(
-    svc: RunnerDataTouchpointService,
-    tp: DataTouchpoint,
-    e: unknown,
-  ): Promise<void> {
-    const msg = e instanceof Error ? e.message : String(e);
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[touchpoint-trigger] touchpoint ${tp._id} (${tp.name}) failed: ${msg}`,
-    );
-    try {
-      await svc.update({ id: tp._id, status: 'broken' });
-    } catch {
-      // ignore status writeback failure
-    }
-  }
-
   /**
-   * 执行单触点: 抢锁 → 加载胶水 → 选 store → read prev → run → write new → 释放锁
+   * 执行单触点: load (含路径防护) → OTel session 起 span → 抢锁 → read prev → executor 起 worker 跑 →
+   * 写 state + run log + drain logs → 释放锁. 永远不抛.
    * @keyword-en run-one-touchpoint
    */
   private async runOne(
     tp: DataTouchpoint,
-    sourceName: string | undefined,
+    matchedSources: string[],
+    payloadsBySource: Record<string, unknown>,
     payload: unknown,
     firedBy: 'source' | 'schedule',
   ): Promise<void> {
-    if (!this.lock) {
-      throw new Error('touchpoint lock not ready');
-    }
-
-    // 加载胶水拿元数据 + handler (loader 内含 config 读取 + 沙箱包装 + 超时)
-    const loaded = await loadTouchpoint(tp, this.hookBus);
-    const lockTtlMs = 60_000; // 默认 60s, 比胶水内部 timeout (10s) 大得多, 确保锁不在 handler 跑完前过期
-
-    const token = await this.lock.acquire(tp._id, lockTtlMs);
-    if (!token) {
-      // 抢不到锁: 同触点正在跑, 短延迟后重试一次; 仍抢不到就抛, 由 BullMQ 指数退避兜底
-      await new Promise((r) => setTimeout(r, LOCK_RETRY_BACKOFF_MS));
-      const retryToken = await this.lock.acquire(tp._id, lockTtlMs);
-      if (!retryToken) {
-        throw new Error(
-          `touchpoint ${tp._id} lock contention; another execution in progress`,
-        );
-      }
-      return await this.runWithLock(
-        loaded,
-        tp,
-        sourceName,
-        payload,
-        firedBy,
-        retryToken,
-      );
-    }
-    return await this.runWithLock(
-      loaded,
-      tp,
-      sourceName,
-      payload,
+    const session = createTouchpointLogSession({
+      touchpointId: tp._id,
+      touchpointName: tp.name,
       firedBy,
-      token,
-    );
-  }
-
-  /**
-   * 持锁后的执行体: read prev → run → write new → release. 异常时仍释放锁
-   * @keyword-en run-with-lock
-   */
-  private async runWithLock(
-    loaded: LoadedTouchpoint,
-    tp: DataTouchpoint,
-    sourceName: string | undefined,
-    payload: unknown,
-    firedBy: 'source' | 'schedule',
-    lockToken: string,
-  ): Promise<void> {
-    const store = this.pickStore(loaded.highFrequency);
-    const firedAt = Date.now();
+    });
+    const startedAt = new Date();
+    let outcome: RunOutcome = 'error';
+    let newState: unknown = undefined;
+    let runError: { message: string; stack?: string; hookName?: string; allowedHooks?: string[] } | undefined;
+    let durationMs = 0;
     let prevState: unknown = undefined;
+
     try {
-      prevState = store ? await store.read(tp._id) : undefined;
-      const newState = await loaded.run({
-        payload,
-        sourceName,
-        prevState,
-      });
-      // 写状态: handler return undefined 时也要写 meta (lastFiredAt 等), state 字段保留上次
-      const stateToWrite = newState === undefined ? prevState : newState;
-      if (store) {
-        await store.write(tp._id, stateToWrite, {
-          lastFiredAt: firedAt,
-          lastFiredBy: firedBy,
-          lastFiredPayload: payload,
-          lastResult: newState,
+      // 1. 加载 (路径校验 + config + 预读 metadata)
+      let loaded: LoadedTouchpoint;
+      try {
+        loaded = await loadTouchpoint(tp, this.hookBus);
+        session.log.event('touchpoint.loaded', {
+          highFrequency: loaded.highFrequency,
+          allowedHooks: loaded.config.allowedHooks,
         });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        session.log.error('touchpoint.load.failed', { message: msg });
+        runError = {
+          message: msg,
+          ...(e instanceof Error && e.stack ? { stack: e.stack } : {}),
+        };
+        return;
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // 写错误元数据 (state 保留上次), 便于 UI 排错
-      if (store) {
-        try {
-          await store.write(tp._id, prevState, {
-            lastFiredAt: firedAt,
-            lastFiredBy: firedBy,
-            lastFiredPayload: payload,
-            lastError: { message: msg, ts: firedAt },
-          });
-        } catch {
-          // ignore meta writeback failure
+
+      // 2. 抢锁 (TTL 60s, 一次重试)
+      if (!this.lock) {
+        runError = { message: 'touchpoint lock not ready' };
+        return;
+      }
+      let token = await this.lock.acquire(tp._id, LOCK_TTL_MS);
+      if (!token) {
+        await new Promise((r) => setTimeout(r, LOCK_RETRY_BACKOFF_MS));
+        token = await this.lock.acquire(tp._id, LOCK_TTL_MS);
+      }
+      if (!token) {
+        session.log.warn('touchpoint.lock.contention');
+        runError = {
+          message: `touchpoint ${tp._id} lock contention; another execution in progress`,
+        };
+        return;
+      }
+
+      try {
+        // 3. 读 prev state
+        const store = this.pickStore(loaded.highFrequency);
+        prevState = store ? await store.read(tp._id) : undefined;
+
+        // 4. 起 worker 跑 (60s 超时强 kill)
+        const result = await runTouchpointInWorker(
+          {
+            fileUrl: loaded.fileUrl,
+            touchpoint: tp,
+            payload,
+            matchedSources,
+            payloadsBySource,
+            prevState,
+          },
+          {
+            sandboxedCallHook: loaded.sandboxedCallHook,
+            log: session.log,
+            timeoutMs: loaded.config.timeout,
+          },
+        );
+        outcome = result.outcome;
+        durationMs = result.durationMs;
+        if (result.outcome === 'success') {
+          newState = result.newState;
+          // handler return undefined 时保留上次 state (语义跟旧版一致)
+          const stateToWrite = newState === undefined ? prevState : newState;
+          if (store) {
+            await store
+              .write(tp._id, stateToWrite, {
+                lastFiredAt: startedAt.getTime(),
+                lastFiredBy: firedBy,
+                lastFiredPayload: payload,
+                lastResult: newState,
+              })
+              .catch(() => undefined);
+          }
+        } else {
+          runError = result.error;
         }
+      } finally {
+        await this.lock.release(tp._id, token).catch(() => undefined);
       }
-      throw e;
     } finally {
-      await this.lock?.release(tp._id, lockToken).catch(() => undefined);
+      // 5. finalize OTel session → drain logs → 写 run 记录
+      const { entries, traceId } = session.finalize({
+        outcome,
+        error: runError?.message,
+      });
+      await this.runLog
+        ?.write({
+          touchpointId: tp._id,
+          runnerId: this.runnerId,
+          startedAt,
+          durationMs,
+          firedBy,
+          matchedSources,
+          outcome,
+          payloadSummary: summarizePayload(payload),
+          ...(outcome === 'success' && newState !== undefined
+            ? { result: summarizePayload(newState) }
+            : {}),
+          ...(runError ? { error: runError } : {}),
+          traceId,
+          log: entries,
+        })
+        .catch(() => undefined);
     }
   }
 

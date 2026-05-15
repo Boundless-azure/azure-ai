@@ -5,39 +5,18 @@ import {
   SimpleSpanProcessor,
   type ReadableSpan,
 } from '@opentelemetry/sdk-trace-base';
-import type {
-  HookLog,
-  HookLogEntry,
-  HookLogSession,
-} from '@core/hookbus/types/hook.types';
+import type { HookLog, HookLogEntry } from '../../hookbus/types/hook.types';
+import type { RunOutcome } from './touchpoint-run-log';
 
 /**
- * @title HookLog 工厂 (SaaS)
- * @description 给单次 hook 调用造一个 log 会话:
- *              - debug=false 走 NOOP_SESSION, 全是 no-op, 零开销 (不创建 provider/span/exporter)
- *              - debug=true 起一次性 BasicTracerProvider + InMemorySpanExporter, 单 span 收 SpanEvent;
- *                调用结束 finalize() 拿到结构化 HookLogEntry[] 写到 reply.debugLog
- *              CLAUDE.md 强约束: 禁 console.log, 禁独立 LogRecord, 走这套统一 API
- * @keywords-cn HookLog工厂, OTel封装, 隔离Provider, 内存Exporter, debug开关
- * @keywords-en hook-log-factory, otel-wrapper, isolated-provider, memory-exporter, debug-toggle
+ * @title 触点专用 OTel log session
+ * @description 与 [hook-log.factory.ts](../../observability/hook-log.factory.ts) 同构: 每次触点执行起一次性 BasicTracerProvider + InMemorySpanExporter,
+ *              load/parse/run/error/callhook 各阶段 addEvent, finalize drain 出 `HookLogEntry[]` 写进 run log。
+ *              不复用 hook-log.factory 是因为 trigger 是异步 worker 拉 job, 不在 hook handler 调用栈内, 没有 hook event 可挂。
+ * @keywords-cn 触点OTel, OTel session, span事件, 内存exporter, 日志drain
+ * @keywords-en touchpoint-otel, otel-session, span-event, memory-exporter, log-drain
  */
 
-/** 复用的 noop 实现 (单例, 因为没有任何状态) */
-const NOOP_LOG: HookLog = {
-  trace: () => {},
-  debug: () => {},
-  info: () => {},
-  warn: () => {},
-  error: () => {},
-  event: () => {},
-};
-
-const NOOP_SESSION: HookLogSession = {
-  log: NOOP_LOG,
-  finalize: () => [],
-};
-
-/** OTel SpanEvent 不允许嵌套对象, 这里浅 stringify 安全降级 */
 function flattenAttrs(attrs?: Record<string, unknown>): Attributes {
   if (!attrs) return {};
   const out: Attributes = {};
@@ -52,35 +31,30 @@ function flattenAttrs(attrs?: Record<string, unknown>): Attributes {
       continue;
     }
     if (Array.isArray(v) && v.every((x) => typeof x === 'string')) {
-      out[k] = v;
+      out[k] = v as string[];
       continue;
     }
     try {
       out[k] = JSON.stringify(v);
     } catch {
-      // 循环引用 / BigInt 等 JSON.stringify 不下来时, 退化到 '[object Type]' 形式
-      out[k] = Object.prototype.toString.call(v);
+      out[k] = String(v);
     }
   }
   return out;
 }
 
-/** 反向: 从 SpanEvent.attributes 拆出 log.level 与剩余 attrs */
 function splitAttrs(attrs: Attributes | undefined): {
   level: HookLogEntry['level'];
   rest?: Record<string, unknown>;
 } {
   if (!attrs) return { level: 'info' };
   const { ['log.level']: lvl, ...rest } = attrs;
-  const level = (
-    typeof lvl === 'string' ? lvl : 'info'
-  ) as HookLogEntry['level'];
+  const level = (typeof lvl === 'string' ? lvl : 'info') as HookLogEntry['level'];
   return Object.keys(rest).length === 0
     ? { level }
     : { level, rest: rest as Record<string, unknown> };
 }
 
-/** [秒,纳秒] → ms */
 function hrTimeToMs(t: [number, number]): number {
   return t[0] * 1000 + Math.floor(t[1] / 1e6);
 }
@@ -95,26 +69,43 @@ function addEvent(
 }
 
 /**
- * 为一次 hook 调用创建 log 会话
- * @keyword-en create-hook-log-session
+ * 一次触点执行的 log 会话
+ *  - log :: 调 .info/.event 等会落到 span 事件
+ *  - finalize :: 跑完调一次, 关闭 span, drain 出 entries + traceId
+ * @keyword-en touchpoint-log-session
  */
-export function createHookLogSession(opts: {
-  hookName: string;
-  debug: boolean;
-  /** 上游传过来的 traceId, 仅作 span attribute 标记, 不做跨进程上下文继承 */
-  upstreamTraceId?: string;
-}): HookLogSession {
-  if (!opts.debug) return NOOP_SESSION;
+export interface TouchpointLogSession {
+  log: HookLog;
+  finalize(opts: { outcome: RunOutcome; error?: string }): {
+    entries: HookLogEntry[];
+    traceId: string;
+  };
+}
 
+/**
+ * 创建一个一次性的 OTel log session, 用于一次触点执行
+ *  - span 名固定 `touchpoint.run`, attrs 挂 touchpoint.id / name / firedBy
+ *  - 用一次性 provider (跟 hook-log.factory 一致), 避免污染全局 tracer
+ * @keyword-en create-touchpoint-log-session
+ */
+export function createTouchpointLogSession(opts: {
+  touchpointId: string;
+  touchpointName: string;
+  firedBy: 'source' | 'schedule';
+}): TouchpointLogSession {
   const exporter = new InMemorySpanExporter();
   const provider = new BasicTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
-  const tracer = provider.getTracer('hookbus');
-  const span = tracer.startSpan(opts.hookName);
-  if (opts.upstreamTraceId) {
-    span.setAttribute('hook.upstreamTraceId', opts.upstreamTraceId);
-  }
+  const tracer = provider.getTracer('data-touchpoint');
+  const span = tracer.startSpan('touchpoint.run', {
+    attributes: {
+      'touchpoint.id': opts.touchpointId,
+      'touchpoint.name': opts.touchpointName,
+      'touchpoint.firedBy': opts.firedBy,
+    },
+  });
+  const traceId = span.spanContext().traceId;
 
   const log: HookLog = {
     trace: (m, a) => addEvent(span, 'trace', m, a),
@@ -127,12 +118,16 @@ export function createHookLogSession(opts: {
 
   return {
     log,
-    finalize: ({ ok, error } = {}) => {
-      if (error) {
-        span.setStatus({ code: SpanStatusCode.ERROR, message: error });
-      } else if (ok) {
+    finalize: ({ outcome, error }) => {
+      if (outcome === 'success') {
         span.setStatus({ code: SpanStatusCode.OK });
+      } else {
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error ?? outcome,
+        });
       }
+      span.setAttribute('touchpoint.outcome', outcome);
       span.end();
       const finished: ReadableSpan[] = exporter.getFinishedSpans();
       const entries: HookLogEntry[] = [];
@@ -148,10 +143,7 @@ export function createHookLogSession(opts: {
         }
       }
       void provider.shutdown().catch(() => undefined);
-      return entries;
+      return { entries, traceId };
     },
   };
 }
-
-/** 共享 noop log, 所有未启 debug 的调用都用同一个 (HookEvent.log 永远非空) */
-export const NOOP_HOOK_LOG: HookLog = NOOP_LOG;

@@ -46,7 +46,9 @@ const permissionExtraDataSchema = z
     order: z.number().int().optional().describe('UI 排序'),
   })
   .catchall(z.unknown())
-  .describe('节点扩展元数据, 已知字段如 weight/description/order, 也可放任意自定义键');
+  .describe(
+    '节点扩展元数据, 已知字段如 weight/description/order, 也可放任意自定义键',
+  );
 
 const onRbacPermissionDefinitionListInput = z.object({
   permissionType: permissionTypeSchema.optional().describe('按权限类型过滤'),
@@ -71,7 +73,9 @@ const onRbacPermissionDefinitionCreateInput = z.object({
     .describe('父节点 ID; null 表示 root (subject 根节点)'),
   nodeKey: z
     .string()
-    .describe('节点键 :: root 节点存 subject 名 (如 "principal"), 子节点存 action 名 (如 "read")'),
+    .describe(
+      '节点键 :: root 节点存 subject 名 (如 "principal"), 子节点存 action 名 (如 "read")',
+    ),
   extraData: permissionExtraDataSchema.nullable().optional(),
   description: z.string().optional().describe('节点用途描述'),
   permissionType: permissionTypeSchema.optional(),
@@ -79,7 +83,10 @@ const onRbacPermissionDefinitionCreateInput = z.object({
 
 const onRbacPermissionDefinitionUpdateInput = z.object({
   fid: z.string().nullable().optional().describe('改父节点指向 (谨慎使用)'),
-  nodeKey: z.string().optional().describe('改节点键 (谨慎, 会影响 RolePermission 引用)'),
+  nodeKey: z
+    .string()
+    .optional()
+    .describe('改节点键 (谨慎, 会影响 RolePermission 引用)'),
   extraData: permissionExtraDataSchema.nullable().optional(),
   description: z.string().optional(),
   permissionType: permissionTypeSchema.optional(),

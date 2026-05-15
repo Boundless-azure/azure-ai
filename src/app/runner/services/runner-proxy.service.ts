@@ -31,7 +31,7 @@ export class RunnerProxyService {
     @InjectRepository(RewardRecordEntity)
     private readonly rewardRepo: Repository<RewardRecordEntity>,
     private readonly tokenService: RunnerTokenService,
-  ) { }
+  ) {}
 
   /**
    * @title 获取 Runner 基础信息

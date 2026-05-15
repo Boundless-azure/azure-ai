@@ -30,8 +30,12 @@ export class KnowledgeModule1774100000000 implements MigrationInterface {
       )
     `);
 
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_kb_type ON knowledge_books (type)`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_kb_creator ON knowledge_books (creator_id)`);
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS idx_kb_type ON knowledge_books (type)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS idx_kb_creator ON knowledge_books (creator_id)`,
+    );
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS knowledge_chapters (
@@ -51,8 +55,12 @@ export class KnowledgeModule1774100000000 implements MigrationInterface {
       )
     `);
 
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_kc_book ON knowledge_chapters (book_id)`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_kc_book_sort ON knowledge_chapters (book_id, sort_order)`);
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS idx_kc_book ON knowledge_chapters (book_id)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS idx_kc_book_sort ON knowledge_chapters (book_id, sort_order)`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

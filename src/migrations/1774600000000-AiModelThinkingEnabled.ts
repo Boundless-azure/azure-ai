@@ -6,9 +6,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * @keywords-cn 迁移, AI模型, 思考模式, thinking, reasoning, 独立列
  * @keywords-en migration, ai-model, thinking-mode, reasoning, dedicated-column
  */
-export class AiModelThinkingEnabled1774600000000
-  implements MigrationInterface
-{
+export class AiModelThinkingEnabled1774600000000 implements MigrationInterface {
   name = 'AiModelThinkingEnabled1774600000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

@@ -53,9 +53,7 @@ export class AiSessionDataService {
 
     const valStr = JSON.stringify(value);
     if (valStr.length > MAX_VALUE_BYTES) {
-      throw new Error(
-        `value too large: ${valStr.length} > ${MAX_VALUE_BYTES}`,
-      );
+      throw new Error(`value too large: ${valStr.length} > ${MAX_VALUE_BYTES}`);
     }
 
     const existing = await this.dataRepo.find({
@@ -73,9 +71,7 @@ export class AiSessionDataService {
       (existing[0]?.dataVal?.length ?? 0);
 
     if (totalBytes > MAX_TOTAL_BYTES) {
-      throw new Error(
-        `total session data exceeds ${MAX_TOTAL_BYTES} bytes`,
-      );
+      throw new Error(`total session data exceeds ${MAX_TOTAL_BYTES} bytes`);
     }
 
     const activeCount = await this.dataRepo.count({
@@ -87,16 +83,11 @@ export class AiSessionDataService {
     });
 
     if (existing.length === 0 && activeCount >= MAX_KEYS) {
-      throw new Error(
-        `too many keys: ${activeCount} >= ${MAX_KEYS}`,
-      );
+      throw new Error(`too many keys: ${activeCount} >= ${MAX_KEYS}`);
     }
 
     if (existing.length > 0) {
-      await this.dataRepo.update(
-        { id: existing[0].id },
-        { isDelete: true },
-      );
+      await this.dataRepo.update({ id: existing[0].id }, { isDelete: true });
     }
 
     const entity = this.dataRepo.create({
@@ -120,7 +111,12 @@ export class AiSessionDataService {
   async get(
     sessionId: string,
     key: string,
-  ): Promise<{ key: string; title: string | null; value: unknown; updatedAt: Date } | null> {
+  ): Promise<{
+    key: string;
+    title: string | null;
+    value: unknown;
+    updatedAt: Date;
+  } | null> {
     const row = await this.dataRepo.findOne({
       where: {
         forSessionId: sessionId,
@@ -189,6 +185,4 @@ export class AiSessionDataService {
     );
     return (result.affected ?? 0) > 0;
   }
-
 }
-

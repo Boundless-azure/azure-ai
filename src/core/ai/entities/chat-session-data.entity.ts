@@ -9,8 +9,8 @@ import { BaseAuditedEntity } from './base.entity';
  */
 export enum SessionDataType {
   WebmcpSchema = 'webmcp_schema',
-  WebmcpConn   = 'webmcp_conn',
-  AiSession    = 'ai_session',
+  WebmcpConn = 'webmcp_conn',
+  AiSession = 'ai_session',
 }
 
 @Entity('chat_sessions_data')

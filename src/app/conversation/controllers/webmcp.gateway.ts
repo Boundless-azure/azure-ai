@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -58,13 +55,22 @@ export class WebMcpGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * 握手阶段双重鉴权：验证 JWT token 并校验 sessionId 存在
    * @keyword-en handle-connection-auth
    */
-  async handleConnection(client: Socket & { disconnect(close?: boolean): void }): Promise<void> {
-    const token     = this._extractToken(client);
-    const sessionId = client.handshake.auth?.['sessionId'] as string | undefined;
+  async handleConnection(
+    client: Socket & { disconnect(close?: boolean): void },
+  ): Promise<void> {
+    const token = this._extractToken(client);
+    const sessionId = client.handshake.auth?.['sessionId'] as
+      | string
+      | undefined;
 
     if (!token || !sessionId) {
-      this.logger.warn(`[webmcp] missing token or sessionId socket=${client.id}`);
-      client.emit('webmcp:error', { code: 'AUTH_MISSING', msg: 'token and sessionId required' });
+      this.logger.warn(
+        `[webmcp] missing token or sessionId socket=${client.id}`,
+      );
+      client.emit('webmcp:error', {
+        code: 'AUTH_MISSING',
+        msg: 'token and sessionId required',
+      });
       client.disconnect();
       return;
     }
@@ -73,15 +79,23 @@ export class WebMcpGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.authService.verifyToken(token);
     } catch {
       this.logger.warn(`[webmcp] invalid token socket=${client.id}`);
-      client.emit('webmcp:error', { code: 'AUTH_INVALID', msg: 'invalid token' });
+      client.emit('webmcp:error', {
+        code: 'AUTH_INVALID',
+        msg: 'invalid token',
+      });
       client.disconnect();
       return;
     }
 
     const exists = await this.dataService.sessionExists(sessionId);
     if (!exists) {
-      this.logger.warn(`[webmcp] session not found sessionId=${sessionId} socket=${client.id}`);
-      client.emit('webmcp:error', { code: 'SESSION_NOT_FOUND', msg: 'session not found' });
+      this.logger.warn(
+        `[webmcp] session not found sessionId=${sessionId} socket=${client.id}`,
+      );
+      client.emit('webmcp:error', {
+        code: 'SESSION_NOT_FOUND',
+        msg: 'session not found',
+      });
       client.disconnect();
       return;
     }
@@ -92,7 +106,9 @@ export class WebMcpGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.socketMap.set(client.id, client);
     await this.dataService.saveConn(sessionId, client.id);
 
-    this.logger.debug(`[webmcp] connected socket=${client.id} session=${sessionId}`);
+    this.logger.debug(
+      `[webmcp] connected socket=${client.id} session=${sessionId}`,
+    );
     client.emit('webmcp:connected', { ok: true, socketId: client.id });
   }
 
@@ -104,7 +120,9 @@ export class WebMcpGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const sessionId = this.socketSessionMap.get(client.id);
     this.socketSessionMap.delete(client.id);
     this.socketMap.delete(client.id);
-    this.logger.debug(`[webmcp] disconnected socket=${client.id} session=${sessionId ?? '?'}`);
+    this.logger.debug(
+      `[webmcp] disconnected socket=${client.id} session=${sessionId ?? '?'}`,
+    );
   }
 
   // ========== 事件处理 ==========
@@ -123,13 +141,15 @@ export class WebMcpGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     await this.dataService.saveSchema(sessionId, {
       descriptor: payload.descriptor,
-      pageName:   payload.pageName,
-      socketId:   client.id,
+      pageName: payload.pageName,
+      socketId: client.id,
       registeredAt: new Date().toISOString(),
     });
 
     client.emit('webmcp:registered', { ok: true });
-    this.logger.debug(`[webmcp] schema registered session=${sessionId} page=${payload.pageName}`);
+    this.logger.debug(
+      `[webmcp] schema registered session=${sessionId} page=${payload.pageName}`,
+    );
   }
 
   /**
@@ -165,12 +185,14 @@ export class WebMcpGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!target) return Promise.reject(new Error('socket not found'));
 
     const callId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const key    = `${socketId}:${callId}`;
+    const key = `${socketId}:${callId}`;
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingCalls.delete(key);
-        reject(new Error(`webmcp call timeout (${timeoutMs}ms) callId=${callId}`));
+        reject(
+          new Error(`webmcp call timeout (${timeoutMs}ms) callId=${callId}`),
+        );
       }, timeoutMs);
 
       this.pendingCalls.set(key, { resolve, timer });
@@ -182,7 +204,10 @@ export class WebMcpGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * fire-and-forget 版本（兼容不需要等待结果的场景）
    * @keyword-en send-call-to-client
    */
-  sendCall(socketId: string, call: { type: 'data' | 'emit'; payload: unknown }): boolean {
+  sendCall(
+    socketId: string,
+    call: { type: 'data' | 'emit'; payload: unknown },
+  ): boolean {
     const target = this.socketMap.get(socketId);
     if (!target) return false;
     target.emit('webmcp:call', call);

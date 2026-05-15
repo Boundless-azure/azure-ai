@@ -1,25 +1,26 @@
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { RunnerHookBusService } from '../../hookbus/services/hookbus.service';
 import {
   TouchpointConfigSchema,
   type DataTouchpoint,
-  type LoadedTouchpoint,
   type TouchpointConfig,
-  type TouchpointHandler,
 } from '../types/data-touchpoint.types';
+import { resolveTouchpointFile } from './touchpoint-paths';
 import { ScheduleSchema, type Schedule } from './touchpoint-schedule';
 
 /**
- * @title 触点胶水代码加载器与运行时沙箱
- * @description 加载 touchpoint.config.json + 动态 import 胶水代码 default export, 包装受限 callHook (运行时按 config.allowedHooks 白名单拦截), 返回带超时的执行器。
- * @keywords-cn 触点加载, 沙箱, 受限callHook, 白名单, 动态import
- * @keywords-en touchpoint-loader, sandbox, restricted-callhook, allowlist, dynamic-import
+ * @title 触点元数据加载器 + 受限 callHook 工厂
+ * @description 解析 + 校验路径 (touchpoint-paths) → 读 config → 主线程 dynamic import 一次取胶水元数据 (highFrequency / schedule)
+ *              → 返回 fileUrl + sandboxedCallHook 给 executor 在 worker_thread 里跑真正的 handler。
+ *              主线程不直接执行 handler, 超时与 kill 由 executor (touchpoint-executor.ts) 接管。
+ *              沙箱 callHook 走 bindAgentId 当 principal, 让 saas.* 跨进程鉴权按 agent 自身能力。
+ * @keywords-cn 触点加载, 路径校验, 受限callHook, 白名单, 元数据预读, bindAgentId主体
+ * @keywords-en touchpoint-loader, path-guard, restricted-callhook, allowlist, metadata-preread, bindagentid-principal
  */
 
 /**
- * 沙箱拒绝异常
+ * 沙箱拒绝异常 (hook 名不在 allowedHooks 内). executor 主线程捕获后转译为 outcome='denied'.
  * @keyword-en touchpoint-hook-denied
  */
 export class TouchpointHookDeniedError extends Error {
@@ -35,11 +36,27 @@ export class TouchpointHookDeniedError extends Error {
 }
 
 /**
+ * 加载后的触点 bundle: 主线程跑 schedule/state 决策 + 把 fileUrl 交给 executor 在 worker 里跑
+ * @keyword-en loaded-touchpoint
+ */
+export interface LoadedTouchpoint {
+  config: TouchpointConfig;
+  /** file:// URL with ?t=<updatedAt> 缓存破坏 query; 直接传给 worker 动态 import */
+  fileUrl: string;
+  /** 主线程侧受限 callHook; executor 收到 worker 的 RPC 后调用此函数 */
+  sandboxedCallHook: (name: string, payload: unknown) => Promise<unknown>;
+  /** 胶水 export const highFrequency = true → state 走 redis */
+  highFrequency: boolean;
+  /** 胶水 export const schedule = ... → 注册 BullMQ Repeatable */
+  schedule?: Schedule;
+}
+
+/**
  * 受限 callHook 工厂: 只放行 allowedHooks 列出的 hook 名 (saas.* / runner.* 一视同仁)
- *  - saas.* 由 hookBus.emit 内部按前缀自动路由跨进程到 SaaS, 沙箱不感知
+ *  - 主体身份取 touchpoint.bindAgentId (principalType='agent'), 让 saas 端 ability 中间件按 agent 鉴权
  *  - 多 handler 返回数组, 单 handler 返回首个 data
- *  - 任一 result 是 error 即抛错, 由触点 trigger.service 兜底捕获并回写 status=broken
- *  - context.source='system' (非 LLM 链路, ability 检查可放宽)
+ *  - 任一 result.error 直接抛错, 由 executor 翻译成 outcome
+ *  - hook 名不在白名单 → TouchpointHookDeniedError, executor 翻译成 outcome='denied'
  * @keyword-en create-sandboxed-callhook
  */
 function createSandboxedCallHook(
@@ -56,7 +73,8 @@ function createSandboxedCallHook(
       payload,
       context: {
         source: 'system',
-        principalType: 'system',
+        principalId: touchpoint.bindAgentId,
+        principalType: 'agent',
         extras: { touchpointId: touchpoint._id },
       },
     });
@@ -72,37 +90,40 @@ function createSandboxedCallHook(
 }
 
 /**
- * 加载触点的 config + 胶水代码; 返回一个带白名单沙箱 + 超时的可执行函数
+ * 加载触点 config + 预读胶水元数据 (highFrequency / schedule); 真 handler 由 executor 在 worker 里 import 跑。
+ *  - rootDir 缺省 process.cwd(), 等 Phase 1.4 切到 solution 根
+ *  - 路径防护: 绝对路径 / `..` 逃逸 / symlink 逃逸都抛 TouchpointPathDeniedError
+ *  - 主线程 import 仅为读元数据; 胶水代码 top-level 应只有 export, 不允许有副作用 (约定, 不强校验)
+ *  - 用 ?t=<updatedAt> 强制 cache miss; 触点 update 后下次加载会取新版
  * @keyword-en load-touchpoint
  */
 export async function loadTouchpoint(
   touchpoint: DataTouchpoint,
   hookBus: RunnerHookBusService,
+  rootDir: string = process.cwd(),
 ): Promise<LoadedTouchpoint> {
-  // 路径: filePath / configPath 当前阶段当作相对 process.cwd() 解析 (Phase 1.4 solution 物理结构落地后会切换为 solution 根)
-  const cwd = process.cwd();
-  const configAbs = resolve(cwd, touchpoint.configPath);
-  const fileAbs = resolve(cwd, touchpoint.filePath);
+  const fileAbs = resolveTouchpointFile(rootDir, touchpoint.filePath);
+  const configAbs = resolveTouchpointFile(rootDir, touchpoint.configPath);
 
   const configRaw = await readFile(configAbs, 'utf-8');
   const config = TouchpointConfigSchema.parse(JSON.parse(configRaw));
 
   const sandboxedCallHook = createSandboxedCallHook(hookBus, config, touchpoint);
 
-  // 动态 import: 转 file:// URL, 兼容 Windows 路径
-  // 加 ?t=<ts> query 强制每次冷加载, 避免 Node 模块缓存导致触点更新无感
+  const fileUrl = pathToFileURL(fileAbs).href + `?t=${touchpoint.updatedAt}`;
+
+  // 主线程 import 一次预读元数据 (highFrequency / schedule + 校验 default export 存在)
   // tsconfig module=CommonJS 下 TS 会把 import() 编译为 require(), 用 Function 包装绕过编译
-  const url = pathToFileURL(fileAbs).href + `?t=${touchpoint.updatedAt}`;
   const dynamicImport = new Function(
     'specifier',
     'return import(specifier)',
   ) as (s: string) => Promise<{
-    default?: TouchpointHandler;
-    handler?: TouchpointHandler;
+    default?: unknown;
+    handler?: unknown;
     highFrequency?: boolean;
     schedule?: unknown;
   }>;
-  const mod = await dynamicImport(url);
+  const mod = await dynamicImport(fileUrl);
   const handler = mod.default ?? mod.handler;
   if (typeof handler !== 'function') {
     throw new Error(
@@ -122,40 +143,5 @@ export async function loadTouchpoint(
     schedule = parsed.data;
   }
 
-  const run = async (input: {
-    payload: unknown;
-    sourceName?: string;
-    prevState: unknown;
-  }): Promise<unknown> => {
-    const ctx = {
-      payload: input.payload,
-      sourceName: input.sourceName,
-      prevState: input.prevState,
-      callHook: sandboxedCallHook,
-      log: (msg: string, attrs?: Record<string, unknown>) => {
-        // eslint-disable-next-line no-console
-        console.log(`[touchpoint:${touchpoint.name}]`, msg, attrs ?? '');
-      },
-      touchpoint,
-    };
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`touchpoint timeout after ${config.timeout}ms`)),
-        config.timeout,
-      );
-    });
-    try {
-      const result = await Promise.race([
-        Promise.resolve(handler(ctx)),
-        timeoutPromise,
-      ]);
-      return result;
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  };
-
-  return { run, highFrequency, schedule };
+  return { config, fileUrl, sandboxedCallHook, highFrequency, schedule };
 }

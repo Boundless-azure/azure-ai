@@ -12,9 +12,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * @keywords-cn 迁移, 角色权限类型, 权重, 数据权限, 越权防护
  * @keywords-en migration, role-permission-type, weight, data-permission, escalation-guard
  */
-export class RolePermissionTypeAndWeight1774500000000
-  implements MigrationInterface
-{
+export class RolePermissionTypeAndWeight1774500000000 implements MigrationInterface {
   name = 'RolePermissionTypeAndWeight1774500000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

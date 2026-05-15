@@ -30,8 +30,9 @@
 ### tools/call-hook.tools.ts
 LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationContext)
 
-- `buildCallHookTool(hookBus, hookRpc, getCtx)` — 同步调用 hook, 等待结果 | keywords: call-hook-tool, sync, target-routing
-- `buildCallHookAsyncTool(hookBus, hookRpc, getCtx)` — fire-and-forget, 立即返回 | keywords: call-hook-async-tool
+- `buildCallHookTool(hookBus, hookRpc, getCtx, sideEffects?)` — 同步批量调用 hook (入参 calls 数组, 并发派发, 顺序返回 { results: [...] }) | keywords: call-hook-tool, sync, batch, target-routing
+- `buildCallHookAsyncTool(hookBus, hookRpc, getCtx)` — 批量 fire-and-forget (入参 calls 数组, 立即返回 { results: [{ hookName, target, queued }, ...] }) | keywords: call-hook-async-tool, batch
+- `processOneCallAftermath(entry, reply, ctx, sideEffects?)` — per-call 失败追踪 + hint 注入 + 副作用回调 | keywords: aftermath, per-call
 - `buildSearchHookTool(hookBus, hookRpc, getCtx)` — 按 tags / pluginName 搜索 hook 注册表 | keywords: search-hook-tool, discovery
 - `buildGetHookTagTool(hookBus, hookRpc, getCtx)` — 获取 tag 频次榜 | keywords: get-hook-tag-tool, tag-leaderboard
 - `buildGetHookInfoTool(hookBus, hookRpc, getCtx)` — 批量获取 hook 描述+tags+payload schema | keywords: get-hook-info-tool, batch-info

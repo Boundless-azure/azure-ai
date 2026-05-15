@@ -181,7 +181,8 @@ export class RoleService {
         roleId,
         subject: it.subject,
         action: it.action,
-        permissionType: it.permissionType ?? PermissionDefinitionType.Management,
+        permissionType:
+          it.permissionType ?? PermissionDefinitionType.Management,
       }),
     );
     const saved = await this.permRepo.save(entities);

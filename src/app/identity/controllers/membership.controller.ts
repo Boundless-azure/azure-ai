@@ -21,14 +21,13 @@ import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorato
  * @keywords-en membership-hook, payload-schema, input
  */
 const onRbacMembershipListInput = z.object({
-  organizationId: z
-    .string()
-    .optional()
-    .describe('按组织 ID 过滤'),
+  organizationId: z.string().optional().describe('按组织 ID 过滤'),
   principalId: z
     .string()
     .optional()
-    .describe('按主体 ID 过滤; 与 organizationId 同时传则取交集 (该用户在该组织的成员关系)'),
+    .describe(
+      '按主体 ID 过滤; 与 organizationId 同时传则取交集 (该用户在该组织的成员关系)',
+    ),
   roleId: z.string().optional().describe('按角色 ID 过滤; 找出某角色所有成员'),
   active: z
     .boolean()

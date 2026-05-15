@@ -80,7 +80,7 @@ const SAVE_LLM_SYSTEM_PROMPT = [
   '**自检**: 写完 title 自问"下次扫 list 看到这一行, 能识别出是哪个业务场景吗?" → 能 ✓; 看 value 自问"细节够不够 LLM 直接抄?" → 够 ✓.',
   '',
   '## 输出',
-  '调 `call_hook({ target:"saas", hookName:"saas.app.conversation.sessionData.save", payload:{ key, value, title } })` 0~N 次。',
+  '调 `call_hook({ calls: [{ target:"saas", hookName:"saas.app.conversation.sessionData.save", payload:{ key, value, title } }] })` 0~N 次; 多条 save 可塞进同一个 `calls` 数组一次并发提交。',
   '`sessionId` 留空, 服务端从 ctx 自动补当前会话。',
   '`title` 长度: **简短** (10~30 字), 业务名词为主, 不含"已X" / 单纯 hook 名 / 详细字段规则.',
   '`value`: 完整详细, 包含 payloadShape / hints / usage 等结构化字段, 让下次取出来直接用.',
@@ -133,8 +133,8 @@ export class SessionSaveLlmService {
         context: { ...invocationContext, source: 'system' },
       });
       const listing =
-        ((listingResults?.[0]?.data as { listing?: string } | undefined)
-          ?.listing as string | undefined) ?? '(空)';
+        (listingResults?.[0]?.data as { listing?: string } | undefined)
+          ?.listing ?? '(空)';
 
       // 防自我触发: ctx.extras.disableTracker=true → buildCallHookTool 内 record 跳过
       const llmCtx: HookInvocationContext = {
@@ -175,7 +175,9 @@ export class SessionSaveLlmService {
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      this.logger.warn(`[session-save-llm] failed session=${sessionId}: ${msg}`);
+      this.logger.warn(
+        `[session-save-llm] failed session=${sessionId}: ${msg}`,
+      );
     } finally {
       this.tracker.resetTriggers(sessionId);
     }
@@ -192,7 +194,9 @@ export class SessionSaveLlmService {
       .map((r) => {
         const ok = r.errorMsg.length === 0 ? 'ok' : 'err';
         const errPreview =
-          r.errorMsg.length > 0 ? ` errMsg=${truncate(r.errorMsg.join('; '), 120)}` : '';
+          r.errorMsg.length > 0
+            ? ` errMsg=${truncate(r.errorMsg.join('; '), 120)}`
+            : '';
         const payloadPreview = ` payload=${truncate(safeJson(r.payload), 200)}`;
         const resultPreview =
           ok === 'ok' && r.result !== null

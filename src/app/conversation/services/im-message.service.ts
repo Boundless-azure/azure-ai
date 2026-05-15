@@ -803,7 +803,10 @@ export class ImMessageService {
         {
           bookId,
           name: bookName,
-          hint: '通过 saas.app.knowledge.getToc({ bookIds: ["' + bookId + '"] }) 拿目录, 再 saas.app.knowledge.getChapter 取章节; 不要凭 hook 名或字段名猜。',
+          hint:
+            '通过 saas.app.knowledge.getToc({ bookIds: ["' +
+            bookId +
+            '"] }) 拿目录, 再 saas.app.knowledge.getChapter 取章节; 不要凭 hook 名或字段名猜。',
         },
         title,
       );

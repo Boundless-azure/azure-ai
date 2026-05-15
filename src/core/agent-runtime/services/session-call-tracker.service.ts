@@ -22,7 +22,7 @@ export interface CallRecord {
   hookName: string;
   target: 'saas' | 'runner';
   payload: unknown;
-  result: unknown | null;
+  result: unknown;
   errorMsg: string[];
   ts: number;
 }
@@ -55,7 +55,10 @@ export class SessionCallTrackerService {
       t.records.shift();
     }
     t.totalCount += 1;
-    if (rec.hookName === KNOWLEDGE_GET_CHAPTER_HOOK && rec.errorMsg.length === 0) {
+    if (
+      rec.hookName === KNOWLEDGE_GET_CHAPTER_HOOK &&
+      rec.errorMsg.length === 0
+    ) {
       t.hasReadKnowledge = true;
       this.logger.log(
         `[tracker] session=${sessionId} hasReadKnowledge=true (getChapter ok)`,

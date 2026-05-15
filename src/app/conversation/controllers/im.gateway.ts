@@ -45,7 +45,7 @@ export class ImGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @Inject(forwardRef(() => ImMessageService))
     private readonly messageService: ImMessageService,
     private readonly authService: AuthService,
-  ) { }
+  ) {}
 
   private notifyRoom(principalId: string): string {
     return `${principalId}-notify`;
@@ -121,7 +121,9 @@ export class ImGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     // 重放当前 awaiting 队列状态 :: 前端刷新后能恢复"AI 已识别"emoji + 等待语
     // 单 client emit (不广播), 跟队列内的 broadcastAiAwaitingAdd 用同一 event 外形
-    const awaiting = this.messageService.replayAwaitingForSession(dto.sessionId);
+    const awaiting = this.messageService.replayAwaitingForSession(
+      dto.sessionId,
+    );
     for (const { agentPrincipalId, triggerMessageIds } of awaiting) {
       for (const triggerMessageId of triggerMessageIds) {
         client.emit('im:event', {

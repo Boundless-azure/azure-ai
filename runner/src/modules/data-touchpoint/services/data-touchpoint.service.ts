@@ -37,7 +37,6 @@ export class RunnerDataTouchpointService {
       filePath: input.filePath,
       configPath: input.configPath,
       enabled: input.enabled,
-      status: 'ready',
       createdAt: now,
       updatedAt: now,
     };
@@ -83,14 +82,21 @@ export class RunnerDataTouchpointService {
   }
 
   /**
-   * 列出数据触点 (按 solutionId / bindSessionId / source / enabled 过滤, 全部可选)
+   * 列出数据触点
+   * - 过滤条件全部可选: solutionId / bindSessionId / source (单值) / sourceIn (多值 $in) / enabled
+   * - source 与 sourceIn 互斥, 同传 sourceIn 优先 (语义更明确)
+   * - sourceIn 用 mongo $in 一次查命中"任一 source"的触点, 自然去重, 多 source 触发场景核心
    * @keyword-en list-data-touchpoint
    */
   async list(filter: ListDataTouchpointInput): Promise<DataTouchpoint[]> {
     const where: Filter<DataTouchpoint> = {};
     if (filter.solutionId) where.solutionId = filter.solutionId;
     if (filter.bindSessionId) where.bindSessionId = filter.bindSessionId;
-    if (filter.source) where.sources = filter.source;
+    if (filter.sourceIn && filter.sourceIn.length > 0) {
+      where.sources = { $in: filter.sourceIn };
+    } else if (filter.source) {
+      where.sources = filter.source;
+    }
     if (typeof filter.enabled === 'boolean') where.enabled = filter.enabled;
     return this.collection.find(where).toArray();
   }

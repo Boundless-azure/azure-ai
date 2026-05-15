@@ -61,7 +61,10 @@ export class HookDecoratorExplorerService implements OnModuleInit {
         );
         if (!meta) continue;
         const inheritedAbility = this.readAbility(methodRef);
-        const finalMetadata = this.mergeAbility(meta.metadata, inheritedAbility);
+        const finalMetadata = this.mergeAbility(
+          meta.metadata,
+          inheritedAbility,
+        );
         this.hookBus.register(
           meta.name,
           (event) => methodRef.call(instance, event),

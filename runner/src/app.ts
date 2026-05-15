@@ -56,11 +56,18 @@ export async function createRunnerApp() {
     runnerDbName: cfg.runnerDbName || 'runner',
     mongoClient,
   });
-  // 数据触点触发服务 (BullMQ 异步队列 + 沙箱执行 + SYSTEM_NOTIFIER 跨进程 sendMsg)
-  // 实例化在前以便 socket 回调注入 callSaaSHook; queue/worker 在 redis 连上后 start
-  const touchpointTrigger = cfg.redisUri
-    ? new RunnerTouchpointTriggerService(cfg.redisUri, hookBus, mongoClient)
-    : undefined;
+  // 数据触点触发服务 (BullMQ 异步队列 + worker_thread 真 kill + OTel 运行历史)
+  // 实例化在前以便 socket 回调注入 callSaaSHook; queue/worker 在 redis + runnerId 都就绪后 start
+  // 没有 runnerId (未注册) 时不创建, 避免 redis key 无前缀导致多租户漏租
+  const touchpointTrigger =
+    cfg.redisUri && cfg.runnerId
+      ? new RunnerTouchpointTriggerService(
+          cfg.redisUri,
+          hookBus,
+          mongoClient,
+          cfg.runnerId,
+        )
+      : undefined;
 
   await app.register(cors, { origin: true });
   await app.register(fastifyStatic, {

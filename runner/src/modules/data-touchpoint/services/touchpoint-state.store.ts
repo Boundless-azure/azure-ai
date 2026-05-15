@@ -102,8 +102,9 @@ export class MongoStateStore implements TouchpointStateStore {
 
 /**
  * 高频 store: redis (低延迟, 弱持久; 胶水代码必须容忍 prevState=undefined)
- * - key: tp:state:<id>
+ * - key: tp:state:<runnerId>:<touchpointId>  (runnerId 做多租户隔离)
  * - 24h TTL, 可后续按需调
+ * - runnerId 不能为空 (构造时 throw), 避免误配置漏租
  * @keyword-en redis-state-store
  */
 export class RedisStateStore implements TouchpointStateStore {
@@ -111,11 +112,16 @@ export class RedisStateStore implements TouchpointStateStore {
 
   constructor(
     private readonly redis: Redis,
+    private readonly runnerId: string,
     private readonly ttlSec: number = RedisStateStore.DEFAULT_TTL_SEC,
-  ) {}
+  ) {
+    if (!runnerId) {
+      throw new Error('RedisStateStore requires non-empty runnerId');
+    }
+  }
 
   private key(touchpointId: string): string {
-    return `tp:state:${touchpointId}`;
+    return `tp:state:${this.runnerId}:${touchpointId}`;
   }
 
   async read(touchpointId: string): Promise<unknown> {

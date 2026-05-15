@@ -37,7 +37,7 @@ export class KnowledgeController {
   constructor(
     private readonly knowledgeService: KnowledgeService,
     private readonly aiModelService: AIModelService,
-  ) { }
+  ) {}
 
   // ========== 书本管理 ==========
 
@@ -111,9 +111,7 @@ export class KnowledgeController {
    */
   @Post('books/:id/embed')
   @CheckAbility('update', 'knowledge')
-  async buildEmbedding(
-    @Param('id') id: string,
-  ): Promise<KnowledgeBookInfo> {
+  async buildEmbedding(@Param('id') id: string): Promise<KnowledgeBookInfo> {
     const apiKey = await this.pickApiKey();
     return this.knowledgeService.buildEmbedding(id, apiKey);
   }
@@ -126,7 +124,9 @@ export class KnowledgeController {
    * @keyword-en list-chapters-toc
    */
   @Get('books/:id/chapters')
-  async getBookChapters(@Param('id') id: string): Promise<KnowledgeChapterToc[]> {
+  async getBookChapters(
+    @Param('id') id: string,
+  ): Promise<KnowledgeChapterToc[]> {
     const toc = await this.knowledgeService.getTocByBookIds([id]);
     return toc[id] ?? [];
   }
@@ -155,7 +155,10 @@ export class KnowledgeController {
     @Param('id') id: string,
     @Param('chapterId') chapterId: string,
   ): Promise<KnowledgeChapterInfo[]> {
-    const result = await this.knowledgeService.getChapterContent([id], [chapterId]);
+    const result = await this.knowledgeService.getChapterContent(
+      [id],
+      [chapterId],
+    );
     return result[id] ?? [];
   }
 
@@ -232,9 +235,7 @@ export class KnowledgeController {
    * @keyword-en tag-search
    */
   @Post('search')
-  async search(
-    @Body() dto: KnowledgeSearchDto,
-  ): Promise<KnowledgeBookInfo[]> {
+  async search(@Body() dto: KnowledgeSearchDto): Promise<KnowledgeBookInfo[]> {
     return this.knowledgeService.listByTags({
       tags: dto.tags,
       type: dto.type,
@@ -246,11 +247,7 @@ export class KnowledgeController {
   private async pickApiKey(): Promise<string> {
     const models = await this.aiModelService.getEnabledModels();
     for (const m of models) {
-      if (
-        m.provider === 'openai' &&
-        typeof m.apiKey === 'string' &&
-        m.apiKey
-      ) {
+      if (m.provider === 'openai' && typeof m.apiKey === 'string' && m.apiKey) {
         return m.apiKey;
       }
     }

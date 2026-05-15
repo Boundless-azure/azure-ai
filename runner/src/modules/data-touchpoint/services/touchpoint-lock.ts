@@ -18,13 +18,22 @@ end
 
 /**
  * 触点锁服务
+ *  - runnerId 作为 key 前缀做多租户隔离, 共享 redis 实例时不互串
+ *  - runnerId 不能为空 (构造时 throw), 避免误配置漏租
  * @keyword-en touchpoint-lock-service
  */
 export class TouchpointLock {
-  constructor(private readonly redis: Redis) {}
+  constructor(
+    private readonly redis: Redis,
+    private readonly runnerId: string,
+  ) {
+    if (!runnerId) {
+      throw new Error('TouchpointLock requires non-empty runnerId');
+    }
+  }
 
   private key(touchpointId: string): string {
-    return `tp:lock:${touchpointId}`;
+    return `tp:lock:${this.runnerId}:${touchpointId}`;
   }
 
   /**

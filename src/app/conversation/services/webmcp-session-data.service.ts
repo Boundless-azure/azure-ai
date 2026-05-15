@@ -47,7 +47,9 @@ export class WebMcpSessionDataService {
       forSessionId: sessionId,
     });
     await this.dataRepo.save(entity);
-    this.logger.debug(`[webmcp] conn saved session=${sessionId} socket=${socketId}`);
+    this.logger.debug(
+      `[webmcp] conn saved session=${sessionId} socket=${socketId}`,
+    );
   }
 
   /**
@@ -60,10 +62,13 @@ export class WebMcpSessionDataService {
       .createQueryBuilder()
       .update(ChatSessionDataEntity)
       .set({ isDelete: true })
-      .where('for_session_id = :sessionId AND data_type = :type AND is_delete = false', {
-        sessionId,
-        type: SessionDataType.WebmcpSchema,
-      })
+      .where(
+        'for_session_id = :sessionId AND data_type = :type AND is_delete = false',
+        {
+          sessionId,
+          type: SessionDataType.WebmcpSchema,
+        },
+      )
       .execute();
 
     const entity = this.dataRepo.create({
@@ -82,7 +87,11 @@ export class WebMcpSessionDataService {
    */
   async getLatestConn(sessionId: string): Promise<string | null> {
     const row = await this.dataRepo.findOne({
-      where: { forSessionId: sessionId, dataType: SessionDataType.WebmcpConn, isDelete: false },
+      where: {
+        forSessionId: sessionId,
+        dataType: SessionDataType.WebmcpConn,
+        isDelete: false,
+      },
       order: { createdAt: 'DESC' },
     });
     return row?.dataVal ?? null;
@@ -92,20 +101,30 @@ export class WebMcpSessionDataService {
    * 获取最新的 Schema
    * @keyword-en get-latest-schema
    */
-  async getLatestSchema(sessionId: string): Promise<unknown | null> {
+  async getLatestSchema(sessionId: string): Promise<unknown> {
     const row = await this.dataRepo.findOne({
-      where: { forSessionId: sessionId, dataType: SessionDataType.WebmcpSchema, isDelete: false },
+      where: {
+        forSessionId: sessionId,
+        dataType: SessionDataType.WebmcpSchema,
+        isDelete: false,
+      },
       order: { createdAt: 'DESC' },
     });
     if (!row) return null;
-    try { return JSON.parse(row.dataVal); } catch { return null; }
+    try {
+      return JSON.parse(row.dataVal);
+    } catch {
+      return null;
+    }
   }
 
   /**
    * 获取连接状态（是否存在活跃 conn 记录）
    * @keyword-en get-conn-status
    */
-  async getConnStatus(sessionId: string): Promise<{ connected: boolean; socketId: string | null }> {
+  async getConnStatus(
+    sessionId: string,
+  ): Promise<{ connected: boolean; socketId: string | null }> {
     const socketId = await this.getLatestConn(sessionId);
     return { connected: socketId !== null, socketId };
   }

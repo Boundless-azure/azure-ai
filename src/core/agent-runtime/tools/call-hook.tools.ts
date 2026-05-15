@@ -52,7 +52,7 @@ function countReply(reply: HookCallReply): { ok: number; err: number } {
  * @description 全部走 target 路由 (saas / runner), runner 必填 runnerId; 任何路径都是软错返回, 不抛。
  *              所有工具的 invocationContext (token / principalId / traceId) 由 AgentRuntime 闭包注入,
  *              LLM schema 完全不暴露, 保证 LLM 不可见不可改 token。
- *              批量统一通过数组形参 (tags / hookNames / runnerIds) 实现, 不再单独声明 batch 工具。
+ *              批量统一通过数组形参实现 (call_hook / call_hook_async 入参 calls 数组, search_hook / get_hook_info 入参 tags / hookNames 数组), 不再单独声明 batch 工具。
  * @keywords-cn LLM工具, Hook调用, 路由分发, 上下文闭包, 元工具, 软错误
  * @keywords-en llm-tools, hook-call, target-routing, ctx-closure, meta-tools, soft-error
  */
@@ -64,7 +64,14 @@ const DEFAULT_PAGE_SIZE = 100;
 /** get_hook_tag 上限: tag 是发现链路起点, 一次拿全景, 硬上限 400 */
 const TAG_PAGE_LIMIT = 400;
 
-const hookCallSchema = z.object({
+/** call_hook 批量上限 (一次最多并发派发 N 个 hook) */
+const CALL_HOOK_BATCH_LIMIT = 20;
+
+/**
+ * 单次 hook 调用条目 (call_hook / call_hook_async 共用 entry)
+ * @keyword-en hook-call-entry-schema
+ */
+const hookCallEntrySchema = z.object({
   hookName: z.string().describe('要调用的 hook 名称'),
   payload: z
     .record(z.string(), z.unknown())
@@ -89,7 +96,28 @@ const hookCallSchema = z.object({
     .optional()
     .describe('仅 runner: 启用 Mongo 影子集合, 写操作不落主库'),
 });
-type HookCallInput = z.infer<typeof hookCallSchema>;
+type HookCallInput = z.infer<typeof hookCallEntrySchema>;
+
+/**
+ * call_hook / call_hook_async 批量入参; 单调用传单元素数组, 批量并发派发 (上限 20)
+ * @keyword-en call-hook-batch-schema
+ */
+const callHookSchema = z.object({
+  calls: z
+    .array(hookCallEntrySchema)
+    .min(1)
+    .max(CALL_HOOK_BATCH_LIMIT)
+    .describe(
+      `要调用的 hook 列表, 顺序与返回 results 对齐; 单调用传单元素数组, 批量上限 ${CALL_HOOK_BATCH_LIMIT}. ` +
+        '不同 entry 可指向不同 target / runnerId, 派发并发执行, 一项软错不影响其他.',
+    ),
+});
+type CallHookBatchInput = z.infer<typeof callHookSchema>;
+
+/** 单条 hook 调用结果 (随 hookName 回带, 便于 LLM 对齐) */
+interface HookCallResultEntry extends HookCallReply {
+  hookName: string;
+}
 
 const searchHookSchema = z.object({
   target: z.enum([SAAS, RUNNER]).default(RUNNER),
@@ -115,7 +143,9 @@ const getHookTagSchema = z.object({
     .positive()
     .max(TAG_PAGE_LIMIT)
     .optional()
-    .describe(`默认 ${TAG_PAGE_LIMIT}, 一次性拿全景以便 LLM 决策; 上限 ${TAG_PAGE_LIMIT}`),
+    .describe(
+      `默认 ${TAG_PAGE_LIMIT}, 一次性拿全景以便 LLM 决策; 上限 ${TAG_PAGE_LIMIT}`,
+    ),
 });
 type GetHookTagInput = z.infer<typeof getHookTagSchema>;
 
@@ -272,7 +302,7 @@ export interface CallHookSideEffects {
       hookName: string;
       target: 'saas' | 'runner';
       payload: unknown;
-      result: unknown | null;
+      result: unknown;
       errorMsg: string[];
       ts: number;
     },
@@ -281,7 +311,71 @@ export interface CallHookSideEffects {
 }
 
 /**
- * 构建 call_hook (同步) 工具
+ * 处理单条调用的失败追踪 + hint 注入 + 副作用回调; per-call 触发
+ * @keyword-en process-one-call-aftermath
+ */
+function processOneCallAftermath(
+  entry: HookCallInput,
+  reply: HookCallReply,
+  ctx: HookInvocationContext,
+  sideEffects?: CallHookSideEffects,
+): void {
+  const { err } = countReply(reply);
+  const sessionId = ctx.extras?.sessionId as string | undefined;
+  const failureKey = buildFailureKey(
+    sessionId,
+    ctx.principalId,
+    entry.hookName,
+  );
+  if (err > 0) {
+    const failureCount = recordHookFailure(failureKey);
+    const hasSchemaError = reply.errorMsg.some((m) =>
+      /payload-schema-invalid/i.test(m),
+    );
+    if (hasSchemaError) {
+      const runnerHint =
+        entry.target === RUNNER && entry.runnerId
+          ? `, runnerId:"${entry.runnerId}"`
+          : '';
+      reply.errorMsg.push(
+        `⚠ 立刻调 get_hook_info({ target:"${entry.target}"${runnerHint}, hookNames:["${entry.hookName}"] }) 拿 schema 再重试.`,
+      );
+    } else if (failureCount >= FAILURE_HINT_THRESHOLD && !entry.debug) {
+      reply.errorMsg.push(
+        `⚠ 该 hook 在本会话已连续失败 ${failureCount} 次。建议下次调用时传 debug: true ` +
+          `启用 OTel trace, 拿 handler 内部日志 (debugLog 字段) 辅助诊断 — ` +
+          `errorMsg 之外可能有 service 层 warn/info 解释根因 (如 id 格式 / 不存在 / 越权拦截)。`,
+      );
+    }
+  } else {
+    recordHookSuccess(failureKey);
+  }
+
+  if (sideEffects?.onCallComplete && !ctx.extras?.disableTracker) {
+    try {
+      sideEffects.onCallComplete(
+        {
+          hookName: entry.hookName,
+          target: entry.target,
+          payload: entry.payload ?? null,
+          result: reply.result ?? null,
+          errorMsg: reply.errorMsg ?? [],
+          ts: Date.now(),
+        },
+        ctx,
+      );
+    } catch (e) {
+      toolLogger.warn(
+        `[call_hook] sideEffect failed (${entry.hookName}): ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+}
+
+/**
+ * 构建 call_hook (同步, 批量) 工具
+ * - 一次接受 calls 数组, 并发派发, 顺序与返回 results 对齐
+ * - 单调用 = 单元素数组; 任一项软错不影响其他项
  * @keyword-en build-call-hook-tool
  */
 export function buildCallHookTool(
@@ -291,86 +385,45 @@ export function buildCallHookTool(
   sideEffects?: CallHookSideEffects,
 ) {
   return tool(
-    async (input: HookCallInput): Promise<string> => {
+    async (input: CallHookBatchInput): Promise<string> => {
       const start = Date.now();
       const ctx = getCtx();
-      const reply = await dispatchOne(hookBus, hookRpc, ctx, input);
-      const duration = Date.now() - start;
-      const { ok, err } = countReply(reply);
-
-      // 失败追踪 :: 累计 ≥ FAILURE_HINT_THRESHOLD 次连续失败 → 提示 LLM 开 debug 拿 trace 自我诊断
-      // 已开 debug 时不再追加 hint, 避免循环引导
-      const sessionId = ctx.extras?.sessionId as string | undefined;
-      const failureKey = buildFailureKey(
-        sessionId,
-        ctx.principalId,
-        input.hookName,
+      const replies = await Promise.all(
+        input.calls.map((entry) => dispatchOne(hookBus, hookRpc, ctx, entry)),
       );
-      if (err > 0) {
-        const failureCount = recordHookFailure(failureKey);
-        // payload-schema-invalid :: 一行 hint 让 LLM 调 get_hook_info 拿 schema, 不在 errorMsg 里塞 schema 本体
-        const hasSchemaError = reply.errorMsg.some((m) =>
-          /payload-schema-invalid/i.test(m),
+
+      const results: HookCallResultEntry[] = input.calls.map((entry, i) => {
+        const reply = replies[i] ?? softError('dispatch-missing');
+        processOneCallAftermath(entry, reply, ctx, sideEffects);
+        const { ok, err } = countReply(reply);
+        toolLogger.log(
+          `[call_hook] ${targetTag(entry.target, entry.runnerId)} ${entry.hookName} ` +
+            `payload=${preview(entry.payload ?? {})} ok=${ok} err=${err}` +
+            (err > 0
+              ? ` errMsg=${preview(reply.errorMsg, 200)}`
+              : ` data=${preview(reply.result, 240)}`),
         );
-        if (hasSchemaError) {
-          const runnerHint =
-            input.target === RUNNER && input.runnerId
-              ? `, runnerId:"${input.runnerId}"`
-              : '';
-          reply.errorMsg.push(
-            `⚠ 立刻调 get_hook_info({ target:"${input.target}"${runnerHint}, hookNames:["${input.hookName}"] }) 拿 schema 再重试.`,
-          );
-        } else if (failureCount >= FAILURE_HINT_THRESHOLD && !input.debug) {
-          reply.errorMsg.push(
-            `⚠ 该 hook 在本会话已连续失败 ${failureCount} 次。建议下次调用时传 debug: true ` +
-              `启用 OTel trace, 拿 handler 内部日志 (debugLog 字段) 辅助诊断 — ` +
-              `errorMsg 之外可能有 service 层 warn/info 解释根因 (如 id 格式 / 不存在 / 越权拦截)。`,
-          );
-        }
-      } else {
-        recordHookSuccess(failureKey);
-      }
+        return { hookName: entry.hookName, ...reply };
+      });
 
+      const totalErr = results.reduce(
+        (acc, r) => acc + (r.errorMsg?.length ?? 0),
+        0,
+      );
       toolLogger.log(
-        `[call_hook] ${targetTag(input.target, input.runnerId)} ${input.hookName} ` +
-          `payload=${preview(input.payload ?? {})} ok=${ok} err=${err} duration=${duration}ms` +
-          (err > 0
-            ? ` errMsg=${preview(reply.errorMsg, 200)}`
-            : ` data=${preview(reply.result, 240)}`),
+        `[call_hook] batch=${input.calls.length} err=${totalErr} duration=${Date.now() - start}ms`,
       );
 
-      // 副作用 :: SessionCallTracker 记录 + 硬匹配触发沉淀 LLM
-      // ctx.extras.disableTracker=true 时跳过 (防独立沉淀 LLM 自我触发)
-      if (sideEffects?.onCallComplete && !ctx.extras?.disableTracker) {
-        try {
-          sideEffects.onCallComplete(
-            {
-              hookName: input.hookName,
-              target: input.target,
-              payload: input.payload ?? null,
-              result: reply.result ?? null,
-              errorMsg: reply.errorMsg ?? [],
-              ts: Date.now(),
-            },
-            ctx,
-          );
-        } catch (e) {
-          toolLogger.warn(
-            `[call_hook] sideEffect failed: ${e instanceof Error ? e.message : e}`,
-          );
-        }
-      }
-
-      return JSON.stringify(reply);
+      return JSON.stringify({ results });
     },
     {
       name: 'call_hook',
       description:
-        '同步调用 hook, 等待结果 (统一外形 { errorMsg, result, debugLog })。' +
-        '默认 target=runner 经 WS 派发到指定 runnerId; target=saas 走平台 HookBus。' +
-        'errorMsg 非空 = 软错, 据此调整重试。' +
+        '同步批量调用 hook, 等待全部结果。入参 { calls: [{ hookName, payload, target, runnerId, debug, debugDb }, ...] }, 单调用传单元素数组。' +
+        `批量上限 ${CALL_HOOK_BATCH_LIMIT}, 并发派发, 返回 { results: [{ hookName, errorMsg, result, debugLog }, ...] } 顺序与 calls 对齐。` +
+        '某项 errorMsg 非空 = 该项软错, 不影响其他项; 据此调整重试。' +
         '【强约束】若 payload schema 未在已加载知识章节中看到, 调用前必须先 get_hook_info(hookNames=[...]) 拿到 JSON Schema 再写 payload。凭名字猜字段会软错回退、浪费一轮。',
-      schema: hookCallSchema,
+      schema: callHookSchema,
     },
   );
 }
@@ -388,25 +441,29 @@ export function buildCallHookAsyncTool(
   getCtx: InvocationContextProvider,
 ) {
   return tool(
-    (input: HookCallInput): string => {
-      toolLogger.log(
-        `[call_hook_async] ${targetTag(input.target, input.runnerId)} ${input.hookName} ` +
-          `payload=${preview(input.payload ?? {})} (fire-and-forget)`,
-      );
-      void dispatchOne(hookBus, hookRpc, getCtx(), input).catch(
-        () => undefined,
-      );
-      return JSON.stringify({
-        queued: true,
-        hookName: input.hookName,
-        target: input.target,
+    (input: CallHookBatchInput): string => {
+      const ctx = getCtx();
+      const queued = input.calls.map((entry) => {
+        toolLogger.log(
+          `[call_hook_async] ${targetTag(entry.target, entry.runnerId)} ${entry.hookName} ` +
+            `payload=${preview(entry.payload ?? {})} (fire-and-forget)`,
+        );
+        void dispatchOne(hookBus, hookRpc, ctx, entry).catch(() => undefined);
+        return {
+          hookName: entry.hookName,
+          target: entry.target,
+          queued: true,
+        };
       });
+      return JSON.stringify({ results: queued });
     },
     {
       name: 'call_hook_async',
       description:
-        '异步触发 hook (fire-and-forget), 立即返回不等结果。适用于触发后台任务、不关心返回值。',
-      schema: hookCallSchema,
+        '异步批量触发 hook (fire-and-forget), 立即返回不等结果。入参 { calls: [{...}, ...] }, 单调用传单元素数组; ' +
+        `批量上限 ${CALL_HOOK_BATCH_LIMIT}, 并发派发, 返回 { results: [{ hookName, target, queued: true }, ...] } 顺序与 calls 对齐。` +
+        '适用于触发后台任务、不关心返回值。',
+      schema: callHookSchema,
     },
   );
 }
@@ -433,21 +490,21 @@ export function buildSearchHookTool(
         limit: input.limit,
       });
       if (input.target === SAAS) {
-        const all = projectSaasRegistrations(hookBus.listRegistrations()).filter(
-          (item) => {
-            const wantTags = (input.tags ?? []).filter(Boolean);
-            if (
-              wantTags.length > 0 &&
-              !wantTags.some((t) => item.tags.includes(t))
-            ) {
-              return false;
-            }
-            if (input.pluginName && item.pluginName !== input.pluginName) {
-              return false;
-            }
-            return true;
-          },
-        );
+        const all = projectSaasRegistrations(
+          hookBus.listRegistrations(),
+        ).filter((item) => {
+          const wantTags = (input.tags ?? []).filter(Boolean);
+          if (
+            wantTags.length > 0 &&
+            !wantTags.some((t) => item.tags.includes(t))
+          ) {
+            return false;
+          }
+          if (input.pluginName && item.pluginName !== input.pluginName) {
+            return false;
+          }
+          return true;
+        });
         const limit = Math.max(
           1,
           Math.min(input.limit ?? DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZE),
@@ -522,7 +579,8 @@ export function buildGetHookTagTool(
         const projected = projectSaasRegistrations(hookBus.listRegistrations());
         const tagCount = new Map<string, number>();
         for (const item of projected) {
-          if (input.pluginName && item.pluginName !== input.pluginName) continue;
+          if (input.pluginName && item.pluginName !== input.pluginName)
+            continue;
           for (const t of item.tags) {
             tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
           }
@@ -612,7 +670,7 @@ export function buildGetHookInfoTool(
           sideEffects.onGetHookInfo(ctx);
         } catch (e) {
           toolLogger.warn(
-            `[get_hook_info] sideEffect failed: ${e instanceof Error ? e.message : e}`,
+            `[get_hook_info] sideEffect failed: ${e instanceof Error ? e.message : String(e)}`,
           );
         }
       }
@@ -624,7 +682,7 @@ export function buildGetHookInfoTool(
           description: string | null;
           tags: string[];
           pluginName: string | null;
-          payloadSchema: unknown | null;
+          payloadSchema: unknown;
         }> = [];
         for (const item of all) {
           if (want.size > 0 && !want.has(item.name)) continue;

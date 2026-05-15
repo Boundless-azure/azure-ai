@@ -20,7 +20,10 @@ const storage = new AsyncLocalStorage<{ log: HookLog }>();
  *  - fn 内的 await 链路、Promise 回调、setImmediate 都被 ALS 自动追踪
  * @keyword-en run-with-hook-log
  */
-export function runWithHookLog<T>(log: HookLog, fn: () => T | Promise<T>): Promise<T> {
+export function runWithHookLog<T>(
+  log: HookLog,
+  fn: () => T | Promise<T>,
+): Promise<T> {
   return Promise.resolve(storage.run({ log }, fn));
 }
 

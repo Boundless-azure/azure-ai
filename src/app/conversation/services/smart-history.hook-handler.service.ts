@@ -5,10 +5,7 @@ import { z } from 'zod';
 import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
-import type {
-  HookEvent,
-  HookResult,
-} from '@/core/hookbus/types/hook.types';
+import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
 import { ChatSessionSmartEntity } from '@core/ai/entities/chat-session-smart.entity';
 import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
 
@@ -27,7 +24,9 @@ const smartSearchSchema = z.object({
   keywords: z
     .array(z.string().min(1))
     .min(1)
-    .describe('关键词列表, 任一命中即返回该 smart 段; 应当来自 smartTags 的返回'),
+    .describe(
+      '关键词列表, 任一命中即返回该 smart 段; 应当来自 smartTags 的返回',
+    ),
   limit: z
     .number()
     .int()

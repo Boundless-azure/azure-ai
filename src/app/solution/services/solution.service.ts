@@ -355,7 +355,8 @@ export class SolutionService {
   ): Promise<SolutionResponse[]> {
     const allRunners = await this.runnerService.list({});
     const onlineRunners = allRunners.filter(
-      (r) => r.status === RunnerStatus.Mounted && (!runnerId || r.id === runnerId),
+      (r) =>
+        r.status === RunnerStatus.Mounted && (!runnerId || r.id === runnerId),
     );
     if (onlineRunners.length === 0) return [];
 
@@ -398,7 +399,9 @@ export class SolutionService {
    *              需要先取 [0].data.items。任何异常形状都软返空数组。
    * @keyword-en extract-solution-items
    */
-  private extractSolutionItems(rawResult: unknown): Array<Record<string, unknown>> {
+  private extractSolutionItems(
+    rawResult: unknown,
+  ): Array<Record<string, unknown>> {
     if (!Array.isArray(rawResult)) return [];
     const first = rawResult[0] as { data?: { items?: unknown } } | undefined;
     const items = first?.data?.items;
@@ -416,19 +419,21 @@ export class SolutionService {
     raw: Record<string, unknown>,
     runnerId: string,
   ): SolutionResponse {
-    const name = String(raw.name ?? 'unknown');
-    const version = String(raw.version ?? '0.0.0');
-    const sourceVal = raw.source === 'marketplace'
-      ? SolutionSource.MARKETPLACE
-      : SolutionSource.SELF_DEVELOPED;
+    const name = typeof raw.name === 'string' ? raw.name : 'unknown';
+    const version = typeof raw.version === 'string' ? raw.version : '0.0.0';
+    const sourceVal =
+      raw.source === 'marketplace'
+        ? SolutionSource.MARKETPLACE
+        : SolutionSource.SELF_DEVELOPED;
     const includes = Array.isArray(raw.includes)
       ? (raw.includes.filter((v) =>
           ['app', 'unit', 'workflow', 'agent'].includes(String(v)),
         ) as SolutionInclude[])
       : [];
-    const installedAt = typeof raw.installedAt === 'string'
-      ? new Date(raw.installedAt)
-      : new Date();
+    const installedAt =
+      typeof raw.installedAt === 'string'
+        ? new Date(raw.installedAt)
+        : new Date();
     return {
       id: `${runnerId}::${name}@${version}`,
       runnerIds: [runnerId],

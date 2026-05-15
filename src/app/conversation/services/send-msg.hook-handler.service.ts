@@ -61,9 +61,7 @@ export class SendMsgHookHandlerService {
     payloadSchema: sendMsgSchema,
   })
   @CheckAbility('create', 'message')
-  async handleSendMsg(
-    event: HookEvent<SendMsgPayload>,
-  ): Promise<HookResult> {
+  async handleSendMsg(event: HookEvent<SendMsgPayload>): Promise<HookResult> {
     const {
       sessionId,
       content,
@@ -116,7 +114,7 @@ export class SendMsgHookHandlerService {
           // (extractMentions 走旧路径, mentions 数组走新分支, 见 sendMessage 内部)
           role: 'assistant',
           skipAgentTrigger: !mentions || mentions.length === 0 ? true : false,
-          messageType: messageType as 'text' | 'notification' | undefined,
+          messageType: messageType,
         },
       );
       this.logger.debug(
