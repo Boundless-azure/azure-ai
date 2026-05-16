@@ -17,13 +17,14 @@ const PREVIEW_LIMIT = 512;
 
 /**
  * 执行结果
- *  - success :: 正常 return
+ *  - success :: 正常 return (newState 落 state)
+ *  - skip    :: 胶水主动 ret.skip() 跳过 (state 保留上次, run 记录是否写由 record 决定)
  *  - error   :: handler 抛错 / worker 异常退出
  *  - timeout :: 超时被 worker.terminate kill
  *  - denied  :: 沙箱白名单拒绝某个 callHook
  * @keyword-en touchpoint-run-outcome
  */
-export type RunOutcome = 'success' | 'error' | 'timeout' | 'denied';
+export type RunOutcome = 'success' | 'skip' | 'error' | 'timeout' | 'denied';
 
 /**
  * payload / result 摘要 (前 512 字节预览 + 总字节数), 避免文档膨胀
@@ -35,11 +36,33 @@ export interface RunLogPayloadSummary {
 }
 
 /**
+ * 错误码 (内定枚举, 跟 outcome 配合可快速分类筛选)
+ *  - HANDLER_THROW          :: 胶水主动抛错 / 没接住, 或显式调 ret.error 未传 code
+ *  - HOOK_DENIED            :: 沙箱白名单拒绝 (跟 outcome='denied' 一一对应)
+ *  - TIMEOUT                :: 60s 超时被 worker.terminate kill (跟 outcome='timeout' 一一对应)
+ *  - LOAD_FAILED            :: 路径越根 / import 失败 / config 解析失败
+ *  - NOTIFY_TARGET_INVALID  :: ret.success({ notify }) 时任一 bindSessionId 不存在
+ *  - INTERNAL_ERROR         :: 框架内部异常 (lock 抢不到 / mongo 断连等)
+ * @keyword-en touchpoint-error-code
+ */
+export enum TouchpointErrorCode {
+  HANDLER_THROW = 'HANDLER_THROW',
+  HOOK_DENIED = 'HOOK_DENIED',
+  TIMEOUT = 'TIMEOUT',
+  LOAD_FAILED = 'LOAD_FAILED',
+  NOTIFY_TARGET_INVALID = 'NOTIFY_TARGET_INVALID',
+  INTERNAL_ERROR = 'INTERNAL_ERROR',
+}
+
+/**
  * 触发或运行期错误结构
- *  - hookName / allowedHooks 仅 outcome=denied 时填
+ *  - code 必填; UI / AI 按 code 快速定位错误来源
+ *  - hookName / allowedHooks 仅 outcome=denied (code=HOOK_DENIED) 时填
  * @keyword-en run-log-error
  */
 export interface RunLogError {
+  /** 错误码 (内定枚举) */
+  code: TouchpointErrorCode;
   message: string;
   stack?: string;
   hookName?: string;
@@ -48,12 +71,27 @@ export interface RunLogError {
 
 /**
  * mongo 持久化文档形态
+ *  - 同 touchpointId 下多条记录构成一条**单向链表**: 每条记录的 previousRunId 指向上一条 run 的 _id
+ *  - 首条 (或链断点) :: previousRunId = null
+ *  - skip + record=false 不写记录 → 不进链; skip + record=true 进链
+ *  - 30 天 TTL 过期会让链头被清掉, 是预期行为 (历史本来就该有保留窗口)
  * @keyword-en run-log-doc
  */
 export interface RunLogDoc {
   _id: string;
   touchpointId: string;
   runnerId: string;
+  /**
+   * 触点创建者 agent principal id (从触点元数据冗余进来, 让按"创建者维度"查运行历史不用 join)
+   * @keyword-en run-log-created-by-agent-id
+   */
+  createdByAgentId: string;
+  /**
+   * 指向同 touchpointId 下上一条 run 的 _id; 首次 / 链断点为 null。
+   * UI / AI 拿任意一条可反向追溯整条历史链。
+   * @keyword-en previous-run-id
+   */
+  previousRunId: string | null;
   startedAt: Date;
   durationMs: number;
   firedBy: 'source' | 'schedule';
@@ -62,6 +100,8 @@ export interface RunLogDoc {
   payloadSummary: RunLogPayloadSummary;
   result?: RunLogPayloadSummary;
   error?: RunLogError;
+  /** outcome=skip 时胶水说明跳过原因; 其他 outcome 留空 */
+  skipReason?: string;
   traceId?: string;
   log: HookLogEntry[];
 }
@@ -104,6 +144,7 @@ export class RunnerTouchpointRunLog {
     await Promise.all([
       coll.createIndex({ touchpointId: 1, startedAt: -1 }),
       coll.createIndex({ runnerId: 1, startedAt: -1 }),
+      coll.createIndex({ createdByAgentId: 1, startedAt: -1 }),
       coll.createIndex({ startedAt: 1 }, { expireAfterSeconds: TTL_SECONDS }),
     ]);
   }
@@ -115,12 +156,26 @@ export class RunnerTouchpointRunLog {
   }
 
   /**
-   * 写一条运行记录; 写入异常静默吞掉 (日志写不下去不能拖死触点执行)
+   * 写一条运行记录, 自动挂上 previousRunId 形成链表:
+   *  1. 查同 touchpointId 最新一条 run 的 _id (用 (touchpointId, startedAt:-1) 索引, projection 只拿 _id, O(1))
+   *  2. 把新条的 previousRunId 指向它 (首次 = null)
+   *  3. insertOne 新条
+   * 触点级 redis 锁保证同 touchpointId 不并发, 无 race。
+   * 写入异常静默吞掉 (日志写不下去不能拖死触点执行)。
+   * 调用方传的 doc 里的 previousRunId 会被忽略 — 链由本方法权威填写。
    * @keyword-en write-run-log
    */
-  async write(doc: Omit<RunLogDoc, '_id'>): Promise<void> {
+  async write(doc: Omit<RunLogDoc, '_id' | 'previousRunId'>): Promise<void> {
     try {
-      await this.collection.insertOne({ ...doc, _id: randomUUID() });
+      const latest = await this.collection.findOne(
+        { touchpointId: doc.touchpointId },
+        { sort: { startedAt: -1 }, projection: { _id: 1 } },
+      );
+      await this.collection.insertOne({
+        ...doc,
+        _id: randomUUID(),
+        previousRunId: latest?._id ?? null,
+      });
     } catch {
       // 静默: 不能因日志写入失败把触点跑挂
     }

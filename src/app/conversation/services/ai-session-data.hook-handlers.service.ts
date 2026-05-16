@@ -287,7 +287,7 @@ function renderListing(
   }
 
   const header = [
-    `共 ${items.length} 条记忆。**命中 title 即视作已查询, 不要再跑同主题 hook**; 需要详情调 sessionData.get({ key }) 取完整 value。`,
+    `共 ${items.length} 条记忆。命中 title 即视作已查询; 需要详情调 sessionData.get({ key }) 取完整 value。`,
     '',
   ];
 

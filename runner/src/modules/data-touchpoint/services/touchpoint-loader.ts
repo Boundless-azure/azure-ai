@@ -14,8 +14,10 @@ import { ScheduleSchema, type Schedule } from './touchpoint-schedule';
  * @description 解析 + 校验路径 (touchpoint-paths) → 读 config → 主线程 dynamic import 一次取胶水元数据 (highFrequency / schedule)
  *              → 返回 fileUrl + sandboxedCallHook 给 executor 在 worker_thread 里跑真正的 handler。
  *              主线程不直接执行 handler, 超时与 kill 由 executor (touchpoint-executor.ts) 接管。
- *              沙箱 callHook 走 bindAgentId 当 principal, 让 saas.* 跨进程鉴权按 agent 自身能力。
- * @keywords-cn 触点加载, 路径校验, 受限callHook, 白名单, 元数据预读, bindAgentId主体
+ *              沙箱 callHook 走 createdByAgentId 当 principal (触点创建者 agent), saas 端在 source='system' 时跳过 ability,
+ *              真正的越权防护是 allowedHooks 白名单 + SANDBOX_NOTIFY_DENYLIST 硬黑名单两道前置门;
+ *              `saas.app.conversation.sendMsg` 等通知 hook 进硬黑名单, 胶水代码必须用 ret.success({ notify }) 触发通知, 不能绕过。
+ * @keywords-cn 触点加载, 路径校验, 受限callHook, 白名单, 元数据预读, createdByAgentId创建者主体, 通知黑名单
  * @keywords-en touchpoint-loader, path-guard, restricted-callhook, allowlist, metadata-preread, bindagentid-principal
  */
 
@@ -52,11 +54,28 @@ export interface LoadedTouchpoint {
 }
 
 /**
- * 受限 callHook 工厂: 只放行 allowedHooks 列出的 hook 名 (saas.* / runner.* 一视同仁)
- *  - 主体身份取 touchpoint.bindAgentId (principalType='agent'), 让 saas 端 ability 中间件按 agent 鉴权
+ * 通知专用 hook 黑名单: 胶水代码不能直接调这些 hook 触发通知, 必须走 ret.success({ notify }) 让框架统一派发。
+ * 即使胶水在 allowedHooks 里手动列了也会被拦截 (黑名单优先级 > allowedHooks)。
+ * 设计动机:
+ *  - 通知协议 (sendMsg payload 形态) 由框架统一维护, 避免 AI 生成胶水时拼错 magic constants
+ *  - mention 多 agent 通知逻辑 (按 notifyTargets 中间表 forEach) 封在 notifier 内, 胶水无机会写错
+ *  - 通知 OTel 链路统一接到运行历史 log[]
+ * @keyword-en sandbox-notify-denylist
+ */
+const SANDBOX_NOTIFY_DENYLIST = new Set<string>([
+  'saas.app.conversation.sendMsg',
+]);
+
+/**
+ * 受限 callHook 工厂: 只放行 allowedHooks 列出的 hook 名 (saas.* / runner.* 一视同仁); 通知 hook 走硬黑名单, 即便 allowedHooks 列了也拒绝。
+ *  - 主体身份取 touchpoint.createdByAgentId (触点创建者 agent, principalType='agent')
+ *      跟 notifyTargets (通知目标中间表) 解耦: 创建者可能不出现在任何 entry.agentIds 里 (例如运营 agent 创建给监控 agent 用)
+ *  - 注意: saas 端 HookAbilityMiddleware 在 source='system' 时跳过 ability 校验, 所以这个 principal 实际是审计/追溯作用,
+ *      真正的越权防护是 SANDBOX_NOTIFY_DENYLIST 硬黑名单 + config.allowedHooks 白名单两道前置门
+ *  - 通知派发 (notifier) 走独立路径, principal='ai-notify' SYSTEM_NOTIFIER, 跟此处的胶水 callHook 主体无关
  *  - 多 handler 返回数组, 单 handler 返回首个 data
  *  - 任一 result.error 直接抛错, 由 executor 翻译成 outcome
- *  - hook 名不在白名单 → TouchpointHookDeniedError, executor 翻译成 outcome='denied'
+ *  - hook 名命中黑名单 / 不在白名单 → TouchpointHookDeniedError, executor 翻译成 outcome='denied'
  * @keyword-en create-sandboxed-callhook
  */
 function createSandboxedCallHook(
@@ -65,6 +84,12 @@ function createSandboxedCallHook(
   touchpoint: DataTouchpoint,
 ): (name: string, payload: unknown) => Promise<unknown> {
   return async (hookName, payload) => {
+    if (SANDBOX_NOTIFY_DENYLIST.has(hookName)) {
+      throw new TouchpointHookDeniedError(
+        hookName,
+        Array.from(SANDBOX_NOTIFY_DENYLIST),
+      );
+    }
     if (!config.allowedHooks.includes(hookName)) {
       throw new TouchpointHookDeniedError(hookName, config.allowedHooks);
     }
@@ -73,7 +98,7 @@ function createSandboxedCallHook(
       payload,
       context: {
         source: 'system',
-        principalId: touchpoint.bindAgentId,
+        principalId: touchpoint.createdByAgentId,
         principalType: 'agent',
         extras: { touchpointId: touchpoint._id },
       },

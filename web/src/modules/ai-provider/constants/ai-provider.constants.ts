@@ -50,9 +50,37 @@ export const PROVIDER_MODEL_CATALOG: Record<string, string[]> = {
   google: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'],
   gemini: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+  // NVIDIA NIM (build.nvidia.com) :: OpenAI 兼容协议, thinking 走 chat_template_kwargs.enable_thinking
+  //  - reasoning 模型 (qwen3 / qwq / deepseek-r1) 默认带 thinking, 通过开关可关
+  //  - 普通 chat 模型 thinking 字段被服务端忽略, 不影响行为
+  //  - 完整目录见 https://build.nvidia.com/explore/discover, 这里只列常用 SKU
   nvidia: [
+    // Qwen 系列 (reasoning)
+    'qwen/qwen3-235b-a22b',
+    'qwen/qwen3-32b',
+    'qwen/qwq-32b',
+    // Qwen 系列 (chat)
+    'qwen/qwen2.5-72b-instruct',
+    'qwen/qwen2.5-coder-32b-instruct',
+    // DeepSeek
+    'deepseek-ai/deepseek-r1',
+    'deepseek-ai/deepseek-r1-distill-llama-70b',
+    'deepseek-ai/deepseek-r1-distill-qwen-32b',
+    'deepseek-ai/deepseek-v3',
+    // Llama / Nemotron
+    'meta/llama-3.3-70b-instruct',
+    'meta/llama-3.1-405b-instruct',
+    'meta/llama-3.1-70b-instruct',
+    'meta/llama-3.1-8b-instruct',
     'nvidia/llama-3.1-nemotron-70b-instruct',
     'nvidia/llama-3.1-nemotron-51b-instruct',
+    'nvidia/llama-3.3-nemotron-super-49b-v1',
+    // Mistral
+    'mistralai/mistral-large-2-instruct',
+    'mistralai/mixtral-8x22b-instruct-v0.1',
+    // Google
+    'google/gemma-3-27b-it',
+    'google/gemma-2-27b-it',
   ],
   azure_openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-35-turbo'],
 };

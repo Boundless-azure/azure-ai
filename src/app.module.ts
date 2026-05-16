@@ -21,6 +21,7 @@ import { RunnerModule } from '@/app/runner/runner.module';
 import { StorageModule } from '@/app/storage/storage.module';
 import { MongoExplorerModule } from '@/app/mongo-explorer/mongo-explorer.module';
 import { SolutionModule } from '@/app/solution/solution.module';
+import { TimeZoneModule } from '@/app/time-zone/time-zone.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from '@/core/auth/guards/jwt-auth.guard';
 import { AbilityGuard } from '@/app/identity/guards/ability.guard';
@@ -109,6 +110,7 @@ import type { DatabaseConfig } from './config/types';
     TodoModule,
     AiModelsModule,
     KnowledgeModule,
+    TimeZoneModule,
   ],
   controllers: [AppController],
   providers: [

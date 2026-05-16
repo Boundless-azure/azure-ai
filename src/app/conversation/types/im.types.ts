@@ -200,6 +200,14 @@ export class SendMessageDto {
   @IsOptional()
   @IsArray()
   mentions?: MentionInfo[];
+
+  /**
+   * 严格 mention 成员校验: true 时任一 mention 的 principal 不是会话成员 → throw NotFoundException;
+   * 默认 false 静默允许 (数据触点 notifier 等需要纠错机制的场景传 true)
+   */
+  @IsOptional()
+  @IsBoolean()
+  strictMention?: boolean;
 }
 
 /**

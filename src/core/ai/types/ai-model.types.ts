@@ -216,7 +216,20 @@ export interface StreamResponse {
  * 模型流式事件（用于 SSE 数据载荷）
  */
 export type ModelSseEvent =
-  | { type: 'token'; data: { text: string } }
+  | {
+      type: 'token';
+      data: {
+        text: string;
+        /**
+         * token 来源 ::
+         *  - 不带 :: 来自标准 delta.content (默认, 99% 场景)
+         *  - 'reasoning_fallback' :: 来自 delta.reasoning_content 等非标准字段兜底
+         *    (Qwen NV 部署把回复正文塞这里; DeepSeek-R1 把思考过程塞这里 — 同一字段两种语义)
+         *  上游若需区分 "真回复" vs "可能是思考过程", 可按此过滤; 否则一律当 token 用即可.
+         */
+        source?: 'reasoning_fallback';
+      };
+    }
   | { type: 'reasoning'; data: { text: string } }
   | { type: 'tool_start'; data: { name: string; input?: unknown; id?: string } }
   | {

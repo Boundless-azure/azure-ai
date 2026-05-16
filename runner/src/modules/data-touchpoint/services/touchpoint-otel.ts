@@ -71,11 +71,14 @@ function addEvent(
 /**
  * 一次触点执行的 log 会话
  *  - log :: 调 .info/.event 等会落到 span 事件
+ *  - traceId :: 会话创建即可读 (跟 span 同 trace), 用于通知派发跨服务串联 (notifier 透传给 saas sendMsg)
  *  - finalize :: 跑完调一次, 关闭 span, drain 出 entries + traceId
  * @keyword-en touchpoint-log-session
  */
 export interface TouchpointLogSession {
   log: HookLog;
+  /** 本次 run 的 OTel traceId; 创建即可用, 用于跨服务 trace 串联 */
+  traceId: string;
   finalize(opts: { outcome: RunOutcome; error?: string }): {
     entries: HookLogEntry[];
     traceId: string;
@@ -118,8 +121,10 @@ export function createTouchpointLogSession(opts: {
 
   return {
     log,
+    traceId,
     finalize: ({ outcome, error }) => {
-      if (outcome === 'success') {
+      // skip 算正常路径 (胶水主动跳过), 跟 success 一样 OK 状态
+      if (outcome === 'success' || outcome === 'skip') {
         span.setStatus({ code: SpanStatusCode.OK });
       } else {
         span.setStatus({

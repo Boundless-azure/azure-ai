@@ -1165,6 +1165,36 @@ export class ImSessionService {
   }
 
   /**
+   * 批量判定一组 principalIds 中哪些是会话成员
+   *  - 返回成员 principal 的 Set, 不在的不返回
+   *  - 一次 query 替代 N 次 isMember, 数据触点 strictMention 校验性能关键
+   *  - session 不存在 → 返回空 Set (调用方按需判断)
+   * @keyword-en filter-existing-members
+   */
+  async filterExistingMembers(
+    sessionId: string,
+    principalIds: string[],
+  ): Promise<Set<string>> {
+    if (principalIds.length === 0) return new Set();
+    const session = await this.sessionRepo.findOne({
+      where: [
+        { id: sessionId, isDelete: false },
+        { sessionId, isDelete: false },
+      ],
+    });
+    if (!session) return new Set();
+    const members = await this.memberRepo.find({
+      where: {
+        sessionId: session.id,
+        principalId: In(principalIds),
+        isDelete: false,
+      },
+      select: ['principalId'],
+    });
+    return new Set(members.map((m) => m.principalId));
+  }
+
+  /**
    * 获取私聊中的另一个成员
    */
   async getOtherMember(

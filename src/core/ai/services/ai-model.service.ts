@@ -51,6 +51,8 @@ import { loadAIConfigFromEnv } from '../../../config/ai.config';
 import type { AIConfig } from '../../../config/types';
 import { createAgent } from 'langchain';
 import { ModuleRef } from '@nestjs/core';
+import { selectProcessor } from '../processors';
+import type { ChunkContext } from '../processors';
 
 /**
  * AI模型服务
@@ -103,6 +105,16 @@ export class AIModelService implements OnModuleInit {
       //  - OpenAI o-series :: reasoning_effort = 'medium'
       //  - Gemini 2.5 :: thinkingBudget = 4096
       //  - DeepSeek-R1 :: 模型自带, 不传
+      // thinking 模式 :: 每个 provider 用自己规范的字段, 不要混用
+      //  - Anthropic Claude 4.x       :: { thinking: { type: 'enabled', budget_tokens: 4096 } }
+      //  - OpenAI o-series (o1/o3/o4) :: { reasoning_effort: 'medium' }
+      //  - Azure OpenAI o-series      :: 同 OpenAI
+      //  - Gemini 2.5                 :: { thinkingConfig: { thinkingBudget: 4096 } }
+      //  - DeepSeek-R1 (reasoner)     :: 模型自带, 不传 (传 reasoning_effort 反而被忽略 / 不识别)
+      //  - NVIDIA NIM (Qwen3 / QwQ / DeepSeek-R1 等)
+      //                               :: vLLM 标准开关 { chat_template_kwargs: { enable_thinking: bool } }
+      //                                  注意 enable_thinking=false 才能强制关闭, 不传一般默认开
+      //  - Custom OpenAI 兼容          :: 让用户在模型 modelKwargs 自填 (服务差异太大)
       const thinkingEnabled = config.thinkingEnabled === true;
       const anthropicThinkingKwargs = thinkingEnabled
         ? { thinking: { type: 'enabled' as const, budget_tokens: 4096 } }
@@ -113,6 +125,10 @@ export class AIModelService implements OnModuleInit {
       const geminiThinkingKwargs = thinkingEnabled
         ? { thinkingConfig: { thinkingBudget: 4096 } }
         : undefined;
+      // NVIDIA NIM :: 显式开 / 关 thinking; 默认 NIM 部署常态开启, 不传则使用部署默认
+      const nvidiaThinkingKwargs = {
+        chat_template_kwargs: { enable_thinking: thinkingEnabled },
+      };
 
       switch (config.provider) {
         case 'openai':
@@ -121,12 +137,15 @@ export class AIModelService implements OnModuleInit {
             modelName: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
             maxTokens: config.defaultParams?.maxTokens || 4096,
+            __includeRawResponse: true,
             ...(openaiReasoningKwargs && {
               modelKwargs: openaiReasoningKwargs,
             }),
             ...(config.baseURL && {
               configuration: { baseURL: config.baseURL },
             }),
+          } as ConstructorParameters<typeof ChatOpenAI>[0] & {
+            __includeRawResponse?: boolean;
           });
           break;
         case 'deepseek':
@@ -138,12 +157,18 @@ export class AIModelService implements OnModuleInit {
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
+              __includeRawResponse: true,
               configuration: { baseURL },
+            } as ConstructorParameters<typeof ChatOpenAI>[0] & {
+              __includeRawResponse?: boolean;
             });
           }
           break;
         case 'nvidia':
           {
+            // NVIDIA NIM (build.nvidia.com / 自部署 vLLM) :: OpenAI 兼容协议,
+            // 但 thinking 控制走 vLLM 标准 chat_template_kwargs.enable_thinking 而非 OpenAI o-series 的 reasoning_effort.
+            // NIM 默认开启 thinking, 通过显式 enable_thinking=false 可强制关闭.
             const baseURL =
               config.baseURL || 'https://integrate.api.nvidia.com/v1';
             model = new ChatOpenAI({
@@ -151,10 +176,11 @@ export class AIModelService implements OnModuleInit {
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
-              ...(openaiReasoningKwargs && {
-                modelKwargs: openaiReasoningKwargs,
-              }),
+              __includeRawResponse: true,
+              modelKwargs: nvidiaThinkingKwargs,
               configuration: { baseURL },
+            } as ConstructorParameters<typeof ChatOpenAI>[0] & {
+              __includeRawResponse?: boolean;
             });
           }
           break;
@@ -165,12 +191,15 @@ export class AIModelService implements OnModuleInit {
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
+              __includeRawResponse: true,
               ...(openaiReasoningKwargs && {
                 modelKwargs: openaiReasoningKwargs,
               }),
               ...(config.baseURL && {
                 configuration: { baseURL: config.baseURL },
               }),
+            } as ConstructorParameters<typeof ChatOpenAI>[0] & {
+              __includeRawResponse?: boolean;
             });
           }
           break;
@@ -236,12 +265,15 @@ export class AIModelService implements OnModuleInit {
                 modelName: config.name,
                 temperature: config.defaultParams?.temperature || 0.7,
                 maxTokens: config.defaultParams?.maxTokens || 4096,
+                __includeRawResponse: true,
                 ...(openaiReasoningKwargs && {
                   modelKwargs: openaiReasoningKwargs,
                 }),
                 ...(config.baseURL && {
                   configuration: { baseURL: config.baseURL },
                 }),
+              } as ConstructorParameters<typeof ChatOpenAI>[0] & {
+                __includeRawResponse?: boolean;
               });
             }
           }
@@ -267,7 +299,10 @@ export class AIModelService implements OnModuleInit {
         checkpointer: request.checkpointer,
         systemPrompt: request.systemPrompt,
       });
-      return Agent;
+      // processor :: 按 provider 选 chunk → ModelSseEvent 迭代器,
+      // 主流程不感知字段差异, 新增 provider 只需加 processor 文件 + 注册
+      const processor = selectProcessor(config);
+      return { agent: Agent, processor };
     } catch (error) {
       this.logger.error(`Failed to create model instance: ${config.id}`, error);
       throw error;
@@ -283,7 +318,7 @@ export class AIModelService implements OnModuleInit {
     try {
       // Ensure proxy is applied in case lifecycle hook didn't run
       this.ensureProxyConfigured();
-      const agent = await this.getModelInstance(request);
+      const { agent } = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
       const invocationOptions = this.buildInvocationOptions(agent, request);
@@ -482,7 +517,7 @@ export class AIModelService implements OnModuleInit {
     try {
       // Ensure proxy is applied in case lifecycle hook didn't run
       this.ensureProxyConfigured();
-      const agent = await this.getModelInstance(request);
+      const { agent, processor } = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
       const recursionLimit = 200;
@@ -510,42 +545,18 @@ export class AIModelService implements OnModuleInit {
           case 'on_chat_model_stream': {
             const chunk = data?.chunk;
             if (!chunk) break;
-            const addKw = chunk.additional_kwargs;
-            // 提取 reasoning/thinking 文本 :: 各 provider 字段名不同, 多 candidate fallback
-            //  - DeepSeek-R1 :: additional_kwargs.reasoning_content (已有)
-            //  - Anthropic Claude 4.x :: chunk.content 是数组, 含 { type: 'thinking', thinking } block
-            //                            或 additional_kwargs.thinking
-            //  - OpenAI o-series :: additional_kwargs.reasoning_content / reasoning
-            //  - Gemini 2.5 :: additional_kwargs.thoughts
-            const reasoningText = extractReasoningChunk(chunk, addKw);
-            if (reasoningText) {
-              yield { type: 'reasoning', data: { text: reasoningText } };
-              break;
+            const tags = (event as { tags?: string[] }).tags;
+            const ctx: ChunkContext = {
+              isSubagent: Array.isArray(tags) && tags.includes('subagent'),
+            };
+
+            // [1] provider 特定的 reasoning / text 转换走 processor (每个 provider 一个文件)
+            for (const ev of processor.processStreamChunk(chunk, ctx)) {
+              yield ev;
             }
-            if (typeof chunk.content === 'string') {
-              const tags = (event as { tags?: string[] }).tags;
-              if (Array.isArray(tags) && tags.includes('subagent')) break;
-              yield { type: 'token', data: { text: chunk.content } };
-              break;
-            }
-            // chunk.content 是数组时 (Anthropic thinking 模式), 提取 type='text' 的 token
-            if (Array.isArray(chunk.content)) {
-              const tags = (event as { tags?: string[] }).tags;
-              if (Array.isArray(tags) && tags.includes('subagent')) break;
-              for (const block of chunk.content) {
-                if (
-                  block &&
-                  typeof block === 'object' &&
-                  (block as { type?: string }).type === 'text'
-                ) {
-                  const text = (block as { text?: string }).text;
-                  if (typeof text === 'string' && text.length > 0) {
-                    yield { type: 'token', data: { text } };
-                  }
-                }
-              }
-              break;
-            }
+
+            // [2] tool_call_chunks 留在主流程 :: LangGraph 跨 provider 统一驱动, 字段一致;
+            //     processor 不持有 runIdToToolId 这种跨 chunk 状态
             const tChunks = (
               chunk as {
                 tool_call_chunks?: Array<{
@@ -923,51 +934,4 @@ export class AIModelService implements OnModuleInit {
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
-}
-
-/**
- * 从 chat_model_stream chunk 中提取 reasoning/thinking 文本.
- * 各 provider 字段名差异大, 多 candidate fallback :
- *  - DeepSeek-R1 :: additional_kwargs.reasoning_content
- *  - Anthropic Claude 4.x extended thinking ::
- *      chunk.content 是数组, 含 { type: 'thinking', thinking: '...' } block
- *      或 additional_kwargs.thinking_content
- *  - OpenAI o-series :: additional_kwargs.reasoning_content / reasoning
- *  - Gemini 2.5 thinking :: additional_kwargs.thoughts
- * 返回纯文本; 没有 reasoning 则返回 null
- * @keyword-en extract-reasoning-chunk
- */
-function extractReasoningChunk(
-  chunk: { content?: unknown; additional_kwargs?: Record<string, unknown> },
-  addKw?: Record<string, unknown>,
-): string | null {
-  // 1) 字符串字段候选 (DeepSeek / OpenAI / 其他 reasoning_content)
-  const stringCandidates: Array<unknown> = [
-    addKw?.['reasoning_content'],
-    addKw?.['reasoning'],
-    addKw?.['thinking_content'],
-    addKw?.['thinking'],
-    addKw?.['thoughts'],
-  ];
-  for (const v of stringCandidates) {
-    if (typeof v === 'string' && v.length > 0) return v;
-  }
-  // 2) chunk.content 数组 (Anthropic thinking 模式)
-  if (Array.isArray(chunk.content)) {
-    const parts: string[] = [];
-    for (const block of chunk.content) {
-      if (block && typeof block === 'object') {
-        const obj = block as {
-          type?: string;
-          thinking?: string;
-          text?: string;
-        };
-        if (obj.type === 'thinking' && typeof obj.thinking === 'string') {
-          parts.push(obj.thinking);
-        }
-      }
-    }
-    if (parts.length > 0) return parts.join('');
-  }
-  return null;
 }

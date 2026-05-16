@@ -19,9 +19,12 @@ import {
 import {
   RunnerTouchpointRunLog,
   summarizePayload,
+  TouchpointErrorCode,
+  type RunLogError,
   type RunOutcome,
 } from './touchpoint-run-log';
 import { createTouchpointLogSession } from './touchpoint-otel';
+import { dispatchTouchpointNotify } from './touchpoint-notifier';
 import type {
   DataTouchpoint,
   TriggerTouchpointInput,
@@ -115,7 +118,11 @@ export class RunnerTouchpointTriggerService {
     if (db) {
       this.mongoStore = new MongoStateStore(db);
       this.runLog = new RunnerTouchpointRunLog(db);
-      await RunnerTouchpointRunLog.ensureIndexes(db).catch(() => undefined);
+      // 幂等建索引: 触点元数据 + 运行历史; 失败静默 (mongo 版本兼容 / 并发建索引等场景)
+      await Promise.all([
+        RunnerDataTouchpointService.ensureIndexes(db).catch(() => undefined),
+        RunnerTouchpointRunLog.ensureIndexes(db).catch(() => undefined),
+      ]);
     }
     const queuePrefix = `tp:${this.runnerId}`;
     this.queue = new Queue<AnyJobData>(QUEUE_NAME, {
@@ -227,13 +234,17 @@ export class RunnerTouchpointTriggerService {
         ?.write({
           touchpointId: tp._id,
           runnerId: this.runnerId,
+          createdByAgentId: tp.createdByAgentId,
           startedAt: new Date(),
           durationMs: 0,
           firedBy: 'schedule',
           matchedSources: [],
           outcome: 'error',
           payloadSummary: summarizePayload(undefined),
-          error: { message: `reloadSchedule load failed: ${msg}` },
+          error: {
+            code: TouchpointErrorCode.LOAD_FAILED,
+            message: `reloadSchedule load failed: ${msg}`,
+          },
           log: [],
         })
         .catch(() => undefined);
@@ -378,9 +389,12 @@ export class RunnerTouchpointTriggerService {
     const startedAt = new Date();
     let outcome: RunOutcome = 'error';
     let newState: unknown = undefined;
-    let runError: { message: string; stack?: string; hookName?: string; allowedHooks?: string[] } | undefined;
+    let runError: RunLogError | undefined;
     let durationMs = 0;
     let prevState: unknown = undefined;
+    // skip 路径: 胶水 ret.skip({ record, reason }) 透传过来; record=true 才写 runLog
+    let skipRecord = false;
+    let skipReason: string | undefined = undefined;
 
     try {
       // 1. 加载 (路径校验 + config + 预读 metadata)
@@ -395,6 +409,7 @@ export class RunnerTouchpointTriggerService {
         const msg = e instanceof Error ? e.message : String(e);
         session.log.error('touchpoint.load.failed', { message: msg });
         runError = {
+          code: TouchpointErrorCode.LOAD_FAILED,
           message: msg,
           ...(e instanceof Error && e.stack ? { stack: e.stack } : {}),
         };
@@ -403,7 +418,10 @@ export class RunnerTouchpointTriggerService {
 
       // 2. 抢锁 (TTL 60s, 一次重试)
       if (!this.lock) {
-        runError = { message: 'touchpoint lock not ready' };
+        runError = {
+          code: TouchpointErrorCode.INTERNAL_ERROR,
+          message: 'touchpoint lock not ready',
+        };
         return;
       }
       let token = await this.lock.acquire(tp._id, LOCK_TTL_MS);
@@ -414,6 +432,7 @@ export class RunnerTouchpointTriggerService {
       if (!token) {
         session.log.warn('touchpoint.lock.contention');
         runError = {
+          code: TouchpointErrorCode.INTERNAL_ERROR,
           message: `touchpoint ${tp._id} lock contention; another execution in progress`,
         };
         return;
@@ -425,6 +444,13 @@ export class RunnerTouchpointTriggerService {
         prevState = store ? await store.read(tp._id) : undefined;
 
         // 4. 起 worker 跑 (60s 超时强 kill)
+        // notifyDispatch bind 当前 touchpoint + traceId, 让 executor 在 ret.success({ notify }) 时无脑调用;
+        // traceId 透传给 saas sendMsg, 串联跨服务 trace 链 (notifier OTel events 跟 saas span 同 trace)
+        const notifyDispatch = (
+          notify: { content: string; extras?: Record<string, unknown> },
+          log: typeof session.log,
+        ) =>
+          dispatchTouchpointNotify(this.hookBus, tp, notify, log, session.traceId);
         const result = await runTouchpointInWorker(
           {
             fileUrl: loaded.fileUrl,
@@ -436,6 +462,7 @@ export class RunnerTouchpointTriggerService {
           },
           {
             sandboxedCallHook: loaded.sandboxedCallHook,
+            notifyDispatch,
             log: session.log,
             timeoutMs: loaded.config.timeout,
           },
@@ -456,6 +483,10 @@ export class RunnerTouchpointTriggerService {
               })
               .catch(() => undefined);
           }
+        } else if (result.outcome === 'skip') {
+          // skip: state 不动; record/reason 透传到 finally 决定是否写 runLog
+          skipRecord = result.skipRecord === true;
+          skipReason = result.skipReason;
         } else {
           runError = result.error;
         }
@@ -463,29 +494,37 @@ export class RunnerTouchpointTriggerService {
         await this.lock.release(tp._id, token).catch(() => undefined);
       }
     } finally {
-      // 5. finalize OTel session → drain logs → 写 run 记录
+      // 5. finalize OTel session → drain logs → 按规则写 run 记录
       const { entries, traceId } = session.finalize({
         outcome,
         error: runError?.message,
       });
-      await this.runLog
-        ?.write({
-          touchpointId: tp._id,
-          runnerId: this.runnerId,
-          startedAt,
-          durationMs,
-          firedBy,
-          matchedSources,
-          outcome,
-          payloadSummary: summarizePayload(payload),
-          ...(outcome === 'success' && newState !== undefined
-            ? { result: summarizePayload(newState) }
-            : {}),
-          ...(runError ? { error: runError } : {}),
-          traceId,
-          log: entries,
-        })
-        .catch(() => undefined);
+      // skip 默认静默 (record=false 不写 runLog); 其他 outcome 一律写
+      const shouldWriteRunLog = outcome !== 'skip' || skipRecord;
+      if (shouldWriteRunLog) {
+        await this.runLog
+          ?.write({
+            touchpointId: tp._id,
+            runnerId: this.runnerId,
+            createdByAgentId: tp.createdByAgentId,
+            startedAt,
+            durationMs,
+            firedBy,
+            matchedSources,
+            outcome,
+            payloadSummary: summarizePayload(payload),
+            ...(outcome === 'success' && newState !== undefined
+              ? { result: summarizePayload(newState) }
+              : {}),
+            ...(runError ? { error: runError } : {}),
+            ...(outcome === 'skip' && skipReason
+              ? { skipReason }
+              : {}),
+            traceId,
+            log: entries,
+          })
+          .catch(() => undefined);
+      }
     }
   }
 

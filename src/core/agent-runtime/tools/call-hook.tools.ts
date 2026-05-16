@@ -89,7 +89,8 @@ const hookCallEntrySchema = z.object({
     .boolean()
     .optional()
     .describe(
-      '启用 OTel sandbox tracer; 调用结果的 debugLog 会带回 handler 写的日志条目 (saas / runner 通用)',
+      '可选, 覆盖节点 defaultDebug 配置. 不传=跟随节点; true=强制启 OTel sandbox tracer 拿回 debugLog 排查; ' +
+        'false=强制关. 常规调用不要传, 仅在 hook 反复失败、需要看 handler 内部日志诊断时显式 true.',
     ),
   debugDb: z
     .boolean()
@@ -229,6 +230,8 @@ async function dispatchSaasHook(
 
 /**
  * 路由一次 hook 调用到 saas 或 runner
+ *  - debug 三层优先级 :: input.debug (LLM 显式) > defaultDebug (节点配置 agent.desc.ts) > false (兜底)
+ *  - 工厂闭包绑定 defaultDebug, 整个 graph 流稳定一致, 不跨轮次漂移
  * @keyword-en dispatch-call
  */
 async function dispatchOne(
@@ -236,12 +239,14 @@ async function dispatchOne(
   hookRpc: RunnerHookRpcService,
   ctx: HookInvocationContext,
   input: HookCallInput,
+  defaultDebug: boolean,
 ): Promise<HookCallReply> {
+  const debug = input.debug ?? defaultDebug;
   if (input.target === SAAS) {
     return await dispatchSaasHook(hookBus, ctx, {
       hookName: input.hookName,
       payload: input.payload,
-      ...(input.debug !== undefined ? { debug: input.debug } : {}),
+      debug,
     });
   }
   if (!input.runnerId) {
@@ -251,7 +256,7 @@ async function dispatchOne(
     hookName: input.hookName,
     payload: input.payload,
     context: ctx,
-    debug: input.debug,
+    debug,
     debugDb: input.debugDb,
   });
 }
@@ -376,6 +381,7 @@ function processOneCallAftermath(
  * 构建 call_hook (同步, 批量) 工具
  * - 一次接受 calls 数组, 并发派发, 顺序与返回 results 对齐
  * - 单调用 = 单元素数组; 任一项软错不影响其他项
+ * - options.defaultDebug :: 节点级 debug 默认值; 工厂闭包绑定, 整个 graph 流共享
  * @keyword-en build-call-hook-tool
  */
 export function buildCallHookTool(
@@ -383,13 +389,17 @@ export function buildCallHookTool(
   hookRpc: RunnerHookRpcService,
   getCtx: InvocationContextProvider,
   sideEffects?: CallHookSideEffects,
+  options?: { defaultDebug?: boolean },
 ) {
+  const defaultDebug = options?.defaultDebug ?? false;
   return tool(
     async (input: CallHookBatchInput): Promise<string> => {
       const start = Date.now();
       const ctx = getCtx();
       const replies = await Promise.all(
-        input.calls.map((entry) => dispatchOne(hookBus, hookRpc, ctx, entry)),
+        input.calls.map((entry) =>
+          dispatchOne(hookBus, hookRpc, ctx, entry, defaultDebug),
+        ),
       );
 
       const results: HookCallResultEntry[] = input.calls.map((entry, i) => {
@@ -439,7 +449,9 @@ export function buildCallHookAsyncTool(
   hookBus: HookBusService,
   hookRpc: RunnerHookRpcService,
   getCtx: InvocationContextProvider,
+  options?: { defaultDebug?: boolean },
 ) {
+  const defaultDebug = options?.defaultDebug ?? false;
   return tool(
     (input: CallHookBatchInput): string => {
       const ctx = getCtx();
@@ -448,7 +460,9 @@ export function buildCallHookAsyncTool(
           `[call_hook_async] ${targetTag(entry.target, entry.runnerId)} ${entry.hookName} ` +
             `payload=${preview(entry.payload ?? {})} (fire-and-forget)`,
         );
-        void dispatchOne(hookBus, hookRpc, ctx, entry).catch(() => undefined);
+        void dispatchOne(hookBus, hookRpc, ctx, entry, defaultDebug).catch(
+          () => undefined,
+        );
         return {
           hookName: entry.hookName,
           target: entry.target,

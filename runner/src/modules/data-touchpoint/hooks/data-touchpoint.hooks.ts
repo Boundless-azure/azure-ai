@@ -51,8 +51,21 @@ export function registerDataTouchpointHooks(
         if (!svc) {
           return { status: 'error', error: 'mongo not connected' };
         }
+        // createdByAgentId 强制从 context.principalId 注入: 必须 principalType='agent', LLM 不能 fake
+        const principalId = event.context?.principalId;
+        const principalType = event.context?.principalType;
+        if (principalType !== 'agent' || !principalId) {
+          return {
+            status: 'error',
+            error:
+              'touchpoint must be created by agent principal (context.principalType=agent, principalId required)',
+          };
+        }
         const payload = event.payload as CreateDataTouchpointInput;
-        const created = await svc.create(payload);
+        const created = await svc.create({
+          ...payload,
+          createdByAgentId: principalId,
+        });
         // 联动加载胶水 schedule 元数据并注册到 BullMQ Repeatable
         if (triggerService) {
           await triggerService
@@ -86,6 +99,23 @@ export function registerDataTouchpointHooks(
           return { status: 'error', error: 'mongo not connected' };
         }
         const payload = event.payload as UpdateDataTouchpointInput;
+        // ownership 鉴权: LLM 链路只允许创建者改自己的触点; system/http/runner 内部链路放行
+        if (event.context?.source === 'llm') {
+          const principalId = event.context?.principalId;
+          if (!principalId) {
+            return { status: 'error', error: 'auth-required' };
+          }
+          const existing = await svc.getById(payload.id);
+          if (!existing) {
+            return { status: 'error', error: 'touchpoint-not-found' };
+          }
+          if (existing.createdByAgentId !== principalId) {
+            return {
+              status: 'error',
+              error: `permission-denied: only creator (${existing.createdByAgentId}) can update this touchpoint`,
+            };
+          }
+        }
         const updated = await svc.update(payload);
         // 联动重载 schedule (胶水文件可能改了 / enabled 状态变了 / 元数据变了)
         if (updated && triggerService) {
@@ -102,7 +132,8 @@ export function registerDataTouchpointHooks(
         return { status: 'success', data: updated };
       },
       {
-        description: '更新数据触点元数据 (id 必填) + 联动重载 schedule',
+        description:
+          '更新数据触点元数据 (id 必填) + 联动重载 schedule. LLM 调用时只允许创建者改自己的触点 (context.principalId === createdByAgentId), 不可改字段 (_id/solutionId/createdByAgentId/createdAt) 软过滤静默丢弃',
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: UpdateDataTouchpointSchema,
@@ -119,8 +150,25 @@ export function registerDataTouchpointHooks(
           return { status: 'error', error: 'mongo not connected' };
         }
         const payload = event.payload as DeleteDataTouchpointInput;
+        // ownership 鉴权: LLM 链路只允许创建者删自己的触点; system/http/runner 内部链路放行
+        if (event.context?.source === 'llm') {
+          const principalId = event.context?.principalId;
+          if (!principalId) {
+            return { status: 'error', error: 'auth-required' };
+          }
+          const existing = await svc.getById(payload.id);
+          if (!existing) {
+            return { status: 'success', data: { deleted: false } };
+          }
+          if (existing.createdByAgentId !== principalId) {
+            return {
+              status: 'error',
+              error: `permission-denied: only creator (${existing.createdByAgentId}) can delete this touchpoint`,
+            };
+          }
+        }
         const deleted = await svc.delete(payload.id);
-        // 联动清理触点状态 + schedule (双 store 都尝试, 冗余删无副作用)
+        // 联动清理触点状态 + schedule (removeState 内含 runLog 清理)
         if (deleted && triggerService) {
           await Promise.all([
             triggerService.removeState(payload.id).catch(() => undefined),
@@ -131,7 +179,7 @@ export function registerDataTouchpointHooks(
       },
       {
         description:
-          '删除数据触点元数据 + 联动清理触点状态 (mongo + redis) + 运行历史 + 移除 schedule (物理胶水代码由调用方清理)',
+          '删除数据触点元数据 + 联动清理触点状态 (mongo state + redis state + 运行历史) + 移除 schedule. LLM 调用时只允许创建者删自己的触点 (context.principalId === createdByAgentId); 物理胶水代码由调用方清理',
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: DeleteDataTouchpointSchema,
@@ -148,12 +196,21 @@ export function registerDataTouchpointHooks(
           return { status: 'success', data: { items: [] } };
         }
         const payload = (event.payload ?? {}) as ListDataTouchpointInput;
-        const items = await svc.list(payload);
+        // 可见范围限定: LLM 链路强制注入 visibleToAgentId, 只能看 "我创建的 + 通知到我的" 触点
+        const visibleTo =
+          event.context?.source === 'llm'
+            ? event.context?.principalId
+            : undefined;
+        if (event.context?.source === 'llm' && !visibleTo) {
+          return { status: 'error', error: 'auth-required' };
+        }
+        const items = await svc.list(payload, visibleTo);
         return { status: 'success', data: { items } };
       },
       {
         description:
-          '列出数据触点 (可按 solutionId / bindSessionId / source / enabled 过滤)',
+          '列出数据触点 (可按 solutionId / sessionId / agentId / createdByAgentId / source / sourceIn / enabled 过滤). ' +
+          'LLM 调用时强制限定可见范围 ("我创建的 + 通知到我的"); system/http 调用方无可见范围限定',
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: ListDataTouchpointSchema,
@@ -165,13 +222,22 @@ export function registerDataTouchpointHooks(
     hookBus.register(
       'runner.app.dataTouchpoint.trigger',
       async (event) => {
+        // trigger 是业务事件入口, 拒绝 LLM 调用 (防伪造业务事件触发别人的触点)
+        if (event.context?.source === 'llm') {
+          return {
+            status: 'error',
+            error:
+              'permission-denied: trigger is for system/http callers only; LLM cannot fabricate business events. ' +
+              '业务数据变化由对应模块的 hook 调本接口, 不应由 LLM 主动触发',
+          };
+        }
         const payload = event.payload as TriggerTouchpointInput;
         const { jobId } = await triggerService.trigger(payload);
         return { status: 'success', data: { jobId, queued: true } };
       },
       {
         description:
-          '触发数据触点: 按 sources (单字符串或数组) 异步派发到队列, 命中触点逐个加载执行胶水代码 (同时订阅多 source 的触点自然去重仅跑一次, 胶水 ctx 拿 matchedSources/payloadsBySource); 可选 solutionId 限定范围',
+          '触发数据触点 (业务事件入口, 仅 system/http/runner 调用; LLM 不允许调以防伪造业务事件触发): 按 sources (单字符串或数组) 异步派发到队列, 命中触点逐个加载执行胶水代码 (同时订阅多 source 的触点自然去重仅跑一次, 胶水 ctx 拿 matchedSources/payloadsBySource); 可选 solutionId 限定范围',
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: TriggerTouchpointSchema,

@@ -82,9 +82,19 @@ export class AgentRuntimeService {
       this.tracker.recordGetHookInfo(sessionId);
     };
 
+    // 节点级 debug 默认值: agent.desc.ts 的 defaultDebug 字段, 工厂闭包绑定后整个 graph 流一致
+    const defaultDebug = loaded.descriptor?.defaultDebug ?? false;
     const hookTools = [
-      buildCallHookTool(this.hookBus, this.hookRpc, getCtx, { onCallComplete }),
-      buildCallHookAsyncTool(this.hookBus, this.hookRpc, getCtx),
+      buildCallHookTool(
+        this.hookBus,
+        this.hookRpc,
+        getCtx,
+        { onCallComplete },
+        { defaultDebug },
+      ),
+      buildCallHookAsyncTool(this.hookBus, this.hookRpc, getCtx, {
+        defaultDebug,
+      }),
       buildSearchHookTool(this.hookBus, this.hookRpc, getCtx),
       buildGetHookTagTool(this.hookBus, this.hookRpc, getCtx),
       buildGetHookInfoTool(this.hookBus, this.hookRpc, getCtx, {

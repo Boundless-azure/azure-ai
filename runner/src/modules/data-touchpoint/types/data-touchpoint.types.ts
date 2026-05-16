@@ -19,10 +19,26 @@ export interface DataTouchpoint {
   description: string;
   /** 触发器调用时携带的 source 名 (业务表 / 自定义维度) */
   sources: string[];
-  /** 创建时绑定的 session = 回调目标 (跨 session 后续再扩展) */
-  bindSessionId: string;
-  /** 群聊艾特目标 agent 的 principalId; 同时作为沙箱 callHook 的执行主体 (principalType='agent') */
-  bindAgentId: string;
+  /**
+   * 通知派发对象 (session → 该 session 内要 @ 的 agent 列表 的中间表).
+   *  - 一个 session 只能有一个 entry; agent 只能列在该 session 真实成员里 (创建时责任在调用方)
+   *  - 同一 agent 可出现在多条 entry (一个 agent 在多个 session 里都关注此数据维度)
+   *  - 发送时 forEach entry: 给 entry.sessionId 发一条消息, mentions = entry.agentIds (一个 session 一条, 同 session 多 agent 合并 @)
+   *  - 任一 session 不存在 / sendMsg 抛错 → 整条 run 翻 outcome='error' + code='NOTIFY_TARGET_INVALID'
+   * @keyword-en notify-targets
+   */
+  notifyTargets: Array<{
+    sessionId: string;
+    agentIds: string[];
+  }>;
+  /**
+   * 创建该触点的 agent principal id (由 create hook 从 context.principalId 自动注入, 不允许 LLM 显式传).
+   *  - 胶水 callHook 业务 hook 用这个身份做 principal (`principalType='agent'`)
+   *  - 跟 notifyTargets 解耦: 创建者可能不在通知目标的任何 agent 里 (例如运营 agent 创建给监控 agent 用)
+   *  - 一经创建不可改 (update schema 也不放开)
+   * @keyword-en created-by-agent-id
+   */
+  createdByAgentId: string;
   /** 胶水代码相对 solution 根的路径 (e.g. touchpoints/<id>/index.js); 路径越根会被 touchpoint-paths.ts 拒绝 */
   filePath: string;
   /** 受限 hook 白名单配置文件相对路径 */
@@ -39,6 +55,31 @@ const sourceListSchema = z
   .describe('触发 source 名列表, 1-32 个');
 
 /**
+ * 通知派发中间表的 entry schema
+ *  - sessionId :: 目标会话 ID
+ *  - agentIds :: 该 session 内要 @ 的 agent principal id 子集 (调用方负责保证 agent 是该 session 实际成员)
+ * @keyword-en notify-target-entry-schema
+ */
+const notifyTargetEntrySchema = z.object({
+  sessionId: z.string().min(1),
+  agentIds: z
+    .array(z.string().min(1))
+    .min(1)
+    .max(32)
+    .describe('该 session 内要 @ 的 agent 子集 (1-32 个)'),
+});
+
+const notifyTargetsSchema = z
+  .array(notifyTargetEntrySchema)
+  .min(1)
+  .max(64)
+  .describe(
+    '通知派发对象中间表: 一个 session 一条 entry, 该 entry.agentIds 是该 session 内要 @ 的 agent 子集. ' +
+      '同一 sessionId 不应出现多次 (重复会被 service 层合并去重). ' +
+      '发送时按 entry forEach: 给 sessionId 发一条消息, mentions = agentIds, 同 session 多 agent 合并到一条消息.',
+  );
+
+/**
  * create payload schema
  * @keyword-en create-data-touchpoint-schema
  */
@@ -47,16 +88,12 @@ export const CreateDataTouchpointSchema = z.object({
   name: z.string().min(1).max(128).describe('触点名称'),
   description: z.string().max(2000).default('').describe('触点描述'),
   sources: sourceListSchema,
-  bindSessionId: z.string().min(1).describe('绑定的 IM session id, 回调目标'),
-  bindAgentId: z.string().min(1).describe('群聊艾特的 agent principal id'),
+  notifyTargets: notifyTargetsSchema,
   filePath: z
     .string()
     .min(1)
     .describe('胶水代码相对 solution 根路径 (e.g. touchpoints/<id>/index.js)'),
-  configPath: z
-    .string()
-    .min(1)
-    .describe('受限 hook 白名单配置文件相对路径'),
+  configPath: z.string().min(1).describe('受限 hook 白名单配置文件相对路径'),
   enabled: z.boolean().default(true),
 });
 
@@ -69,8 +106,7 @@ export const UpdateDataTouchpointSchema = z.object({
   name: z.string().min(1).max(128).optional(),
   description: z.string().max(2000).optional(),
   sources: sourceListSchema.optional(),
-  bindSessionId: z.string().min(1).optional(),
-  bindAgentId: z.string().min(1).optional(),
+  notifyTargets: notifyTargetsSchema.optional(),
   filePath: z.string().min(1).optional(),
   configPath: z.string().min(1).optional(),
   enabled: z.boolean().optional(),
@@ -90,7 +126,25 @@ export const DeleteDataTouchpointSchema = z.object({
  */
 export const ListDataTouchpointSchema = z.object({
   solutionId: z.string().min(1).optional(),
-  bindSessionId: z.string().min(1).optional(),
+  sessionId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      '过滤 notifyTargets 含此 sessionId 的触点 (按 session 维度查 "通知到此 session 的触点")',
+    ),
+  agentId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      '过滤 notifyTargets 的任一 entry.agentIds 含此 agent id 的触点 (按 agent 维度查 "通知到此 agent 的触点")',
+    ),
+  createdByAgentId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('过滤创建者是此 agent 的触点 ("我创建的触点")'),
   source: z
     .string()
     .min(1)
@@ -128,12 +182,12 @@ export type ListDataTouchpointInput = z.infer<typeof ListDataTouchpointSchema>;
  */
 export const TriggerTouchpointSchema = z.object({
   sources: z
-    .union([
-      z.string().min(1),
-      z.array(z.string().min(1)).min(1).max(32),
-    ])
+    .union([z.string().min(1), z.array(z.string().min(1)).min(1).max(32)])
     .describe('触发的 source 名 (单字符串或数组, 匹配 touchpoint.sources)'),
-  payload: z.unknown().optional().describe('共享 payload, 透传给胶水代码 (单 source 或通用上下文)'),
+  payload: z
+    .unknown()
+    .optional()
+    .describe('共享 payload, 透传给胶水代码 (单 source 或通用上下文)'),
   payloadsBySource: z
     .record(z.string(), z.unknown())
     .optional()
@@ -145,7 +199,9 @@ export const TriggerTouchpointSchema = z.object({
     .string()
     .min(1)
     .optional()
-    .describe('限定触发范围到指定 solution; 不传则匹配全部 solution 下命中此 source 的触点'),
+    .describe(
+      '限定触发范围到指定 solution; 不传则匹配全部 solution 下命中此 source 的触点',
+    ),
 });
 export type TriggerTouchpointInput = z.infer<typeof TriggerTouchpointSchema>;
 
@@ -201,15 +257,67 @@ export type TouchpointHandler = (ctx: {
   /**
    * 受限 callHook, 仅放行 config.allowedHooks 列出的 hook (saas.* / runner.* 一视同仁)
    * - saas.* 自动跨进程转发 (由 hookBus 内部按前缀路由)
-   * - 主体身份固定为 touchpoint.bindAgentId (principalType='agent'), 与触点绑定 agent 自身能力一致
+   * - 主体身份 = touchpoint.createdByAgentId (触点创建者, principalType='agent'); saas 端 system 链路放行, 真防越权靠白名单+黑名单
    * - 多 handler 时返回数组, 单 handler 返回首个 data
    */
   callHook: (name: string, payload: unknown) => Promise<unknown>;
   /** 简易 log, 通过 worker RPC 写到 OTel SpanEvent, 最终 drain 进运行历史 */
   log: (msg: string, attrs?: Record<string, unknown>) => void;
+  /**
+   * 统一返回器: 胶水通过 return ret.xxx(...) 声明本次执行结果。
+   *  - ret.skip(opts?) :: 跳过, state 保留, 默认不写 RunLogDoc (record=true 才写 outcome='skip')
+   *  - ret.success(opts?) :: 业务跑通; opts.state 落 state, opts.notify 触发框架按 notifyTargets forEach 发 sendMsg (每个 entry 一条消息, mentions=entry.agentIds)
+   *      - opts 全部缺省 (或 return undefined) → outcome='success', state 保留, 不通知
+   *      - notify.content 必填; 框架按 notifyTargets 中间表自动 forEach 发, 每条消息 mentions=该 entry.agentIds; extras 透传到 sendMsg payload
+   *  - ret.error(opts) :: 显式报错; outcome='error', code 默认 'HANDLER_THROW', state 保留
+   *      - 不调 ret.error 也无所谓: handler 内任何 throw 都被 worker 兜底捕获, 等价 ret.error({ message: e.message })
+   *  - 任一 session 在通知阶段不存在 → 框架翻 outcome='error' + code='NOTIFY_TARGET_INVALID'
+   * @keyword-en touchpoint-ret
+   */
+  ret: TouchpointRet;
   /** 当前触点元数据快照 (worker 内只读副本, 字段裁剪) */
   touchpoint: Pick<
     DataTouchpoint,
-    '_id' | 'name' | 'bindSessionId' | 'bindAgentId' | 'solutionId' | 'sources'
+    | '_id'
+    | 'name'
+    | 'notifyTargets'
+    | 'createdByAgentId'
+    | 'solutionId'
+    | 'sources'
   >;
 }) => Promise<unknown> | unknown;
+
+/**
+ * ret API 形态: 胶水 ctx.ret 拿到这个对象
+ * @keyword-en touchpoint-ret-api
+ */
+export interface TouchpointRet {
+  /** 跳过本次; state 保留. record=true 才写 RunLogDoc (outcome='skip') */
+  skip: (opts?: { record?: boolean; reason?: string }) => TouchpointRetSentinel;
+  /**
+   * 业务跑通; opts.state 写入触点 state, opts.notify 触发框架通知派发.
+   * 全部缺省 / 不调 → 跟 return undefined 等价 (outcome='success' state 保留 不通知)
+   */
+  success: (opts?: {
+    state?: unknown;
+    notify?: { content: string; extras?: Record<string, unknown> };
+  }) => TouchpointRetSentinel;
+  /**
+   * 显式报错; outcome='error', code 默认 HANDLER_THROW. state 保留.
+   * 通常不需要主动调 — throw 就够了, 框架自动捕获
+   */
+  error: (opts: { message: string; code?: string }) => TouchpointRetSentinel;
+}
+
+/**
+ * ret.xxx 返回的 sentinel 形状 (跨 worker postMessage structuredClone 友好)
+ * @keyword-en touchpoint-ret-sentinel
+ */
+export type TouchpointRetSentinel =
+  | { __touchpointRet: 'skip'; record: boolean; reason?: string }
+  | {
+      __touchpointRet: 'success';
+      state?: unknown;
+      notify?: { content: string; extras?: Record<string, unknown> };
+    }
+  | { __touchpointRet: 'error'; message: string; code?: string };

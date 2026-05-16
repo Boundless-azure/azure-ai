@@ -30,6 +30,13 @@ const sendMsgSchema = z.object({
     .describe(
       '显式 mention 的 principal ids; 提供时优先于 content 解析触发 agent 调度 + 写 metadata.mentions, 用于服务端隐藏通知场景 (数据触点 / 主动 AI 推送) 不依赖 displayName 也能可靠艾特 agent',
     ),
+  strictMention: z
+    .boolean()
+    .optional()
+    .describe(
+      '严格 mention 成员校验: true 时任一 mention 的 principal 不是会话成员 → 整条 sendMsg throw (数据触点等需要纠错机制的场景必传); ' +
+        '默认 false 静默允许 mention 已退群成员 (人工 @ / agent 自主发消息场景默认行为); SYSTEM_NOTIFIER 跨群跳过.',
+    ),
 });
 
 type SendMsgPayload = z.infer<typeof sendMsgSchema>;
@@ -69,6 +76,7 @@ export class SendMsgHookHandlerService {
       replyToId,
       messageType,
       mentions,
+      strictMention,
     } = event.payload;
 
     // replyToId 存在时检查回复数量限制
@@ -108,6 +116,8 @@ export class SendMsgHookHandlerService {
                 })),
               }
             : {}),
+          // 严格 mention 校验透传 (数据触点等需要纠错机制的场景传 true)
+          ...(strictMention === true ? { strictMention: true } : {}),
         },
         {
           // 隐藏通知场景需要触发 agent 调度, 因此不再 skipAgentTrigger

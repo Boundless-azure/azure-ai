@@ -139,10 +139,15 @@ export class AgentLoaderService {
           typeof inst['supportDialogue'] === 'boolean'
             ? inst['supportDialogue']
             : false;
+        const defaultDebug =
+          typeof inst['defaultDebug'] === 'boolean'
+            ? inst['defaultDebug']
+            : undefined;
         return {
           name: String(inst['name']),
           description: String(inst['description']),
           supportDialogue,
+          ...(defaultDebug !== undefined ? { defaultDebug } : {}),
         };
       }
     }
@@ -158,10 +163,15 @@ export class AgentLoaderService {
           typeof obj['supportDialogue'] === 'boolean'
             ? obj['supportDialogue']
             : false;
+        const defaultDebug =
+          typeof obj['defaultDebug'] === 'boolean'
+            ? obj['defaultDebug']
+            : undefined;
         return {
           name: String(obj['name']),
           description: String(obj['description']),
           supportDialogue,
+          ...(defaultDebug !== undefined ? { defaultDebug } : {}),
         };
       }
     } catch {

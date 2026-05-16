@@ -30,13 +30,13 @@
 ### tools/call-hook.tools.ts
 LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationContext)
 
-- `buildCallHookTool(hookBus, hookRpc, getCtx, sideEffects?)` — 同步批量调用 hook (入参 calls 数组, 并发派发, 顺序返回 { results: [...] }) | keywords: call-hook-tool, sync, batch, target-routing
-- `buildCallHookAsyncTool(hookBus, hookRpc, getCtx)` — 批量 fire-and-forget (入参 calls 数组, 立即返回 { results: [{ hookName, target, queued }, ...] }) | keywords: call-hook-async-tool, batch
+- `buildCallHookTool(hookBus, hookRpc, getCtx, sideEffects?, options?)` — 同步批量调用 hook; `options.defaultDebug` 注入节点级 debug 默认值, 工厂闭包绑定整个 graph 流 | keywords: call-hook-tool, sync, batch, target-routing, default-debug
+- `buildCallHookAsyncTool(hookBus, hookRpc, getCtx, options?)` — 批量 fire-and-forget; 同支持 `options.defaultDebug` | keywords: call-hook-async-tool, batch, default-debug
 - `processOneCallAftermath(entry, reply, ctx, sideEffects?)` — per-call 失败追踪 + hint 注入 + 副作用回调 | keywords: aftermath, per-call
 - `buildSearchHookTool(hookBus, hookRpc, getCtx)` — 按 tags / pluginName 搜索 hook 注册表 | keywords: search-hook-tool, discovery
 - `buildGetHookTagTool(hookBus, hookRpc, getCtx)` — 获取 tag 频次榜 | keywords: get-hook-tag-tool, tag-leaderboard
 - `buildGetHookInfoTool(hookBus, hookRpc, getCtx)` — 批量获取 hook 描述+tags+payload schema | keywords: get-hook-info-tool, batch-info
-- `dispatchOne(hookBus, hookRpc, ctx, input)` — 内部统一路由 (saas/runner) | keywords: dispatch-one
+- `dispatchOne(hookBus, hookRpc, ctx, input, defaultDebug)` — 内部统一路由 (saas/runner); debug 三层优先级 (input.debug ?? defaultDebug ?? false) | keywords: dispatch-one, debug-priority
 - `dispatchSaasHook(hookBus, ctx, input)` — 适配 SaaS HookBus 结果到统一外形 | keywords: adapt-saas-result
 - `projectSaasRegistrations(regs)` — 把 SaaS Registry 投影成与 runner meta hook 同形列表 | keywords: project-saas-registrations
 - `InvocationContextProvider` (type) — `() => HookInvocationContext` 闭包取值器 | keywords: invocation-context-provider
@@ -47,4 +47,5 @@ LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationCont
 - `buildBaseLlmSystemPrompt()` — 生成 Hook 工具总览 + 发现流程 + 知识库读取说明 | keywords: base-llm-prompt, discovery-flow
 
 ### types/agent-runtime.types.ts
-- `LoadedAgent` — Agent 加载结果类型 (tools, dialogues, description)
+- `LoadedAgent` — Agent 加载结果类型 (tools, dialogues, descriptor)
+- `AgentDescriptor` — agent.desc.ts 解析结果; `{ name, description, supportDialogue, defaultDebug? }`; defaultDebug 节点级 call_hook debug 开关, 工厂闭包绑定整个 graph 流 | keywords: agent-descriptor, default-debug

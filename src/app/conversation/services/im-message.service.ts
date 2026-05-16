@@ -294,6 +294,29 @@ export class ImMessageService {
         ? dto.mentions
         : await this.extractMentions(dto.content);
 
+    // 严格 mention 成员校验 (opt-in, 数据触点 notifier 等需要纠错机制的场景传 strictMention=true);
+    //  - 默认 false 静默允许 mention 退群成员 (人工 @ / agent 自主发消息)
+    //  - true 时任一 mention 不是会话成员 → throw NotFoundException, 错误 message 含具体 principalId 方便上游 parse 纠错
+    //  - SYSTEM_NOTIFIER 跨群共享, 跳过校验 (跟 sender 校验对称)
+    //  - 批量 query: filterExistingMembers 一次拉所有 mentions 的成员关系, 避免 N+1
+    if (dto.strictMention === true && mentions.length > 0) {
+      const toCheck = mentions
+        .map((m) => m.principalId)
+        .filter((id) => id !== SYSTEM_NOTIFIER_ID);
+      if (toCheck.length > 0) {
+        const existingSet = await this.sessionService.filterExistingMembers(
+          session.id,
+          toCheck,
+        );
+        const missing = toCheck.find((id) => !existingSet.has(id));
+        if (missing) {
+          throw new NotFoundException(
+            `Mention target is not a member of this session: principalId=${missing} sessionId=${dto.sessionId}`,
+          );
+        }
+      }
+    }
+
     // 创建消息
     const resolvedMessageType =
       options?.messageType === 'notification'
@@ -871,14 +894,24 @@ export class ImMessageService {
     ) as AsyncGenerator<unknown>;
 
     // 同时收集 LLM 文本输出, 供兜底回复使用
+    //  - token  :: LLM 最终回复 (优先, 兜底首选)
+    //  - reasoning :: Claude thinking 模式 / o1 等推理模型产出 (LLM 走思考分支没出 token 时退化用)
+    //  - eventStats :: 统计所有事件类型 count, 兜底失败时一起 log, 方便排查"为什么没 text" (例如 LLM 只调了 tool 没生成 final / 模型真沉默)
     let collectedText = '';
+    let reasoningText = '';
+    const eventStats: Record<string, number> = {};
     try {
       for await (const ev of gen) {
         if (typeof ev === 'string') {
           collectedText += ev;
+          eventStats.string = (eventStats.string ?? 0) + 1;
         } else if (this.isEventRecord(ev)) {
+          const evType = typeof ev.type === 'string' ? ev.type : 'unknown';
+          eventStats[evType] = (eventStats[evType] ?? 0) + 1;
           if (ev.type === 'token') {
             collectedText += (ev.data as { text?: string })?.text ?? '';
+          } else if (ev.type === 'reasoning') {
+            reasoningText += (ev.data as { text?: string })?.text ?? '';
           } else if (ev.type === 'error') {
             this.logger.warn(`${tag} agent error: ${String(ev.error)}`);
           }
@@ -906,23 +939,35 @@ export class ImMessageService {
       return;
     }
 
-    // 没通过 saas.app.conversation.sendMsg 发消息 → 把流式收集到的文本直接兜底发出去
-    const fallback = collectedText.trim();
-    if (!fallback) {
+    // 没通过 saas.app.conversation.sendMsg 发消息 → 兜底, 优先级:
+    //  - 1. collectedText (token 累加): LLM 没调 sendMsg 但生成了 final text
+    //  - 2. reasoningText (reasoning 累加): Claude thinking / o1 等推理模型只产 reasoning 没出 token, 退化拿思考过程
+    //  - 3. emergency fallback: 真完全沉默 (模型异常 / 超时 / 提前终止 generator) — log 含 eventStats 详细统计便于排查
+    const text = collectedText.trim();
+    const reasoning = reasoningText.trim();
+    const isEmergency = !text && !reasoning;
+    const content = text
+      ? text
+      : reasoning
+        ? reasoning
+        : '抱歉, 暂未能完成响应, 请稍后重试或换一种方式提问。';
+    const source = text ? 'token' : reasoning ? 'reasoning' : 'emergency';
+    const statsStr = JSON.stringify(eventStats);
+    if (isEmergency) {
       this.logger.warn(
-        `${tag} NO reply, NO text collected — giving up (${elapsed}ms)`,
+        `${tag} NO reply, NO text/reasoning collected — sending emergency fallback (${elapsed}ms, events=${statsStr})`,
       );
-      return;
+    } else {
+      this.logger.warn(
+        `${tag} NO sendMsg call, falling back to ${source} (${content.length} chars, ${elapsed}ms, events=${statsStr})`,
+      );
     }
-    this.logger.warn(
-      `${tag} NO sendMsg call, falling back to collected text (${fallback.length} chars, ${elapsed}ms)`,
-    );
     try {
       await this.sendMessage(
         payload.agentPrincipalId.trim(),
         {
           sessionId: payload.sessionId,
-          content: fallback,
+          content,
           replyToId: payload.triggerMessageId,
         },
         { role: 'assistant', skipAgentTrigger: true },

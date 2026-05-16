@@ -10,6 +10,14 @@ export interface AgentDescriptor {
   name: string;
   description: string;
   supportDialogue: boolean;
+  /**
+   * 节点级 call_hook debug 默认开关 (设计期在 agent.desc.ts 声明)
+   *  - true  :: 本 agent 所有 call_hook / call_hook_async 默认开启 OTel trace, 整个 graph 流稳定带 debugLog 回包
+   *  - false / undefined :: 默认关闭; LLM 仍可显式传 debug:true 在排查场景临时开启
+   *  - 工厂闭包绑定, graph 流期内行为一致, 不跨轮次漂移
+   * @keyword-en agent-default-debug
+   */
+  defaultDebug?: boolean;
 }
 
 /**

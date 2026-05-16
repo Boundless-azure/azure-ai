@@ -1,5 +1,13 @@
 FROM node:20-alpine
 
+# Runner 时区固定 UTC :: 设计约束, 见 src/modules/data-touchpoint/module.md 和 SaaS 端 LOCAL_CHAPTER_RUNNER_HOOK_LM
+# 跨地域 runner 部署内部时间观一致, 数据可跨 runner 比对; 用户视角的本地时间必须显式调 saas.app.timeZone.* 转换
+ENV TZ=UTC
+RUN apk add --no-cache tzdata \
+    && cp /usr/share/zoneinfo/UTC /etc/localtime \
+    && echo "UTC" > /etc/timezone \
+    && apk del tzdata
+
 # 安装 FRP
 RUN apk add --no-cache curl ca-certificates \
     && curl -sSL https://github.com/fatedier/frp/releases/download/v0.61.1/frp_0.61.1_linux_amd64.tar.gz -o /tmp/frp.tar.gz \
