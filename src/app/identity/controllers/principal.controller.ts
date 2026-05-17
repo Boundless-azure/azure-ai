@@ -11,7 +11,10 @@ import {
 import { z } from 'zod';
 import { PrincipalService } from '../services/principal.service';
 import { CheckAbility } from '../decorators/check-ability.decorator';
-import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
 import type {
   QueryPrincipalDto,
   CreatePrincipalDto,
@@ -75,18 +78,18 @@ const idParamInput = z.object({
  * @keywords-cn 主体控制器, 用户, 官方账号
  * @keywords-en principal-controller, user, official
  */
+@HookController({ pluginName: 'identity', tags: ['identity', 'principal'] })
 @Controller('identity/principals')
 export class PrincipalController {
   constructor(private readonly principalService: PrincipalService) {}
 
   @Get()
   @CheckAbility('read', 'principal')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.principalList',
     description:
       'RBAC 主体列表查询 (含全部 principalType) :: 按 q 模糊匹配 displayName/email/phone, 按 type 限定主体类型, 按 tenantId 限定租户; 仅返回未软删主体; 单次最多 500 条',
-    payloadSchema: onRbacPrincipalListInput,
-    payloadSource: 'query',
+    args: [onRbacPrincipalListInput],
   })
   async list(@Query() query: QueryPrincipalDto) {
     return await this.principalService.list(query);
@@ -94,12 +97,11 @@ export class PrincipalController {
 
   @Post()
   @CheckAbility('create', 'principal')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.principalCreate',
     description:
       'RBAC 主体创建 :: 仅插 principals 表, 不创建关联 user/agent 记录; 创建普通用户应改用 saas.app.identity.userCreate, 创建 Agent 应改用 saas.app.agent.* 系列 hook',
-    payloadSchema: onRbacPrincipalCreateInput,
-    payloadSource: 'body',
+    args: [onRbacPrincipalCreateInput],
   })
   async create(@Body() dto: CreatePrincipalDto) {
     return await this.principalService.create(dto);
@@ -107,12 +109,11 @@ export class PrincipalController {
 
   @Put(':id')
   @CheckAbility('update', 'principal')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.principalUpdate',
     description:
       'RBAC 主体更新 :: 主要用于改 displayName/avatar/contact 与启停; 仅写 principals 表, 不动关联 user/agent',
-    payloadSchema: onRbacPrincipalUpdateInput,
-    payloadSource: 'body',
+    args: [idParamInput.shape.id, onRbacPrincipalUpdateInput],
   })
   async update(@Param('id') id: string, @Body() dto: UpdatePrincipalDto) {
     await this.principalService.update(id, dto);
@@ -121,12 +122,11 @@ export class PrincipalController {
 
   @Delete(':id')
   @CheckAbility('delete', 'principal')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.principalDelete',
     description:
       'RBAC 主体软删除 :: 仅 principals 表 isDelete=true + active=false; 关联的 membership/user/agent 不会级联清理, 业务层需自行处理',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async delete(@Param('id') id: string) {
     await this.principalService.delete(id);

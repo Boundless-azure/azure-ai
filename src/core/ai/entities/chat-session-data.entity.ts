@@ -3,14 +3,22 @@ import { BaseAuditedEntity } from './base.entity';
 
 /**
  * @title 会话扩展数据实体
- * @description 存储与会话关联的扩展数据：WebMCP 连接/Schema、AI 自管理 session_data。
- * @keywords-cn 会话数据, WebMCP, Schema, 连接, AI会话数据
- * @keywords-en session-data, webmcp, schema, connection, ai-session
+ * @description 存储与会话关联的扩展数据：WebMCP 连接/Schema、AI 自管理 session_data、call_hook 调用日志。
+ * @keywords-cn 会话数据, WebMCP, Schema, 连接, AI会话数据, 调用日志
+ * @keywords-en session-data, webmcp, schema, connection, ai-session, call-log
  */
 export enum SessionDataType {
   WebmcpSchema = 'webmcp_schema',
   WebmcpConn = 'webmcp_conn',
   AiSession = 'ai_session',
+  /**
+   * AI call_hook 调用日志 (硬记录, 仅成功项, FIFO 上限 50 条)
+   * - dataKey :: uuid (call log 没有业务 key, 用 uuid 防冲突)
+   * - dataTitle :: `<hookName原文> :: <payload-摘要>` (查询命中靠它)
+   * - dataVal :: JSON { hookName, target, runnerId?, payload, result, ts }
+   * - 不进 enrichWithSessionRecall, LLM 主动 callHistory.query 才看见
+   */
+  AiCallLog = 'ai_call_log',
 }
 
 @Entity('chat_sessions_data')

@@ -270,7 +270,7 @@ export class AuthService {
   private async emitAuthHook(name: string, payload: Record<string, unknown>) {
     if (!this.hookBus) return;
     try {
-      await this.hookBus.emit({ name, payload });
+      await this.hookBus.emit({ name, payload: [payload] });
     } catch {
       return;
     }

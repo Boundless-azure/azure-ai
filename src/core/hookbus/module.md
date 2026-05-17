@@ -3,14 +3,13 @@
 概述
 - 提供本地队列的 Hook 总线，支持注册/筛选/调用与中间件链，并提供状态缓存。
 - 每个进程维护独立的 Hook 队列，不进行跨进程分发；慢钩子并行执行，不阻塞其他钩子。
-- 与 Runner 端 hookbus 共用同一套类型语义: `HookEvent` 携带 payload (业务) + context (运行时, LLM 不可见),
-  handler 直接接收 `event` 而非 ctx wrapper。
+- 与 Runner 端 hookbus 共用同一套底层类型语义: `HookEvent` 携带 payload (业务) + context (运行时, LLM 不可见)。
+- SaaS 业务 hook 统一通过 `@HookController` + `@HookRoute` 声明, LLM-facing payload 必须是数组并按方法形参展开。
 
 文件清单（File List）
 - core/hookbus/enums/hook.enums.ts
 - core/hookbus/types/hook.types.ts
-- core/hookbus/decorators/hook-handler.decorator.ts
-- core/hookbus/decorators/hook-lifecycle.decorator.ts
+- core/hookbus/decorators/hook-controller.decorator.ts
 - core/hookbus/controllers/hookbus-debug.controller.ts
 - core/hookbus/controllers/hookbus-debug.gateway.ts
 - core/hookbus/services/hook.registry.service.ts
@@ -18,9 +17,7 @@
 - core/hookbus/services/hook.bus.service.ts
 - core/hookbus/services/hook.debug-state.service.ts
 - core/hookbus/services/hook.auth-middleware.service.ts
-- core/hookbus/services/hook.lifecycle-registration.service.ts
-- core/hookbus/services/hook.decorator-explorer.service.ts
-- core/hookbus/interceptors/hook-lifecycle.interceptor.ts
+- core/hookbus/services/hook-controller-explorer.service.ts
 - core/hookbus/hookbus.module.ts
 - core/hookbus/cache/hook.cache.ts
 
@@ -36,11 +33,8 @@
 - HookBusService.select(name, filter)
 - HookBusService.listRegistrations()
 - HookBusService.onDebug(listener)
-- HookAuthMiddlewareService.onModuleInit()  -- 注册全局 auth mw, 解析 token → principalId
-- HookLifecycleRegistrationService.onModuleInit()  -- 把 @HookLifecycle 声明的 input zod schema 包成 envelope schema 写入 metadata.payloadSchema; 同时反射读 @CheckAbility 自动继承到 metadata.requiredAbility
-- HookLifecycleRegistrationService.resolveTarget(className, methodName)  -- 一次扫描同时取 callable + @CheckAbility 元数据
-- HookLifecycleInterceptor.intercept(context, next)  -- 把 token / principalId 写入 event.context
-- HookDecoratorExplorerService.onModuleInit()
+- HookAuthMiddlewareService.onModuleInit()  -- 注册全局 auth mw, 解析 token → principalId / principalType / extras.tenantId
+- HookControllerExplorerService.onModuleInit()  -- 扫描 @HookController/@HookRoute, 注册数组形参 hook
 - HookDebugStateService.getEnabled()
 - HookDebugStateService.setEnabled(next)
 - HookbusDebugController.getState()
@@ -53,8 +47,7 @@
 关键词索引（中文 / English Keyword Index）
 Hook枚举 -> core/hookbus/enums/hook.enums.ts
 Hook类型定义 -> core/hookbus/types/hook.types.ts
-Hook装饰器 -> core/hookbus/decorators/hook-handler.decorator.ts
-Hook生命周期装饰器 -> core/hookbus/decorators/hook-lifecycle.decorator.ts
+HookController装饰器 -> core/hookbus/decorators/hook-controller.decorator.ts
 Hook调试控制器 -> core/hookbus/controllers/hookbus-debug.controller.ts
 Hook调试网关 -> core/hookbus/controllers/hookbus-debug.gateway.ts
 Hook注册服务 -> core/hookbus/services/hook.registry.service.ts
@@ -62,9 +55,7 @@ Hook调用器 -> core/hookbus/services/hook.invoker.service.ts
 Hook总线服务 -> core/hookbus/services/hook.bus.service.ts
 Hook调试状态服务 -> core/hookbus/services/hook.debug-state.service.ts
 Hook鉴权中间件 -> core/hookbus/services/hook.auth-middleware.service.ts
-Hook生命周期注册服务 -> core/hookbus/services/hook.lifecycle-registration.service.ts
-Hook装饰器扫描 -> core/hookbus/services/hook.decorator-explorer.service.ts
-Hook生命周期拦截器 -> core/hookbus/interceptors/hook-lifecycle.interceptor.ts
+HookController扫描 -> core/hookbus/services/hook-controller-explorer.service.ts
 HookBus模块 -> core/hookbus/hookbus.module.ts
 Hook缓存服务 -> core/hookbus/cache/hook.cache.ts
 
@@ -96,15 +87,15 @@ HookBus 模块是系统的事件编排核心，支持同名 Hook 的多插件实
 
 调用上下文（HookInvocationContext）作为 HookEvent 的独立通道, 与 payload 平行:
 - payload 由 LLM / 调用方填业务参数
-- context 由调用入口 (HookLifecycleInterceptor / AgentRuntime tool 闭包) 注入 token / principalId / traceId
-- HookAuthMiddleware 解析 token, 校验后回填 principalId, handler 通过 event.context 直接读
+- context 由调用入口 (AgentRuntime tool 闭包 / 系统 emit 入口) 注入 token / principalId / traceId
+- HookAuthMiddleware 解析 token, 校验后回填 principalId / principalType / extras.tenantId, handler 通过 event.context 直接读
 - LLM tool schema 不暴露 context 字段, LLM 不可见不可改
 
-handler / middleware 签名统一为 `(event, next?) => HookResult`, 与 Runner 端完全一致, 没有 ctx wrapper。
+底层 handler / middleware 签名仍为 `(event, next?) => HookResult`；SaaS 业务声明层使用 `@HookRoute` 方法签名，`payload: [arg1, arg2]` 会按顺序展开成方法形参。
 
 权限校验 (与 HTTP @CheckAbility 对齐):
-- HookMetadata.requiredAbility = { action, subject } 或数组 (AND); HookHandler 注册可显式写,
-  HookLifecycle 注册时由 lifecycle-registration 反射读同方法 @CheckAbility 自动继承
+- HookMetadata.requiredAbility = { action, subject } 或数组 (AND); `@HookRoute` 可显式写,
+  `@HookRoute` 注册时会反射读同方法 @CheckAbility 自动继承
 - HookInvokerService.invoke 在派发前把 reg.metadata.requiredAbility 镜像到 event.declaration.requiredAbility,
   让中间件无需访问 reg 即可读到 (中间件签名只接受 event)
 - 校验由 identity 模块的 HookAbilityMiddlewareService 注入 invoker.use, 仅当 context.source === 'llm'
@@ -122,11 +113,10 @@ handler / middleware 签名统一为 `(event, next?) => HookResult`, 与 Runner 
 - CLAUDE.md 强约束: handler 禁 console.log / 独立 LogRecord, 一律走 event.log
 
 payload schema 校验 (zod, SSOT, 全项目唯一校验路径):
-- @HookHandler 注册: metadata.payloadSchema 直接写 zod schema
-- @HookLifecycle 注册: options.payloadSchema 是 input 部分形状, lifecycle-registration 自动包成
-  envelope `{ input, meta?, ok?, result?, error? }` 写入 metadata.payloadSchema
+- @HookRoute 注册: args 是位置参数 schema 数组, hook-controller-explorer 自动包成 tuple schema 写入 metadata.payloadSchema
+- 无参 HookRoute 兼容 `[]` 和 `[{}]`, 但调用 controller 方法时会忽略空对象, 仍只追加 principal/context/event
 - HookInvokerService.runHandlerWithSchema 在 handler 执行前自动 safeParse, 校验失败返回
-  `payload-schema-invalid: <field>: <message>`, 不进入 handler
-- handler 签名复用 `HookEvent<z.infer<typeof xxxSchema>>`, schema 即类型源
+  `payload-schema-invalid: field=payload[0].xxx actualType=... actualValue=... message="..."`, 不进入 handler
+- hook-controller 方法签名复用 `z.infer<typeof xxxSchema>`, schema 即类型源
 - 缺省 payloadSchema 时跳过校验 (兼容存量); LLM 通过 get_hook_info 拿到的 JSON Schema 也来自此字段
 - 不再使用 class-validator + payloadDto 路径 (已移除)

@@ -16,17 +16,26 @@
 - StorageService
   - createNode() - 创建存储节点（文件夹/文件）
   - getNode() - 获取节点详情
-  - listNodes() - 获取子节点列表
+  - listNodes() - 获取子节点列表（优先按 path 定位目录）
+  - resolveListParentId() - listNodes 的 path 父目录解析
+  - resolveFolderByPath() - 按目录路径解析当前租户 folder
+  - normalizeStoragePath() - 规范化目录路径
+  - joinStoragePath() - 拼接父目录路径与节点名
   - getRootNodes() - 获取根目录节点
   - updateNode() - 更新节点（重命名、移动）
+  - updateDescendantPaths() - 文件夹改名/移动后同步子孙节点路径
   - deleteNode() - 删除节点（软删除+MD5引用检查）
   - createShare() - 创建分享链接
   - getShareContent() - 获取分享内容
   - removeShare() - 删除分享链接
 - StorageController
+  - HookController(pluginName=storage, tags=[storage, file])
+  - resolveStorageTenantId() - 统一解析 HTTP / Hook 调用的租户 ID；Hook 路径优先使用 context.extras.tenantId，StorageController.getRootNodes 会打印实际查询 tenant 便于核查
+  - resolveStorageUserId() - 统一解析 HTTP / Hook 调用的操作主体 ID
   - POST /storage/nodes - 创建节点
-  - GET /storage/nodes - 获取节点列表
+  - GET /storage/nodes - 获取节点列表（path=/ 或 /workspace）
   - GET /storage/nodes/root - 获取根目录
+    - HookRoute: saas.app.storage.getRootNodes；复用同一方法，Hook payload 可传 `[]` 或 `[{}]`
   - GET /storage/nodes/:id - 获取节点详情
   - PUT /storage/nodes/:id - 更新节点
   - DELETE /storage/nodes/:id - 删除节点
@@ -51,8 +60,13 @@ MD5引用检查 -> app/storage/services/storage.service.ts
 - StorageService.createNode -> storage_create_node_001
 - StorageService.getNode -> storage_get_node_002
 - StorageService.listNodes -> storage_list_nodes_003
+- StorageService.resolveListParentId -> storage_resolve_list_parent_003a
+- StorageService.resolveFolderByPath -> storage_resolve_folder_path_003b
+- StorageService.normalizeStoragePath -> storage_normalize_path_003c
+- StorageService.joinStoragePath -> storage_join_path_003d
 - StorageService.getRootNodes -> storage_root_nodes_004
 - StorageService.updateNode -> storage_update_node_005
+- StorageService.updateDescendantPaths -> storage_update_descendant_paths_005a
 - StorageService.deleteNode -> storage_delete_node_006
 - StorageService.createShare -> storage_create_share_007
 - StorageService.getShareContent -> storage_get_share_008
@@ -66,9 +80,12 @@ MD5引用检查 -> app/storage/services/storage.service.ts
 - StorageController.createShare -> storage_ctl_create_share_016
 - StorageController.removeShare -> storage_ctl_remove_share_017
 - StorageController.getShareContent -> storage_ctl_get_share_018
+- StorageController.resolveStorageTenantId -> storage_ctl_tenant_019
+- StorageController.resolveStorageUserId -> storage_ctl_user_020
 
 模块功能描述（Description）
 本模块提供资源库目录结构管理，支持文件夹和文件的 CRUD 操作，分享链接管理，以及删除时的物理文件引用检查（确保跨租户 MD5 去重正确性）。
+Hook 调用路径复用 HTTP Controller 方法，但不会有真实 Express Request；controller 会从 `HookInvocationContext.extras.tenantId` 解析租户，HTTP 路径则继续使用 `req.user.tenantId`。Agent 发起的 SaaS hook 上下文由 ImMessageService 构建：鉴权主体保持 agent principalId，业务 tenantId 跟随当前触发用户。
 
 前端模块：web/src/modules/storage/
 概述

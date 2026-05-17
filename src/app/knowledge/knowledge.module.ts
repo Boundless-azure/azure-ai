@@ -4,7 +4,6 @@ import { AICoreModule } from '@core/ai';
 import { KnowledgeBookEntity } from './entities/knowledge-book.entity';
 import { KnowledgeChapterEntity } from './entities/knowledge-chapter.entity';
 import { KnowledgeService } from './services/knowledge.service';
-import { KnowledgeHookHandlerService } from './services/knowledge-hook-handler.service';
 import { KnowledgeController } from './controllers/knowledge.controller';
 import { AuthModule } from '@/core/auth/auth.module';
 
@@ -20,7 +19,7 @@ import { AuthModule } from '@/core/auth/auth.module';
     AICoreModule.forRoot({}),
     AuthModule,
   ],
-  providers: [KnowledgeService, KnowledgeHookHandlerService],
+  providers: [KnowledgeService],
   controllers: [KnowledgeController],
   exports: [KnowledgeService],
 })

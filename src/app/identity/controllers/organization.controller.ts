@@ -11,7 +11,10 @@ import {
 import { z } from 'zod';
 import { OrganizationService } from '../services/organization.service';
 import { CheckAbility } from '../decorators/check-ability.decorator';
-import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
 import type {
   CreateOrganizationDto,
   UpdateOrganizationDto,
@@ -52,18 +55,18 @@ const idParamInput = z.object({
  * @keywords-cn 组织控制器, 租户
  * @keywords-en organization-controller, tenant
  */
+@HookController({ pluginName: 'identity', tags: ['identity', 'organization'] })
 @Controller('identity/organizations')
 export class OrganizationController {
   constructor(private readonly orgService: OrganizationService) {}
 
   @Get()
   @CheckAbility('read', 'organization')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.organizationList',
     description:
       'RBAC 组织/租户列表查询 :: 仅按 q 模糊匹配 name/code; 默认按 createdAt 倒序返回未软删组织',
-    payloadSchema: onRbacOrganizationListInput,
-    payloadSource: 'query',
+    args: [onRbacOrganizationListInput],
   })
   async list(@Query() query: QueryOrganizationDto) {
     return await this.orgService.list(query);
@@ -71,11 +74,10 @@ export class OrganizationController {
 
   @Post()
   @CheckAbility('create', 'organization')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.organizationCreate',
     description: 'RBAC 组织创建 :: code 不强制唯一 (业务自管), 创建即激活',
-    payloadSchema: onRbacOrganizationCreateInput,
-    payloadSource: 'body',
+    args: [onRbacOrganizationCreateInput],
   })
   async create(@Body() dto: CreateOrganizationDto) {
     return await this.orgService.create(dto);
@@ -83,11 +85,10 @@ export class OrganizationController {
 
   @Put(':id')
   @CheckAbility('update', 'organization')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.organizationUpdate',
     description: 'RBAC 组织更新',
-    payloadSchema: onRbacOrganizationUpdateInput,
-    payloadSource: 'body',
+    args: [idParamInput.shape.id, onRbacOrganizationUpdateInput],
   })
   async update(@Param('id') id: string, @Body() dto: UpdateOrganizationDto) {
     await this.orgService.update(id, dto);
@@ -96,12 +97,11 @@ export class OrganizationController {
 
   @Delete(':id')
   @CheckAbility('delete', 'organization')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.organizationDelete',
     description:
       'RBAC 组织软删除 :: 同时置 active=false; 旗下成员/角色不会级联清理, 业务层需自行处理',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async delete(@Param('id') id: string) {
     await this.orgService.delete(id);

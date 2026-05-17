@@ -15,7 +15,6 @@ export type ShareMode = 'none' | 'temp' | 'permanent' | 'password';
 export interface StorageNode {
   id: string;
   tenantId: string;
-  parentId: string | null;
   name: string;
   type: StorageNodeType;
   path: string;
@@ -32,7 +31,7 @@ export interface StorageNode {
 
 // 创建节点请求
 export interface CreateNodeRequest {
-  parentId?: string | null;
+  parentPath?: string;
   name: string;
   type: StorageNodeType;
   resourceId?: string | null;
@@ -43,7 +42,7 @@ export interface CreateNodeRequest {
 // 更新节点请求
 export interface UpdateNodeRequest {
   name?: string;
-  parentId?: string | null;
+  parentPath?: string;
 }
 
 // 分享请求
@@ -63,7 +62,7 @@ export interface ShareLinkResponse {
 
 // 列表查询
 export interface ListNodesQuery {
-  parentId?: string | null;
+  path?: string;
   type?: StorageNodeType;
   q?: string;
 }

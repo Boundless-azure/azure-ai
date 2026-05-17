@@ -125,7 +125,9 @@ export class HookInvokerService {
     const parsed = schema.safeParse(event.payload);
     if (!parsed.success) {
       const detail = parsed.error.issues
-        .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+        .map((i) =>
+          this.formatPayloadSchemaIssue(i.path, i.message, event.payload),
+        )
         .join('; ');
       return {
         status: HookResultStatus.Error,
@@ -133,6 +135,83 @@ export class HookInvokerService {
       } as HookResult<R>;
     }
     return await reg.handler({ ...event, payload: parsed.data as T });
+  }
+
+  /**
+   * 格式化 zod payload 错误 :: 输出字段路径、实际类型和值, 让 LLM 能直接修 payload。
+   * @keyword-en format-payload-schema-issue
+   */
+  private formatPayloadSchemaIssue(
+    path: ReadonlyArray<PropertyKey>,
+    message: string,
+    payload: unknown,
+  ): string {
+    const field = this.formatPayloadPath(path);
+    const actual = this.readPayloadPath(payload, path);
+    return [
+      `field=${field}`,
+      `actualType=${this.describeType(actual)}`,
+      `actualValue=${this.previewValue(actual)}`,
+      `message=${JSON.stringify(message)}`,
+    ].join(' ');
+  }
+
+  /**
+   * 把 zod path 转成 LLM 更易懂的 payload 路径。
+   * @keyword-en format-payload-path
+   */
+  private formatPayloadPath(path: ReadonlyArray<PropertyKey>): string {
+    if (path.length === 0) return 'payload';
+    return path.reduce<string>((acc, part) => {
+      if (typeof part === 'number') return `${acc}[${part}]`;
+      if (typeof part === 'symbol') return `${acc}.${String(part)}`;
+      return `${acc}.${part}`;
+    }, 'payload');
+  }
+
+  /**
+   * 从实际 payload 中读取 zod path 对应的值。
+   * @keyword-en read-payload-path
+   */
+  private readPayloadPath(
+    payload: unknown,
+    path: ReadonlyArray<PropertyKey>,
+  ): unknown {
+    let cur = payload;
+    for (const part of path) {
+      if (cur == null) return undefined;
+      if (typeof part === 'number') {
+        if (!Array.isArray(cur)) return undefined;
+        cur = cur[part];
+        continue;
+      }
+      if (typeof cur !== 'object') return undefined;
+      if (typeof part === 'symbol') return undefined;
+      cur = (cur as Record<string, unknown>)[part];
+    }
+    return cur;
+  }
+
+  /**
+   * 返回适合错误消息展示的 JS 值类型。
+   * @keyword-en describe-actual-type
+   */
+  private describeType(value: unknown): string {
+    if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
+    return typeof value;
+  }
+
+  /**
+   * 压缩展示实际字段值, 避免错误消息过长。
+   * @keyword-en preview-schema-value
+   */
+  private previewValue(value: unknown): string {
+    if (value === undefined) return 'undefined';
+    const raw =
+      typeof value === 'string' ? JSON.stringify(value) : JSON.stringify(value);
+    if (!raw) return String(value);
+    return raw.length > 160 ? `${raw.slice(0, 157)}...` : raw;
   }
 
   private compose<T, R>(

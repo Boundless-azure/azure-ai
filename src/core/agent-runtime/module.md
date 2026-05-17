@@ -4,23 +4,25 @@
 每个加载的 Agent 工具集始终包含 5 个内置 Hook 工具 (`call_hook` / `call_hook_async` / `search_hook` / `get_hook_tag` / `get_hook_info`), 且系统提示词中始终注入 Hook 发现流程说明和知识库读取说明。
 
 5 个工具都支持 `target` 参数路由:
-- `target='saas'` → 走本进程 HookBus / Registry
-- `target='runner'` (默认) → 走 RunnerHookRpcService 经 /runner/ws 派发到指定 `runnerId`
+- `target='saas'` (默认) → 走本进程 HookBus / Registry
+- `target='runner'` → 走 RunnerHookRpcService 经 /runner/ws 派发到指定 `runnerId`
+- `call_hook` / `call_hook_async` 会按 hookName 前缀归一化目标端: `saas.*` 强制 SaaS, `runner.*` 强制 Runner, 避免 LLM 省略或误填 target 导致错路由
 统一返回外形 `{ errorMsg, result, debugLog }`, errorMsg 非空即软错让 LLM 纠正。
 
-调用上下文 (token / principalId / traceId) 通过 `options.invocationContext` 由调用方填入, 工具层闭包持有, LLM schema 完全不暴露,
-保证 LLM 不可见不可改 token。AgentRuntime 自身不解析 token, 解析在 SaaS HookAuthMiddleware 完成。
+调用上下文 (token / principalId / traceId / tenantId) 通过 `options.invocationContext` 由调用方填入, 工具层闭包持有, LLM schema 完全不暴露,
+保证 LLM 不可见不可改 token。AgentRuntime 自身不解析 token, 解析在 SaaS HookAuthMiddleware 完成。IM 入口会同时传 `agentContext`, 将当前 agent 元信息和业务 tenant 作为前置系统上下文补充给 LLM；鉴权仍只看 invocationContext.principalId。
 
 ## 文件列表
 
 ### services/agent-runtime.service.ts
 `AgentRuntimeService` — Agent 运行时主服务
 
-- `load(inputDir, invocationContext?)` — 加载 Agent 目录, 注入 5 个 hook 工具 (闭包持有 ctx) | keywords: load-agent, inject-tools, ctx-closure
-- `startDialogue(agentDir, messages, options)` — 启动对话流, options 含 proactiveContext / invocationContext | keywords: start-dialogue, proactive-chat, invocation-context
+- `load(inputDir, invocationContext?)` — 加载 Agent 目录, 注入 5 个 hook 工具 (闭包持有 ctx); call_hook 副作用同时落 SessionCallTracker (内存) 和 AiCallLogService (持久化, 仅成功项) | keywords: load-agent, inject-tools, ctx-closure, call-log-sink
+- `startDialogue(agentDir, messages, options)` — 启动对话流, options 含 proactiveContext / invocationContext / agentContext | keywords: start-dialogue, proactive-chat, invocation-context, agent-context
 - `getTools(agentDir, invocationContext?)` — 获取 Agent 工具集 (含 5 个内置 hook 工具) | keywords: get-tools
-- `buildAiAdapter()` — 构建 AI 适配器, 始终注入 base system prompt | keywords: ai-adapter, base-prompt
+- `buildAiAdapter()` — 构建 AI 适配器, 始终注入 base system prompt; 支持 agent-runtime-context 前置注入当前 agent 元信息和业务 tenant; 主动对话模式提示词改为指向 handbook.* 槽位 | keywords: ai-adapter, base-prompt, agent-runtime-context, handbook-redirect
 - `attachDialogue(agent)` — 把 AIModelService 注入对话层 | keywords: attach-dialogue
+- `maybeTriggerSaveLlmAfterTurn(ctx, modelIds)` — 整轮结束低频硬匹配命中即异步触发 sinking LLM | keywords: maybe-trigger-save-llm
 
 ### services/agent-loader.service.ts
 `AgentLoaderService` — 负责从目录中加载 Agent TypeScript 文件
@@ -30,21 +32,35 @@
 ### tools/call-hook.tools.ts
 LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationContext)
 
-- `buildCallHookTool(hookBus, hookRpc, getCtx, sideEffects?, options?)` — 同步批量调用 hook; `options.defaultDebug` 注入节点级 debug 默认值, 工厂闭包绑定整个 graph 流 | keywords: call-hook-tool, sync, batch, target-routing, default-debug
-- `buildCallHookAsyncTool(hookBus, hookRpc, getCtx, options?)` — 批量 fire-and-forget; 同支持 `options.defaultDebug` | keywords: call-hook-async-tool, batch, default-debug
+- `buildCallHookTool(hookBus, hookRpc, getCtx, sideEffects?, options?)` — 同步批量调用 hook; target 默认 SaaS, hookName 前缀归一化目标端; `options.defaultDebug` 注入节点级 debug 默认值, 工厂闭包绑定整个 graph 流 | keywords: call-hook-tool, sync, batch, target-routing, target-normalize, default-debug
+- `buildCallHookAsyncTool(hookBus, hookRpc, getCtx, options?)` — 批量 fire-and-forget; target 默认 SaaS, hookName 前缀归一化目标端; 同支持 `options.defaultDebug` | keywords: call-hook-async-tool, batch, target-normalize, default-debug
 - `processOneCallAftermath(entry, reply, ctx, sideEffects?)` — per-call 失败追踪 + hint 注入 + 副作用回调 | keywords: aftermath, per-call
 - `buildSearchHookTool(hookBus, hookRpc, getCtx)` — 按 tags / pluginName 搜索 hook 注册表 | keywords: search-hook-tool, discovery
 - `buildGetHookTagTool(hookBus, hookRpc, getCtx)` — 获取 tag 频次榜 | keywords: get-hook-tag-tool, tag-leaderboard
 - `buildGetHookInfoTool(hookBus, hookRpc, getCtx)` — 批量获取 hook 描述+tags+payload schema | keywords: get-hook-info-tool, batch-info
 - `dispatchOne(hookBus, hookRpc, ctx, input, defaultDebug)` — 内部统一路由 (saas/runner); debug 三层优先级 (input.debug ?? defaultDebug ?? false) | keywords: dispatch-one, debug-priority
 - `dispatchSaasHook(hookBus, ctx, input)` — 适配 SaaS HookBus 结果到统一外形 | keywords: adapt-saas-result
+- `normalizeHookCallInput(entry)` — 根据 `saas.*` / `runner.*` hookName 前缀归一化 target, 前缀优先于 target 字段 | keywords: normalize-hook-call-input, target-normalize
 - `projectSaasRegistrations(regs)` — 把 SaaS Registry 投影成与 runner meta hook 同形列表 | keywords: project-saas-registrations
 - `InvocationContextProvider` (type) — `() => HookInvocationContext` 闭包取值器 | keywords: invocation-context-provider
+
+### services/session-call-tracker.service.ts
+`SessionCallTrackerService` — 单进程内存追踪 call_hook 调用, 用于低频硬匹配触发 sinking LLM (records 上限 200 条 LRU)
+
+- `record(sessionId, rec)` — 记一次 call_hook 调用 | keywords: record-call-hook
+- `shouldTriggerSave(sessionId)` — 低频硬匹配 (getChapter / 失败后成功 + 冷却时间) | keywords: should-trigger-save
+- `resetTriggers(sessionId)` / `getRecords(sessionId)` / `clear(sessionId)` | keywords: tracker-state
+
+### services/session-save-llm.service.ts
+`SessionSaveLlmService` — 独立 sinking LLM, 根据 records 决策是否调 sessionData.save (4 类白名单: knowledge/recipe/hook/entity); **禁止写 handbook.\*** (那是系统 seed 槽位)
+
+- `runAsync({ sessionId, aiModelIds, invocationContext })` — fire-and-forget 异步沉淀决策 | keywords: run-async-save-llm
+- `buildUserMessage(records, listing)` — 拼 user message 给沉淀 LLM | keywords: build-save-user-message
 
 ### prompts/base-llm.prompt.ts
 基础 LLM 系统提示词
 
-- `buildBaseLlmSystemPrompt()` — 生成 Hook 工具总览 + 发现流程 + 知识库读取说明 | keywords: base-llm-prompt, discovery-flow
+- `buildBaseLlmSystemPrompt()` — 生成压缩版基础提示: import-tip 识别 + 工具硬约束 + 每轮查询链路 (callHistory 默认 `[{}]` 轻量 title 列表 → 命中 id 再取详情 → sessionData 必读规则 → 知识库 → tag 搜索 hook) + 先规划再 batch/并行调用约束 | keywords: base-llm-prompt, compact, import-tip, call-history-first, call-history-title-list, session-data-required, batch-plan
 
 ### types/agent-runtime.types.ts
 - `LoadedAgent` — Agent 加载结果类型 (tools, dialogues, descriptor)

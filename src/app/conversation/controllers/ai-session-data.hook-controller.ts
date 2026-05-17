@@ -1,10 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
-import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
-import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
-import { AiSessionDataService } from './ai-session-data.service';
+import type {
+  HookInvocationContext,
+  HookResult,
+} from '@/core/hookbus/types/hook.types';
+import { AiSessionDataService } from '../services/ai-session-data.service';
+import type { SessionDataListItem } from '../services/ai-session-data.service';
 
 /**
  * @title AI Session Data Hook payload schema (SSOT)
@@ -30,7 +37,11 @@ const saveSchema = z.object({
     .string()
     .regex(/^[a-zA-Z0-9_.-]{1,128}$/)
     .describe(
-      '数据键名 :: 字母 / 数字 / 下划线 / 短横 / 点 (1-128 字符)。推荐分层语义命名, 例如 entity.principal.admin / knowledge.book.todo_skill / progress.todo.demo',
+      '数据键名 :: 字母 / 数字 / 下划线 / 短横 / 点 (1-128 字符)。' +
+        '第一段决定 category, 沿用约定: ' +
+        '`handbook.*` (必读手册, 按 agent 身份隔离) / `knowledge.*` (知识章节摘要) / ' +
+        '`recipe.*` (多步配方) / `hook.*` (单 hook 教训) / `entity.*` (实体 id 缓存) / 其他归 general. ' +
+        '推荐分层: entity.principal.admin / knowledge.book.todo_skill / recipe.invite-member.',
     ),
   value: z.unknown().describe('数据值，将被 JSON 序列化存储'),
   title: z
@@ -67,12 +78,18 @@ type DeletePayload = z.infer<typeof deleteSchema>;
 /**
  * @title AI Session Data Hook 处理器
  * @description 提供 AI 自管理会话级 session_data 的 CRUD 能力。
- * @keywords-cn session-data, hook, 保存, 获取, 列表, 删除
- * @keywords-en session-data-hook, save, get, list, delete
+ *              list 按 category 分组渲染, handbook 段严格按 ctx.principalId 过滤
+ *              (LLM 永远拿不到不属于自己 agent 身份的手册).
+ * @keywords-cn session-data, hook, 保存, 获取, 列表, 删除, 分组, 必读
+ * @keywords-en session-data-hook, save, get, list, delete, grouped, must-read
  */
 @Injectable()
-export class AiSessionDataHookHandlersService {
-  private readonly logger = new Logger(AiSessionDataHookHandlersService.name);
+@HookController({
+  pluginName: 'ai-session-data',
+  tags: ['conversation', 'session-data'],
+})
+export class AiSessionDataHookController {
+  private readonly logger = new Logger(AiSessionDataHookController.name);
 
   constructor(private readonly service: AiSessionDataService) {}
 
@@ -81,22 +98,28 @@ export class AiSessionDataHookHandlersService {
   // ----------------------------------------------------------------
 
   /**
-   * 保存或更新一条 session data 记录
+   * 保存或更新一条 session data 记录, ownerPrincipalId 自动从 ctx 取
    * @keyword-en hook-session-data-save
    */
-  @HookHandler('saas.app.conversation.sessionData.save', {
-    pluginName: 'ai-session-data',
-    tags: ['session-data', 'conversation'],
+  @HookRoute({
+    hook: 'saas.app.conversation.sessionData.save',
     description:
       '保存或更新当前会话的一条持久化数据。key 为唯一标识，value 任意 JSON，title 必填。同 key 会覆盖旧值。' +
+      'key 第一段决定 category :: handbook (必读手册, 按 agent 身份隔离) / knowledge / recipe / hook / entity / 其他归 general. ' +
       'sessionId 留空 → 服务端从 ctx 自动补当前会话 (LLM 用法). ' +
-      '收尾**必须沉淀新经验** (hook 配方 / 知识章节摘要 / 实体 id / 用户偏好), 下次同类任务通过 list 命中即可跳过重复查询.',
-    payloadSchema: saveSchema,
+      'ownerPrincipalId 自动来自 ctx.principalId, **handbook 类只会被同 principal 看到**. ' +
+      '收尾**必须沉淀新经验** (knowledge 章节摘要 / recipe 配方 / hook 调用教训 / entity id), 下次同类任务通过 list 命中即可跳过重复查询.',
+    args: [saveSchema],
+    metadata: { tags: ['session-data', 'conversation'] },
   })
   @CheckAbility('update', 'session')
-  async handleSave(event: HookEvent<SavePayload>): Promise<HookResult> {
-    const { key, value, title } = event.payload;
-    const sessionId = resolveSessionId(event);
+  async handleSave(
+    payload: SavePayload,
+    _principal?: unknown,
+    context?: HookInvocationContext,
+  ): Promise<HookResult> {
+    const { key, value, title } = payload;
+    const sessionId = resolveSessionId({ payload, context });
     if (!sessionId) {
       return {
         status: HookResultStatus.Error,
@@ -105,7 +128,9 @@ export class AiSessionDataHookHandlersService {
       };
     }
     try {
-      await this.service.save(sessionId, key, value, title);
+      // owner :: 优先 ctx.principalId; 系统 seed 时由 caller 在 ctx 设好
+      const ownerPrincipalId = context?.principalId;
+      await this.service.save(sessionId, key, value, title, ownerPrincipalId);
       return {
         status: HookResultStatus.Success,
         data: { saved: true, key, title: title ?? null },
@@ -124,19 +149,24 @@ export class AiSessionDataHookHandlersService {
    * 获取指定 key 的 session data
    * @keyword-en hook-session-data-get
    */
-  @HookHandler('saas.app.conversation.sessionData.get', {
-    pluginName: 'ai-session-data',
-    tags: ['session-data', 'conversation'],
+  @HookRoute({
+    hook: 'saas.app.conversation.sessionData.get',
     description:
-      '获取当前会话指定 key 的持久化数据 (含完整 value)。返回 { key, title, value, updatedAt }。' +
+      '获取当前会话指定 key 的持久化数据 (含完整 value)。返回 { key, title, value, category, updatedAt }。' +
       'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法). ' +
-      '通常配合 sessionData.list 使用 :: list 拿 title 列表 → 命中后 get 取详情.',
-    payloadSchema: getSchema,
+      '**handbook.* 系列 = 必读技能手册, 起手协议要求逐条 get 取全文**, 不读必犯低级错. ' +
+      '其他 category 命中 title 才 get.',
+    args: [getSchema],
+    metadata: { tags: ['session-data', 'conversation'] },
   })
   @CheckAbility('read', 'session')
-  async handleGet(event: HookEvent<GetPayload>): Promise<HookResult> {
-    const { key } = event.payload;
-    const sessionId = resolveSessionId(event);
+  async handleGet(
+    payload: GetPayload,
+    _principal?: unknown,
+    context?: HookInvocationContext,
+  ): Promise<HookResult> {
+    const { key } = payload;
+    const sessionId = resolveSessionId({ payload, context });
     if (!sessionId) {
       return {
         status: HookResultStatus.Error,
@@ -164,23 +194,30 @@ export class AiSessionDataHookHandlersService {
   // ----------------------------------------------------------------
 
   /**
-   * 列出当前会话所有 session data 的 key / title / 更新时间 / 大小
+   * 列出当前会话所有 session data 的 key / title / 更新时间 / 大小 (按 category 分组)
+   * handbook 段按当前 ctx.principalId 严格过滤 (群聊隔离)
    * @keyword-en hook-session-data-list
    */
-  @HookHandler('saas.app.conversation.sessionData.list', {
-    pluginName: 'ai-session-data',
-    tags: ['session-data', 'conversation'],
+  @HookRoute({
+    hook: 'saas.app.conversation.sessionData.list',
     description:
-      '列出当前会话所有持久化数据的轻量元数据 (key + title + 更新时间 + 大小, **不含 value**)。' +
-      '返回字段 :: { count, listing }; listing 是分行 markdown 文本, 直接读它即可。' +
-      '凭 title 判断哪条命中 → 调 sessionData.get(key) 取完整 value。' +
-      'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法). ' +
-      '【强约束】LLM 每轮收到用户消息**第一件事**调此 hook 拿全景, 再决定走业务还是用记忆.',
-    payloadSchema: listSchema,
+      '列出当前会话所有持久化数据的轻量元数据 (key + title + 更新时间 + 大小, **不含 value**), ' +
+      '按 category 分组渲染 (handbook / knowledge / recipe / hook / entity / general)。' +
+      '返回字段 :: { count, listing }; listing 是分段 markdown 文本, 直接读它即可。' +
+      '⚠ **handbook 段下每条都是必读技能手册**, 起手协议要求**逐条** sessionData.get 取全文, 不读必犯低级错。' +
+      '其他段命中 title 后 get 取详情。' +
+      'handbook 段按当前 agent 身份自动过滤, 你看到的就是你该读的 (群聊场景多 agent 互不可见)。' +
+      'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法).',
+    args: [listSchema],
+    metadata: { tags: ['session-data', 'conversation'] },
   })
   @CheckAbility('read', 'session')
-  async handleList(event: HookEvent<ListPayload>): Promise<HookResult> {
-    const sessionId = resolveSessionId(event);
+  async handleList(
+    payload: ListPayload,
+    _principal?: unknown,
+    context?: HookInvocationContext,
+  ): Promise<HookResult> {
+    const sessionId = resolveSessionId({ payload, context });
     if (!sessionId) {
       return {
         status: HookResultStatus.Error,
@@ -189,7 +226,11 @@ export class AiSessionDataHookHandlersService {
       };
     }
     try {
-      const items = await this.service.list(sessionId);
+      // handbookOwner :: ctx.principalId 兜底, 系统/HTTP 调用(无 principalId)则不过滤
+      const handbookOwnerPrincipalId = context?.principalId;
+      const items = await this.service.list(sessionId, {
+        handbookOwnerPrincipalId,
+      });
       return {
         status: HookResultStatus.Success,
         data: {
@@ -211,16 +252,20 @@ export class AiSessionDataHookHandlersService {
    * 删除指定 key 的 session data
    * @keyword-en hook-session-data-delete
    */
-  @HookHandler('saas.app.conversation.sessionData.delete', {
-    pluginName: 'ai-session-data',
-    tags: ['session-data', 'conversation'],
+  @HookRoute({
+    hook: 'saas.app.conversation.sessionData.delete',
     description: '删除当前会话指定 key 的持久化数据。',
-    payloadSchema: deleteSchema,
+    args: [deleteSchema],
+    metadata: { tags: ['session-data', 'conversation'] },
   })
   @CheckAbility('delete', 'session')
-  async handleDelete(event: HookEvent<DeletePayload>): Promise<HookResult> {
-    const { key } = event.payload;
-    const sessionId = resolveSessionId(event);
+  async handleDelete(
+    payload: DeletePayload,
+    _principal?: unknown,
+    context?: HookInvocationContext,
+  ): Promise<HookResult> {
+    const { key } = payload;
+    const sessionId = resolveSessionId({ payload, context });
     if (!sessionId) {
       return {
         status: HookResultStatus.Error,
@@ -262,42 +307,71 @@ function resolveSessionId(event: {
 }
 
 /**
- * 把 list 结果渲染为分行 markdown 列表, LLM 阅读友好。
- * 输出形态 ::
- *   共 N 条记忆 (header + 复用规则)
- *   - `<key>` :: <title>  (MM-DD, NB)
- *   - ...
- * 不返 value :: 命中后调 sessionData.get(key) 取完整 value, 避免 list 输出随记忆增多撑大。
- * @keyword-en render-listing markdown-friendly
+ * 渲染顺序 :: handbook 永远第一(必读高亮), 其他按固定顺序便于 LLM 形成稳定预期
+ * @keyword-en category-render-order
  */
-function renderListing(
-  items: Array<{
-    key: string;
-    title: string | null;
-    updatedAt: Date;
-    sizeBytes: number;
-  }>,
-): string {
+const CATEGORY_ORDER = [
+  'handbook',
+  'knowledge',
+  'recipe',
+  'hook',
+  'entity',
+  'general',
+];
+
+const CATEGORY_HEADER: Record<string, string> = {
+  handbook:
+    '## ⚠ handbook (必读, 起手协议要求**逐条** sessionData.get 取全文; 这是按你当前 agent 身份过滤的技能手册)',
+  knowledge: '## knowledge (知识章节摘要; 命中 title 才 get)',
+  recipe: '## recipe (多步配方; 命中 title 才 get)',
+  hook: '## hook (单 hook 调用教训 / 试错纠错; 命中 title 才 get)',
+  entity: '## entity (本会话复用的实体 id 缓存)',
+  general: '## general (未归类经验)',
+};
+
+/**
+ * 把 list 结果按 category 分组渲染为分段 markdown, LLM 阅读友好.
+ * 必读段(handbook) 永远第一, 突出"起手必逐条 get"语义.
+ * 各段空时整段省略 (避免无意义噪声).
+ * @keyword-en render-listing grouped-by-category markdown-friendly
+ */
+function renderListing(items: SessionDataListItem[]): string {
   if (items.length === 0) {
     return [
       '本会话还没有任何 session_data 记忆。',
       '完成查询/读章节/失败-成功修正后, 调 sessionData.save({ sessionId, key, value, title }) 沉淀。',
+      'key 命名约定 :: handbook.* / knowledge.* / recipe.* / hook.* / entity.* (第一段决定 category).',
       'title 必须是描述性长标题 (>= 8 字符), list 时凭它判断哪条命中。',
     ].join('\n');
   }
 
-  const header = [
-    `共 ${items.length} 条记忆。命中 title 即视作已查询; 需要详情调 sessionData.get({ key }) 取完整 value。`,
+  // 按 category 分桶
+  const buckets: Record<string, SessionDataListItem[]> = {};
+  for (const it of items) {
+    const cat: string = it.category;
+    const bucket = buckets[cat] ?? [];
+    bucket.push(it);
+    buckets[cat] = bucket;
+  }
+
+  const parts: string[] = [
+    `共 ${items.length} 条记忆 (按 category 分组; handbook 必读, 其他按 title 命中再 get)。`,
     '',
   ];
 
-  const lines = items.map((it) => {
-    const date = it.updatedAt.toISOString().slice(5, 10); // MM-DD
-    const title =
-      it.title ??
-      '(⚠ 无 title — 这条记忆下次自己也认不出, 建议覆盖 save 补一个描述性标题)';
-    return `- \`${it.key}\` :: ${title}  (${date}, ${it.sizeBytes}B)`;
-  });
+  for (const cat of CATEGORY_ORDER) {
+    const list: SessionDataListItem[] = buckets[cat] ?? [];
+    if (list.length === 0) continue;
+    parts.push(CATEGORY_HEADER[cat]);
+    for (const it of list) {
+      const date = it.updatedAt.toISOString().slice(5, 10); // MM-DD
+      const title =
+        it.title ??
+        '(⚠ 无 title — 这条记忆下次自己也认不出, 建议覆盖 save 补一个描述性标题)';
+      parts.push(`- \`${it.key}\` :: ${title}  (${date}, ${it.sizeBytes}B)`);
+    }
+    parts.push('');
+  }
 
-  return [...header, ...lines].join('\n');
+  return parts.join('\n').trimEnd();
 }

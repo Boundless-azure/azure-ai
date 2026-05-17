@@ -55,7 +55,8 @@
 - HookAbilityMiddlewareService
   - onModuleInit()  -- 注入 invoker.use, 把 @CheckAbility 语义平移到 Hook 调用链 (仅 source==='llm')
 - Identity Controllers
-  - HookLifecycle on RBAC CRUD: 全部声明 zod payloadSchema (input 形状), 每个字段带 .describe(), lifecycle-registration 自动包成 envelope
+  - 每个 RBAC controller 都声明 `@HookController({ pluginName: 'identity', tags: ['identity', <resource>] })`, 方便 `search_hook({ tags:['identity'] })` 发现真实 hook, 避免猜测不存在的 `identity.profile.*`
+  - HookRoute on RBAC CRUD: 全部声明 zod payloadSchema (input 形状), 每个字段带 .describe(), hook-controller 数组形参
     · 命名遵循 saas.app.identity.<resource><Action>:
     · saas.app.identity.userList/userCreate/userUpdate/userDelete (× 4)  filter :: q / tenantId / type
     · saas.app.identity.roleList/roleCreate/roleUpdate/roleDelete + rolePermissionList/rolePermissionUpsert (× 6)  list filter :: q (LIKE name/code) / organizationId ("null"=系统级)
@@ -75,7 +76,7 @@ Hook能力中间件 -> app/identity/services/hook.ability-middleware.service.ts
 
 关键词到文件函数哈希映射（Keywords -> Function Hash）
 - PrincipalService.list -> id_psi_list_001
-- PrincipalService.listUsers -> id_psi_list_users_006
+- PrincipalService.listUsers -> id_psi_list_users_006（用户管理列表；未指定 type 时查询 DB 类型 user/consumer/system）
 - PrincipalService.createUser -> id_psi_create_user_007
 - PrincipalService.updateUser -> id_psi_update_user_008
 - PrincipalService.deleteUser -> id_psi_delete_user_009
@@ -83,9 +84,9 @@ Hook能力中间件 -> app/identity/services/hook.ability-middleware.service.ts
 - RoleService.upsertPermissions -> id_role_upsert_perm_003
 - AbilityService.buildForRoles -> id_ability_build_004
  - AbilityService.buildForPrincipal -> id_ability_build_005
-- RoleController.create(HookLifecycle) -> id_hook_role_create_010
-- MembershipController.add(HookLifecycle) -> id_hook_membership_add_011
-- PermissionDefinitionController.create(HookLifecycle) -> id_hook_perm_def_create_012
+- RoleController.create(HookRoute) -> id_hook_role_create_010
+- MembershipController.add(HookRoute) -> id_hook_membership_add_011
+- PermissionDefinitionController.create(HookRoute) -> id_hook_perm_def_create_012
 - HookAbilityMiddlewareService.onModuleInit -> id_hook_ability_mw_013
 
 模块功能描述（Description）

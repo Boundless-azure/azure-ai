@@ -234,7 +234,7 @@ export class SolutionService {
         runnerIds.map(async (runnerId) => {
           const reply = await this.runnerHookRpc.callHook(runnerId, {
             hookName: 'runner.app.solution.delete',
-            payload: { name: synthetic.name },
+            payload: [{ name: synthetic.name }],
           });
           if ((reply.errorMsg ?? []).length > 0) failed.push(runnerId);
         }),
@@ -364,7 +364,7 @@ export class SolutionService {
       onlineRunners.map((r) =>
         this.runnerHookRpc.callHook(r.id, {
           hookName: 'runner.app.solution.list',
-          payload: {},
+          payload: [{}],
         }),
       ),
     );

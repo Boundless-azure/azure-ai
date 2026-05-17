@@ -15,11 +15,12 @@ import { PrincipalEntity } from '@/app/identity/entities/principal.entity';
 import { SYSTEM_NOTIFIER_ID } from '@/app/identity/constants/system-principals';
 import { AgentEntity } from '@/app/agent/entities/agent.entity';
 import { AgentRuntimeService } from '@core/agent-runtime/services/agent-runtime.service';
+import type { HookInvocationContext } from '@/core/hookbus/types/hook.types';
 import { ChatMessageType, ChatSessionType } from '@core/ai/enums/chat.enums';
 import type { ChatMessage } from '@core/ai/types';
 import { ImSessionService } from './im-session.service';
 import { ImGateway } from '../controllers/im.gateway';
-import { AiSessionDataService } from './ai-session-data.service';
+import { SessionHandbookSeederService } from './session-handbook-seeder.service';
 import type {
   SendMessageDto,
   ImMessageInfo,
@@ -36,6 +37,14 @@ export interface ImMessageSavedPayload {
   recipientIds: string[];
   mentions?: MentionInfo[];
 }
+
+const SYSTEM_PROMPT_IMPORT_TIP = `<import-tip>
+    请注意严格遵循 System Prompt 来执行任务,最重要的是要严格按照 每轮查询链路 来执行,然后要关注 System Prompt 并执行 重点提示关注 查看需要你注意的内容,并严格遵照执行,不要偷懒,
+    [重要: 一定要正常调用Hook来获取一切内容,不要模拟生成, 不要偷懒直接生成结果, 也不要偷懒直接调用工具输出结果, 一定要正常调用工具来获取结果, 包括但不限于知识库内容、系统能力、会话数据等],
+    Please strictly follow the System Prompt to execute tasks and refrain from being lazy!
+  </import-tip>`;
+
+const SYSTEM_PROMPT_IMPORT_TIP_VERSION = 1;
 
 /**
  * @title IM 消息服务
@@ -62,8 +71,9 @@ export class ImMessageService {
     private readonly sessionService: ImSessionService,
     @Inject(forwardRef(() => ImGateway))
     private readonly imGateway: ImGateway,
+    @Inject(forwardRef(() => AgentRuntimeService))
     private readonly agentRuntimeService: AgentRuntimeService,
-    private readonly aiSessionDataService: AiSessionDataService,
+    private readonly handbookSeeder: SessionHandbookSeederService,
   ) {}
 
   // ===== agent 触发队列：执行锁（运行中保存最新 pending，完成后 5s 防抖再消费）=====
@@ -317,6 +327,21 @@ export class ImMessageService {
       }
     }
 
+    const agentTargetIds = await this.resolveAgentTargetIds(
+      session,
+      senderId,
+      mentions,
+    );
+    const llmContent =
+      agentTargetIds.length > 0
+        ? this.withSystemPromptImportTip(dto.content)
+        : null;
+    const metadata = this.buildMessageMetadata({
+      mentions,
+      llmContent,
+      llmTargetAgentIds: agentTargetIds,
+    });
+
     // 创建消息
     const resolvedMessageType =
       options?.messageType === 'notification'
@@ -329,14 +354,7 @@ export class ImMessageService {
       messageType: resolvedMessageType,
       replyToId: dto.replyToId ?? null,
       attachments: dto.attachments ?? null,
-      metadata:
-        mentions.length > 0
-          ? {
-              mentions: mentions.map((m) => ({
-                principalId: m.principalId,
-              })),
-            }
-          : null,
+      metadata,
       isAnnouncement: false,
       isEdited: false,
       isDelete: false,
@@ -804,44 +822,6 @@ export class ImMessageService {
   }
 
   /**
-   * 起手前注入【知识手册】到 session_data, 让 LLM 在 sessionData.list 时一眼能看到可用手册。
-   * 同 key 已存在则直接 short-circuit 跳过, 避免每轮覆盖污染 dataTitle / 撑大无意义写入。
-   * value 故意只塞 bookId + name + hint, 真正章节正文还是走 saas.app.knowledge.getChapter 按需读。
-   * 任意写入失败仅 warn, 不阻塞对话主流程 — 手册引导是软提示, 缺失也不致命。
-   * @keyword-en ensure-knowledge-book-session-data handbook-hint-injection
-   */
-  private async ensureKnowledgeBookSessionData(
-    sessionId: string,
-    key: string,
-    bookId: string,
-    bookName: string,
-    title: string,
-  ): Promise<void> {
-    try {
-      const existing = await this.aiSessionDataService.get(sessionId, key);
-      if (existing) return;
-      await this.aiSessionDataService.save(
-        sessionId,
-        key,
-        {
-          bookId,
-          name: bookName,
-          hint:
-            '通过 saas.app.knowledge.getToc({ bookIds: ["' +
-            bookId +
-            '"] }) 拿目录, 再 saas.app.knowledge.getChapter 取章节; 不要凭 hook 名或字段名猜。',
-        },
-        title,
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      this.logger.warn(
-        `[handbook-inject] failed key=${key} session=${sessionId}: ${msg}`,
-      );
-    }
-  }
-
-  /**
    * 执行主动对话模式的一轮 LLM 请求, 结束后验证是否有 assistant 消息产生。
    * 若 LLM 没通过 call_hook(saas.app.conversation.sendMsg) 发消息, 则把流式收集到的文本直接当回复发出去 (前提: 该轮没发过)。
    * 不再注入提醒消息重试 — 一轮定胜负, 减少延迟和 token 浪费。
@@ -871,6 +851,7 @@ export class ImMessageService {
       true,
     );
 
+    const invocationContext = await this.buildAgentInvocationContext(payload);
     const gen = this.agentRuntimeService.startDialogue(
       agent.codeDir,
       messages,
@@ -881,15 +862,8 @@ export class ImMessageService {
           agentPrincipalId: payload.agentPrincipalId,
           triggerMessageId: payload.triggerMessageId,
         },
-        invocationContext: {
-          principalId: payload.agentPrincipalId,
-          principalType: 'agent',
-          source: 'llm',
-          extras: {
-            sessionId: payload.sessionId,
-            triggerMessageId: payload.triggerMessageId,
-          },
-        },
+        invocationContext,
+        agentContext: this.buildAgentRuntimeContext(agent, invocationContext),
       },
     ) as AsyncGenerator<unknown>;
 
@@ -1036,47 +1010,34 @@ export class ImMessageService {
       triggerMessageId: payload.triggerMessageId,
     });
 
-    // === 起手前注入手册 session_data ::
-    // azure-ai 默认 agent 必读 SaaS 系统 hook 手册; 主动对话模式额外注入对话 hook 手册。
-    // 一次性写入即可, helper 自带"已存在则跳过"逻辑, 不会跨轮重复落库。
-    await this.ensureKnowledgeBookSessionData(
+    // === 起手前 seed 必读手册到 session_data ::
+    // 由 SessionHandbookSeederService 统一处理:
+    //  - 默认手册 (handbook.saas_system_hook) :: 所有 agent 都种
+    //  - 主动对话手册 (handbook.conversation_hook) :: proactiveChatEnabled 才种
+    // ownerPrincipalId 强制为该 agent, list 渲染时 handbook 段按身份过滤, 群聊多 agent 互不可见对方手册.
+    await this.handbookSeeder.ensureForAgent(
       payload.sessionId,
-      'knowledge.book.saas_system_hook_skill',
-      'local_saas_system_hook_skill',
-      'Saas 系统hook技能手册',
-      'SaaS 系统 Hook 技能手册 :: identity / storage / solution / todo / runner 查询. bookId=local_saas_system_hook_skill, 调 saas.app.knowledge.getToc 拿目录后 getChapter 取章节',
+      agent,
+      payload.agentPrincipalId,
     );
 
     // === 主动对话模式 ===
     // proactiveChatEnabled 时 LLM 通过 call_hook('saas.app.conversation.sendMsg', ...) 自行决定何时发消息;
     // 没发的情况下 runProactiveDialogue 会用流式收集的文本兜底发, 不再注入提醒重试.
     if (agent.proactiveChatEnabled !== false) {
-      await this.ensureKnowledgeBookSessionData(
-        payload.sessionId,
-        'knowledge.book.conversation_hook_skill',
-        'local_conversation_hook_skill',
-        '对话 Hook 技能手册',
-        '对话 Hook 技能手册 :: 主动对话发消息必读, 含 saas.app.conversation.sendMsg payload + 历史检索 smart 三段式. bookId=local_conversation_hook_skill, getToc + getChapter 取章节',
-      );
       await this.runProactiveDialogue(agent, payload, messages);
       return;
     }
 
     // === 普通模式：收集完整回复后统一发送 ===
+    const invocationContext = await this.buildAgentInvocationContext(payload);
     const gen = this.agentRuntimeService.startDialogue(
       agent.codeDir,
       messages,
       {
         aiModelIds: Array.isArray(agent.aiModelIds) ? agent.aiModelIds : [],
-        invocationContext: {
-          principalId: payload.agentPrincipalId,
-          principalType: 'agent',
-          source: 'llm',
-          extras: {
-            sessionId: payload.sessionId,
-            triggerMessageId: payload.triggerMessageId,
-          },
-        },
+        invocationContext,
+        agentContext: this.buildAgentRuntimeContext(agent, invocationContext),
       },
     ) as AsyncGenerator<unknown>;
 
@@ -1107,6 +1068,90 @@ export class ImMessageService {
       },
       { role: 'assistant', skipAgentTrigger: true },
     );
+  }
+
+  /**
+   * 构建 Agent 调用 Hook 的运行时上下文; 鉴权主体以 Agent 为准, 业务租户以当前触发用户为准。
+   * @keyword-en build-agent-hook-invocation-context
+   */
+  private async buildAgentInvocationContext(payload: {
+    sessionId: string;
+    agentPrincipalId: string;
+    triggerMessageId: string;
+  }): Promise<HookInvocationContext> {
+    const triggerMessage = await this.messageRepo.findOne({
+      where: {
+        id: payload.triggerMessageId,
+        sessionId: payload.sessionId,
+        isDelete: false,
+      },
+      select: ['id', 'senderId'],
+    });
+    const senderPrincipal =
+      triggerMessage?.senderId &&
+      triggerMessage.senderId !== payload.agentPrincipalId
+        ? await this.principalRepo.findOne({
+            where: { id: triggerMessage.senderId, isDelete: false },
+            select: ['id', 'tenantId'],
+          })
+        : null;
+    const agentPrincipal = await this.principalRepo.findOne({
+      where: { id: payload.agentPrincipalId, isDelete: false },
+      select: ['id', 'principalType', 'tenantId'],
+    });
+    const tenantId =
+      senderPrincipal?.tenantId ?? agentPrincipal?.tenantId ?? null;
+    const tenantSource = senderPrincipal?.tenantId
+      ? 'sender'
+      : agentPrincipal?.tenantId
+        ? 'agent'
+        : 'none';
+    const principalType = 'agent';
+    this.logger.log(
+      `[agent-hook-context] session=${payload.sessionId} agent=${payload.agentPrincipalId} ` +
+        `agentDbType=${agentPrincipal?.principalType ?? 'null'} principalType=${principalType} ` +
+        `agentTenant=${agentPrincipal?.tenantId ?? 'null'} trigger=${payload.triggerMessageId} ` +
+        `sender=${triggerMessage?.senderId ?? 'null'} senderTenant=${senderPrincipal?.tenantId ?? 'null'} ` +
+        `resolvedTenant=${tenantId ?? 'null'} tenantSource=${tenantSource}`,
+    );
+    return {
+      principalId: payload.agentPrincipalId,
+      principalType,
+      source: 'llm',
+      extras: {
+        sessionId: payload.sessionId,
+        triggerMessageId: payload.triggerMessageId,
+        ...(tenantId ? { tenantId } : {}),
+      },
+    };
+  }
+
+  /**
+   * 构建 AgentRuntime 前置上下文; 只作为 LLM 认知信息, 鉴权仍由 invocationContext.principalId 决定。
+   * @keyword-en build-agent-runtime-context
+   */
+  private buildAgentRuntimeContext(
+    agent: AgentEntity,
+    invocationContext: HookInvocationContext,
+  ): {
+    agentId: string;
+    agentPrincipalId: string;
+    nickname: string;
+    purpose: string | null;
+    tenantId: string | null;
+  } {
+    const tenantId =
+      typeof invocationContext.extras?.tenantId === 'string'
+        ? invocationContext.extras.tenantId
+        : null;
+    return {
+      agentId: agent.id,
+      agentPrincipalId:
+        agent.principalId ?? invocationContext.principalId ?? agent.id,
+      nickname: agent.nickname,
+      purpose: agent.purpose ?? null,
+      tenantId,
+    };
   }
 
   /**
@@ -1293,7 +1338,7 @@ export class ImMessageService {
 
     const pendingRows = await pendingQb.orderBy('m.id', 'ASC').getMany();
     for (const row of pendingRows) {
-      context.push({ role: 'user', content: row.content });
+      context.push(this.toDialogueMessage(row, args.agentPrincipalId));
     }
 
     return context;
@@ -1313,7 +1358,77 @@ export class ImMessageService {
         : msg.senderId === agentPrincipalId
           ? 'assistant'
           : 'user';
-    return { role, content: msg.content, timestamp: msg.createdAt };
+    const llmContent =
+      role === 'user' && typeof msg.metadata?.llmContent === 'string'
+        ? msg.metadata.llmContent
+        : null;
+    return {
+      role,
+      content: llmContent ?? msg.content,
+      timestamp: msg.createdAt,
+    };
+  }
+
+  /**
+   * 解析一条消息是否面向 agent :: 群聊看 mentions, 私聊看另一名成员是否 agent。
+   * @keyword-en resolve-agent-target-ids
+   */
+  private async resolveAgentTargetIds(
+    session: ChatSessionEntity,
+    senderId: string,
+    mentions: MentionInfo[],
+  ): Promise<string[]> {
+    const ids = new Set<string>();
+    for (const mention of mentions) {
+      if (await this.isAgentPrincipal(mention.principalId)) {
+        ids.add(mention.principalId);
+      }
+    }
+    if (session.type === ChatSessionType.Private) {
+      const otherMemberId = await this.sessionService.getOtherMember(
+        session.id,
+        senderId,
+      );
+      if (otherMemberId && (await this.isAgentPrincipal(otherMemberId))) {
+        ids.add(otherMemberId);
+      }
+    }
+    return [...ids];
+  }
+
+  /**
+   * 构建仅供 LLM 读取的隐藏消息正文 :: 前端仍展示原 content。
+   * @keyword-en with-system-prompt-import-tip
+   */
+  private withSystemPromptImportTip(content: string): string {
+    if (content.includes(SYSTEM_PROMPT_IMPORT_TIP)) return content;
+    return `${SYSTEM_PROMPT_IMPORT_TIP}\n${content}`;
+  }
+
+  /**
+   * 构建消息 metadata :: mentions 用于通知/群聊过滤, llmContent 仅供 Agent 上下文读取。
+   * @keyword-en build-message-metadata
+   */
+  private buildMessageMetadata(args: {
+    mentions: MentionInfo[];
+    llmContent: string | null;
+    llmTargetAgentIds: string[];
+  }): Record<string, unknown> | null {
+    const metadata: Record<string, unknown> = {};
+
+    if (args.mentions.length > 0) {
+      metadata.mentions = args.mentions.map((m) => ({
+        principalId: m.principalId,
+      }));
+    }
+
+    if (args.llmContent) {
+      metadata.llmContent = args.llmContent;
+      metadata.llmImportTipVersion = SYSTEM_PROMPT_IMPORT_TIP_VERSION;
+      metadata.llmTargetAgentIds = args.llmTargetAgentIds;
+    }
+
+    return Object.keys(metadata).length > 0 ? metadata : null;
   }
 
   /**

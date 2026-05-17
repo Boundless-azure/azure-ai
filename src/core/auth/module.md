@@ -8,7 +8,6 @@
 - core/auth/auth.module.ts
 - core/auth/controllers/auth.controller.ts
 - core/auth/services/auth.service.ts
-- core/auth/services/auth.hook-handlers.service.ts
 - core/auth/strategies/jwt.strategy.ts
 - core/auth/guards/jwt-auth.guard.ts
 - core/auth/decorators/current-principal.decorator.ts
@@ -18,10 +17,10 @@
 - AuthService
   - login(dto)
   - changePassword(principalId, dto)
-- AuthHookHandlersService (全部声明 payloadSchema, 走 invoker 自动校验, 命名 platform.app.module.action)
-  - handleLoginSuccess(event)  -- saas.app.auth.loginSuccess (principalId / userId / loginAt?)
-  - handleLoginFailed(event)   -- saas.app.auth.loginFailed (identifier / reason)
-  - handlePasswordChanged(event) -- saas.app.auth.passwordChanged (principalId / ok)
+- AuthController HookRoute (使用 @HookRoute(args), payload 数组按形参展开, 命名 platform.app.module.action)
+  - handleLoginSuccess(payload)  -- saas.app.auth.loginSuccess ([{ principalId / userId / loginAt? }])
+  - handleLoginFailed(payload)   -- saas.app.auth.loginFailed ([{ identifier / reason }])
+  - handlePasswordChanged(payload) -- saas.app.auth.passwordChanged ([{ principalId / ok }])
 - JwtStrategy
   - validate(payload)
 
@@ -30,7 +29,7 @@
 登录接口 -> core/auth/controllers/auth.controller.ts
 修改密码接口 -> core/auth/controllers/auth.controller.ts
 认证服务 -> core/auth/services/auth.service.ts
-鉴权Hook处理器 -> core/auth/services/auth.hook-handlers.service.ts
+鉴权Hook处理器 -> core/auth/controllers/auth.controller.ts
 JWT策略 -> core/auth/strategies/jwt.strategy.ts
 JWT守卫 -> core/auth/guards/jwt-auth.guard.ts
 当前主体 -> core/auth/decorators/current-principal.decorator.ts
@@ -40,9 +39,9 @@ JWT守卫 -> core/auth/guards/jwt-auth.guard.ts
 关键词到文件函数哈希映射（Keywords -> Function Hash）
 - AuthService.login -> auth_login_001
 - AuthService.changePassword -> auth_change_password_003
-- AuthHookHandlersService.handleLoginSuccess -> auth_hook_login_success_004
-- AuthHookHandlersService.handleLoginFailed -> auth_hook_login_failed_005
-- AuthHookHandlersService.handlePasswordChanged -> auth_hook_password_changed_006
+- AuthController.handleLoginSuccess -> auth_hook_login_success_004
+- AuthController.handleLoginFailed -> auth_hook_login_failed_005
+- AuthController.handlePasswordChanged -> auth_hook_password_changed_006
 - JwtStrategy.validate -> auth_jwt_validate_002
 
 模块功能描述（Description）

@@ -13,7 +13,10 @@ import { z } from 'zod';
 import { MembershipEntity } from '../entities/membership.entity';
 import { RoleEntity } from '../entities/role.entity';
 import { CheckAbility } from '../decorators/check-ability.decorator';
-import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
 
 /**
  * @title Membership Hook payload schema (input 形状, SSOT)
@@ -57,6 +60,7 @@ const idParamInput = z.object({
  * @keywords-cn 成员控制器, 组织成员
  * @keywords-en membership-controller, organization-members
  */
+@HookController({ pluginName: 'identity', tags: ['identity', 'membership'] })
 @Controller('identity/memberships')
 export class MembershipController {
   constructor(
@@ -68,12 +72,11 @@ export class MembershipController {
 
   @Get()
   @CheckAbility('read', 'membership')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.membershipList',
     description:
       'RBAC 成员关系列表查询 :: 按 organizationId / principalId / roleId / active 过滤; 返回数据带 role (角色 code) 字段, 缺失角色映射回 "guest"',
-    payloadSchema: onRbacMembershipListInput,
-    payloadSource: 'query',
+    args: [onRbacMembershipListInput],
   })
   async list(
     @Query()
@@ -124,12 +127,11 @@ export class MembershipController {
 
   @Post()
   @CheckAbility('create', 'membership')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.membershipCreate',
     description:
       'RBAC 成员关系创建 :: roleId / role 二选一 (roleId 优先); 不会校验重复关系, 同 (org, principal) 可有多条',
-    payloadSchema: onRbacMembershipCreateInput,
-    payloadSource: 'body',
+    args: [onRbacMembershipCreateInput],
   })
   async add(
     @Body()
@@ -161,12 +163,11 @@ export class MembershipController {
 
   @Delete(':id')
   @CheckAbility('delete', 'membership')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.membershipDelete',
     description:
       'RBAC 成员关系软删除 :: isDelete=true + active=false; 用于踢出某用户或解除角色绑定',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async remove(@Param('id') id: string) {
     await this.repo.update({ id }, { isDelete: true, active: false });

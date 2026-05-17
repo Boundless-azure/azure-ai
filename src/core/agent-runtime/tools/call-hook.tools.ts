@@ -74,13 +74,17 @@ const CALL_HOOK_BATCH_LIMIT = 20;
 const hookCallEntrySchema = z.object({
   hookName: z.string().describe('要调用的 hook 名称'),
   payload: z
-    .record(z.string(), z.unknown())
+    .array(z.unknown())
     .optional()
-    .describe('传给 handler 的业务参数对象'),
+    .describe(
+      '传给 hook 的位置参数数组。默认按方法形参展开: 单参传 [input], 多参传 [id, body]。无参数传 [] 或省略。',
+    ),
   target: z
     .enum([SAAS, RUNNER])
-    .default(RUNNER)
-    .describe('hook 归属端: saas=平台内置, runner=用户自托管 (默认 runner)'),
+    .default(SAAS)
+    .describe(
+      'hook 归属端: saas=平台内置 (默认), runner=用户自托管. hookName 以 saas./runner. 开头时工具层会自动按前缀归一化.',
+    ),
   runnerId: z
     .string()
     .optional()
@@ -121,7 +125,7 @@ interface HookCallResultEntry extends HookCallReply {
 }
 
 const searchHookSchema = z.object({
-  target: z.enum([SAAS, RUNNER]).default(RUNNER),
+  target: z.enum([SAAS, RUNNER]).default(SAAS),
   runnerId: z.string().optional().describe('target=runner 必填'),
   tags: z
     .array(z.string())
@@ -134,7 +138,7 @@ const searchHookSchema = z.object({
 type SearchHookInput = z.infer<typeof searchHookSchema>;
 
 const getHookTagSchema = z.object({
-  target: z.enum([SAAS, RUNNER]).default(RUNNER),
+  target: z.enum([SAAS, RUNNER]).default(SAAS),
   runnerId: z.string().optional().describe('target=runner 必填'),
   pluginName: z.string().optional(),
   cursor: z.number().int().nonnegative().optional(),
@@ -151,7 +155,7 @@ const getHookTagSchema = z.object({
 type GetHookTagInput = z.infer<typeof getHookTagSchema>;
 
 const getHookInfoSchema = z.object({
-  target: z.enum([SAAS, RUNNER]).default(RUNNER),
+  target: z.enum([SAAS, RUNNER]).default(SAAS),
   runnerId: z.string().optional().describe('target=runner 必填'),
   hookNames: z
     .array(z.string())
@@ -169,6 +173,27 @@ function softError(code: string): HookCallReply {
 }
 
 /**
+ * 根据标准 hookName 前缀推断真实目标端, 避免 LLM 省略/误填 target 导致 SaaS hook 被发到 runner。
+ * @keyword-en infer-target-from-hook-name
+ */
+function inferTargetFromHookName(
+  hookName: string,
+): typeof SAAS | typeof RUNNER | null {
+  if (hookName.startsWith('saas.')) return SAAS;
+  if (hookName.startsWith('runner.')) return RUNNER;
+  return null;
+}
+
+/**
+ * 归一化单条 call_hook 输入; hookName 前缀优先于 target 字段。
+ * @keyword-en normalize-hook-call-input
+ */
+function normalizeHookCallInput(entry: HookCallInput): HookCallInput {
+  const inferredTarget = inferTargetFromHookName(entry.hookName);
+  return inferredTarget ? { ...entry, target: inferredTarget } : entry;
+}
+
+/**
  * 把 SaaS HookBus 的 HookResult[] 适配成 { errorMsg, result, debugLog } 外形
  * @keyword-en adapt-saas-result
  */
@@ -183,9 +208,9 @@ async function dispatchSaasHook(
     const regs = hookBus.select(input.hookName);
     if (regs.length === 0) {
       return softError(
-        `hook-not-found:${input.hookName} :: 该 hook 在 saas 端未注册. ` +
-          '请用 search_hook / get_hook_tag 拿真实 hook 列表, 不要凭名字猜 — ' +
-          '比如 "搜 todo" 应该用 saas.app.todo.list 配 q 参数, 而不是不存在的 saas.app.todo.search.',
+        `hook-not-found:${input.hookName} :: This hook is not registered on saas. ` +
+          'Correction order: call get_hook_tag or search_hook to read the real registered hook list, ' +
+          'then call get_hook_info for the exact hook schema. Do not guess hook names.',
       );
     }
     // debug 通过 context.extras.debug 透传给 invoker, 启 OTel sandbox; 不污染原 ctx
@@ -194,7 +219,7 @@ async function dispatchSaasHook(
       : ctx;
     const results = await hookBus.emit({
       name: input.hookName,
-      payload: input.payload ?? {},
+      payload: input.payload ?? [],
       context: enrichedCtx,
     });
     const errorMsg: string[] = [];
@@ -241,23 +266,24 @@ async function dispatchOne(
   input: HookCallInput,
   defaultDebug: boolean,
 ): Promise<HookCallReply> {
-  const debug = input.debug ?? defaultDebug;
-  if (input.target === SAAS) {
+  const normalized = normalizeHookCallInput(input);
+  const debug = normalized.debug ?? defaultDebug;
+  if (normalized.target === SAAS) {
     return await dispatchSaasHook(hookBus, ctx, {
-      hookName: input.hookName,
-      payload: input.payload,
+      hookName: normalized.hookName,
+      payload: normalized.payload,
       debug,
     });
   }
-  if (!input.runnerId) {
+  if (!normalized.runnerId) {
     return softError('runnerId-required');
   }
-  return await hookRpc.callHook(input.runnerId, {
-    hookName: input.hookName,
-    payload: input.payload,
+  return await hookRpc.callHook(normalized.runnerId, {
+    hookName: normalized.hookName,
+    payload: normalized.payload ?? [],
     context: ctx,
     debug,
-    debugDb: input.debugDb,
+    debugDb: normalized.debugDb,
   });
 }
 
@@ -342,8 +368,15 @@ function processOneCallAftermath(
         entry.target === RUNNER && entry.runnerId
           ? `, runnerId:"${entry.runnerId}"`
           : '';
+      // Correction order :: reuse call history first; if no match, inspect schema.
+      // Keep this hint in English so truncated logs remain easier for LLMs to follow.
       reply.errorMsg.push(
-        `⚠ 立刻调 get_hook_info({ target:"${entry.target}"${runnerHint}, hookNames:["${entry.hookName}"] }) 拿 schema 再重试.`,
+        `⚠ Payload schema invalid. Correction order: ` +
+          `First call saas.app.conversation.callHistory.query with payload ` +
+          `[{}] to read recent successful call titles. If a matching title exists, call it again with ` +
+          `[{ id:"<matched-id>", includeDetail:true }] and reuse that payload shape. ` +
+          `If no usable record exists, call get_hook_info({ target:"${entry.target}"${runnerHint}, hookNames:["${entry.hookName}"] }) and read the JSON Schema. ` +
+          `Then fix the payload and retry. Do not guess field names or skip these steps.`,
       );
     } else if (failureCount >= FAILURE_HINT_THRESHOLD && !entry.debug) {
       reply.errorMsg.push(
@@ -396,13 +429,14 @@ export function buildCallHookTool(
     async (input: CallHookBatchInput): Promise<string> => {
       const start = Date.now();
       const ctx = getCtx();
+      const calls = input.calls.map(normalizeHookCallInput);
       const replies = await Promise.all(
-        input.calls.map((entry) =>
+        calls.map((entry) =>
           dispatchOne(hookBus, hookRpc, ctx, entry, defaultDebug),
         ),
       );
 
-      const results: HookCallResultEntry[] = input.calls.map((entry, i) => {
+      const results: HookCallResultEntry[] = calls.map((entry, i) => {
         const reply = replies[i] ?? softError('dispatch-missing');
         processOneCallAftermath(entry, reply, ctx, sideEffects);
         const { ok, err } = countReply(reply);
@@ -421,7 +455,7 @@ export function buildCallHookTool(
         0,
       );
       toolLogger.log(
-        `[call_hook] batch=${input.calls.length} err=${totalErr} duration=${Date.now() - start}ms`,
+        `[call_hook] batch=${calls.length} err=${totalErr} duration=${Date.now() - start}ms`,
       );
 
       return JSON.stringify({ results });
@@ -430,6 +464,8 @@ export function buildCallHookTool(
       name: 'call_hook',
       description:
         '同步批量调用 hook, 等待全部结果。入参 { calls: [{ hookName, payload, target, runnerId, debug, debugDb }, ...] }, 单调用传单元素数组。' +
+        'target 默认 saas; hookName 以 saas./runner. 开头时工具层按前缀自动归一化, 前缀优先于 target。' +
+        '每个 payload 必须是数组: 单参 [input], 多参 [arg1,arg2], 无参 []。' +
         `批量上限 ${CALL_HOOK_BATCH_LIMIT}, 并发派发, 返回 { results: [{ hookName, errorMsg, result, debugLog }, ...] } 顺序与 calls 对齐。` +
         '某项 errorMsg 非空 = 该项软错, 不影响其他项; 据此调整重试。' +
         '【强约束】若 payload schema 未在已加载知识章节中看到, 调用前必须先 get_hook_info(hookNames=[...]) 拿到 JSON Schema 再写 payload。凭名字猜字段会软错回退、浪费一轮。',
@@ -455,7 +491,8 @@ export function buildCallHookAsyncTool(
   return tool(
     (input: CallHookBatchInput): string => {
       const ctx = getCtx();
-      const queued = input.calls.map((entry) => {
+      const calls = input.calls.map(normalizeHookCallInput);
+      const queued = calls.map((entry) => {
         toolLogger.log(
           `[call_hook_async] ${targetTag(entry.target, entry.runnerId)} ${entry.hookName} ` +
             `payload=${preview(entry.payload ?? {})} (fire-and-forget)`,
@@ -475,6 +512,8 @@ export function buildCallHookAsyncTool(
       name: 'call_hook_async',
       description:
         '异步批量触发 hook (fire-and-forget), 立即返回不等结果。入参 { calls: [{...}, ...] }, 单调用传单元素数组; ' +
+        'target 默认 saas; hookName 以 saas./runner. 开头时工具层按前缀自动归一化。' +
+        '每个 payload 必须是数组: 单参 [input], 多参 [arg1,arg2], 无参 []。' +
         `批量上限 ${CALL_HOOK_BATCH_LIMIT}, 并发派发, 返回 { results: [{ hookName, target, queued: true }, ...] } 顺序与 calls 对齐。` +
         '适用于触发后台任务、不关心返回值。',
       schema: callHookSchema,
@@ -543,12 +582,14 @@ export function buildSearchHookTool(
       }
       const reply = await hookRpc.callHook(input.runnerId, {
         hookName: 'runner.system.hookbus.search',
-        payload: {
-          tags: input.tags,
-          pluginName: input.pluginName,
-          cursor: input.cursor,
-          limit: input.limit,
-        },
+        payload: [
+          {
+            tags: input.tags,
+            pluginName: input.pluginName,
+            cursor: input.cursor,
+            limit: input.limit,
+          },
+        ],
         context: getCtx(),
       });
       const { ok, err } = countReply(reply);
@@ -626,11 +667,13 @@ export function buildGetHookTagTool(
       }
       const reply = await hookRpc.callHook(input.runnerId, {
         hookName: 'runner.system.hookbus.getTag',
-        payload: {
-          pluginName: input.pluginName,
-          cursor: input.cursor,
-          limit: input.limit,
-        },
+        payload: [
+          {
+            pluginName: input.pluginName,
+            cursor: input.cursor,
+            limit: input.limit,
+          },
+        ],
         context: getCtx(),
       });
       const { ok, err } = countReply(reply);
@@ -656,7 +699,7 @@ export function buildGetHookTagTool(
  * 5) get_hook_info  ::  批量取 hook 描述+tags+payload schema
  * ========================================================================= */
 /**
- * get_hook_info 完成后的副作用回调 :: SessionCallTracker 计数, 用于硬触发"探索过多"沉淀.
+ * get_hook_info 完成后的可选副作用回调; 默认不参与 sessionData 沉淀触发.
  * @keyword-en get-hook-info-side-effects
  */
 export interface GetHookInfoSideEffects {
@@ -733,7 +776,7 @@ export function buildGetHookInfoTool(
       }
       const reply = await hookRpc.callHook(input.runnerId, {
         hookName: 'runner.system.hookbus.getInfo',
-        payload: { hookNames: input.hookNames },
+        payload: [{ hookNames: input.hookNames }],
         context: getCtx(),
       });
       const { ok, err } = countReply(reply);

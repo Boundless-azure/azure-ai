@@ -2,7 +2,7 @@
 
 ## 功能描述
 
-知识书架前端模块：以书架视觉展示知识书本（技能/学识），支持增删改查、向量构建。
+知识书架前端模块：以黑白 mac 风格书架视觉展示知识书本（技能/学识），支持增删改查、向量构建。
 编辑器采用左侧目录树 + 右侧 Markdown 编辑/预览分屏布局，支持 LM 必读章节标记。
 
 ## 目录结构
@@ -46,8 +46,9 @@ web/src/modules/knowledge/
 - `header-area` - 标题 + 新建按钮
 - `filter-tabs` - 类型筛选标签
 - `bookshelf-grid` - 书架书本网格
-- `book-spine` - 书本外观（颜色+书名）
+- `book-spine` - 黑白书本外观（固定高度书脊 + 书名 + 限量标签；超出时第三个 chip 固定显示 +N 个）
 - `action-buttons` - 书本操作（编辑/向量/删除）
+- `book-info-modal` - 点击标签或 +N 后展示书本信息与完整标签
 - `create-modal` - 创建书本弹窗
 
 ### components/KnowledgeEditor.vue

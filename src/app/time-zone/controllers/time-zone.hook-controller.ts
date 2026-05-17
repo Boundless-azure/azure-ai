@@ -1,8 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { HookHandler } from '@/core/hookbus/decorators/hook-handler.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
-import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
-import { TimeZoneService } from './time-zone.service';
+import type { HookResult } from '@/core/hookbus/types/hook.types';
+import { TimeZoneService } from '../services/time-zone.service';
 import {
   FromUtcSchema,
   LookupByIpSchema,
@@ -23,8 +26,9 @@ import {
  * @keywords-en time-zone-hooks, utc-convert, iana, utility-hook
  */
 @Injectable()
-export class TimeZoneHookHandlerService {
-  private readonly logger = new Logger(TimeZoneHookHandlerService.name);
+@HookController({ pluginName: 'time-zone', tags: ['time-zone', 'time'] })
+export class TimeZoneHookController {
+  private readonly logger = new Logger(TimeZoneHookController.name);
 
   constructor(private readonly timeZone: TimeZoneService) {}
 
@@ -32,18 +36,18 @@ export class TimeZoneHookHandlerService {
    * 本地时间字符串 + IANA 时区 → UTC ISO
    * @keyword-en hook-to-utc
    */
-  @HookHandler('saas.app.timeZone.toUtc', {
-    pluginName: 'time-zone',
-    tags: ['time-zone', 'utc', 'utility'],
+  @HookRoute({
+    hook: 'saas.app.timeZone.toUtc',
     description:
       '本地时间 + IANA 时区 → UTC ISO 字符串. 例: { localTime: "2026-05-16 09:00:00", fromTimezone: "Asia/Shanghai" } → "2026-05-16T01:00:00.000Z"',
-    payloadSchema: ToUtcSchema,
+    args: [ToUtcSchema],
+    metadata: { tags: ['time-zone', 'utc', 'utility'] },
   })
   async handleToUtc(
-    event: HookEvent<ToUtcInput>,
+    payload: ToUtcInput,
   ): Promise<HookResult<{ utc: string }>> {
     try {
-      const { localTime, fromTimezone } = event.payload;
+      const { localTime, fromTimezone } = payload;
       const utc = this.timeZone.toUtc(localTime, fromTimezone);
       return { status: HookResultStatus.Success, data: { utc } };
     } catch (e) {
@@ -57,18 +61,18 @@ export class TimeZoneHookHandlerService {
    * UTC ISO → 指定 IANA 时区下的本地时间分量
    * @keyword-en hook-from-utc
    */
-  @HookHandler('saas.app.timeZone.fromUtc', {
-    pluginName: 'time-zone',
-    tags: ['time-zone', 'utc', 'utility'],
+  @HookRoute({
+    hook: 'saas.app.timeZone.fromUtc',
     description:
       'UTC ISO → IANA 时区本地时间. 返回 { iso (带偏移如 +08:00), year, month, day, hour, minute, second, offsetMinutes, timezone } 方便胶水代码直接拿分量, 不用再 parse 字符串',
-    payloadSchema: FromUtcSchema,
+    args: [FromUtcSchema],
+    metadata: { tags: ['time-zone', 'utc', 'utility'] },
   })
   async handleFromUtc(
-    event: HookEvent<FromUtcInput>,
+    payload: FromUtcInput,
   ): Promise<HookResult<ReturnType<TimeZoneService['fromUtc']>>> {
     try {
-      const { utcTime, toTimezone } = event.payload;
+      const { utcTime, toTimezone } = payload;
       const local = this.timeZone.fromUtc(utcTime, toTimezone);
       return { status: HookResultStatus.Success, data: local };
     } catch (e) {
@@ -82,18 +86,18 @@ export class TimeZoneHookHandlerService {
    * 当前时间 (UTC + 可选 IANA 本地表示)
    * @keyword-en hook-now
    */
-  @HookHandler('saas.app.timeZone.now', {
-    pluginName: 'time-zone',
-    tags: ['time-zone', 'utc', 'utility'],
+  @HookRoute({
+    hook: 'saas.app.timeZone.now',
     description:
       '当前时间. timezone 不传只回 { utc }; 传了同时回 { utc, local: {iso, year, ...} }. 强烈建议替代胶水代码 / agent 内的 new Date().toISOString() (避免假设容器时区)',
-    payloadSchema: NowSchema,
+    args: [NowSchema],
+    metadata: { tags: ['time-zone', 'utc', 'utility'] },
   })
   async handleNow(
-    event: HookEvent<NowInput>,
+    payload: NowInput,
   ): Promise<HookResult<ReturnType<TimeZoneService['now']>>> {
     try {
-      const data = this.timeZone.now(event.payload?.timezone);
+      const data = this.timeZone.now(payload?.timezone);
       return { status: HookResultStatus.Success, data };
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);
@@ -106,18 +110,18 @@ export class TimeZoneHookHandlerService {
    * IP → 时区查询 (当前 stub: 返回 UTC; TODO: 接 GeoIP)
    * @keyword-en hook-lookup-by-ip
    */
-  @HookHandler('saas.app.timeZone.lookupByIp', {
-    pluginName: 'time-zone',
-    tags: ['time-zone', 'ip-locate', 'utility'],
+  @HookRoute({
+    hook: 'saas.app.timeZone.lookupByIp',
     description:
       'IP → 时区查询. 当前 stub 实现固定返回 { timezone: "UTC", source: "stub-utc-fallback" }, 调用方应能容忍 UTC fallback. 后续接 GeoIP 库不改 hook 接口',
-    payloadSchema: LookupByIpSchema,
+    args: [LookupByIpSchema],
+    metadata: { tags: ['time-zone', 'ip-locate', 'utility'] },
   })
   async handleLookupByIp(
-    event: HookEvent<LookupByIpInput>,
+    payload: LookupByIpInput,
   ): Promise<HookResult<Awaited<ReturnType<TimeZoneService['lookupByIp']>>>> {
     try {
-      const data = await this.timeZone.lookupByIp(event.payload.ip);
+      const data = await this.timeZone.lookupByIp(payload.ip);
       return { status: HookResultStatus.Success, data };
     } catch (e) {
       const err = e instanceof Error ? e.message : String(e);

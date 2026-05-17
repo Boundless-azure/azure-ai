@@ -11,7 +11,10 @@ import {
 import { z } from 'zod';
 import { PrincipalService } from '../services/principal.service';
 import { CheckAbility } from '../decorators/check-ability.decorator';
-import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
 import type {
   CreateUserDto,
   UpdateUserDto,
@@ -20,7 +23,7 @@ import type {
 
 /**
  * @title Users Hook payload schema (input 形状, SSOT)
- * @description 仅声明 input 部分, lifecycle-registration 自动包成 envelope schema 写入 metadata。
+ * @description 仅声明 input 部分, hook-controller 将 args schema 写入 metadata。
  * @keywords-cn UsersHook, payloadSchema, input
  * @keywords-en users-hook, payload-schema, input
  */
@@ -74,18 +77,18 @@ const idParamInput = z.object({
  * @keywords-cn 用户列表, 企业用户, 消费者
  * @keywords-en users-controller, enterprise-user, consumer
  */
+@HookController({ pluginName: 'identity', tags: ['identity', 'user'] })
 @Controller('identity/users')
 export class UsersController {
   constructor(private readonly principalService: PrincipalService) {}
 
   @Get()
   @CheckAbility('read', 'principal')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.userList',
     description:
       'RBAC 可登录用户列表 (排除 agent / official_account) :: 按 q / tenantId / type 过滤; 单次最多 500 条',
-    payloadSchema: onRbacUserListInput,
-    payloadSource: 'query',
+    args: [onRbacUserListInput],
   })
   async list(@Query() query: QueryUsersDto) {
     return await this.principalService.listUsers(query);
@@ -93,12 +96,11 @@ export class UsersController {
 
   @Post()
   @CheckAbility('create', 'principal')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.userCreate',
     description:
       'RBAC 用户创建 :: 事务地写 principals + users 两表, 邮箱全局唯一; password 走 scrypt+salt; 创建 Agent 请走 saas.app.agent.* 系列',
-    payloadSchema: onRbacUserCreateInput,
-    payloadSource: 'body',
+    args: [onRbacUserCreateInput],
   })
   async create(@Body() dto: CreateUserDto) {
     return await this.principalService.createUser(dto);
@@ -106,12 +108,11 @@ export class UsersController {
 
   @Put(':id')
   @CheckAbility('update', 'principal')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.userUpdate',
     description:
       'RBAC 用户更新 :: 改 email/avatar 会同步 users 表; 此 hook 不改密码 (改密走专用流程)',
-    payloadSchema: onRbacUserUpdateInput,
-    payloadSource: 'body',
+    args: [idParamInput.shape.id, onRbacUserUpdateInput],
   })
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     await this.principalService.updateUser(id, dto);
@@ -120,12 +121,11 @@ export class UsersController {
 
   @Delete(':id')
   @CheckAbility('delete', 'principal')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.userDelete',
     description:
       'RBAC 用户软删除 :: 同时软删 principals + users 两表; 不会清理 membership, 已分配权限对象失效但仍保留行',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async delete(@Param('id') id: string) {
     await this.principalService.deleteUser(id);

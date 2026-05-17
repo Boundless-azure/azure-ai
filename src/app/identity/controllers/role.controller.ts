@@ -13,7 +13,10 @@ import type { Request } from 'express';
 import { z } from 'zod';
 import { RoleService } from '../services/role.service';
 import { CheckAbility } from '../decorators/check-ability.decorator';
-import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
 import type {
   CreateRoleDto,
   UpdateRoleDto,
@@ -98,18 +101,18 @@ const onRbacRolePermissionUpsertInput = z.object({
  * @keywords-cn 角色控制器, 权限
  * @keywords-en role-controller, permissions
  */
+@HookController({ pluginName: 'identity', tags: ['identity', 'role'] })
 @Controller('identity/roles')
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}
 
   @Get()
   @CheckAbility('read', 'role')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.roleList',
     description:
       'RBAC 角色列表查询 :: 支持按 organizationId 过滤组织作用域, 按 q 模糊匹配 name/code; 不传过滤条件返回全部角色',
-    payloadSchema: onRbacRoleListInput,
-    payloadSource: 'query',
+    args: [onRbacRoleListInput],
   })
   async list(@Query() query: QueryRoleDto) {
     return await this.roleService.list(query);
@@ -117,12 +120,11 @@ export class RoleController {
 
   @Post()
   @CheckAbility('create', 'role')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.roleCreate',
     description:
       'RBAC 角色创建 :: code 必须唯一; organizationId 不传 = 系统级角色, 跨组织生效',
-    payloadSchema: onRbacRoleCreateInput,
-    payloadSource: 'body',
+    args: [onRbacRoleCreateInput],
   })
   async create(@Body() dto: CreateRoleDto) {
     return await this.roleService.create(dto);
@@ -130,12 +132,11 @@ export class RoleController {
 
   @Put(':id')
   @CheckAbility('update', 'role')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.roleUpdate',
     description:
       'RBAC 角色更新 :: 仅支持改 name / description, code/organizationId 不可变',
-    payloadSchema: onRbacRoleUpdateInput,
-    payloadSource: 'body',
+    args: [idParamInput.shape.id, onRbacRoleUpdateInput],
   })
   async update(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
     await this.roleService.update(id, dto);
@@ -144,12 +145,11 @@ export class RoleController {
 
   @Delete(':id')
   @CheckAbility('delete', 'role')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.roleDelete',
     description:
       'RBAC 角色软删除 :: 不会删除已分配的 membership, 但该角色将无法在新分配中使用',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async delete(@Param('id') id: string) {
     await this.roleService.delete(id);
@@ -158,12 +158,11 @@ export class RoleController {
 
   @Get(':id/permissions')
   @CheckAbility('read', 'role_permission')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.rolePermissionList',
     description:
       'RBAC 角色权限列表查询 :: 返回该角色已分配的全部 (subject, action, permissionType) 三元组',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async listPermissions(@Param('id') id: string) {
     return await this.roleService.listPermissions(id);
@@ -171,12 +170,11 @@ export class RoleController {
 
   @Put(':id/permissions')
   @CheckAbility('update', 'role_permission')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.rolePermissionUpsert',
     description:
       'RBAC 角色权限批量替换 :: replace 语义, items 为最终全量; 受权重越权防护 (操作者在该 subject 上 maxWeight 必须 ≥ 目标节点 weight, 否则全部入参作废)',
-    payloadSchema: onRbacRolePermissionUpsertInput,
-    payloadSource: 'body',
+    args: [idParamInput.shape.id, onRbacRolePermissionUpsertInput],
   })
   async upsertPermissions(
     @Param('id') id: string,

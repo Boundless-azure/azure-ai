@@ -7,7 +7,7 @@ import type { HookEvent, HookResult } from '../types/hook.types';
  * @title Hook 鉴权中间件
  * @description 读取 event.context.token, 用 JwtService 校验后回填 principalId / principalType。
  *              校验失败时仅记日志, 不阻断 (本期不做强制); 后续可按 metadata.requireAuth 收紧。
- *              已经携带 principalId 的事件 (lifecycle 拦截器已解析后写入) 直接跳过, 避免重复校验。
+ *              已经携带 principalId 且 extras.tenantId 完整的事件直接跳过, 避免重复校验。
  * @keywords-cn Hook鉴权中间件, token校验, principalId注入
  * @keywords-en hook-auth-middleware, token-verify, principal-injection
  */
@@ -31,17 +31,24 @@ export class HookAuthMiddlewareService implements OnModuleInit {
     ): Promise<HookResult<R>> => {
       const ctx = event.context ?? {};
       const alreadyResolved = Boolean(ctx.principalId);
+      const missingTenantId = !ctx.extras?.tenantId;
       const token = ctx.token;
-      if (!alreadyResolved && token && this.jwt) {
+      if ((!alreadyResolved || missingTenantId) && token && this.jwt) {
         try {
-          const payload = this.jwt.verify<{ id?: string; type?: string }>(
-            token,
-          );
+          const payload = this.jwt.verify<{
+            id?: string;
+            type?: string;
+            tenantId?: string;
+          }>(token);
           if (payload?.id) {
             event.context = {
               ...ctx,
-              principalId: payload.id,
-              principalType: payload.type,
+              principalId: ctx.principalId ?? payload.id,
+              principalType: ctx.principalType ?? payload.type,
+              extras: {
+                ...(ctx.extras ?? {}),
+                ...(payload.tenantId ? { tenantId: payload.tenantId } : {}),
+              },
             };
           }
         } catch (e) {

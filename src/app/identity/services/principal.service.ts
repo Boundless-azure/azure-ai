@@ -86,6 +86,10 @@ export class PrincipalService {
     return items;
   }
 
+  /**
+   * @description 查询用户管理页可见的账号主体；未指定类型时返回企业用户、消费者与系统用户。
+   * @keyword-en identity-list-users
+   */
   async listUsers(query: QueryUsersDto): Promise<PrincipalEntity[]> {
     if (this.useMongo()) {
       const col = this.principalCollection();
@@ -141,7 +145,7 @@ export class PrincipalService {
       'u.principal_id = p.id AND u.is_delete = false',
     );
     qb.where('p.is_delete = false');
-    const dbTypes = ['enterprise', 'consumer', 'system'];
+    const dbTypes = ['user', 'consumer', 'system'];
     if (query.type) {
       qb.andWhere('p.principal_type = :type', {
         type: this.toDbPrincipalType(query.type),

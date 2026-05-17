@@ -47,20 +47,12 @@ export class StorageService {
     userId: string,
     data: CreateStorageNodeRequest,
   ): Promise<StorageNodeEntity> {
-    let path = '/';
-
-    if (data.parentId) {
-      const parent = await this.nodeRepo.findOne({
-        where: { id: data.parentId, isDelete: false },
-      });
-      if (!parent) {
-        throw new NotFoundException('Parent folder not found');
-      }
-      path =
-        parent.path === '/' ? `/${data.name}` : `${parent.path}/${data.name}`;
-    } else {
-      path = `/${data.name}`;
-    }
+    const parent = await this.resolveFolderByPath(
+      tenantId,
+      data.parentPath ?? '/',
+    );
+    const parentId = parent?.id ?? null;
+    const path = this.joinStoragePath(parent?.path ?? '/', data.name);
 
     // 检查同名节点是否存在
     const qb = this.nodeRepo
@@ -69,8 +61,8 @@ export class StorageService {
       .andWhere('node.name = :name', { name: data.name })
       .andWhere('node.isDelete = :isDelete', { isDelete: false });
 
-    if (data.parentId) {
-      qb.andWhere('node.parentId = :parentId', { parentId: data.parentId });
+    if (parentId) {
+      qb.andWhere('node.parentId = :parentId', { parentId });
     } else {
       qb.andWhere('node.parentId IS NULL');
     }
@@ -85,7 +77,7 @@ export class StorageService {
     const node = this.nodeRepo.create({
       id: uuidv7(),
       tenantId,
-      parentId: data.parentId ?? null,
+      parentId,
       name: data.name,
       type: data.type,
       path,
@@ -127,17 +119,16 @@ export class StorageService {
     tenantId: string,
     query: ListStorageNodesQuery,
   ): Promise<StorageNodeEntity[]> {
+    const parentId = await this.resolveListParentId(tenantId, query);
     const qb = this.nodeRepo
       .createQueryBuilder('node')
       .where('node.tenantId = :tenantId', { tenantId })
       .andWhere('node.isDelete = :isDelete', { isDelete: false });
 
-    if (query.parentId !== undefined) {
-      if (query.parentId === null) {
-        qb.andWhere('node.parentId IS NULL');
-      } else {
-        qb.andWhere('node.parentId = :parentId', { parentId: query.parentId });
-      }
+    if (parentId === null) {
+      qb.andWhere('node.parentId IS NULL');
+    } else if (parentId !== undefined) {
+      qb.andWhere('node.parentId = :parentId', { parentId });
     }
 
     if (query.type) {
@@ -151,6 +142,71 @@ export class StorageService {
     qb.orderBy('node.type', 'ASC').addOrderBy('node.name', 'ASC');
 
     return await qb.getMany();
+  }
+
+  /**
+   * @title 解析列表父目录
+   * @description listNodes 按 path 定位目录; path="/" 表示根目录, 未传 path 时默认根目录。
+   * @keyword-en resolve-list-parent-id-by-path
+   */
+  private async resolveListParentId(
+    tenantId: string,
+    query: ListStorageNodesQuery,
+  ): Promise<string | null | undefined> {
+    const normalizedPath = this.normalizeStoragePath(query.path ?? '/');
+    if (normalizedPath === '/') return null;
+    const parent = await this.resolveFolderByPath(tenantId, normalizedPath);
+    if (!parent) return null;
+    return parent.id;
+  }
+
+  /**
+   * @title 按路径解析目录
+   * @description path="/" 返回 null; 其他路径必须命中当前租户未删除 folder。
+   * @keyword-en resolve-folder-by-path
+   */
+  private async resolveFolderByPath(
+    tenantId: string,
+    pathValue: string,
+  ): Promise<StorageNodeEntity | null> {
+    const normalizedPath = this.normalizeStoragePath(pathValue);
+    if (normalizedPath === '/') return null;
+    const folder = await this.nodeRepo.findOne({
+      where: {
+        tenantId,
+        path: normalizedPath,
+        type: StorageNodeType.FOLDER,
+        isDelete: false,
+      },
+    });
+    if (!folder) {
+      throw new NotFoundException(`Folder path not found: ${normalizedPath}`);
+    }
+    return folder;
+  }
+
+  /**
+   * @title 规范化存储路径
+   * @description 把 workspace / /workspace/ 统一成 /workspace, 空值和 / 统一成根路径 /。
+   * @keyword-en normalize-storage-path
+   */
+  private normalizeStoragePath(pathValue: string): string {
+    const trimmed = pathValue.trim();
+    if (!trimmed || trimmed === '/') return '/';
+    const withPrefix = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    return withPrefix.replace(/\/+$/g, '') || '/';
+  }
+
+  /**
+   * @title 拼接存储路径
+   * @description 用父目录 path 和节点名生成节点完整 path。
+   * @keyword-en join-storage-path
+   */
+  private joinStoragePath(parentPath: string, name: string): string {
+    const normalizedParent = this.normalizeStoragePath(parentPath);
+    return normalizedParent === '/'
+      ? `/${name}`
+      : `${normalizedParent}/${name}`;
   }
 
   /**
@@ -180,28 +236,38 @@ export class StorageService {
     data: UpdateStorageNodeRequest,
   ): Promise<StorageNodeEntity> {
     const node = await this.getNode(id, tenantId);
+    const oldPath = node.path;
+    const moving = data.parentPath !== undefined;
+    const targetParent = moving
+      ? await this.resolveFolderByPath(tenantId, data.parentPath ?? '/')
+      : node.parentId
+        ? await this.nodeRepo.findOne({ where: { id: node.parentId } })
+        : null;
+    const targetParentId = targetParent?.id ?? null;
+    const nextName = data.name ?? node.name;
 
-    if (data.name && data.name !== node.name) {
+    if (
+      node.type === StorageNodeType.FOLDER &&
+      targetParent &&
+      (targetParent.id === node.id ||
+        targetParent.path.startsWith(`${node.path}/`))
+    ) {
+      throw new BadRequestException('Cannot move folder into itself');
+    }
+
+    if (data.name !== undefined || (moving && targetParentId !== node.parentId)) {
       // 检查同名节点
       const qb = this.nodeRepo
         .createQueryBuilder('node')
         .where('node.tenantId = :tenantId', { tenantId })
-        .andWhere('node.name = :name', { name: data.name })
+        .andWhere('node.name = :name', { name: nextName })
         .andWhere('node.isDelete = :isDelete', { isDelete: false })
         .andWhere('node.id != :id', { id });
 
-      if (data.parentId !== undefined) {
-        if (data.parentId === null) {
-          qb.andWhere('node.parentId IS NULL');
-        } else {
-          qb.andWhere('node.parentId = :parentId', { parentId: data.parentId });
-        }
+      if (targetParentId === null) {
+        qb.andWhere('node.parentId IS NULL');
       } else {
-        if (node.parentId === null) {
-          qb.andWhere('node.parentId IS NULL');
-        } else {
-          qb.andWhere('node.parentId = :parentId', { parentId: node.parentId });
-        }
+        qb.andWhere('node.parentId = :parentId', { parentId: targetParentId });
       }
 
       const existing = await qb.getOne();
@@ -210,32 +276,52 @@ export class StorageService {
           'A node with the same name already exists',
         );
       }
-
-      // 更新路径
-      const parent = data.parentId
-        ? await this.nodeRepo.findOne({ where: { id: data.parentId } })
-        : null;
-      const parentPath = parent ? (parent.path === '/' ? '' : parent.path) : '';
-      node.path = `${parentPath}/${data.name}`;
-      node.name = data.name;
-    }
-
-    if (data.parentId !== undefined && data.parentId !== node.parentId) {
-      // 移动节点
-      const newParent = data.parentId
-        ? await this.nodeRepo.findOne({ where: { id: data.parentId } })
-        : null;
-      const parentPath = newParent
-        ? newParent.path === '/'
-          ? ''
-          : newParent.path
-        : '';
-      node.path = `${parentPath}/${node.name}`;
-      node.parentId = data.parentId;
+      node.name = nextName;
+      node.parentId = targetParentId;
+      node.path = this.joinStoragePath(targetParent?.path ?? '/', nextName);
     }
 
     node.updateUser = userId;
-    return await this.nodeRepo.save(node);
+    const saved = await this.nodeRepo.save(node);
+    if (saved.type === StorageNodeType.FOLDER && oldPath !== saved.path) {
+      await this.updateDescendantPaths(
+        tenantId,
+        saved.id,
+        oldPath,
+        saved.path,
+        userId,
+      );
+    }
+    return saved;
+  }
+
+  /**
+   * @title 同步子孙路径
+   * @description 文件夹改名或移动后, 将所有子孙节点 path 从旧前缀替换为新前缀。
+   * @keyword-en update-descendant-paths
+   */
+  private async updateDescendantPaths(
+    tenantId: string,
+    folderId: string,
+    oldPath: string,
+    newPath: string,
+    userId: string,
+  ): Promise<void> {
+    const descendants = await this.nodeRepo
+      .createQueryBuilder('node')
+      .where('node.tenantId = :tenantId', { tenantId })
+      .andWhere('node.isDelete = :isDelete', { isDelete: false })
+      .andWhere('node.id != :folderId', { folderId })
+      .andWhere('node.path LIKE :prefix', { prefix: `${oldPath}/%` })
+      .getMany();
+
+    for (const child of descendants) {
+      child.path = `${newPath}${child.path.slice(oldPath.length)}`;
+      child.updateUser = userId;
+    }
+    if (descendants.length > 0) {
+      await this.nodeRepo.save(descendants);
+    }
   }
 
   /**
@@ -406,19 +492,21 @@ export class StorageService {
    * 复制节点（支持文件和文件夹递归复制）
    * @keyword-en copy-nodes, recursive-copy
    * @param nodeIds 要复制的节点 ID 列表
-   * @param targetParentId 目标父目录 ID（null 表示根目录）
+   * @param targetPath 目标目录路径
    * @param tenantId 租户 ID
    * @param userId操作用户 ID
    * @param duplicateResource 复制资源的函数（由 Controller 注入 ResourceService）
    */
   async copyNodes(
     nodeIds: string[],
-    targetParentId: string | null,
+    targetPath: string,
     tenantId: string,
     userId: string,
     duplicateResource: (resourceId: string) => Promise<string>,
   ): Promise<StorageNodeEntity[]> {
     const results: StorageNodeEntity[] = [];
+    const targetFolder = await this.resolveFolderByPath(tenantId, targetPath);
+    const targetFolderPath = targetFolder?.path ?? '/';
 
     for (const nodeId of nodeIds) {
       const source = await this.nodeRepo.findOne({
@@ -435,7 +523,7 @@ export class StorageService {
         const newNode = await this.createNode(tenantId, userId, {
           name: newName,
           type: StorageNodeType.FILE,
-          parentId: targetParentId,
+          parentPath: targetFolderPath,
           resourceId: newResourceId,
           size: source.size ? parseInt(source.size, 10) : null,
           mimeType: source.mimeType,
@@ -447,7 +535,7 @@ export class StorageService {
         const newFolder = await this.createNode(tenantId, userId, {
           name: newFolderName,
           type: StorageNodeType.FOLDER,
-          parentId: targetParentId,
+          parentPath: targetFolderPath,
         });
         results.push(newFolder);
 
@@ -458,7 +546,7 @@ export class StorageService {
         if (children.length > 0) {
           const copied = await this.copyNodes(
             children.map((c) => c.id),
-            newFolder.id,
+            newFolder.path,
             tenantId,
             userId,
             duplicateResource,

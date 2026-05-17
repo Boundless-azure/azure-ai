@@ -12,7 +12,10 @@ import {
 import type { Request } from 'express';
 import { z } from 'zod';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
-import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
 import { SolutionService } from '../services/solution.service';
 import {
   CreateSolutionSchema,
@@ -41,12 +44,13 @@ const emptyInput = z.object({}).passthrough();
 
 /**
  * @title Solution Controller
- * @description Solution 管理控制器, CRUD/列表/标签/Runner 等接口全部挂 @HookLifecycle,
- *              与 @CheckAbility 共生; HookLifecycleRegistrationService 自动把 ability 镜像进 hook 元数据,
+ * @description Solution 管理控制器, CRUD/列表/标签/Runner 等接口全部挂 @HookRoute,
+ *              与 @CheckAbility 共生; HookControllerExplorerService 自动把 ability 镜像进 hook 元数据,
  *              供 LLM 链路兜底鉴权。
  * @keywords-cn Solution控制器, Hook声明, CASL鉴权
- * @keywords-en solution-controller, hook-lifecycle, casl-auth
+ * @keywords-en solution-controller, hook-route, casl-auth
  */
+@HookController({ pluginName: 'solution', tags: ['solution'] })
 @Controller('solutions')
 export class SolutionController {
   constructor(private readonly solutionService: SolutionService) {}
@@ -57,11 +61,10 @@ export class SolutionController {
    */
   @Post()
   @CheckAbility('create', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.create',
     description: 'Solution 创建',
-    payloadSchema: CreateSolutionSchema,
-    payloadSource: 'body',
+    args: [CreateSolutionSchema],
   })
   async create(@Body() body: CreateSolutionRequest, @Req() req: AuthedReq) {
     const userId = req.user?.id ?? 'system';
@@ -75,11 +78,10 @@ export class SolutionController {
    */
   @Get(':id')
   @CheckAbility('read', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.get',
     description: 'Solution 详情查询',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async getById(@Param('id') id: string) {
     const solution = await this.solutionService.getById(id);
@@ -92,11 +94,10 @@ export class SolutionController {
    */
   @Put(':id')
   @CheckAbility('update', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.update',
     description: 'Solution 更新',
-    payloadSchema: UpdateSolutionSchema,
-    payloadSource: 'body',
+    args: [idParamInput.shape.id, UpdateSolutionSchema],
   })
   async update(
     @Param('id') id: string,
@@ -114,11 +115,10 @@ export class SolutionController {
    */
   @Delete(':id')
   @CheckAbility('delete', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.delete',
     description: 'Solution 删除',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async delete(@Param('id') id: string) {
     await this.solutionService.delete(id);
@@ -132,11 +132,10 @@ export class SolutionController {
    */
   @Get()
   @CheckAbility('read', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.list',
     description: 'Solution 跨 Runner 聚合列表',
-    payloadSchema: ListSolutionsQuerySchema,
-    payloadSource: 'query',
+    args: [ListSolutionsQuerySchema],
   })
   async list(@Query() query: ListSolutionsQuery) {
     const result = await this.solutionService.list(query);
@@ -150,11 +149,10 @@ export class SolutionController {
    */
   @Get('marketplace/list')
   @CheckAbility('read', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.marketplaceList',
     description: 'Solution 市场列表 (开发中, 暂返回空)',
-    payloadSchema: ListSolutionsQuerySchema,
-    payloadSource: 'query',
+    args: [ListSolutionsQuerySchema],
   })
   listMarketplace(@Query() query: ListSolutionsQuery) {
     const result = this.solutionService.listMarketplace(query);
@@ -167,11 +165,10 @@ export class SolutionController {
    */
   @Post(':id/install')
   @CheckAbility('install', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.install',
     description: 'Solution 安装到指定 Runner',
-    payloadSchema: installInput,
-    payloadSource: 'body',
+    args: [idParamInput.shape.id, installInput],
   })
   async install(
     @Param('id') id: string,
@@ -193,11 +190,10 @@ export class SolutionController {
    */
   @Delete(':id/install')
   @CheckAbility('uninstall', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.uninstall',
     description: 'Solution 从 Runner 卸载',
-    payloadSchema: uninstallInput,
-    payloadSource: 'body',
+    args: [idParamInput.shape.id, uninstallInput],
   })
   async uninstall(
     @Param('id') id: string,
@@ -219,11 +215,10 @@ export class SolutionController {
    */
   @Get('purchases/list')
   @CheckAbility('read', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.purchasesList',
     description: '我的购买列表 (开发中, 暂返回空)',
-    payloadSchema: emptyInput,
-    payloadSource: 'query',
+    args: [],
   })
   getPurchases(@Req() req: AuthedReq) {
     const userId = req.user?.id ?? 'system';
@@ -237,11 +232,10 @@ export class SolutionController {
    */
   @Post('purchase')
   @CheckAbility('purchase', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.purchase',
     description: 'Solution 购买记录',
-    payloadSchema: purchaseInput,
-    payloadSource: 'body',
+    args: [purchaseInput],
   })
   async purchase(@Body() body: PurchaseSolutionRequest, @Req() req: AuthedReq) {
     const userId = req.user?.id ?? 'system';
@@ -261,11 +255,10 @@ export class SolutionController {
    */
   @Get('runners')
   @CheckAbility('read', 'runner')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.getRunners',
     description: '获取可用 Runner 列表',
-    payloadSchema: emptyInput,
-    payloadSource: 'query',
+    args: [],
   })
   async getRunners() {
     const runners = await this.solutionService.getRunners();
@@ -279,11 +272,10 @@ export class SolutionController {
    */
   @Get('tags/list')
   @CheckAbility('read', 'solution')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.solution.getTags',
     description: 'Solution 标签频次榜',
-    payloadSchema: emptyInput,
-    payloadSource: 'query',
+    args: [],
   })
   async getTags() {
     const tags = await this.solutionService.getTags();

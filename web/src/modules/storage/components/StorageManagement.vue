@@ -330,7 +330,6 @@ import { SHARE_MODE_LABEL, SHARE_MODE } from '../constants/storage.constants';
 const {
   loading,
   nodes,
-  loadRootNodes,
   loadChildren,
   createNode,
   updateNode,
@@ -350,7 +349,7 @@ const sortedNodes = computed(() => {
 const clipboardStore = useStorageClipboardStore();
 
 const searchQuery = ref('');
-const currentParentId = ref<string | null>(null);
+const currentPath = ref('/');
 const breadcrumbs = ref<StorageNode[]>([]);
 
 // 新建文件夹
@@ -404,17 +403,17 @@ const handleSearch = () => { /* TODO */ };
 
 const goUp = () => {
   if (breadcrumbs.value.length > 0) {
-    const parent = breadcrumbs.value[breadcrumbs.value.length - 1];
     breadcrumbs.value = breadcrumbs.value.slice(0, -1);
-    currentParentId.value = parent.parentId;
-    loadChildren(currentParentId.value);
+    const parent = breadcrumbs.value[breadcrumbs.value.length - 1];
+    currentPath.value = parent?.path ?? '/';
+    loadChildren(currentPath.value);
   }
 };
 
 const navigateToRoot = () => {
   breadcrumbs.value = [];
-  currentParentId.value = null;
-  loadRootNodes();
+  currentPath.value = '/';
+  loadChildren(currentPath.value);
 };
 
 const navigateTo = (node: StorageNode) => {
@@ -424,15 +423,15 @@ const navigateTo = (node: StorageNode) => {
   } else {
     breadcrumbs.value.push(node);
   }
-  currentParentId.value = node.id;
-  loadChildren(node.id);
+  currentPath.value = node.path;
+  loadChildren(node.path);
 };
 
 const openNode = (node: StorageNode) => {
   if (node.type === 'folder') {
     breadcrumbs.value.push(node);
-    currentParentId.value = node.id;
-    loadChildren(node.id);
+    currentPath.value = node.path;
+    loadChildren(node.path);
   } else {
     // 打开文件详情或下载
     window.open(`/resources/${node.resourceId}`, '_blank');
@@ -454,9 +453,13 @@ const openCreateFolder = () => {
 
 const submitCreateFolder = async () => {
   if (!newFolderName.value.trim()) return;
-  await createNode({ name: newFolderName.value.trim(), type: 'folder', parentId: currentParentId.value });
+  await createNode({
+    name: newFolderName.value.trim(),
+    type: 'folder',
+    parentPath: currentPath.value,
+  });
   showCreateFolder.value = false;
-  await loadChildren(currentParentId.value);
+  await loadChildren(currentPath.value);
 };
 
 // ==================== 上传 ====================
@@ -524,7 +527,7 @@ const submitUpload = async () => {
 
       item.status = 'uploading';
       try {
-        await storageUpload(item.file, currentParentId.value, {
+        await storageUpload(item.file, currentPath.value, {
           signal: abortCtrl.signal,
           onProgress: (p) => {
             item.progress = p.percent;
@@ -539,7 +542,7 @@ const submitUpload = async () => {
         abortControllers.delete(item.id);
       }
     }
-    await loadChildren(currentParentId.value);
+    await loadChildren(currentPath.value);
     pendingFiles.value = [];
   } catch (e) {
     console.error('Upload failed:', e);
@@ -574,7 +577,7 @@ const openRename = () => {
   const newName = prompt('请输入新名称', contextMenu.node.name);
   if (newName && newName !== contextMenu.node.name) {
     updateNode(contextMenu.node.id, { name: newName });
-    loadChildren(currentParentId.value);
+    loadChildren(currentPath.value);
   }
   contextMenu.show = false;
 };
@@ -594,8 +597,8 @@ const handlePaste = async () => {
   if (!clipboardStore.hasClipboard) return;
   try {
     const nodeIds = clipboardStore.clipboard.map(c => c.nodeId);
-    await storageNodeCopy(nodeIds, currentParentId.value);
-    await loadChildren(currentParentId.value);
+    await storageNodeCopy(nodeIds, currentPath.value);
+    await loadChildren(currentPath.value);
     clipboardStore.clear();
   } catch (e) {
     console.error('Paste failed:', e);
@@ -606,7 +609,7 @@ const confirmDelete = async () => {
   if (!contextMenu.node) return;
   if (confirm(`确定删除 "${contextMenu.node.name}"？`)) {
     await deleteNode(contextMenu.node.id);
-    await loadChildren(currentParentId.value);
+    await loadChildren(currentPath.value);
   }
   contextMenu.show = false;
 };
@@ -647,7 +650,7 @@ const closeContextMenu = () => {
 };
 
 onMounted(() => {
-  loadRootNodes();
+  loadChildren(currentPath.value);
   document.addEventListener('click', closeContextMenu);
 });
 

@@ -8,8 +8,9 @@ Solution 管理模块。CRUD 落本地表 (TypeORM); 列表/标签/Runner 列表
 跨进程聚合所有 mounted Runner 上的真实数据 (`runner.app.solution.list` hook), 不再依赖 mock。
 市场 (marketplace) 与"我的购买"(purchases) 暂为占位实现, 前端入口已切到"开发中"卡片。
 
-所有控制器方法同时挂 `@CheckAbility` + `@HookLifecycle`, ability 元数据由
-`HookLifecycleRegistrationService.resolveTarget` 自动镜像进 hook metadata.requiredAbility,
+SolutionController 声明 `@HookController({ pluginName: 'solution', tags: ['solution'] })`。
+所有控制器方法同时挂 `@CheckAbility` + `@HookRoute`, ability 元数据由
+`HookControllerExplorerService` 自动镜像进 hook metadata.requiredAbility,
 LLM 调用走 `HookAbilityMiddleware` 兜底鉴权。
 
 ## 关键词索引

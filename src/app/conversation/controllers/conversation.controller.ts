@@ -8,8 +8,11 @@ import {
   Query,
   Sse,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import type { Observable } from 'rxjs';
 import { from, map } from 'rxjs';
+import { Repository, In, Between } from 'typeorm';
+import { z } from 'zod';
 import { ConversationService } from '../services/conversation.service';
 import { AIModelService } from '@core/ai';
 import { TypeOrmCheckpointSaver } from '@core/langgraph/checkpoint/services/typeorm-checkpoint.saver';
@@ -23,6 +26,71 @@ import type {
 import { ChatRequestDto } from '@/app/conversation/types/conversation.types';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
+import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
+import type { HookEvent, HookResult } from '@/core/hookbus/types/hook.types';
+import { ChatSessionSmartEntity } from '@core/ai/entities/chat-session-smart.entity';
+import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
+
+/**
+ * @title Smart 历史检索 Hook payload schema (SSOT)
+ * @description 三步检索流程的 zod schema, type 由 z.infer 派生供 controller hook 签名复用。
+ * @keywords-cn Smart检索, payloadSchema, SSOT
+ * @keywords-en smart-history, payload-schema, ssot
+ */
+const smartTagsSchema = z.object({
+  sessionId: z.string().describe('目标 IM 会话 ID, 必填'),
+});
+
+const smartSearchSchema = z.object({
+  sessionId: z.string().describe('目标 IM 会话 ID, 必填'),
+  keywords: z
+    .array(z.string().min(1))
+    .min(1)
+    .describe(
+      '关键词列表, 任一命中即返回该 smart 段; 应当来自 smartTags 的返回',
+    ),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .max(50)
+    .optional()
+    .describe('返回上限, 默认/上限 50 (按时间倒序)'),
+});
+
+const smartMessagesSchema = z.object({
+  sessionId: z.string().describe('目标 IM 会话 ID, 必填'),
+  smartIds: z
+    .array(z.string())
+    .min(1)
+    .max(20)
+    .describe(
+      '要展开成全消息的 smart 段 ID 列表, 至少 1 个, 最多 20 个 (避免一次拉太多)',
+    ),
+});
+
+type SmartTagsPayload = z.infer<typeof smartTagsSchema>;
+type SmartSearchPayload = z.infer<typeof smartSearchSchema>;
+type SmartMessagesPayload = z.infer<typeof smartMessagesSchema>;
+
+/**
+ * smart 段的 keywords 形状: { zh: string[], en: string[] } | null
+ * @keyword-en smart-keywords-shape
+ */
+function flattenKeywords(
+  keywords: { zh?: string[]; en?: string[] } | null | undefined,
+): string[] {
+  if (!keywords) return [];
+  const zh = Array.isArray(keywords.zh) ? keywords.zh : [];
+  const en = Array.isArray(keywords.en) ? keywords.en : [];
+  return [...zh, ...en].filter(
+    (s): s is string => typeof s === 'string' && s.trim().length > 0,
+  );
+}
 
 /**
  * 外部对话控制器
@@ -33,9 +101,10 @@ import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator'
  *
  * @controller ConversationController
  * @category Conversation
- * @keywords Conversation, Stream, SSE, FunctionCall, Orchestrator, Mysql, KeywordWindow
- * 关键词: 会话, 流式, SSE, 函数调用, 编排器, MySQL, 关键词窗口
+ * @keywords Conversation, Stream, SSE, FunctionCall, Orchestrator, Mysql, KeywordWindow, SmartHistory
+ * 关键词: 会话, 流式, SSE, 函数调用, 编排器, MySQL, 关键词窗口, Smart检索
  */
+@HookController({ pluginName: 'conversation', tags: ['conversation', 'history'] })
 @Controller('conversation')
 export class ConversationController {
   private readonly logger = new Logger(ConversationController.name);
@@ -44,6 +113,10 @@ export class ConversationController {
     private readonly conversationService: ConversationService,
     private readonly aiModelService: AIModelService,
     private readonly _checkpointer: TypeOrmCheckpointSaver,
+    @InjectRepository(ChatSessionSmartEntity)
+    private readonly smartRepo: Repository<ChatSessionSmartEntity>,
+    @InjectRepository(ChatMessageEntity)
+    private readonly messageRepo: Repository<ChatMessageEntity>,
   ) {}
 
   /**
@@ -301,5 +374,240 @@ export class ConversationController {
       writes,
       history,
     };
+  }
+
+  /**
+   * 拉 session 下所有 smart 段的 keywords (zh+en) 聚合, 去重 + 频次倒序。
+   * @keyword-en hook-smart-tags
+   */
+  @HookRoute({
+    hook: 'saas.app.conversation.smartTags',
+    description:
+      '【三步检索 ①】拉指定会话所有 smart 段的 keywords 全景 (zh+en 合并, 去重, 频次倒序)。' +
+      '是历史上下文检索的起点; 看完全景后用 smartSearch 缩范围, 最后用 smartMessages 取全消息。',
+    args: [smartTagsSchema],
+    metadata: { tags: ['conversation', 'smart', 'history', 'tag'] },
+  })
+  @CheckAbility('read', 'session')
+  async handleSmartTags(
+    payload: SmartTagsPayload,
+    _principal?: unknown,
+    _context?: unknown,
+    event?: HookEvent,
+  ): Promise<HookResult> {
+    const { sessionId } = payload;
+    event?.log?.info('conversation.smartTags:start', { sessionId });
+    try {
+      const start = Date.now();
+      const smarts = await this.smartRepo.find({
+        where: { sessionId, isDelete: false },
+        select: ['id', 'keywords'],
+      });
+      const counter = new Map<string, number>();
+      for (const s of smarts) {
+        for (const kw of flattenKeywords(s.keywords)) {
+          counter.set(kw, (counter.get(kw) ?? 0) + 1);
+        }
+      }
+      const items = Array.from(counter.entries())
+        .map(([tag, count]) => ({ tag, count }))
+        .sort((a, b) => b.count - a.count);
+      event?.log?.info('conversation.smartTags:done', {
+        smartCount: smarts.length,
+        tagCount: items.length,
+        durationMs: Date.now() - start,
+      });
+      return {
+        status: HookResultStatus.Success,
+        data: {
+          sessionId,
+          totalSmarts: smarts.length,
+          items,
+        },
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      event?.log?.error('conversation.smartTags:fail', { error: msg });
+      return { status: HookResultStatus.Error, error: msg };
+    }
+  }
+
+  /**
+   * 按 keywords 命中 smart 段, 返回 summary + keywords + 时间区间, 不含全消息。
+   * @keyword-en hook-smart-search
+   */
+  @HookRoute({
+    hook: 'saas.app.conversation.smartSearch',
+    description:
+      '【三步检索 ②】按 keywords (任一命中即可) 在指定会话中匹配 smart 段, 返回每段的 summary / keywords / 起止消息 ID / 消息数。' +
+      '不返回全消息, 让 LLM 先按 summary 决策再用 smartMessages 精准取段。默认/上限 50 条, 按时间倒序。',
+    args: [smartSearchSchema],
+    metadata: { tags: ['conversation', 'smart', 'history', 'search'] },
+  })
+  @CheckAbility('read', 'session')
+  async handleSmartSearch(
+    payload: SmartSearchPayload,
+    _principal?: unknown,
+    _context?: unknown,
+    event?: HookEvent,
+  ): Promise<HookResult> {
+    const { sessionId, keywords, limit } = payload;
+    const cap = Math.min(limit ?? 50, 50);
+    event?.log?.info('conversation.smartSearch:start', {
+      sessionId,
+      keywordCount: keywords.length,
+      limit: cap,
+    });
+    try {
+      const start = Date.now();
+      const smarts = await this.smartRepo.find({
+        where: { sessionId, isDelete: false },
+        order: { createdAt: 'DESC' },
+      });
+      const wantSet = new Set(keywords.map((k) => k.toLowerCase()));
+      const matched = smarts
+        .filter((s) => {
+          const tags = flattenKeywords(s.keywords).map((k) => k.toLowerCase());
+          return tags.some((t) => wantSet.has(t));
+        })
+        .slice(0, cap)
+        .map((s) => ({
+          smartId: s.id,
+          summary: s.summary,
+          keywords: flattenKeywords(s.keywords),
+          startMessageId: s.startMessageId,
+          endMessageId: s.endMessageId,
+          messageCount: s.messageCount,
+          createdAt: s.createdAt,
+        }));
+      event?.log?.info('conversation.smartSearch:done', {
+        scanned: smarts.length,
+        matched: matched.length,
+        durationMs: Date.now() - start,
+      });
+      return {
+        status: HookResultStatus.Success,
+        data: {
+          sessionId,
+          items: matched,
+        },
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      event?.log?.error('conversation.smartSearch:fail', { error: msg });
+      return { status: HookResultStatus.Error, error: msg };
+    }
+  }
+
+  /**
+   * 按 smartId 列表精准取每段对应的 startMessageId..endMessageId 范围全消息。
+   * @keyword-en hook-smart-messages
+   */
+  @HookRoute({
+    hook: 'saas.app.conversation.smartMessages',
+    description:
+      '【三步检索 ③】按 smartId 列表 (来自 smartSearch) 精准展开成对应 smart 段的全消息。' +
+      'sessionId 用作越权防护, 只返回属于该会话的消息。一次最多 20 段 smart, 单段通常 5-10 条消息。',
+    args: [smartMessagesSchema],
+    metadata: { tags: ['conversation', 'smart', 'history', 'messages'] },
+  })
+  @CheckAbility('read', 'session')
+  async handleSmartMessages(
+    payload: SmartMessagesPayload,
+    _principal?: unknown,
+    _context?: unknown,
+    event?: HookEvent,
+  ): Promise<HookResult> {
+    const { sessionId, smartIds } = payload;
+    event?.log?.info('conversation.smartMessages:start', {
+      sessionId,
+      smartIdCount: smartIds.length,
+    });
+    try {
+      const startTs = Date.now();
+      const smarts = await this.smartRepo.find({
+        where: { id: In(smartIds), sessionId, isDelete: false },
+      });
+      const segments: Array<{
+        smartId: string;
+        summary: string | null;
+        startMessageId: string;
+        endMessageId: string;
+        messages: Array<{
+          id: string;
+          senderId: string | null;
+          messageType: string;
+          content: string;
+          replyToId: string | null;
+          createdAt: Date;
+        }>;
+      }> = [];
+
+      for (const s of smarts) {
+        const startMsg = await this.messageRepo.findOne({
+          where: { id: s.startMessageId },
+          select: ['id', 'createdAt'],
+        });
+        const endMsg = await this.messageRepo.findOne({
+          where: { id: s.endMessageId },
+          select: ['id', 'createdAt'],
+        });
+        if (!startMsg || !endMsg) {
+          segments.push({
+            smartId: s.id,
+            summary: s.summary,
+            startMessageId: s.startMessageId,
+            endMessageId: s.endMessageId,
+            messages: [],
+          });
+          continue;
+        }
+        const msgs = await this.messageRepo.find({
+          where: {
+            sessionId,
+            createdAt: Between(startMsg.createdAt, endMsg.createdAt),
+            isDelete: false,
+          },
+          order: { createdAt: 'ASC' },
+          select: [
+            'id',
+            'senderId',
+            'messageType',
+            'content',
+            'replyToId',
+            'createdAt',
+          ],
+        });
+        segments.push({
+          smartId: s.id,
+          summary: s.summary,
+          startMessageId: s.startMessageId,
+          endMessageId: s.endMessageId,
+          messages: msgs.map((m) => ({
+            id: m.id,
+            senderId: m.senderId,
+            messageType: m.messageType,
+            content: m.content,
+            replyToId: m.replyToId,
+            createdAt: m.createdAt,
+          })),
+        });
+      }
+
+      event?.log?.info('conversation.smartMessages:done', {
+        requested: smartIds.length,
+        returned: segments.length,
+        totalMessages: segments.reduce((s, x) => s + x.messages.length, 0),
+        durationMs: Date.now() - startTs,
+      });
+      return {
+        status: HookResultStatus.Success,
+        data: { sessionId, segments },
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      event?.log?.error('conversation.smartMessages:fail', { error: msg });
+      return { status: HookResultStatus.Error, error: msg };
+    }
   }
 }

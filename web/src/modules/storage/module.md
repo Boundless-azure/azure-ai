@@ -32,8 +32,8 @@ web/src/modules/storage/
 ### api/storage.ts
 | 函数名 | 关键词描述 |
 |--------|-----------|
-| `getRootNodes` | 获取根目录节点列表 |
-| `listNodes` | 按 parentId 查询子节点 |
+| `getRootNodes` | 获取根目录节点列表（内部同样走 path=/） |
+| `listNodes` | 按 path 查询目录子节点 |
 | `createNode` | 创建文件夹或文件节点 |
 | `updateNode` | 更新节点名称/移动位置 |
 | `deleteNode` | 软删除节点 |
@@ -45,8 +45,8 @@ web/src/modules/storage/
 ### hooks/useStorage.ts
 | 函数名 | 关键词描述 |
 |--------|-----------|
-| `loadRootNodes` | 加载根目录节点（调用 `/storage/nodes/root`） |
-| `loadChildren` | 加载指定父节点的子节点（parentId=null 时自动调用根目录接口） |
+| `loadRootNodes` | 加载根目录节点（调用 `/storage/nodes?path=/`） |
+| `loadChildren` | 按目录 path 逐级加载子节点 |
 | `createNode` | 创建节点并返回 |
 | `updateNode` | 更新节点 |
 | `deleteNode` | 删除节点 |

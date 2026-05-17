@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AICoreModule } from '@core/ai';
 import { IntentAgentTriggerFunctionService } from '@core/function-call';
@@ -14,11 +14,11 @@ import { ImMessageService } from './services/im-message.service';
 import { ImContactGroupController } from './controllers/im-contact-group.controller';
 import { ImContactGroupService } from './services/im-contact-group.service';
 import { WebMcpSessionDataService } from './services/webmcp-session-data.service';
-import { WebMcpHookHandlersService } from './services/webmcp.hook-handlers.service';
-import { SendMsgHookHandlerService } from './services/send-msg.hook-handler.service';
-import { SmartHistoryHookHandlerService } from './services/smart-history.hook-handler.service';
 import { AiSessionDataService } from './services/ai-session-data.service';
-import { AiSessionDataHookHandlersService } from './services/ai-session-data.hook-handlers.service';
+import { AiSessionDataHookController } from './controllers/ai-session-data.hook-controller';
+import { AiCallLogService } from './services/ai-call-log.service';
+import { AiCallLogHookController } from './controllers/ai-call-log.hook-controller';
+import { SessionHandbookSeederService } from './services/session-handbook-seeder.service';
 import { ImContactGroupEntity } from './entities/im-contact-group.entity';
 import { ImContactGroupMemberEntity } from './entities/im-contact-group-member.entity';
 import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
@@ -54,7 +54,7 @@ import { AuthModule } from '@/core/auth/auth.module';
       includeFunctionServices: [IntentAgentTriggerFunctionService],
     }),
     FunctionCallModule,
-    AgentRuntimeModule,
+    forwardRef(() => AgentRuntimeModule),
     TypeOrmModule.forFeature([
       ChatMessageEntity,
       ChatSessionEntity,
@@ -85,11 +85,11 @@ import { AuthModule } from '@/core/auth/auth.module';
     ImMessageService,
     ImContactGroupService,
     WebMcpSessionDataService,
-    WebMcpHookHandlersService,
-    SendMsgHookHandlerService,
-    SmartHistoryHookHandlerService,
     AiSessionDataService,
-    AiSessionDataHookHandlersService,
+    AiSessionDataHookController,
+    AiCallLogService,
+    AiCallLogHookController,
+    SessionHandbookSeederService,
   ],
   exports: [
     ConversationService,
@@ -98,6 +98,8 @@ import { AuthModule } from '@/core/auth/auth.module';
     WebMcpGateway,
     WebMcpSessionDataService,
     AiSessionDataService,
+    AiCallLogService,
+    SessionHandbookSeederService,
   ],
 })
 export class ConversationModule {}

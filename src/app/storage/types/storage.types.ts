@@ -3,10 +3,21 @@ import { StorageNodeType, ShareMode } from '../entities/storage-node.entity';
 
 export { StorageNodeType };
 
+const storageNodeNameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .refine((value) => !value.includes('/'), {
+    message: 'name must not contain "/"',
+  });
+
 // 创建节点请求
 export const CreateStorageNodeSchema = z.object({
-  parentId: z.string().optional().nullable(),
-  name: z.string().min(1).max(255),
+  parentPath: z
+    .string()
+    .optional()
+    .describe('父目录路径, 例如 "/" 或 "/workspace"; 不传默认为根目录'),
+  name: storageNodeNameSchema,
   type: z.nativeEnum(StorageNodeType),
   resourceId: z.string().optional().nullable(),
   size: z.number().optional().nullable(),
@@ -17,8 +28,11 @@ export type CreateStorageNodeRequest = z.infer<typeof CreateStorageNodeSchema>;
 
 // 更新节点请求
 export const UpdateStorageNodeSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  parentId: z.string().nullable().optional(),
+  name: storageNodeNameSchema.optional(),
+  parentPath: z
+    .string()
+    .optional()
+    .describe('移动到的父目录路径, 例如 "/" 或 "/workspace"; 不传则不移动'),
 });
 
 export type UpdateStorageNodeRequest = z.infer<typeof UpdateStorageNodeSchema>;
@@ -34,7 +48,10 @@ export type CreateShareRequest = z.infer<typeof CreateShareSchema>;
 
 // 节点列表查询
 export const ListStorageNodesSchema = z.object({
-  parentId: z.string().optional().nullable(),
+  path: z
+    .string()
+    .optional()
+    .describe('目录路径, 例如 "/" 或 "/workspace"; 不传默认为根目录'),
   type: z.nativeEnum(StorageNodeType).optional(),
   q: z.string().optional(),
 });
@@ -45,7 +62,6 @@ export type ListStorageNodesQuery = z.infer<typeof ListStorageNodesSchema>;
 export interface StorageNodeResponse {
   id: string;
   tenantId: string;
-  parentId: string | null;
   name: string;
   type: StorageNodeType;
   path: string;
@@ -71,7 +87,7 @@ export interface ShareLinkResponse {
 // 复制节点请求
 export const CopyNodesSchema = z.object({
   nodeIds: z.array(z.string()).min(1),
-  targetParentId: z.string().nullable(),
+  targetPath: z.string().describe('目标目录路径, 例如 "/" 或 "/workspace"'),
 });
 
 export type CopyNodesRequest = z.infer<typeof CopyNodesSchema>;

@@ -11,7 +11,10 @@ import {
 import { z } from 'zod';
 import { PermissionDefinitionService } from '../services/permission-definition.service';
 import { CheckAbility } from '../decorators/check-ability.decorator';
-import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
 import { PermissionDefinitionType } from '../enums/permission.enums';
 import type {
   CreatePermissionDefinitionDto,
@@ -102,18 +105,21 @@ const idParamInput = z.object({
  * @keywords-cn 权限定义控制器, 权限枚举
  * @keywords-en permission-definition-controller, permissions-enum
  */
+@HookController({
+  pluginName: 'identity',
+  tags: ['identity', 'permission-definition'],
+})
 @Controller('identity/permissions/definitions')
 export class PermissionDefinitionController {
   constructor(private readonly service: PermissionDefinitionService) {}
 
   @Get()
   @CheckAbility('read', 'permission_definition')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.permissionDefinitionList',
     description:
       'RBAC 权限定义列表查询 :: 支持按 permissionType / nodeKey / fid 过滤; 推荐先 fid="null" 拿全部 subject root, 再用 fid=<rootId> 取该 subject 的可用 action',
-    payloadSchema: onRbacPermissionDefinitionListInput,
-    payloadSource: 'query',
+    args: [onRbacPermissionDefinitionListInput],
   })
   async list(@Query() query: QueryPermissionDefinitionDto) {
     return await this.service.list(query);
@@ -121,12 +127,11 @@ export class PermissionDefinitionController {
 
   @Post()
   @CheckAbility('create', 'permission_definition')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.permissionDefinitionCreate',
     description:
       'RBAC 权限定义创建 :: data 类型节点通常由 @DataPermissionNode 装饰器在启动期自动同步, 手动创建主要用于 management/menu 节点扩展',
-    payloadSchema: onRbacPermissionDefinitionCreateInput,
-    payloadSource: 'body',
+    args: [onRbacPermissionDefinitionCreateInput],
   })
   async create(@Body() dto: CreatePermissionDefinitionDto) {
     return await this.service.create(dto);
@@ -134,12 +139,11 @@ export class PermissionDefinitionController {
 
   @Put(':id')
   @CheckAbility('update', 'permission_definition')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.permissionDefinitionUpdate',
     description:
       'RBAC 权限定义更新 :: weight 不在此修改 (装饰器是 SSOT); 谨慎改 nodeKey/fid, 已分配的 RolePermission 引用通过名称, 改名会失配',
-    payloadSchema: onRbacPermissionDefinitionUpdateInput,
-    payloadSource: 'body',
+    args: [idParamInput.shape.id, onRbacPermissionDefinitionUpdateInput],
   })
   async update(
     @Param('id') id: string,
@@ -151,12 +155,11 @@ export class PermissionDefinitionController {
 
   @Delete(':id')
   @CheckAbility('delete', 'permission_definition')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.identity.permissionDefinitionDelete',
     description:
       'RBAC 权限定义级联软删除 :: 同时软删该节点全部子孙节点; 已分配的 RolePermission 不会自动清理, 删 root 后该 subject 的权限分配将无法通过越权防护',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async remove(@Param('id') id: string) {
     await this.service.remove(id);

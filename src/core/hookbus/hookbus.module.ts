@@ -4,13 +4,11 @@ import { HookRegistryService } from './services/hook.registry.service';
 import { HookInvokerService } from './services/hook.invoker.service';
 import { HookBusService } from './services/hook.bus.service';
 import { HookCacheService } from './cache/hook.cache';
-import { HookDecoratorExplorerService } from './services/hook.decorator-explorer.service';
+import { HookControllerExplorerService } from './services/hook-controller-explorer.service';
 import { HookDebugStateService } from './services/hook.debug-state.service';
 import { HookAuthMiddlewareService } from './services/hook.auth-middleware.service';
-import { HookLifecycleRegistrationService } from './services/hook.lifecycle-registration.service';
 import { HookbusDebugGateway } from './controllers/hookbus-debug.gateway';
 import { HookbusDebugController } from './controllers/hookbus-debug.controller';
-import { HookLifecycleInterceptor } from './interceptors/hook-lifecycle.interceptor';
 import type { HookBusOptions } from './types/hook.types';
 
 /**
@@ -31,11 +29,9 @@ export class HookBusModule {
         HookInvokerService,
         HookBusService,
         HookCacheService,
-        HookDecoratorExplorerService,
+        HookControllerExplorerService,
         HookDebugStateService,
         HookAuthMiddlewareService,
-        HookLifecycleRegistrationService,
-        HookLifecycleInterceptor,
         HookbusDebugGateway,
       ],
       controllers: [HookbusDebugController],

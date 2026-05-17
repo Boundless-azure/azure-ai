@@ -2,19 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 
 /**
  * @title 会话级 call_hook 调用追踪 (单进程内存)
- * @description 按 sessionId 维度记录主对话 LLM 的所有 call_hook 调用 (含 result/errorMsg), 用于硬匹配触发独立的 sessionData 沉淀 LLM. records 上限 200 条 LRU.
- *              触发条件 (任一命中即触发):
- *                ① 调过 saas.app.knowledge.getChapter (读了知识)
- *                ② 累计 records ≥ 50 (轮次过多)
- *                ③ get_hook_info 调用 ≥ 5 次 (LLM 在反复探索)
- *              触发后 resetTriggers 清零三个累计字段, records 数组保留供 LLM 决策时使用.
- * @keywords-cn 调用追踪, 硬匹配, 沉淀触发, 内存map, 知识读取检测
- * @keywords-en call-tracker, hard-match, save-trigger, in-memory, knowledge-read-detection
+ * @description 按 sessionId 维度记录主对话 LLM 的所有 call_hook 调用 (含 result/errorMsg), 用于低频硬匹配触发独立的 sessionData 沉淀 LLM. records 上限 200 条 LRU.
+ *              低频触发条件 (任一命中 + 冷却时间已过):
+ *                ① 调过 saas.app.knowledge.getChapter (读了知识章节)
+ *                ② 同一个 hook 曾失败, 后续又成功 (形成明确纠错经验)
+ *              不再用 records 数量 / get_hook_info 次数触发, 避免探索多就写入脏记忆.
+ *              触发后 resetTriggers 清零事件标记, records 数组保留供 LLM 决策时使用.
+ * @keywords-cn 调用追踪, 低频触发, 沉淀触发, 内存map, 知识读取检测, 失败恢复
+ * @keywords-en call-tracker, low-frequency-trigger, save-trigger, in-memory, knowledge-read-detection, failure-recovery
  */
 
 const MAX_RECORDS = 200;
-const TRIGGER_TOTAL = 50;
-const TRIGGER_GET_HOOK_INFO = 5;
+const SAVE_TRIGGER_COOLDOWN_MS = 10 * 60 * 1000;
 const KNOWLEDGE_GET_CHAPTER_HOOK = 'saas.app.knowledge.getChapter';
 
 /** 单次 call_hook 的完整记录 (供 sessionData LLM 决策) */
@@ -32,10 +31,12 @@ interface SessionTracker {
   records: CallRecord[];
   /** 是否调过 getChapter 拿到章节 (errorMsg 为空才算) */
   hasReadKnowledge: boolean;
-  /** 累计 get_hook_info 调用次数 */
-  getHookInfoCount: number;
-  /** 累计 call_hook 调用次数 (跟 records 长度同步, 但 records 是 LRU 限长, 这个累计) */
-  totalCount: number;
+  /** 失败过的 hookName 集合; 后续成功时转成 hasRecoveredFailure */
+  failedHookNames: Set<string>;
+  /** 是否出现过"失败后成功"的明确纠错事件 */
+  hasRecoveredFailure: boolean;
+  /** 最近一次触发沉淀 LLM 的时间, 用于低频冷却 */
+  lastSaveTriggeredAt: number;
 }
 
 @Injectable()
@@ -54,11 +55,20 @@ export class SessionCallTrackerService {
     if (t.records.length > MAX_RECORDS) {
       t.records.shift();
     }
-    t.totalCount += 1;
-    if (
-      rec.hookName === KNOWLEDGE_GET_CHAPTER_HOOK &&
-      rec.errorMsg.length === 0
-    ) {
+    const ok = rec.errorMsg.length === 0;
+    if (!ok) {
+      t.failedHookNames.add(rec.hookName);
+      return;
+    }
+
+    if (t.failedHookNames.delete(rec.hookName)) {
+      t.hasRecoveredFailure = true;
+      this.logger.log(
+        `[tracker] session=${sessionId} hasRecoveredFailure=true hook=${rec.hookName}`,
+      );
+    }
+
+    if (rec.hookName === KNOWLEDGE_GET_CHAPTER_HOOK && ok) {
       t.hasReadKnowledge = true;
       this.logger.log(
         `[tracker] session=${sessionId} hasReadKnowledge=true (getChapter ok)`,
@@ -67,39 +77,29 @@ export class SessionCallTrackerService {
   }
 
   /**
-   * 记一次 get_hook_info 调用 (独立工具不走 call_hook, 单独计数)
-   * @keyword-en record-get-hook-info
-   */
-  recordGetHookInfo(sessionId: string): void {
-    if (!sessionId) return;
-    const t = this.ensure(sessionId);
-    t.getHookInfoCount += 1;
-  }
-
-  /**
-   * 硬匹配检查 :: 任一条件命中即返回 true
+   * 低频硬匹配检查 :: 明确沉淀事件 + 冷却时间已过才返回 true
    * @keyword-en should-trigger-save
    */
   shouldTriggerSave(sessionId: string): boolean {
     const t = this.map.get(sessionId);
     if (!t) return false;
-    return (
-      t.hasReadKnowledge ||
-      t.totalCount >= TRIGGER_TOTAL ||
-      t.getHookInfoCount >= TRIGGER_GET_HOOK_INFO
-    );
+    if (!t.hasReadKnowledge && !t.hasRecoveredFailure) return false;
+    const elapsed = Date.now() - t.lastSaveTriggeredAt;
+    if (elapsed < SAVE_TRIGGER_COOLDOWN_MS) return false;
+    return true;
   }
 
   /**
-   * 触发后 reset 三个累计字段 (records 不动, 留给 LLM 决策)
+   * 触发后 reset 事件标记 (records 不动, 留给 LLM 决策), 并记录冷却时间
    * @keyword-en reset-triggers
    */
   resetTriggers(sessionId: string): void {
     const t = this.map.get(sessionId);
     if (!t) return;
     t.hasReadKnowledge = false;
-    t.totalCount = 0;
-    t.getHookInfoCount = 0;
+    t.hasRecoveredFailure = false;
+    t.failedHookNames.clear();
+    t.lastSaveTriggeredAt = Date.now();
   }
 
   /**
@@ -124,8 +124,9 @@ export class SessionCallTrackerService {
       t = {
         records: [],
         hasReadKnowledge: false,
-        getHookInfoCount: 0,
-        totalCount: 0,
+        failedHookNames: new Set<string>(),
+        hasRecoveredFailure: false,
+        lastSaveTriggeredAt: 0,
       };
       this.map.set(sessionId, t);
     }

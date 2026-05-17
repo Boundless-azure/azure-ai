@@ -23,8 +23,7 @@ interface BaseResponse<T> {
 
 // 获取根目录节点
 export async function getRootNodes(): Promise<StorageNode[]> {
-  const res = await http.get<BaseResponse<StorageNode[]>>('/storage/nodes/root');
-  return res.data.data;
+  return await listNodes({ path: '/' });
 }
 
 // 获取节点列表
@@ -108,21 +107,19 @@ type UploadOptions = {
 /**
  * 资源库文件上传（自动完成：统一上传 + 创建 storage_node）
  * @param file 文件
- * @param parentId 父目录 ID（null 表示根目录）
+ * @param parentPath 父目录路径（/ 表示根目录）
  * @param options 上传选项
  */
 export function storageUpload(
   file: File,
-  parentId: string | null,
+  parentPath: string,
   options?: UploadOptions,
 ): Promise<StorageNode> {
   return new Promise((resolve, reject) => {
     const xhr = createXhr('POST', '/api/storage/upload');
     const formData = new FormData();
     formData.append('file', file);
-    if (parentId !== null) {
-      formData.append('parentId', parentId);
-    }
+    formData.append('parentPath', parentPath);
 
     xhr.upload.onprogress = (evt) => {
       options?.onProgress?.({
@@ -153,15 +150,15 @@ export function storageUpload(
 /**
  * 复制存储节点（支持文件和文件夹递归复制）
  * @param nodeIds 要复制的节点 ID 列表
- * @param targetParentId 目标父目录 ID（null 表示根目录）
+ * @param targetPath 目标目录路径（/ 表示根目录）
  */
 export async function storageNodeCopy(
   nodeIds: string[],
-  targetParentId: string | null,
+  targetPath: string,
 ): Promise<StorageNode[]> {
   const res = await http.post<BaseResponse<StorageNode[]>>(
     '/storage/nodes/copy',
-    { nodeIds, targetParentId },
+    { nodeIds, targetPath },
   );
   return res.data.data;
 }

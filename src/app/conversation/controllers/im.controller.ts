@@ -8,10 +8,18 @@ import {
   Post,
   Query,
   Req,
+  Logger,
 } from '@nestjs/common';
+import { z } from 'zod';
 import { ImSessionService } from '../services/im-session.service';
 import { ImMessageService } from '../services/im-message.service';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
+import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
+import type { HookResult } from '@/core/hookbus/types/hook.types';
 import type {
   ImSessionDetail,
   ImMemberInfo,
@@ -37,13 +45,51 @@ import {
 } from '../types/im.types';
 
 /**
- * @title IM 控制器
- * @description IM 会话和消息的 REST API。
- * @keywords-cn IM, 会话, 消息, REST, API
- * @keywords-en im, session, message, rest, api
+ * @title saas.app.conversation.sendMsg payload schema (SSOT)
+ * @description 主动发消息 hook 的参数 schema, 与 ImController 内 HookRoute 共用。
+ * @keywords-cn 主动发消息, payloadSchema, SSOT
+ * @keywords-en send-msg, payload-schema, ssot
  */
+const sendMsgSchema = z.object({
+  sessionId: z.string().describe('目标 IM 会话 ID, 必填'),
+  content: z.string().min(1).describe('消息正文, 必填非空'),
+  senderPrincipalId: z.string().describe('发送者主体 ID, 必填'),
+  replyToId: z
+    .string()
+    .optional()
+    .describe('回复消息 ID, 可选; 同一 replyToId 最多回复 4 条'),
+  messageType: z
+    .enum(['text', 'notification'])
+    .optional()
+    .describe('消息类型, 默认 text; notification 为 AI 可见用户端隐藏的通知'),
+  mentions: z
+    .array(z.string())
+    .optional()
+    .describe(
+      '显式 mention 的 principal ids; 提供时优先于 content 解析触发 agent 调度 + 写 metadata.mentions, 用于服务端隐藏通知场景 (数据触点 / 主动 AI 推送) 不依赖 displayName 也能可靠艾特 agent',
+    ),
+  strictMention: z
+    .boolean()
+    .optional()
+    .describe(
+      '严格 mention 成员校验: true 时任一 mention 的 principal 不是会话成员 → 整条 sendMsg throw (数据触点等需要纠错机制的场景必传); ' +
+        '默认 false 静默允许 mention 已退群成员 (人工 @ / agent 自主发消息场景默认行为); SYSTEM_NOTIFIER 跨群跳过.',
+    ),
+});
+
+type SendMsgPayload = z.infer<typeof sendMsgSchema>;
+
+/**
+ * @title IM 控制器
+ * @description IM 会话和消息的 REST API, 同时声明主动发消息 Hook。
+ * @keywords-cn IM, 会话, 消息, REST, API, Hook
+ * @keywords-en im, session, message, rest, api, hook
+ */
+@HookController({ pluginName: 'im', tags: ['conversation', 'im', 'message'] })
 @Controller('im')
 export class ImController {
+  private readonly logger = new Logger(ImController.name);
+
   constructor(
     private readonly sessionService: ImSessionService,
     private readonly messageService: ImMessageService,
@@ -316,5 +362,85 @@ export class ImController {
       ...dto,
       sessionId: id,
     });
+  }
+
+  /**
+   * 通过 HookBus 向指定 IM 会话发送消息。
+   * @keyword-en send-msg-hook-controller
+   */
+  @HookRoute({
+    hook: 'saas.app.conversation.sendMsg',
+    description:
+      '向 IM 会话发送消息。messageType=text 为普通消息, notification 为 AI 可见用户端隐藏的通知。',
+    args: [sendMsgSchema],
+    metadata: { tags: ['im', 'proactive', 'send'] },
+  })
+  @CheckAbility('create', 'message')
+  async handleSendMsg(payload: SendMsgPayload): Promise<HookResult> {
+    const {
+      sessionId,
+      content,
+      senderPrincipalId,
+      replyToId,
+      messageType,
+      mentions,
+      strictMention,
+    } = payload;
+
+    if (replyToId) {
+      const maxReplies = 4;
+      const replyCount = await this.messageService.countReplyMessages(
+        sessionId,
+        senderPrincipalId,
+        replyToId,
+      );
+      if (replyCount >= maxReplies) {
+        this.logger.warn(
+          `[sendMsg] reply limit reached (${replyCount}/${maxReplies}) session=${sessionId} replyTo=${replyToId}`,
+        );
+        return {
+          status: HookResultStatus.Error,
+          error: `已达到单条消息最大回复数量 ${maxReplies}，请勿继续发送。`,
+        };
+      }
+    }
+
+    try {
+      const msg = await this.messageService.sendMessage(
+        senderPrincipalId,
+        {
+          sessionId,
+          content,
+          replyToId,
+          ...(mentions && mentions.length > 0
+            ? {
+                mentions: mentions.map((principalId) => ({
+                  principalId,
+                  mentionText: '',
+                  startIndex: 0,
+                  endIndex: 0,
+                })),
+              }
+            : {}),
+          ...(strictMention === true ? { strictMention: true } : {}),
+        },
+        {
+          role: 'assistant',
+          skipAgentTrigger: !mentions || mentions.length === 0 ? true : false,
+          messageType: messageType,
+        },
+      );
+      this.logger.debug(
+        `[sendMsg] sent to session=${sessionId} by=${senderPrincipalId} type=${messageType ?? 'text'}`,
+      );
+      return {
+        status: HookResultStatus.Success,
+        data: { messageId: msg.id, sessionId },
+      };
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`[sendMsg] failed session=${sessionId}: ${err}`);
+      return { status: HookResultStatus.Error, error: err };
+    }
   }
 }

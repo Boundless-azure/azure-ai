@@ -17,7 +17,10 @@ import {
   UpdateEmbeddingsDto,
 } from '../types/agent.types';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
-import { HookLifecycle } from '@/core/hookbus/decorators/hook-lifecycle.decorator';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
 
 /**
  * @title Agent Hook payload schema (input 形状, SSOT)
@@ -48,17 +51,17 @@ const idParamInput = z.object({ id: z.string() });
  * @keywords-cn Agent控制器, 查询, 更新, 删除
  * @keywords-en agent-controller, query, update, delete
  */
+@HookController({ pluginName: 'agent', tags: ['agent'] })
 @Controller('agent')
 export class AgentController {
   constructor(private readonly service: AgentService) {}
 
   @Get()
   @CheckAbility('read', 'agent')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.agent.list',
     description: 'Agent列表查询',
-    payloadSchema: onAgentListInput,
-    payloadSource: 'query',
+    args: [onAgentListInput],
   })
   async list(@Query() query: QueryAgentDto): Promise<AgentEntity[]> {
     return await this.service.list(query);
@@ -66,11 +69,10 @@ export class AgentController {
 
   @Get(':id')
   @CheckAbility('read', 'agent')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.agent.get',
     description: 'Agent详情查询',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async get(@Param('id') id: string): Promise<AgentEntity | null> {
     return await this.service.get(id);
@@ -78,11 +80,10 @@ export class AgentController {
 
   @Put(':id')
   @CheckAbility('update', 'agent')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.agent.update',
     description: 'Agent更新',
-    payloadSchema: onAgentUpdateInput,
-    payloadSource: 'body',
+    args: [idParamInput.shape.id, onAgentUpdateInput],
   })
   async update(
     @Param('id') id: string,
@@ -93,11 +94,10 @@ export class AgentController {
 
   @Delete(':id')
   @CheckAbility('delete', 'agent')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.agent.delete',
     description: 'Agent删除',
-    payloadSchema: idParamInput,
-    payloadSource: 'params',
+    args: [idParamInput.shape.id],
   })
   async delete(@Param('id') id: string): Promise<{ ok: boolean }> {
     await this.service.delete(id);
@@ -112,11 +112,10 @@ export class AgentController {
    */
   @Post('embeddings')
   @CheckAbility('update', 'agent')
-  @HookLifecycle({
+  @HookRoute({
     hook: 'saas.app.agent.embeddingsUpdate',
     description: 'Agent向量更新',
-    payloadSchema: onAgentEmbeddingsUpdateInput,
-    payloadSource: 'body',
+    args: [onAgentEmbeddingsUpdateInput],
   })
   async updateEmbeddings(@Body() dto: UpdateEmbeddingsDto): Promise<{
     updated: number;

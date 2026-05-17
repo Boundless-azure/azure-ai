@@ -26,7 +26,7 @@ export function useStorage() {
     loading.value = true;
     error.value = null;
     try {
-      nodes.value = await storageApi.getRootNodes();
+      nodes.value = await storageApi.listNodes({ path: '/' });
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load nodes';
     } finally {
@@ -48,16 +48,11 @@ export function useStorage() {
   }
 
   // 加载子节点
-  async function loadChildren(parentId: string | null) {
+  async function loadChildren(path: string) {
     loading.value = true;
     error.value = null;
     try {
-      // parentId 为 null 时查询根目录
-      if (parentId === null) {
-        nodes.value = await storageApi.getRootNodes();
-      } else {
-        nodes.value = await storageApi.listNodes({ parentId });
-      }
+      nodes.value = await storageApi.listNodes({ path });
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load children';
     } finally {
