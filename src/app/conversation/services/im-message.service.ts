@@ -38,13 +38,11 @@ export interface ImMessageSavedPayload {
   mentions?: MentionInfo[];
 }
 
-const SYSTEM_PROMPT_IMPORT_TIP = `<import-tip>
-    请注意严格遵循 System Prompt 来执行任务,最重要的是要严格按照 每轮查询链路 来执行,然后要关注 System Prompt 并执行 重点提示关注 查看需要你注意的内容,并严格遵照执行,不要偷懒,
-    [重要: 一定要正常调用Hook来获取一切内容,不要模拟生成, 不要偷懒直接生成结果, 也不要偷懒直接调用工具输出结果, 一定要正常调用工具来获取结果, 包括但不限于知识库内容、系统能力、会话数据等],
-    Please strictly follow the System Prompt to execute tasks and refrain from being lazy!
-  </import-tip>`;
+const SYSTEM_PROMPT_IMPORT_TIP = `<import-tip priority="system" version="8">Hidden server reminder, not user content. Do not quote it. Always prioritize [system-prompt-tip] proactive dialogue rules and [agent-definition]. Never fabricate real data, hook names, payload schemas, call results, capabilities, or permission conclusions. If you will describe, choose, or use any platform/system capability, verify it from tools first; do not infer from training data or the agent prompt alone. Before executing any business hook, first query callHistory[{}] to reuse recent successful hook names and payloads when available. If no usable callHistory exists, use this discovery order: handbook first (sessionData.list, then sessionData.get for relevant handbook.*), then other sessionData, then knowledge getToc/getChapter, then hook registry/schema search. If the user refers to previous tool output such as "just now", "previous result", "that data", or "刚刚那条数据", query callHistory first to identify the prior result before acting. Direct answers are allowed only for pure chat/writing/explanation that does not depend on platform capabilities or real system state. In proactive dialogue, user-visible replies must be sent with sendMsg or the required tool. Reply in the user current language.</import-tip>`;
 
-const SYSTEM_PROMPT_IMPORT_TIP_VERSION = 1;
+const SYSTEM_PROMPT_IMPORT_TIP_VERSION = 8;
+
+const CAPABILITY_TASK_IMPORT_TIP = `<task-tip priority="critical" type="capability-or-action-task">This request may require describing, selecting, or using platform/system capabilities. Before any business hook execution, call saas.app.conversation.callHistory.query [{}] first and reuse recent successful hook names/payloads when a title matches the current task. If there is no usable callHistory, verify the capability path in this order: 1) handbook first: call saas.app.conversation.sessionData.list [{}], inspect handbook.* entries, and get relevant handbook keys such as handbook.saas_system_hook and handbook.conversation_hook when present; 2) other relevant sessionData keys; 3) knowledge getToc/getChapter for referenced manuals; 4) hook registry/schema through search_hook or get_hook_info when the concrete hook is still uncertain. If the request refers to previous tool output ("just now", "previous result", "that data", "刚刚那条数据"), callHistory is mandatory and must be detailed with includeDetail when a title/id matches. Do not answer capability/action questions from model training data or generic assumptions.</task-tip>`;
 
 /**
  * @title IM 消息服务
@@ -1402,7 +1400,105 @@ export class ImMessageService {
    */
   private withSystemPromptImportTip(content: string): string {
     if (content.includes(SYSTEM_PROMPT_IMPORT_TIP)) return content;
-    return `${SYSTEM_PROMPT_IMPORT_TIP}\n${content}`;
+    const taskTip = this.isCapabilityOrActionTask(content)
+      ? `${CAPABILITY_TASK_IMPORT_TIP}\n`
+      : '';
+    return `${SYSTEM_PROMPT_IMPORT_TIP}\n${taskTip}${content}`;
+  }
+
+  /**
+   * 判断用户是否在询问或尝试调用 Agent / 系统能力。
+   * @keyword-en is-capability-or-action-task
+   */
+  private isCapabilityOrActionTask(content: string): boolean {
+    const normalized = content.trim().toLowerCase();
+    if (!normalized) return false;
+    return [
+      '你能干嘛',
+      '你能做什么',
+      '你会什么',
+      '你有什么能力',
+      '你有哪些能力',
+      '你可以做什么',
+      '你支持什么',
+      '帮我',
+      '给我',
+      '查一下',
+      '查询',
+      '搜索',
+      '创建',
+      '新建',
+      '修改',
+      '更新',
+      '删除',
+      '上传',
+      '下载',
+      '保存',
+      '读取',
+      '管理',
+      '授权',
+      '权限',
+      '用户',
+      '角色',
+      '组织',
+      '文件',
+      '资源',
+      '待办',
+      'todo',
+      'runner',
+      'solution',
+      'hook',
+      '知识库',
+      '会话',
+      '历史',
+      '手册',
+      '刚刚',
+      '刚才',
+      '上一条',
+      '上一个',
+      '那条数据',
+      '那个结果',
+      '这条数据',
+      '这个结果',
+      '前面那个',
+      '能干嘛',
+      '能做啥',
+      'what can you do',
+      'what are your capabilities',
+      'what can this agent do',
+      'what can the system do',
+      'your capabilities',
+      'capabilities',
+      'help me',
+      'can you',
+      'please create',
+      'please update',
+      'please delete',
+      'search',
+      'query',
+      'create',
+      'update',
+      'delete',
+      'upload',
+      'download',
+      'save',
+      'read',
+      'manage',
+      'permission',
+      'role',
+      'organization',
+      'file',
+      'resource',
+      'knowledge',
+      'manual',
+      'just now',
+      'previous result',
+      'last result',
+      'that data',
+      'that record',
+      'that item',
+      'the previous',
+    ].some((keyword) => normalized.includes(keyword));
   }
 
   /**

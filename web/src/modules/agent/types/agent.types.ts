@@ -17,6 +17,7 @@ import {
 } from '../enums/agent.enums';
 import type { ImSessionSummary } from '../../../api/im';
 import { z } from 'zod';
+import { resolveFixedEntryAvatarUrl } from '../constants/fixed-entry.constants';
 
 export interface ToolCall {
   id: string;
@@ -168,6 +169,10 @@ export interface Participant {
   name?: string;
 }
 
+/**
+ * 将 IM 会话摘要映射为 Agent 侧会话列表项。
+ * @keyword-en map-im-session-to-session-list-item
+ */
 export function mapImSessionToSessionListItem(
   s: ImSessionSummary,
   principal: { id?: string; displayName?: string },
@@ -210,6 +215,17 @@ export function mapImSessionToSessionListItem(
     threadType = 'group';
   }
 
+  const fixedAvatarUrl =
+    s.sessionId === 'azure-ai' || isAzureFixedPrivate
+      ? resolveFixedEntryAvatarUrl('azure-ai')
+      : s.sessionId === 'ai-notify' || isSystemFixedPrivate
+        ? resolveFixedEntryAvatarUrl('ai-notify')
+        : null;
+  const incomingAvatarUrl =
+    typeof s.avatarUrl === 'string' && s.avatarUrl.trim()
+      ? s.avatarUrl.trim()
+      : null;
+
   let title = s.name || null;
   if (s.type === 'private') {
     const nameTrimmed = title ? title.trim() : '';
@@ -242,13 +258,17 @@ export function mapImSessionToSessionListItem(
     isAiInvolved,
     unreadCount: typeof s.unreadCount === 'number' ? s.unreadCount : undefined,
     lastMessage: s.lastMessagePreview || undefined,
-    avatarUrl: s.avatarUrl,
+    avatarUrl: incomingAvatarUrl ?? fixedAvatarUrl,
     createdAt: s.createdAt,
     updatedAt: s.lastMessageAt || s.createdAt,
     members: memberIds,
   };
 }
 
+/**
+ * 批量映射并排序 IM 会话摘要。
+ * @keyword-en map-im-sessions-to-session-list-items
+ */
 export function mapImSessionsToSessionListItems(
   sessions: ImSessionSummary[],
   principal: { id?: string; displayName?: string },

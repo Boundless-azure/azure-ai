@@ -24,8 +24,17 @@ export function useTodos() {
   const current = ref<TodoItem | null>(null);
   const error = ref<string | null>(null);
 
-  // 待办列表
-  async function list(params?: { status?: string; followerId?: string; initiatorId?: string; q?: string }) {
+  /**
+   * 获取待办列表，支持会话绑定过滤。
+   * @keyword-en list-todos-session-filter
+   */
+  async function list(params?: {
+    sessionId?: string;
+    status?: string;
+    followerId?: string;
+    initiatorId?: string;
+    q?: string;
+  }) {
     loading.value = true;
     error.value = null;
     try {

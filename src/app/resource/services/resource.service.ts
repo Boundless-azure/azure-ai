@@ -15,6 +15,7 @@ import type {
   UploadResourceResponse,
   ChunkedUploadInitResponse,
   ChunkedUploadCommitResponse,
+  ResourceListItem,
 } from '../types/resource.types';
 
 type MulterDiskFile = {
@@ -358,12 +359,62 @@ export class ResourceService {
   // ==================== 简单上传 ====================
 
   /**
+   * 查询资源列表，可按聊天会话过滤。
+   * @keyword-en list-resources
+   */
+  async list(query: {
+    sessionId?: string;
+    category?: string;
+    q?: string;
+    limit?: number;
+  }): Promise<ResourceListItem[]> {
+    const limit = Math.min(Math.max(query.limit ?? 100, 1), 200);
+    const qb = this.repo
+      .createQueryBuilder('resource')
+      .where('resource.isDelete = :isDelete', { isDelete: false })
+      .andWhere('resource.active = :active', { active: true })
+      .orderBy('resource.createdAt', 'DESC')
+      .take(limit);
+
+    const sessionId = query.sessionId?.trim();
+    if (sessionId) {
+      qb.andWhere('resource.sessionId = :sessionId', { sessionId });
+    }
+    const category = query.category?.trim();
+    if (category) {
+      qb.andWhere('resource.category = :category', { category });
+    }
+    const q = query.q?.trim();
+    if (q) {
+      qb.andWhere('LOWER(resource.originalName) LIKE :q', {
+        q: `%${q.toLowerCase()}%`,
+      });
+    }
+
+    const rows = await qb.getMany();
+    return rows.map((item) => ({
+      id: item.id,
+      path: `/resources/${item.id}`,
+      originalName: item.originalName,
+      fileExt: item.fileExt,
+      mimeType: item.mimeType,
+      fileSize: item.fileSize,
+      category: item.category,
+      sessionId: item.sessionId,
+      uploaderId: item.uploaderId,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    }));
+  }
+
+  /**
    * 上传资源文件，使用SHA256做去重判断
    * @keyword-en upload-resource, sha256-dedup
    */
   async upload(
     file: MulterDiskFile,
     uploaderId: string | null,
+    sessionId?: string | null,
   ): Promise<UploadResourceResponse> {
     if (!file || typeof file.path !== 'string') {
       throw new BadRequestException('missing file');
@@ -398,6 +449,7 @@ export class ResourceService {
       const entity = this.repo.create({
         id,
         uploaderId,
+        sessionId: sessionId?.trim() || null,
         originalName: file.originalname || 'file',
         fileExt: fileExt || null,
         mimeType: file.mimetype || null,
@@ -440,6 +492,7 @@ export class ResourceService {
     const entity = this.repo.create({
       id,
       uploaderId,
+      sessionId: sessionId?.trim() || null,
       originalName: file.originalname || 'file',
       fileExt: fileExt || null,
       mimeType: file.mimetype || null,
@@ -475,6 +528,7 @@ export class ResourceService {
     md5: string,
     mimeType: string,
     uploaderId: string | null,
+    sessionId?: string | null,
   ): Promise<ChunkedUploadInitResponse> {
     this.ensureWithinLimit(fileSize, 500); // 分片上传最大500MB
 
@@ -499,6 +553,7 @@ export class ResourceService {
       const entity = this.repo.create({
         id,
         uploaderId,
+        sessionId: sessionId?.trim() || null,
         originalName: filename || 'file',
         fileExt: fileExt || null,
         mimeType: mimeType || null,
@@ -530,6 +585,7 @@ export class ResourceService {
     const entity = this.repo.create({
       id,
       uploaderId,
+      sessionId: sessionId?.trim() || null,
       originalName: filename || 'file',
       fileExt: fileExt || null,
       mimeType: mimeType || null,

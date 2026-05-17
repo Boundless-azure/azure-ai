@@ -25,9 +25,20 @@ import {
 } from '../modules/todo/types/todo.types';
 
 export const todoApi = {
-  // 待办列表
-  list: (params?: { status?: string; followerId?: string; initiatorId?: string; q?: string }) => {
-    const parsed = params ? ListTodoQuerySchema.safeParse(params) : { success: true, data: {} };
+  /**
+   * 查询待办列表，支持按会话过滤。
+   * @keyword-en list-todos-session-filter
+   */
+  list: (params?: {
+    sessionId?: string;
+    status?: string;
+    followerId?: string;
+    initiatorId?: string;
+    q?: string;
+  }) => {
+    const parsed = params
+      ? ListTodoQuerySchema.safeParse(params)
+      : { success: true, data: {} };
     if (!parsed.success) throw new Error('Invalid todo list query');
     return http.get<TodoItem[]>('/todo', parsed.data);
   },
@@ -35,14 +46,20 @@ export const todoApi = {
   // 获取待办详情
   get: (id: string) => http.get<TodoItem>(`/todo/${id}`),
 
-  // 创建待办
+  /**
+   * 创建待办，可写入会话绑定。
+   * @keyword-en create-todo-session-binding
+   */
   create: (data: CreateTodoRequest) => {
     const parsed = CreateTodoRequestSchema.safeParse(data);
     if (!parsed.success) throw new Error('Invalid create todo payload');
     return http.post<TodoItem>('/todo', parsed.data);
   },
 
-  // 更新待办
+  /**
+   * 更新待办，可绑定或解绑会话。
+   * @keyword-en update-todo-session-binding
+   */
   update: (id: string, data: UpdateTodoRequest) => {
     const parsed = UpdateTodoRequestSchema.safeParse(data);
     if (!parsed.success) throw new Error('Invalid update todo payload');

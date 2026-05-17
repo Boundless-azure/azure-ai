@@ -10,11 +10,16 @@ import { TodoStatus } from '../enums/todo.enums';
  */
 @Entity('todos')
 @Index(['initiatorId'])
+@Index(['sessionId'])
 @Index(['status'])
 export class TodoEntity extends BaseAuditedEntity {
   /** 发起人 ID（用户或系统主体） */
   @Column({ name: 'initiator_id', type: 'char', length: 36 })
   initiatorId!: string;
+
+  /** 关联聊天会话 ID；为空表示全局待办 */
+  @Column({ name: 'session_id', type: 'varchar', length: 100, nullable: true })
+  sessionId!: string | null;
 
   /** 待办名称 */
   @Column({ name: 'title', type: 'varchar', length: 255 })

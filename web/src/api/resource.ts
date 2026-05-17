@@ -6,7 +6,11 @@
  */
 
 import type { BaseResponse } from '../utils/types';
-import type { UploadResourceResponse } from '../modules/resource/types/resource.types';
+import type {
+  ResourceListItem,
+  UploadResourceResponse,
+} from '../modules/resource/types/resource.types';
+import { ResourceListQuerySchema } from '../modules/resource/types/resource.types';
 
 type UploadOptions = {
   onProgress?: (progress: {
@@ -15,6 +19,7 @@ type UploadOptions = {
     percent: number;
   }) => void;
   signal?: AbortSignal;
+  sessionId?: string;
 };
 
 const resolvedBase = (() => {
@@ -40,6 +45,27 @@ function createXhr(method: string, url: string): XMLHttpRequest {
     xhr.setRequestHeader('Authorization', `Bearer ${token}`);
   }
   return xhr;
+}
+
+/**
+ * 兼容资源接口的原始响应与统一 BaseResponse 响应。
+ * @keyword-en normalize-resource-api-response
+ */
+function asBaseResponse<T>(payload: unknown): BaseResponse<T> {
+  if (
+    payload !== null &&
+    typeof payload === 'object' &&
+    'data' in payload &&
+    'code' in payload
+  ) {
+    return payload as BaseResponse<T>;
+  }
+  return {
+    code: 200,
+    data: payload as T,
+    message: 'success',
+    timestamp: Date.now(),
+  };
 }
 
 // 分片大小 2MB
@@ -90,12 +116,31 @@ async function computeMd5Full(file: File): Promise<string> {
 }
 
 export const resourceApi = {
+  list: async (params?: {
+    sessionId?: string;
+    category?: string;
+    q?: string;
+    limit?: number;
+  }): Promise<BaseResponse<ResourceListItem[]>> => {
+    const parsed = ResourceListQuerySchema.parse(params ?? {});
+    const search = new URLSearchParams();
+    Object.entries(parsed).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) search.set(key, String(value));
+    });
+    const qs = search.toString();
+    const res = await fetch(`${resolvedBase}/resources${qs ? `?${qs}` : ''}`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+    });
+    return asBaseResponse<ResourceListItem[]>(await res.json());
+  },
+
   // ==================== 简单上传 ====================
   upload: (file: File, options?: UploadOptions): Promise<BaseResponse<UploadResourceResponse>> => {
     return new Promise((resolve, reject) => {
       const xhr = createXhr('POST', `${resolvedBase}/resources/upload`);
       const formData = new FormData();
       formData.append('file', file);
+      if (options?.sessionId) formData.append('sessionId', options.sessionId);
 
       xhr.upload.onprogress = (evt) => {
         options?.onProgress?.({
@@ -117,7 +162,7 @@ export const resourceApi = {
           reject(new Error(`HTTP ${xhr.status}`));
           return;
         }
-        resolve(xhr.response);
+        resolve(asBaseResponse<UploadResourceResponse>(xhr.response));
       };
       xhr.onabort = () => { cleanup(); reject(new Error('Upload aborted')); };
       xhr.send(formData);
@@ -130,6 +175,7 @@ export const resourceApi = {
       const xhr = createXhr('POST', `${resolvedBase}/resources/upload/multiple`);
       const formData = new FormData();
       files.forEach(file => formData.append('files', file));
+      if (options?.sessionId) formData.append('sessionId', options.sessionId);
 
       let loaded = 0;
       const total = files.reduce((sum, f) => sum + f.size, 0);
@@ -151,7 +197,7 @@ export const resourceApi = {
           reject(new Error(`HTTP ${xhr.status}`));
           return;
         }
-        resolve(xhr.response);
+        resolve(asBaseResponse<UploadResourceResponse[]>(xhr.response));
       };
       xhr.send(formData);
     });
@@ -164,6 +210,7 @@ export const resourceApi = {
     fileSize: number,
     md5: string,
     mimeType: string,
+    sessionId?: string,
   ): Promise<BaseResponse<ChunkedUploadInitResult>> => {
     const res = await fetch(`${resolvedBase}/resources/chunked/init`, {
       method: 'POST',
@@ -171,9 +218,9 @@ export const resourceApi = {
         'Content-Type': 'application/json',
         ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
       },
-      body: JSON.stringify({ filename, totalChunks, fileSize, md5, mimeType }),
+      body: JSON.stringify({ filename, totalChunks, fileSize, md5, mimeType, sessionId }),
     });
-    return res.json();
+    return asBaseResponse<ChunkedUploadInitResult>(await res.json());
   },
 
   // ==================== 上传单个分片 ====================
@@ -199,7 +246,7 @@ export const resourceApi = {
           reject(new Error(`HTTP ${xhr.status}`));
           return;
         }
-        resolve(xhr.response);
+        resolve(asBaseResponse<{ received: boolean }>(xhr.response));
       };
       xhr.send(formData);
     });
@@ -210,7 +257,7 @@ export const resourceApi = {
     const res = await fetch(`${resolvedBase}/resources/chunked/status/${uploadId}`, {
       headers: { Authorization: `Bearer ${getToken()}` ?? '' },
     });
-    return res.json();
+    return asBaseResponse<ChunkStatusResult>(await res.json());
   },
 
   // ==================== 完成分片上传 ====================
@@ -223,7 +270,7 @@ export const resourceApi = {
       },
       body: JSON.stringify({ uploadId }),
     });
-    return res.json();
+    return asBaseResponse<ChunkedUploadCommitResult>(await res.json());
   },
 
   // ==================== 取消分片上传 ====================
@@ -232,7 +279,7 @@ export const resourceApi = {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${getToken()}` ?? '' },
     });
-    return res.json();
+    return asBaseResponse<{ success: boolean }>(await res.json());
   },
 
   // ==================== 批量复制资源（粘贴） ====================
@@ -245,7 +292,14 @@ export const resourceApi = {
       },
       body: JSON.stringify({ resourceIds }),
     });
-    return res.json();
+    return asBaseResponse<{
+      items: Array<{
+        id: string;
+        originalId: string;
+        path: string;
+        name: string;
+      }>;
+    }>(await res.json());
   },
 
   // ==================== 智能分片上传（自动选择简单/分片） ====================
@@ -263,7 +317,7 @@ export const resourceApi = {
     const md5 = await computeMd5Full(file);
 
     // 1. 初始化
-    const initRes = await resourceApi.initChunkedUpload(file.name, totalChunks, file.size, md5, file.type || 'application/octet-stream');
+    const initRes = await resourceApi.initChunkedUpload(file.name, totalChunks, file.size, md5, file.type || 'application/octet-stream', options?.sessionId);
     const { uploadId, missingChunks, resumed } = initRes.data;
 
     // 2. 上传缺失分片

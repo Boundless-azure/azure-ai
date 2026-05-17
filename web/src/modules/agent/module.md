@@ -35,7 +35,8 @@ src/modules/agent/
 ├── config/
 │   └── tab.registry.ts            # 右侧面板 Tab 注册表
 ├── constants/
-│   └── agent.constants.ts         # 常量定义
+│   ├── agent.constants.ts         # 常量定义
+│   └── fixed-entry.constants.ts   # 固定入口默认头像路径
 ├── description/
 │   └── module.tip.ts              # 模块提示（开发用）
 ├── entities/
@@ -91,6 +92,18 @@ src/modules/agent/
 | `markNewMessage` | 标记新消息以触发进场动画 |
 | `handleAvatarClick` | 点击头像打开用户信息抽屉 |
 
+### components/chat/ChatContactAvatar.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `getSingleAvatarVisualClass` | 有图片头像时去掉旧兜底底色，仅无图片时使用类型色块 |
+
+### components/chat/ChatThreadList.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `getTranslateX` | 根据滑动状态计算 item 横向偏移；右侧操作区样式限制在 item 内容高度内 |
+
 ### hooks/useAgentChat.ts
 
 | 函数名 | 关键词描述 |
@@ -123,6 +136,12 @@ src/modules/agent/
 | `loadAgents` | 加载 Agent |
 | `mentionCandidates` | 获取 @ 提及候选 |
 
+### constants/fixed-entry.constants.ts
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `resolveFixedEntryAvatarUrl` | 解析 Azure AI 助手与系统通知固定入口默认头像路径 |
+
 ### components/AgentList.vue (Agent 角色分配入口)
 
 | 函数名 | 关键词描述 |
@@ -147,6 +166,40 @@ src/modules/agent/
 - `sidebar` - 侧边栏
 - `chat-panel` - 聊天面板
 - `right-panel` - 右侧面板
+
+### components/ChatTodos.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `loadTodos` | 从真实 Todo 接口按 sessionId 加载当前会话待办 |
+| `createTodo` | 在聊天待办抽屉中新建并绑定当前会话待办 |
+| `toggleCompleted` | 切换待办完成状态 |
+
+### components/ChatFiles.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `loadResources` | 按 sessionId 从 resources 表加载会话文件 |
+| `formatSize` | 格式化资源文件大小 |
+| `fileMeta` | 根据资源类型映射文件图标和配色 |
+
+### components/AgentWorkspace.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `toggleSidebarMenu` | 从聊天首页左上角菜单按钮切换后台菜单抽屉 |
+
+### components/chat/ChatHomeHeader.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `openMenu` | 点击左上角黑白菜单按钮，向外触发打开后台菜单 |
+
+### components/Sidebar.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `handleLogout` | 后台侧边栏退出登录，清理认证会话并返回登录页 |
 
 ### components/chat/InputArea.vue
 
@@ -186,3 +239,15 @@ src/modules/agent/
 | `contacts_close_profile` | `hash_contacts_close_profile_002` |
 | `contacts_add_member` | `hash_contacts_add_member_003` |
 | `contacts_remove_member` | `hash_contacts_remove_member_004` |
+| `resolveFixedEntryAvatarUrl` | `agent_fixed_entry_avatar_001` |
+| `handleLogout` | `agent_sidebar_logout_001` |
+| `getSingleAvatarVisualClass` | `chat_contact_avatar_visual_001` |
+| `getTranslateX` | `chat_thread_translate_001` |
+| `openMenu` | `chat_home_header_open_menu_001` |
+| `toggleSidebarMenu` | `agent_workspace_sidebar_menu_001` |
+| `loadTodos` | `chat_todos_load_001` |
+| `createTodo` | `chat_todos_create_002` |
+| `toggleCompleted` | `chat_todos_toggle_003` |
+| `loadResources` | `chat_files_load_resources_001` |
+| `formatSize` | `chat_files_format_size_002` |
+| `fileMeta` | `chat_files_meta_003` |

@@ -74,6 +74,8 @@ import { useImStore } from '../../../im/im.module';
 import { ChatRole } from '../../enums/agent.enums';
 import type { Attachment, ChatMessage } from '../../types/agent.types';
 import { useUIStore } from '../../store/ui.store';
+import { resourceApi } from '../../../../api/resource';
+import { resolveResourceUrl } from '../../../../utils/http';
 
 const props = defineProps<{
   selfPrincipalId?: string;
@@ -422,7 +424,7 @@ const extractMentions = (text: string): string[] => {
   return Array.from(new Set(out.map((s) => s.toLowerCase())));
 };
 
-const sendMessage = (payload: {
+const sendMessage = async (payload: {
   text: string;
   attachments: Attachment[];
 }) => {
@@ -468,11 +470,6 @@ const sendMessage = (payload: {
     }
   }
 
-  const attachmentsMd = attachments
-    .map((f, i) => `![attachment-${i + 1}](${f.preview})`)
-    .join('\n\n');
-  const combinedContent = attachmentsMd ? `${text}\n\n${attachmentsMd}` : text;
-
   const principalId = getPrincipalId();
   if (!principalId) return;
 
@@ -490,15 +487,58 @@ const sendMessage = (payload: {
   }
 
   const sessionId = sessionIds[0];
+  const uploadedAttachments: Array<{
+    type: string;
+    url: string;
+    name?: string;
+    size?: number;
+  }> = [];
+  const attachmentMarkdown: string[] = [];
+
+  if (attachments.length > 0) {
+    try {
+      for (const item of attachments) {
+        const res = await resourceApi.smartUpload(item.file, { sessionId });
+        const path = res.data.path;
+        const url = resolveResourceUrl(path) || path;
+        const type = item.file.type.startsWith('image/') ? 'image' : 'file';
+        uploadedAttachments.push({
+          type,
+          url: path,
+          name: item.file.name,
+          size: item.file.size,
+        });
+        attachmentMarkdown.push(
+          type === 'image'
+            ? `![${item.file.name}](${url})`
+            : `[${item.file.name}](${url})`,
+        );
+      }
+    } catch {
+      ui.showToast('附件上传失败', 'error');
+      return;
+    }
+  }
+
+  const attachmentsMd = attachmentMarkdown.join('\n\n');
+  const combinedContent = attachmentsMd
+    ? text.trim()
+      ? `${text}\n\n${attachmentsMd}`
+      : attachmentsMd
+    : text;
 
   // 水容发送：立即展示 temp 消息动画，接口异步处理，输入框不锁定
   // 强制 pin + 清零未读, 实际滚动由 ResizeObserver / watch(length) 在 temp 插入后触发
   isPinnedToBottom.value = true;
   unreadNewCount.value = 0;
 
-  void imStore.sendMessageOptimistic(sessionId, combinedContent).catch(() => {
-    ui.showToast('发送失败', 'error');
-  });
+  void imStore
+    .sendMessageOptimistic(sessionId, combinedContent, {
+      attachments: uploadedAttachments.length ? uploadedAttachments : undefined,
+    })
+    .catch(() => {
+      ui.showToast('发送失败', 'error');
+    });
 
   // 兜底滚到底 :: temp 插入是异步的 (ensureSelfIsMember + mergeMessagesIncremental 各 await)
   // 50ms / 200ms / 500ms 三次兜底, 覆盖快速 / 中速 / 慢速 (markdown 渲染) 场景

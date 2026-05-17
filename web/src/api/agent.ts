@@ -433,6 +433,7 @@ export const agentApi = {
     data: {
       displayName?: string;
       email?: string;
+      password?: string;
       phone?: string | null;
       avatarUrl?: string | null;
       active?: boolean;

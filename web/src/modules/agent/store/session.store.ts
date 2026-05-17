@@ -10,6 +10,7 @@ import { computed, ref } from 'vue';
 import type { SessionListItem } from '../types/agent.types';
 import { useImStore } from '../../im/im.module';
 import type { ImSessionSummary } from '../../../api/im';
+import { resolveFixedEntryAvatarUrl } from '../constants/fixed-entry.constants';
 
 export const useAgentSessionStore = defineStore('agent_sessions', () => {
   const realtimePrincipalId = ref<string | null>(null);
@@ -111,6 +112,13 @@ export const useAgentSessionStore = defineStore('agent_sessions', () => {
       threadType = 'group';
     }
 
+    const fixedAvatarUrl =
+      s.sessionId === 'azure-ai' || isAzureFixedPrivate
+        ? resolveFixedEntryAvatarUrl('azure-ai')
+        : s.sessionId === 'ai-notify' || isSystemFixedPrivate
+          ? resolveFixedEntryAvatarUrl('ai-notify')
+          : null;
+
     let title = s.name || null;
     if (s.type === 'private') {
       const nameTrimmed = title ? title.trim() : '';
@@ -143,7 +151,7 @@ export const useAgentSessionStore = defineStore('agent_sessions', () => {
       isAiInvolved,
       unreadCount: typeof s.unreadCount === 'number' ? s.unreadCount : 0,
       lastMessage: s.lastMessagePreview || undefined,
-      avatarUrl: mergeAvatarUrl(s.avatarUrl, null),
+      avatarUrl: mergeAvatarUrl(s.avatarUrl, fixedAvatarUrl),
       createdAt: s.createdAt,
       updatedAt: s.lastMessageAt || s.createdAt,
       members: nextMembers ?? [],

@@ -30,6 +30,7 @@ export interface CreateUserDto {
 export interface UpdateUserDto {
   displayName?: string;
   email?: string;
+  password?: string;
   phone?: string | null;
   avatarUrl?: string | null;
   active?: boolean;

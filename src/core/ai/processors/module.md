@@ -9,7 +9,7 @@
   - keywords: processor-interface, chunk-context
 - `utils.ts` — 共享字段提取工具 (extractReasoning / extractRawDelta / yieldContentText)
   - keywords: field-extract, raw-response, content-text
-- `default.processor.ts` — 标准 LangChain 字段映射, 覆盖 OpenAI/Azure/Anthropic/Gemini/Google/Custom
+- `default.processor.ts` — 标准 LangChain 字段映射, 覆盖 OpenAI/Azure/Anthropic/Gemini/Google/Kimi/Custom
   - keywords: default-processor, standard-mapping, baseline
 - `reasoning.processor.ts` — reasoning_content 严格按 reasoning yield, 覆盖 DeepSeek-R1 / NVIDIA NIM
   - keywords: reasoning-processor, thinking-separated, deepseek-r1, nim

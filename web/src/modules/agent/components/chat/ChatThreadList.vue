@@ -16,12 +16,14 @@
     <div
       v-for="thread in displayThreads"
       :key="thread.id"
-      class="relative overflow-hidden border-b border-gray-100 cursor-pointer group select-none touch-pan-y"
+      class="relative isolate overflow-hidden bg-white cursor-pointer group select-none touch-pan-y"
       @mousedown="(e) => onDragStart(e, thread)"
       @touchstart="(e) => onDragStart(e, thread)"
       @click="onItemClick(thread)"
     >
-      <div class="absolute inset-y-0 right-0 flex">
+      <div
+        class="absolute top-px right-px bottom-px z-0 flex overflow-hidden"
+      >
         <button
           @click.stop="
             $emit('toggle-pin', thread);
@@ -31,7 +33,7 @@
             thread.id.startsWith('fixed:') ||
             ['assistant', 'system'].includes(thread.threadType)
           "
-          class="w-[70px] h-full bg-gray-200 hover:bg-gray-300 text-gray-700 flex flex-col items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          class="w-[70px] h-full appearance-none border-0 outline-none bg-gray-200 hover:bg-gray-300 text-gray-700 flex flex-col items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <i
             :class="
@@ -50,16 +52,16 @@
             $emit('delete', thread);
             activeId = null;
           "
-          class="w-[70px] h-full bg-red-500 hover:bg-red-600 text-white flex flex-col items-center justify-center transition-colors"
+          class="w-[70px] h-full appearance-none border-0 outline-none bg-red-500 hover:bg-red-600 text-white flex flex-col items-center justify-center transition-colors"
         >
           <i class="fa-solid fa-trash mb-1"></i>
           <span class="text-xs">{{ t('common.delete') }}</span>
         </button>
       </div>
       <div
-        class="relative"
+        class="relative z-10 w-full border-b border-gray-100"
         :class="[
-          thread.isPinned ? 'bg-gray-50' : 'bg-white',
+          thread.isPinned && !thread.isFixedEntry ? 'bg-gray-50' : 'bg-white',
           'group-hover:bg-gray-50',
         ]"
         :style="{
@@ -122,6 +124,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { SessionListItem } from '../../types/agent.types';
 import { useI18n } from '../../composables/useI18n';
 import ChatContactAvatar from './ChatContactAvatar.vue';
+import { resolveFixedEntryAvatarUrl } from '../../constants/fixed-entry.constants';
 
 interface Props {
   emptyText: string;
@@ -274,6 +277,10 @@ function onDragEnd(event: Event) {
   }
 }
 
+/**
+ * 根据当前滑动状态计算会话项横向偏移。
+ * @keyword-en get-translate-x
+ */
 function getTranslateX(thread: SessionListItem) {
   if (swipingId.value === thread.id) {
     return swipeOffset.value;
@@ -400,6 +407,7 @@ const displayThreads = computed<SessionListItem[]>(() => {
         isPinned: true,
         isAiInvolved: true,
         lastMessage: t('chat.emptyState'),
+        avatarUrl: resolveFixedEntryAvatarUrl('azure-ai'),
         createdAt: nowIso,
         updatedAt: nowIso,
       };
@@ -418,6 +426,7 @@ const displayThreads = computed<SessionListItem[]>(() => {
         isPinned: true,
         isAiInvolved: false,
         lastMessage: '',
+        avatarUrl: resolveFixedEntryAvatarUrl('ai-notify'),
         createdAt: nowIso,
         updatedAt: nowIso,
       };

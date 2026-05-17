@@ -22,6 +22,26 @@ export interface UploadResourceResponse {
 }
 
 /**
+ * @title 资源列表项
+ * @description 文件列表抽屉读取 resources 表时使用的轻量资源元信息。
+ * @keywords-cn 资源列表, 会话文件, resources表
+ * @keywords-en resource-list-item, session-files, resources-table
+ */
+export interface ResourceListItem {
+  id: string;
+  path: string;
+  originalName: string;
+  fileExt: string | null;
+  mimeType: string | null;
+  fileSize: string;
+  category: string;
+  sessionId: string | null;
+  uploaderId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
  * @title 分片上传初始化响应
  * @description 初始化分片上传后返回：上传ID、是否恢复上传、缺失分片列表。
  * @keywords-cn 分片上传, 初始化, 断点续传, 缺失分片
@@ -76,6 +96,10 @@ export class InitChunkedUploadDto {
   @IsOptional()
   @IsString()
   mimeType?: string;
+
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
 }
 
 /**

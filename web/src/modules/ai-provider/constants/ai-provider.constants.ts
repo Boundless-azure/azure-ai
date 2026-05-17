@@ -10,6 +10,7 @@ export const AI_PROVIDER_OPTIONS = [
   { value: 'google', label: 'Google' },
   { value: 'gemini', label: 'Gemini' },
   { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'kimi', label: 'Kimi' },
   { value: 'nvidia', label: 'NVIDIA' },
   { value: 'azure_openai', label: 'Azure OpenAI' },
   { value: 'custom', label: '自定义' },
@@ -50,6 +51,15 @@ export const PROVIDER_MODEL_CATALOG: Record<string, string[]> = {
   google: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'],
   gemini: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+  kimi: [
+    'kimi-k2.6',
+    'kimi-k2.5',
+    'kimi-k2-thinking',
+    'kimi-k2-thinking-turbo',
+    'moonshot-v1-8k',
+    'moonshot-v1-32k',
+    'moonshot-v1-128k',
+  ],
   // NVIDIA NIM (build.nvidia.com) :: OpenAI 兼容协议, thinking 走 chat_template_kwargs.enable_thinking
   //  - reasoning 模型 (qwen3 / qwq / deepseek-r1) 默认带 thinking, 通过开关可关
   //  - 普通 chat 模型 thinking 字段被服务端忽略, 不影响行为
@@ -83,4 +93,10 @@ export const PROVIDER_MODEL_CATALOG: Record<string, string[]> = {
     'google/gemma-2-27b-it',
   ],
   azure_openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-35-turbo'],
+};
+
+export const PROVIDER_DEFAULT_BASE_URLS: Record<string, string> = {
+  deepseek: 'https://api.deepseek.com',
+  kimi: 'https://api.moonshot.cn/v1',
+  nvidia: 'https://integrate.api.nvidia.com/v1',
 };

@@ -83,13 +83,55 @@ export class TodoService {
     // 校验通过返原 payload, 否则抛 DataPermissionError (含 errorMsg)
     await this.dataPermission.applyTo(QueryTodoDto, query, ctx);
 
-    const where: Record<string, unknown> = { isDelete: false };
-    if (query.status) where['status'] = query.status;
-    if (query.initiatorId) where['initiatorId'] = query.initiatorId;
-    if (query.followerId) where['followerIds'] = query.followerId;
-    if (query.q) where['title'] = query.q;
+    const qb = this.todoRepo
+      .createQueryBuilder('todo')
+      .where('todo.isDelete = :isDelete', { isDelete: false })
+      .orderBy('todo.createdAt', 'DESC');
 
-    return await this.todoRepo.find({ where, order: { createdAt: 'DESC' } });
+    if (query.status)
+      qb.andWhere('todo.status = :status', { status: query.status });
+    const sessionId = query.sessionId?.trim();
+    if (sessionId) {
+      qb.andWhere('todo.sessionId = :sessionId', {
+        sessionId,
+      });
+    }
+
+    /**
+     * 生成 followerIds JSON 数组的 PostgreSQL 文本匹配条件。
+     * @keyword-en todo-follower-json-condition
+     */
+    const jsonContainsPrincipal = () =>
+      'todo.followerids::text LIKE :followerText';
+    const followerText = (principalId: string) => `%"${principalId}"%`;
+
+    if (query.initiatorId) {
+      qb.andWhere('todo.initiatorId = :initiatorId', {
+        initiatorId: query.initiatorId,
+      });
+    }
+    if (query.followerId) {
+      qb.andWhere(jsonContainsPrincipal(), {
+        followerText: followerText(query.followerId),
+      });
+    }
+    if (!query.initiatorId && !query.followerId && principal?.id) {
+      qb.andWhere(
+        `(todo.initiatorId = :principalId OR ${jsonContainsPrincipal()})`,
+        {
+          principalId: principal.id,
+          followerText: followerText(principal.id),
+        },
+      );
+    }
+    if (query.q) {
+      qb.andWhere(
+        '(LOWER(todo.title) LIKE :q OR LOWER(COALESCE(todo.content, \'\')) LIKE :q)',
+        { q: `%${query.q.toLowerCase()}%` },
+      );
+    }
+
+    return await qb.getMany();
   }
 
   /**
@@ -111,6 +153,7 @@ export class TodoService {
 
     const payload: DeepPartial<TodoEntity> = {
       initiatorId: dto.initiatorId,
+      sessionId: dto.sessionId?.trim() || null,
       title: dto.title,
       description: dto.description ?? null,
       content: dto.content ?? null,
@@ -135,6 +178,9 @@ export class TodoService {
     await this.dataPermission.applyTo(UpdateTodoDto, dto, ctx);
 
     const entity = await this.todoRepo.findOneOrFail({ where: { id } });
+    if (dto.sessionId !== undefined) {
+      entity.sessionId = dto.sessionId?.trim() || null;
+    }
     if (dto.title !== undefined) entity.title = dto.title;
     if (dto.description !== undefined) entity.description = dto.description;
     if (dto.content !== undefined) entity.content = dto.content;

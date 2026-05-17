@@ -4,6 +4,9 @@
 - 提供默认对话层。
 - 根据Agent配置的 aiModelIds 选择模型。
 - 当未配置模型ID时返回明确错误信息。
+- 默认 Agent 定义提示词已改为英文，以提高模型对系统提示与工具约束的命中稳定性。
+- 用户询问 Agent / 系统能力范围，或要求使用平台能力执行动作时，提示词要求先读取 sessionData / handbook / knowledge 后再回答或调用，避免编造能力清单与调用路径。
+- 执行业务 hook 前先查 callHistory 复用近期成功调用；无命中时能力/动作发现顺序为 handbook -> sessionData -> knowledge -> hook。用户引用“刚刚那条数据”等上一轮工具结果时必须先查 callHistory。
 
 文件清单（File List）
 - agents/azure-ai/agent.desc.ts

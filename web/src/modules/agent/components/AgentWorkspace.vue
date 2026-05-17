@@ -14,9 +14,9 @@
     >
       <!-- Mobile Sidebar Toggle (Visible when Left Panel is active) -->
       <button
-        v-if="showLeftPanel"
+        v-if="showLeftPanel && activeView !== 'chat'"
         @click="isMobileSidebarOpen = true"
-        class="md:hidden absolute top-3 left-3 z-30 w-9 h-9 bg-white/10 backdrop-blur-md rounded-lg border border-white/20 flex items-center justify-center text-white hover:bg-white/20 transition-colors shadow-sm"
+        class="md:hidden absolute top-3 left-3 z-30 w-9 h-9 bg-black text-white rounded-xl ring-1 ring-black/5 flex items-center justify-center active:scale-95 transition-transform shadow-sm"
       >
         <i class="fa-solid fa-bars"></i>
       </button>
@@ -53,6 +53,7 @@
               v-if="activeView === 'chat'"
               key="chat"
               class="w-full h-full"
+              @openMenu="toggleSidebarMenu"
             />
             <MorePanel
               v-else-if="activeView === 'more'"
@@ -165,8 +166,8 @@ const { t } = useI18n();
 const handleSidebarChange = (view: string) => {
   activeView.value = view;
 
-  // Close mobile sidebar on selection
-  if (window.innerWidth < 768) {
+  // Close overlay sidebar on selection
+  if (isMobileSidebarOpen.value) {
     isMobileSidebarOpen.value = false;
   }
 
@@ -192,6 +193,15 @@ const toggleMobileView = () => {
   if (showLeftPanel.value && !['chat', 'more'].includes(activeView.value)) {
     isMobileSidebarOpen.value = true;
   }
+};
+
+/**
+ * 切换左侧后台菜单抽屉。
+ * @keyword-en toggle-sidebar-menu
+ */
+const toggleSidebarMenu = () => {
+  showLeftPanel.value = true;
+  isMobileSidebarOpen.value = !isMobileSidebarOpen.value;
 };
 
 // Optional: Watch activeView to ensure correct panel visibility on resize or external changes

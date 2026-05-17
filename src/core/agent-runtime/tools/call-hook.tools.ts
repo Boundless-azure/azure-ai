@@ -209,8 +209,11 @@ async function dispatchSaasHook(
     if (regs.length === 0) {
       return softError(
         `hook-not-found:${input.hookName} :: This hook is not registered on saas. ` +
-          'Correction order: call get_hook_tag or search_hook to read the real registered hook list, ' +
-          'then call get_hook_info for the exact hook schema. Do not guess hook names.',
+          'Correction order: first call saas.app.conversation.callHistory.query with payload [{}] ' +
+          'to reuse recent successful hook names/payloads. If a matching title exists, fetch detail with ' +
+          '[{ id:"<matched-id>", includeDetail:true }]. If no usable history exists, inspect handbook via ' +
+          'sessionData.list/get, then knowledge getToc/getChapter, and only then search_hook/get_hook_info. ' +
+          'Do not guess hook names.',
       );
     }
     // debug 通过 context.extras.debug 透传给 invoker, 启 OTel sandbox; 不污染原 ctx
@@ -468,7 +471,8 @@ export function buildCallHookTool(
         '每个 payload 必须是数组: 单参 [input], 多参 [arg1,arg2], 无参 []。' +
         `批量上限 ${CALL_HOOK_BATCH_LIMIT}, 并发派发, 返回 { results: [{ hookName, errorMsg, result, debugLog }, ...] } 顺序与 calls 对齐。` +
         '某项 errorMsg 非空 = 该项软错, 不影响其他项; 据此调整重试。' +
-        '【强约束】若 payload schema 未在已加载知识章节中看到, 调用前必须先 get_hook_info(hookNames=[...]) 拿到 JSON Schema 再写 payload。凭名字猜字段会软错回退、浪费一轮。',
+        '【强约束】执行业务 hook 前先复用 callHistory 中的近期成功调用; 若无可用历史, 再按 handbook -> sessionData -> knowledge -> hook schema 确认。' +
+        '若 payload schema 未在历史/手册/知识中看到, 调用前必须先 get_hook_info(hookNames=[...]) 拿到 JSON Schema 再写 payload。凭名字猜字段会软错回退、浪费一轮。',
       schema: callHookSchema,
     },
   );

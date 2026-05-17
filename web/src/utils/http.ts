@@ -186,19 +186,30 @@ export const http = new HttpClient(resolvedBase);
 /**
  * @title HTTP Status Handler
  * @description Handles HTTP status codes centrally.
+ * @keywords-cn HTTP状态处理, 鉴权跳转, 权限提示
+ * @keywords-en http-status-handler, auth-redirect, permission-toast
  */
 export class HttpStatusHandler {
   private handlers: Map<number, (response: Response) => void> = new Map();
 
+  /**
+   * @description 初始化默认 HTTP 状态处理器。
+   * @keyword-en setup-default-handlers
+   */
   constructor() {
     this.setupDefaultHandlers();
   }
 
+  /**
+   * @description 注册 401/403 的全局处理；登录页 401 只清理会话，不刷新当前页面。
+   * @keyword-en http-default-status-handlers
+   */
   private setupDefaultHandlers() {
     this.register(401, () => {
       localStorage.removeItem('token');
       localStorage.removeItem('principal');
       localStorage.removeItem('abilityRules');
+      if (window.location.pathname.includes('/login')) return;
       window.location.href = '/login';
     });
     this.register(403, () => {
@@ -207,10 +218,18 @@ export class HttpStatusHandler {
     });
   }
 
+  /**
+   * @description 注册指定状态码处理函数。
+   * @keyword-en register-status-handler
+   */
   public register(status: number, handler: (response: Response) => void) {
     this.handlers.set(status, handler);
   }
 
+  /**
+   * @description 按响应状态码触发已注册处理器。
+   * @keyword-en handle-http-status
+   */
   public handle(response: Response) {
     const handler = this.handlers.get(response.status);
     if (handler) {

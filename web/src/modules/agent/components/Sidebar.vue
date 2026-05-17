@@ -183,6 +183,34 @@
           </p>
         </div>
       </div>
+
+      <!-- Logout Action -->
+      <button
+        type="button"
+        class="group relative flex items-center cursor-pointer transition-all duration-300 border border-transparent"
+        :class="[
+          isExpanded
+            ? 'h-11 pl-4 pr-4 rounded-lg w-full justify-start text-gray-400 hover:text-white hover:bg-gray-800 hover:border-gray-700'
+            : 'w-10 h-10 rounded-xl justify-center text-gray-400 hover:text-white hover:bg-gray-800',
+        ]"
+        :title="t('sidebar.logout')"
+        @click="handleLogout"
+      >
+        <i
+          class="fa-solid fa-right-from-bracket text-lg flex-shrink-0"
+          :class="{ 'mr-4 w-6 text-center': isExpanded }"
+        ></i>
+        <span
+          class="font-medium text-sm whitespace-nowrap transition-all duration-300"
+          :class="
+            isExpanded
+              ? 'opacity-100 translate-x-0 w-auto'
+              : 'opacity-0 -translate-x-4 w-0 absolute'
+          "
+        >
+          {{ t('sidebar.logout') }}
+        </span>
+      </button>
     </div>
 
     <!-- Language Modal -->
@@ -212,6 +240,7 @@ import { useI18n } from '../composables/useI18n';
 import LanguageModal from './LanguageModal.vue';
 import { useAgentSessionStore } from '../store/session.store';
 import { useAuthStore } from '../../auth/store/auth.store';
+import { useAuth } from '../../auth/hooks/useAuth';
 import { resolveResourceUrl } from '../../../utils/http';
 import AccountProfileModal from './AccountProfileModal.vue';
 import { useRightPanelStore } from '../store/right-panel.store';
@@ -305,6 +334,16 @@ const emitChange = (view: string) => {
 const handleLanguageConfirm = (locale: string) => {
   setLocale(locale as 'en' | 'cn');
   showLanguageModal.value = false;
+};
+
+const { logout } = useAuth();
+
+/**
+ * 执行后台退出登录并返回登录页。
+ * @keyword-en handle-logout
+ */
+const handleLogout = () => {
+  logout();
 };
 </script>
 

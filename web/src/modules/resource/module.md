@@ -2,7 +2,7 @@
 
 ## 功能描述
 
-Resource module provides unified upload hook with progress, chunked upload, resume support, drag-drop and multi-file upload for reuse across modules.
+Resource module provides unified upload hook with progress, chunked upload, resume support, drag-drop and multi-file upload for reuse across modules. Resources can be optionally linked to an IM session via `sessionId`, and chat file drawers read from the resources table.
 
 ## 目录结构
 
@@ -35,6 +35,8 @@ src/modules/resource/
 
 | 函数名 | 关键词描述 |
 |--------|-----------|
+| `asBaseResponse` | 兼容资源接口原始响应与统一包装响应 |
+| `list` | 查询 resources 表资源列表，支持 sessionId 过滤 |
 | `upload` | 基础上传 |
 | `uploadMultiple` | 多文件上传 |
 | `smartUpload` | 智能上传（自动选择方式） |
@@ -54,7 +56,9 @@ src/modules/resource/
 
 | 函数 | Hash |
 |------|------|
+| `resourceApi_asBaseResponse` | `web_res_api_normalize_014` |
 | `resourceApi_upload` | `web_res_api_upload_001` |
+| `resourceApi_list` | `web_res_api_list_013` |
 | `resourceApi_uploadMultiple` | `web_res_api_upload_multiple_002` |
 | `resourceApi_smartUpload` | `web_res_api_smart_upload_003` |
 | `resourceApi_initChunkedUpload` | `web_res_api_chunked_init_004` |

@@ -62,6 +62,10 @@ const onRbacUserUpdateInput = z.object({
     .string()
     .optional()
     .describe('改邮箱会同步 users 表, 仍受全局唯一约束'),
+  password: z
+    .string()
+    .optional()
+    .describe('新明文密码; 留空不修改密码, 非空会重新 scrypt 加盐'),
   phone: z.string().nullable().optional(),
   avatarUrl: z.string().nullable().optional(),
   active: z.boolean().optional().describe('启停; 不会软删主体'),
@@ -111,7 +115,7 @@ export class UsersController {
   @HookRoute({
     hook: 'saas.app.identity.userUpdate',
     description:
-      'RBAC 用户更新 :: 改 email/avatar 会同步 users 表; 此 hook 不改密码 (改密走专用流程)',
+      'RBAC 用户更新 :: 改 email/avatar 会同步 users 表; password 非空时会重置登录密码',
     args: [idParamInput.shape.id, onRbacUserUpdateInput],
   })
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto) {

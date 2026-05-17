@@ -80,6 +80,7 @@ src/modules/identity/
 主要区域：
 - `user-list` - 用户列表
 - `user-avatar-edit` - 用户头像编辑
+- `user-password-edit` - 新增用户设置密码，编辑用户可留空或重置密码
 
 ### components/RolePermissionAssign.vue
 
@@ -100,6 +101,7 @@ src/modules/identity/
 | `usePrincipals_listUsers` | `web_id_hook_principals_list_users_020` |
 | `usePrincipals_create` | `web_id_hook_principals_create_002` |
 | `usePrincipals_update` | `web_id_hook_principals_update_003` |
+| `UserManagement_handleSubmit` | `web_id_user_mgmt_submit_025` |
 | `usePrincipals_remove` | `web_id_hook_principals_remove_004` |
 | `useOrganizations_list` | `web_id_hook_org_list_005` |
 | `useOrganizations_create` | `web_id_hook_org_create_006` |

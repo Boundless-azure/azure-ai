@@ -288,7 +288,12 @@ export class PrincipalService {
     });
   }
 
+  /**
+   * @description 更新用户主体与登录资料；password 非空时重置登录密码。
+   * @keyword-en update-user-profile-and-password
+   */
   async updateUser(id: string, dto: UpdateUserDto): Promise<void> {
+    const nextPassword = this.normalizePassword(dto.password);
     if (this.useMongo()) {
       const col = this.principalCollection();
       const userCol = this.userCollection();
@@ -297,17 +302,22 @@ export class PrincipalService {
       }
 
       let nextEmail: string | undefined;
-      if (dto.email !== undefined) {
-        const current = await userCol.findOne({
+      let currentUserDoc: Record<string, unknown> | null = null;
+      if (dto.email !== undefined || nextPassword !== null) {
+        currentUserDoc = await userCol.findOne({
           principalId: id,
           isDelete: { $ne: true },
         });
-        if (!current) {
+        if (!currentUserDoc) {
           throw new NotFoundException('user not found');
         }
+      }
+      if (dto.email !== undefined) {
         const incoming = dto.email.trim();
         const currentEmail =
-          typeof current['email'] === 'string' ? current['email'] : '';
+          typeof currentUserDoc?.['email'] === 'string'
+            ? currentUserDoc['email']
+            : '';
 
         if (incoming && incoming !== currentEmail) {
           const existed = await userCol.findOne({
@@ -333,10 +343,19 @@ export class PrincipalService {
         await col.updateOne({ _id: id }, { $set: principalPatch });
       }
 
-      if (nextEmail !== undefined || dto.avatarUrl !== undefined) {
+      if (
+        nextEmail !== undefined ||
+        dto.avatarUrl !== undefined ||
+        nextPassword !== null
+      ) {
         const userPatch: Record<string, unknown> = { updatedAt: new Date() };
         if (nextEmail !== undefined) userPatch['email'] = nextEmail;
         if (dto.avatarUrl !== undefined) userPatch['avatarUrl'] = dto.avatarUrl;
+        if (nextPassword !== null) {
+          const salt = this.generateSalt();
+          userPatch['passwordSalt'] = salt;
+          userPatch['passwordHash'] = this.hashPassword(nextPassword, salt);
+        }
         await userCol.updateOne({ principalId: id }, { $set: userPatch });
       }
       return;
@@ -376,6 +395,11 @@ export class PrincipalService {
       const userPatch: Partial<UserEntity> = {};
       if (nextEmail !== undefined) userPatch.email = nextEmail;
       if (dto.avatarUrl !== undefined) userPatch.avatarUrl = dto.avatarUrl;
+      if (nextPassword !== null) {
+        const salt = this.generateSalt();
+        userPatch.passwordSalt = salt;
+        userPatch.passwordHash = this.hashPassword(nextPassword, salt);
+      }
       if (Object.keys(userPatch).length) {
         await userRepo.update({ principalId: id }, userPatch);
       }
@@ -456,16 +480,28 @@ export class PrincipalService {
     return (process.env.MONGO_ENABLED ?? 'false') === 'true' && !!this.mongoDb;
   }
 
+  /**
+   * @description 规范化可选密码；空字符串视为不修改/不设置。
+   * @keyword-en normalize-password
+   */
   private normalizePassword(value?: string): string | null {
     if (typeof value !== 'string') return null;
     const v = value.trim();
     return v ? v : null;
   }
 
+  /**
+   * @description 生成密码盐值。
+   * @keyword-en generate-password-salt
+   */
   private generateSalt(): string {
     return randomBytes(16).toString('hex');
   }
 
+  /**
+   * @description 使用 scrypt 计算密码哈希。
+   * @keyword-en hash-password
+   */
   private hashPassword(password: string, salt: string): string {
     return scryptSync(password, salt, 32).toString('hex');
   }

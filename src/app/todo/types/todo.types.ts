@@ -7,13 +7,17 @@ import {
 
 /**
  * @title 待办创建请求
- * @description 创建待办事项所需的字段, 含数据权限节点声明 (新范式: 静态方法 = handler)。
+ * @description 创建待办事项所需的字段，支持可选绑定聊天会话，含数据权限节点声明 (新范式: 静态方法 = handler)。
  * @keywords-cn 待办创建, DTO, 数据权限节点
  * @keywords-en todo-create, dto, data-permission-node
  */
 export class CreateTodoDto {
   @IsString()
   initiatorId!: string;
+
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
 
   @IsString()
   title!: string;
@@ -61,11 +65,15 @@ export class CreateTodoDto {
 
 /**
  * @title 待办更新请求
- * @description 更新待办名称、描述、内容、跟进人、状态等。
+ * @description 更新待办名称、描述、内容、跟进人、状态以及可选会话绑定。
  * @keywords-cn 待办更新, 状态, 跟进人
  * @keywords-en todo-update, status, follower
  */
 export class UpdateTodoDto {
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
+
   @IsOptional()
   @IsString()
   title?: string;
@@ -110,11 +118,15 @@ export class UpdateTodoDto {
 
 /**
  * @title 待办查询参数
- * @description 支持按状态、跟进人ID过滤。
+ * @description 支持按会话、状态、跟进人ID过滤。
  * @keywords-cn 待办查询, 过滤, 状态
  * @keywords-en todo-query, filter, status
  */
 export class QueryTodoDto {
+  @IsOptional()
+  @IsString()
+  sessionId?: string;
+
   @IsOptional()
   @IsEnum(TodoStatus)
   status?: TodoStatus;

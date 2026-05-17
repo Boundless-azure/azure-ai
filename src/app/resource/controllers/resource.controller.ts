@@ -6,6 +6,7 @@ import {
   Post,
   Delete,
   Body,
+  Query,
   Req,
   Res,
   UseInterceptors,
@@ -29,6 +30,7 @@ import type {
   ChunkStatusResponse,
   BatchDuplicateRequest,
   BatchDuplicateResponse,
+  ResourceListItem,
 } from '../types/resource.types';
 import { InitChunkedUploadDto } from '../types/resource.types';
 import { plainToInstance } from 'class-transformer';
@@ -72,6 +74,27 @@ function tempDir(): string {
 export class ResourceController {
   constructor(private readonly service: ResourceService) {}
 
+  /**
+   * GET /resources
+   * @keyword-en list-resources
+   */
+  @Get()
+  @CheckAbility('read', 'resource')
+  async list(
+    @Query('sessionId') sessionId?: string,
+    @Query('category') category?: string,
+    @Query('q') q?: string,
+    @Query('limit') limitStr?: string,
+  ): Promise<ResourceListItem[]> {
+    const limit = limitStr ? Number(limitStr) : undefined;
+    return await this.service.list({
+      sessionId,
+      category,
+      q,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+  }
+
   // ==================== 简单上传 ====================
 
   @Post('upload')
@@ -94,6 +117,7 @@ export class ResourceController {
   async upload(
     @UploadedFile() file: unknown,
     @Req() req: AuthedReq,
+    @Body('sessionId') sessionId?: string,
   ): Promise<UploadResourceResponse> {
     try {
       const uploaderId = req.user?.id ?? req.user?.principalId ?? null;
@@ -108,6 +132,7 @@ export class ResourceController {
           size: file.size,
         },
         uploaderId,
+        sessionId,
       );
     } catch (err) {
       console.error('[Resource] Upload error:', err);
@@ -135,6 +160,7 @@ export class ResourceController {
   async uploadMultiple(
     @UploadedFiles() files: unknown[],
     @Req() req: AuthedReq,
+    @Body('sessionId') sessionId?: string,
   ): Promise<UploadResourceResponse[]> {
     const uploaderId = req.user?.id ?? req.user?.principalId ?? null;
     const results: UploadResourceResponse[] = [];
@@ -149,6 +175,7 @@ export class ResourceController {
             size: file.size,
           },
           uploaderId,
+          sessionId,
         );
         results.push(result);
       } catch {
@@ -181,6 +208,7 @@ export class ResourceController {
       dto.md5,
       dto.mimeType || 'application/octet-stream',
       uploaderId,
+      dto.sessionId,
     );
   }
 

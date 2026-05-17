@@ -65,6 +65,7 @@ export interface CreateUserDto {
 export interface UpdateUserDto {
   displayName?: string;
   email?: string;
+  password?: string;
   phone?: string | null;
   avatarUrl?: string | null;
   active?: boolean;
@@ -275,6 +276,7 @@ export const UpdatePrincipalSchema = z.object({
 export const UpdateUserSchema = z.object({
   displayName: z.string().min(1).optional(),
   email: z.string().email().optional(),
+  password: z.string().min(1).optional(),
   phone: z.string().nullable().optional(),
   avatarUrl: z.string().nullable().optional(),
   active: z.boolean().optional(),

@@ -44,7 +44,7 @@ Hook 注册（由 HookControllerExplorerService 自动发现, 全部通过 `@Hoo
   · **handbook 必读 + 身份过滤** :: handbook.* 是 SessionHandbookSeederService 按 agent 角色 seed 的技能手册槽位; list 渲染时按当前 ctx.principalId 严格过滤, 群聊多 agent 互不可见对方手册 (createdUser === principalId 才可见); 沉淀 LLM **禁止写 handbook.\***
   · **两条通道分工** :: sessionData = 经验/手册 (沉淀 LLM 决策 + 系统 seed), callHistory = 原始调用流水 (硬记录, 不筛选, FIFO 自动遗忘); 别混用
   · ⚠ 不再自动注入 :: 早期版本拼到 systemPrompt 中段 (注意力衰减) / 拼 messages 末尾 (破坏 prompt cache prefix) 都已废弃
-  · ✅ 现行方案 :: base-llm prompt 起手协议强约束 LLM **每轮第一件事**调 sessionData.list 拿全景 (按 category 分组), handbook 段逐条 get; messages 流跨轮 100% 稳定, prompt cache 满命中; handbook 段按 ctx.principalId 在 service 层自动过滤, LLM 拿到的就是属于自己 agent 身份的手册
+  · ✅ 现行方案 :: base-llm prompt 强约束 **禁止编造真实数据/调用**, 简单任务可直接答; 复杂 hook/历史/记忆任务按需调 callHistory.query、sessionData.list/get、knowledge 或 hook registry 拿依据; messages 流跨轮 100% 稳定, prompt cache 满命中; handbook 段按 ctx.principalId 在 service 层自动过滤, LLM 拿到的就是属于自己 agent 身份的手册
   · ⚠ list 不返 value/preview :: 后期记忆量上来 list 输出仍可控; 命中后调 get 拿完整 value; **这要求 title 必须写得足够描述性, 否则 list 视图无效**
   · key 字符集 `[a-zA-Z0-9_.-]` 1-128 字符; 上限 单 key 10KB, 总量 200KB, 50 个 key; call_log 单独算, FIFO 50 条/session
     - GET  /conversation/groups（分页：page/pageSize；每组附带 latestMessage；不支持日期筛选）
@@ -141,7 +141,7 @@ Summary 接口
 - 对话服务 ↔ conversation service ↔ services/conversation.service.ts
 - 类型与守卫 ↔ types and guards ↔ types/conversation.types.ts
 - IM 消息历史 ↔ im message history ↔ controllers/im.controller.ts
-- IM Agent 隐藏提示 ↔ im agent hidden import-tip ↔ services/im-message.service.ts (metadata.llmContent)
+- IM Agent 隐藏提示 ↔ im agent hidden import-tip v8 ↔ services/im-message.service.ts (metadata.llmContent; 英文隐藏提醒, 强调主动对话和 Agent 定义优先级、禁止编造; 执行业务 hook 前优先 callHistory 复用近期成功调用, 无命中再按 handbook -> sessionData -> knowledge -> hook 查询)
 - IM 新消息探测 ↔ im has-new probe ↔ controllers/im.controller.ts
 - IM 邀请成员 ↔ im invite members ↔ controllers/im.controller.ts
 - IM 会话更新 ↔ im session update ↔ controllers/im.controller.ts

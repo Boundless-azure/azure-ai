@@ -2,11 +2,15 @@
   <div class="flex flex-col">
     <div class="h-14 flex items-center justify-between px-4">
       <div class="flex items-center space-x-2">
-        <div
-          class="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-sm"
+        <button
+          type="button"
+          class="w-9 h-9 rounded-xl bg-black text-white flex items-center justify-center shadow-sm ring-1 ring-black/5 active:scale-95 transition-transform"
+          title="打开菜单"
+          aria-label="打开菜单"
+          @click="openMenu"
         >
-          <i class="fa-solid fa-robot"></i>
-        </div>
+          <i class="fa-solid fa-bars text-base"></i>
+        </button>
         <h1 class="text-lg font-bold text-gray-800">Azure AI</h1>
       </div>
       <div class="flex items-center space-x-3"></div>
@@ -105,6 +109,7 @@ const emit = defineEmits<{
   (e: 'update:isCreateMenuOpen', value: boolean): void;
   (e: 'createSession', type: 'group' | 'contact_group' | 'system' | 'todo'):
     void;
+  (e: 'openMenu'): void;
 }>();
 
 const onSearchInput = (event: Event) => {
@@ -119,6 +124,14 @@ const toggleOnlyAi = () => {
 
 const toggleCreateMenu = () => {
   emit('update:isCreateMenuOpen', !props.isCreateMenuOpen);
+};
+
+/**
+ * 打开左侧后台菜单抽屉。
+ * @keyword-en open-menu
+ */
+const openMenu = () => {
+  emit('openMenu');
 };
 
 const selectCreateType = (

@@ -3,6 +3,8 @@
 概述
 - 管理待办事项（发起人、待办名、描述、内容、跟进人、状态、状态颜色）
 - 提供待办增删改查接口；支持按状态、跟进人过滤
+- 支持待办与聊天会话可选关联：todos.session_id 为空表示全局待办，非空可用于对话窗口待办列表。
+- 列表接口默认只返回当前登录主体发起或跟进的待办，聊天窗口待办抽屉使用真实 Todo 接口并按 sessionId 过滤。
 - 支持跟进记录管理（创建、列表、删除跟进记录）
 - 支持评论管理（创建、列表、删除评论）
 
@@ -46,7 +48,7 @@
   - HookController(pluginName=todo, tags=[todo])
   - HookRoute on CRUD / followup / comment: 全部声明 zod payloadSchema (input 形状), hook-controller 数组形参
     · 命名遵循 platform.app.module.action:
-    · saas.app.todo.list (status?/followerId?/initiatorId?/q?), saas.app.todo.get ({id}),
+    · saas.app.todo.list (sessionId?/status?/followerId?/initiatorId?/q?), saas.app.todo.get ({id}),
       saas.app.todo.create (CreateTodoInput), saas.app.todo.update (UpdateTodoInput),
       saas.app.todo.delete ({id})
     · saas.app.todo.followup.create/list/update/delete
@@ -72,6 +74,7 @@
 - "CreateFollowupDto" -> app/todo/types/todo.types.ts
 - "CreateCommentDto" -> app/todo/types/todo.types.ts
 - "QueryTodoDto" -> app/todo/types/todo.types.ts
+- "sessionId" -> app/todo/entities/todo.entity.ts, app/todo/types/todo.types.ts, app/todo/services/todo.service.ts
 - "TodoService" -> app/todo/services/todo.service.ts
 - "TodoController" -> app/todo/controllers/todo.controller.ts
 - "TodoModule" -> app/todo/todo.module.ts

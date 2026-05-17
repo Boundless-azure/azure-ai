@@ -2,7 +2,7 @@
 
 ## 功能描述
 
-The Todo module provides a comprehensive task management system with follow-up records, comments, and timeline visualization. It supports creating, editing, and tracking todos with multiple followers and real-time status updates.
+The Todo module provides a comprehensive task management system with follow-up records, comments, and timeline visualization. It supports creating, editing, and tracking todos with multiple followers, real-time status updates, and optional IM session binding via `sessionId`.
 
 ## 目录结构
 
@@ -34,10 +34,10 @@ web/src/modules/todo/
 
 | 函数名 | 关键词描述 |
 |--------|-----------|
-| `list` | 获取待办列表 |
+| `list` | 获取待办列表，支持 sessionId 过滤 |
 | `get` | 获取单个待办 |
-| `create` | 创建待办 |
-| `update` | 更新待办 |
+| `create` | 创建待办，可绑定 sessionId |
+| `update` | 更新待办，可绑定或解绑 sessionId |
 | `remove` | 删除待办 |
 | `createFollowup` | 创建跟进记录 |
 | `listFollowups` | 获取跟进记录列表 |

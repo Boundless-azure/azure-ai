@@ -171,9 +171,8 @@ export class AgentRuntimeService {
     if (!loaded.dialogues) {
       throw new Error('该 Agent 未提供对话层 (dialogues)');
     }
-    // session_data 不再注入 messages 流 (会破坏 prompt cache 的 prefix 匹配)
-    // 改为 base prompt 强约束: LLM 每轮必须先调 sessionData.list 工具拿全景, 再决定动作
-    // 这样 messages 流跨轮 100% 稳定, prompt cache 满命中; 代价只是 LLM 多一次 tool_use
+    // session_data 不再注入 messages 流 (会破坏 prompt cache 的 prefix 匹配)。
+    // 改为 base prompt 按需查询: 复杂 hook / 历史 / 记忆任务由 LLM 主动调 sessionData.list 等工具拿依据。
     loaded.dialogues.handleAiServer(
       this.buildAiAdapter(
         options?.proactiveContext,
@@ -251,6 +250,10 @@ export class AgentRuntimeService {
     return loaded.tools;
   }
 
+  /**
+   * 构建对话层 AI 适配器，并合并 base prompt、主动对话规则和 Agent 定义。
+   * @keyword-en build-ai-adapter
+   */
   private buildAiAdapter(
     proactiveContext?: {
       sessionId: string;
@@ -263,14 +266,14 @@ export class AgentRuntimeService {
     const agentRuntimePrefix = agentContext
       ? [
           '[agent-runtime-context]',
-          `当前 agent_id="${agentContext.agentId}"，agent_principal_id="${agentContext.agentPrincipalId}"。`,
-          `当前业务 tenant_id="${agentContext.tenantId ?? 'null'}"，它来自当前使用/触发用户, 用于业务数据隔离。`,
-          `Hook 鉴权主体始终是 agent_principal_id, 不要把 tenant_id 当成 principal_id。`,
+          `Current agent_id="${agentContext.agentId}", agent_principal_id="${agentContext.agentPrincipalId}".`,
+          `Current business tenant_id="${agentContext.tenantId ?? 'null'}"; it comes from the current triggering user and is used only for business data isolation.`,
+          `Hook authorization always uses agent_principal_id. Never use tenant_id as principal_id.`,
           agentContext.nickname
-            ? `当前 agent 昵称="${agentContext.nickname}"。`
+            ? `Current agent nickname="${agentContext.nickname}".`
             : '',
           agentContext.purpose
-            ? `当前 agent 用途="${agentContext.purpose}"。`
+            ? `Current agent purpose="${agentContext.purpose}".`
             : '',
           '[/agent-runtime-context]',
         ]
@@ -282,15 +285,16 @@ export class AgentRuntimeService {
     // sessionData.list 自动按 category 渲染 + 起手协议强制读, 这里只点一句即可.
     const injectedPrefix = proactiveContext
       ? [
-          '[system-prompt-tip]',
-          `你处于主动对话模式。这点最重要,你的回答必须通过调用工具来发送给用户，而不是直接返回，直接返回是无效的。`,
-          `当前 IM 会话 session_id="${proactiveContext.sessionId}"，你的 principal_id="${proactiveContext.agentPrincipalId}"。`,
-          `本会话 session_data 已 seed 必读技能手册 (handbook.* 系列), 起手 sessionData.list 会按 category 分组显示, **handbook 段每条都要 sessionData.get 取全文**, 章节里有完整 payload / 约束 / 场景, 不要凭 hook 名或字段名猜, 否则必失败。`,
-          `replyToId 固定为 "${proactiveContext.triggerMessageId}"，不得修改或编造。`,
-          `根据上下文自主决定是否发送、何时发送、发送什么。在上下文中要结合所有消息来判断决定如何返回,不能出现回答不连贯的问题.`,
-          `有时候用户是发的连贯信息,要结合之前的历史消息来进行综合回复,而不是只针对最后一条消息进行回复。`,
-          `你可以模拟人类情感, 比如长句可以分成多条发送,最多 4 轮, 以表现出思考的过程和情感的表达, 但要注意不要过度发送过多消息导致用户体验变差。`,
-          `你发完就可以结束这轮对话了, 不需要等用户回复, 也不需要等下一轮对话, 只要你觉得发完了就可以结束了。不要那么啰嗦,这一点很重要`,
+          '[system-prompt-tip priority="critical" mode="proactive-dialogue"]',
+          `Hard rule: you are in proactive dialogue mode. Any user-visible reply must be sent by calling saas.app.conversation.sendMsg through call_hook. Returning final text directly will not be delivered to the user and counts as failure.`,
+          `Current IM session_id="${proactiveContext.sessionId}", your principal_id="${proactiveContext.agentPrincipalId}".`,
+          `Before executing any business hook, first query callHistory and reuse recent successful hook names/payloads when a title matches the current task. If callHistory has no usable match, use this discovery order before sendMsg: handbook first (sessionData.list, then sessionData.get for relevant handbook.*), then other sessionData, then knowledge, then hook registry/schema. Manuals contain payloads, constraints, and scenarios. Do not guess hook names or fields.`,
+          `If the user refers to previous tool output such as "just now", "previous result", "that data", or "刚刚那条数据", query callHistory first and fetch matching detail before acting.`,
+          `Capability/action requests must be manual-backed. Do not answer or act from generic model knowledge.`,
+          `For sendMsg, replyToId must be exactly "${proactiveContext.triggerMessageId}". Do not change or invent it.`,
+          `Decide from the full context whether to send, when to send, and what to send. Consider all recent messages, not only the last one, so the reply stays coherent.`,
+          `You may split a long answer into up to 4 sendMsg calls for natural conversation. Do not over-send.`,
+          `After sending the needed message(s), finish the turn. Do not wait for the user or start another turn.`,
           '[/system-prompt-tip]',
         ].join('\n')
       : null;
@@ -311,11 +315,19 @@ export class AgentRuntimeService {
         params?: Record<string, unknown>;
       }) => {
         const basePrompt = buildBaseLlmSystemPrompt();
+        const agentDefinition = req.systemPrompt?.trim()
+          ? [
+              '[agent-definition priority="high"]',
+              'The following is this Agent definition prompt. Follow it continuously and do not fall back to a generic assistant identity:',
+              req.systemPrompt.trim(),
+              '[/agent-definition]',
+            ].join('\n')
+          : null;
         const mergedSystemPrompt = [
           basePrompt,
           agentRuntimePrefix,
           injectedPrefix,
-          `<role-set>${req.systemPrompt}</role-set>`,
+          agentDefinition,
         ]
           .filter(Boolean)
           .join('\n');

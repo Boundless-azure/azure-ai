@@ -23,6 +23,10 @@ export class AiModelsService {
     private readonly repository: Repository<AIModelEntity>,
   ) {}
 
+  /**
+   * 查询 AI 模型配置列表。
+   * @keyword-en ai-model-list
+   */
   async list(query: QueryAiModelDto): Promise<AIModelEntity[]> {
     const base = {
       isDelete: false,
@@ -53,6 +57,10 @@ export class AiModelsService {
     });
   }
 
+  /**
+   * 获取单个 AI 模型配置。
+   * @keyword-en ai-model-detail
+   */
   async get(id: string): Promise<AIModelEntity> {
     const entity = await this.repository.findOne({
       where: { id, isDelete: false },
@@ -61,6 +69,10 @@ export class AiModelsService {
     return entity;
   }
 
+  /**
+   * 创建 AI 模型配置。
+   * @keyword-en ai-model-create
+   */
   async create(dto: CreateAiModelDto): Promise<AIModelEntity> {
     const entity = this.repository.create({
       name: dto.name,
@@ -80,6 +92,10 @@ export class AiModelsService {
     return await this.repository.save(entity);
   }
 
+  /**
+   * 更新 AI 模型配置。
+   * @keyword-en ai-model-update
+   */
   async update(id: string, dto: UpdateAiModelDto): Promise<void> {
     const entity = await this.get(id);
     if (dto.name !== undefined) entity.name = dto.name;
@@ -102,6 +118,10 @@ export class AiModelsService {
     await this.repository.save(entity);
   }
 
+  /**
+   * 软删除 AI 模型配置。
+   * @keyword-en ai-model-remove
+   */
   async remove(id: string): Promise<void> {
     const entity = await this.get(id);
     entity.isDelete = true;
@@ -109,6 +129,10 @@ export class AiModelsService {
     await this.repository.save(entity);
   }
 
+  /**
+   * 测试模型 API 密钥、模型ID与 endpoint 是否可用。
+   * @keyword-en ai-model-connection-test
+   */
   async testConnection(dto: TestAiModelConnectionDto): Promise<{
     ok: boolean;
     message: string;
@@ -168,6 +192,10 @@ export class AiModelsService {
     }
   }
 
+  /**
+   * 使用 OpenAI 兼容接口发送最小聊天请求。
+   * @keyword-en openai-compatible-connection-test
+   */
   private async testOpenAIConnection(params: {
     provider: string;
     apiKey: string;
@@ -178,18 +206,23 @@ export class AiModelsService {
     const endpoint = baseURL.endsWith('/v1')
       ? `${baseURL}/chat/completions`
       : `${baseURL}/v1/chat/completions`;
+    const body: Record<string, unknown> = {
+      model: params.modelId,
+      messages: [{ role: 'user', content: 'ping' }],
+      max_tokens: 1,
+    };
+    if (params.provider !== 'kimi') {
+      body.temperature = 0;
+    } else {
+      body.thinking = { type: 'disabled' };
+    }
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${params.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: params.modelId,
-        messages: [{ role: 'user', content: 'ping' }],
-        max_tokens: 1,
-        temperature: 0,
-      }),
+      body: JSON.stringify(body),
     });
     if (res.ok) return { ok: true, message: 'connection success' };
     const text = await res.text();
@@ -199,6 +232,10 @@ export class AiModelsService {
     };
   }
 
+  /**
+   * 使用 Anthropic Messages 接口发送最小聊天请求。
+   * @keyword-en anthropic-connection-test
+   */
   private async testAnthropicConnection(params: {
     apiKey: string;
     modelId: string;
@@ -229,9 +266,14 @@ export class AiModelsService {
     };
   }
 
+  /**
+   * 解析 OpenAI 兼容 provider 的默认 baseURL。
+   * @keyword-en openai-compatible-base-url
+   */
   private resolveOpenAIBaseURL(provider: string, baseURL?: string): string {
     if (baseURL && baseURL.trim()) return baseURL.trim();
     if (provider === 'deepseek') return 'https://api.deepseek.com';
+    if (provider === 'kimi') return 'https://api.moonshot.cn/v1';
     if (provider === 'nvidia') return 'https://integrate.api.nvidia.com/v1';
     if (provider === 'azure_openai') return 'https://api.openai.com';
     return 'https://api.openai.com';

@@ -62,14 +62,14 @@ const memberAvatarClass = computed(() =>
     : 'bg-gray-300 flex items-center justify-center text-[5px] font-bold text-gray-600 rounded-sm overflow-hidden',
 );
 
-const imgClass = computed(() => 'w-full h-full object-contain');
+const imgClass = computed(() => 'w-full h-full object-cover');
 const avatarUrl = computed(() => (props.thread.avatarUrl || '').trim());
 const hasAvatarUrl = computed(() => avatarUrl.value.length > 0);
 
 const singleAvatarClass = computed(() =>
   isLarge.value
-    ? `w-full h-full rounded-lg overflow-hidden flex items-center justify-center text-white text-4xl ${getAvatarClass(props.thread)}`
-    : `w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center text-white text-sm ${getAvatarClass(props.thread)}`,
+    ? `w-full h-full rounded-lg overflow-hidden flex items-center justify-center ${getSingleAvatarVisualClass(props.thread)}`
+    : `w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center ${getSingleAvatarVisualClass(props.thread)}`,
 );
 
 const threadIcon = (t: ThreadListItem) => {
@@ -101,5 +101,14 @@ const getAvatarClass = (t: ThreadListItem) => {
     default:
       return 'bg-gray-400';
   }
+};
+
+/**
+ * 解析单人/固定入口头像视觉类；已有图片时不叠加旧兜底底色。
+ * @keyword-en get-single-avatar-visual-class
+ */
+const getSingleAvatarVisualClass = (t: ThreadListItem) => {
+  if (hasAvatarUrl.value) return 'bg-transparent';
+  return `text-white ${isLarge.value ? 'text-4xl' : 'text-sm'} ${getAvatarClass(t)}`;
 };
 </script>

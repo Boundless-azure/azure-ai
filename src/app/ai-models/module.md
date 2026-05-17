@@ -1,8 +1,9 @@
 模块名称：app/ai-models（AI提供商模块）
 
 概述
-- 管理系统内 AI 模型配置（提供商、接口规范、模型ID、密钥与启用状态）。
+- 管理系统内 AI 模型配置（提供商、接口规范、模型ID、密钥、baseURL 与启用状态）。
 - 提供 AI 模型配置的增删改查接口。
+- Kimi provider 走 OpenAI 兼容接口，默认 endpoint 为 `https://api.moonshot.cn/v1`，连通测试会关闭 thinking 且不默认传 temperature。
 
 文件清单（File List）
 - app/ai-models/ai-models.module.ts
@@ -18,6 +19,9 @@
   - list(query)
   - get(id)
   - testConnection(dto)
+  - testOpenAIConnection(params)
+  - testAnthropicConnection(params)
+  - resolveOpenAIBaseURL(provider, baseURL?)
   - create(dto)
   - update(id, dto)
   - remove(id)
@@ -44,6 +48,9 @@ ai-models-cache -> app/ai-models/cache/ai-models.cache.ts
 - AiModelsService.list -> ai_models_list_001
 - AiModelsService.get -> ai_models_get_002
 - AiModelsService.testConnection -> ai_models_test_connection_006
+- AiModelsService.testOpenAIConnection -> openai-compatible-connection-test
+- AiModelsService.testAnthropicConnection -> anthropic-connection-test
+- AiModelsService.resolveOpenAIBaseURL -> openai-compatible-base-url
 - AiModelsService.create -> ai_models_create_003
 - AiModelsService.update -> ai_models_update_004
 - AiModelsService.remove -> ai_models_remove_005

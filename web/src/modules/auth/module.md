@@ -47,6 +47,13 @@ src/modules/auth/
 - `login-form` - 登录表单
 - `password-input` - 密码输入
 
+### utils/http.ts
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `HttpStatusHandler.setupDefaultHandlers` | 登录页 401 只清理本地会话，不刷新当前登录页面 |
+| `HttpStatusHandler.handle` | 全局 HTTP 状态处理 |
+
 ## 函数哈希映射
 
 | 函数 | Hash |

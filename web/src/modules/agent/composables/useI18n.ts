@@ -43,6 +43,7 @@ const translations = {
       notifications: 'Notifications',
       integrations: 'Integrations',
       about: 'About',
+      logout: 'Log out',
     },
     dashboard: {
       welcome: 'Welcome back, User',
@@ -410,6 +411,7 @@ const translations = {
       notifications: '通知设置',
       integrations: '集成服务',
       about: '关于系统',
+      logout: '退出登录',
     },
     dashboard: {
       welcome: '欢迎回来, User',

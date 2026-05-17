@@ -12,6 +12,7 @@
         @update:onlyAi="onlyAi = $event"
         @update:isCreateMenuOpen="isCreateMenuOpen = $event"
         @createSession="createSessionOfType"
+        @openMenu="emit('openMenu')"
       />
 
       <!-- Chat Mode Header -->
@@ -242,6 +243,10 @@ import ChatSessionsPage from '../pages/chat-panel/ChatSessionsPage.vue';
 import ChatContactsPage from '../pages/chat-panel/ChatContactsPage.vue';
 import ChatDailyPage from '../pages/chat-panel/ChatDailyPage.vue';
 import ChatMessagesPage from '../pages/chat-panel/ChatMessagesPage.vue';
+
+const emit = defineEmits<{
+  (e: 'openMenu'): void;
+}>();
 
 const { t } = useI18n();
 

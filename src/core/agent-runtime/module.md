@@ -20,7 +20,7 @@
 - `load(inputDir, invocationContext?)` — 加载 Agent 目录, 注入 5 个 hook 工具 (闭包持有 ctx); call_hook 副作用同时落 SessionCallTracker (内存) 和 AiCallLogService (持久化, 仅成功项) | keywords: load-agent, inject-tools, ctx-closure, call-log-sink
 - `startDialogue(agentDir, messages, options)` — 启动对话流, options 含 proactiveContext / invocationContext / agentContext | keywords: start-dialogue, proactive-chat, invocation-context, agent-context
 - `getTools(agentDir, invocationContext?)` — 获取 Agent 工具集 (含 5 个内置 hook 工具) | keywords: get-tools
-- `buildAiAdapter()` — 构建 AI 适配器, 始终注入 base system prompt; 支持 agent-runtime-context 前置注入当前 agent 元信息和业务 tenant; 主动对话模式提示词改为指向 handbook.* 槽位 | keywords: ai-adapter, base-prompt, agent-runtime-context, handbook-redirect
+- `buildAiAdapter()` — 构建 AI 适配器, 始终注入英文 base system prompt; 支持 agent-runtime-context 前置注入当前 agent 元信息和业务 tenant; 主动对话规则以英文 `[system-prompt-tip priority="critical"]` 注入; Agent 定义以英文 `[agent-definition priority="high"]` 包裹 | keywords: ai-adapter, base-prompt, agent-runtime-context, proactive-priority, agent-definition
 - `attachDialogue(agent)` — 把 AIModelService 注入对话层 | keywords: attach-dialogue
 - `maybeTriggerSaveLlmAfterTurn(ctx, modelIds)` — 整轮结束低频硬匹配命中即异步触发 sinking LLM | keywords: maybe-trigger-save-llm
 
@@ -32,7 +32,7 @@
 ### tools/call-hook.tools.ts
 LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationContext)
 
-- `buildCallHookTool(hookBus, hookRpc, getCtx, sideEffects?, options?)` — 同步批量调用 hook; target 默认 SaaS, hookName 前缀归一化目标端; `options.defaultDebug` 注入节点级 debug 默认值, 工厂闭包绑定整个 graph 流 | keywords: call-hook-tool, sync, batch, target-routing, target-normalize, default-debug
+- `buildCallHookTool(hookBus, hookRpc, getCtx, sideEffects?, options?)` — 同步批量调用 hook; target 默认 SaaS, hookName 前缀归一化目标端; hook-not-found / schema 软错优先提示复用 callHistory, 再 handbook/knowledge/schema; `options.defaultDebug` 注入节点级 debug 默认值, 工厂闭包绑定整个 graph 流 | keywords: call-hook-tool, sync, batch, target-routing, target-normalize, call-history-first, default-debug
 - `buildCallHookAsyncTool(hookBus, hookRpc, getCtx, options?)` — 批量 fire-and-forget; target 默认 SaaS, hookName 前缀归一化目标端; 同支持 `options.defaultDebug` | keywords: call-hook-async-tool, batch, target-normalize, default-debug
 - `processOneCallAftermath(entry, reply, ctx, sideEffects?)` — per-call 失败追踪 + hint 注入 + 副作用回调 | keywords: aftermath, per-call
 - `buildSearchHookTool(hookBus, hookRpc, getCtx)` — 按 tags / pluginName 搜索 hook 注册表 | keywords: search-hook-tool, discovery
@@ -60,7 +60,7 @@ LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationCont
 ### prompts/base-llm.prompt.ts
 基础 LLM 系统提示词
 
-- `buildBaseLlmSystemPrompt()` — 生成压缩版基础提示: import-tip 识别 + 工具硬约束 + 每轮查询链路 (callHistory 默认 `[{}]` 轻量 title 列表 → 命中 id 再取详情 → sessionData 必读规则 → 知识库 → tag 搜索 hook) + 先规划再 batch/并行调用约束 | keywords: base-llm-prompt, compact, import-tip, call-history-first, call-history-title-list, session-data-required, batch-plan
+- `buildBaseLlmSystemPrompt()` — 生成英文基础提示: 明确 `[system-prompt-tip]` 与 `[agent-definition]` 优先级 + 禁止编造真实数据/调用 + import-tip 识别 + 工具协议 + 复杂 hook 任务按需发现链路 (callHistory/sessionData/knowledge/hook registry) + batch/错误处理约束 | keywords: base-llm-prompt, prompt-priority, no-fabrication, conditional-discovery, batch-plan
 
 ### types/agent-runtime.types.ts
 - `LoadedAgent` — Agent 加载结果类型 (tools, dialogues, descriptor)

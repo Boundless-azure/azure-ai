@@ -11,11 +11,16 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Index(['md5'])
 @Index(['sha256'])
 @Index(['uploaderId'])
+@Index(['sessionId'])
 @Index(['category'])
 @Index(['isDelete'])
 export class ResourceEntity extends BaseAuditedEntity {
   @Column({ name: 'uploader_id', type: 'char', length: 36, nullable: true })
   uploaderId!: string | null;
+
+  /** 关联聊天会话 ID；为空表示资源不属于特定会话 */
+  @Column({ name: 'session_id', type: 'varchar', length: 100, nullable: true })
+  sessionId!: string | null;
 
   @Column({ name: 'original_name', type: 'varchar', length: 255 })
   originalName!: string;

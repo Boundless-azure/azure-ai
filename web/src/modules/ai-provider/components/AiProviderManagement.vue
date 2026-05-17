@@ -312,9 +312,13 @@
               <label class="block text-sm font-medium text-gray-700 mb-1">模型ID</label>
               <input
                 v-model="form.name"
+                list="ai-model-id-options"
                 class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10 font-mono text-sm"
                 placeholder="自定义模型ID"
               />
+              <datalist id="ai-model-id-options">
+                <option v-for="model in providerModelOptions" :key="model" :value="model" />
+              </datalist>
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">显示名称</label>
@@ -365,8 +369,11 @@
               <input
                 v-model="form.baseURL"
                 class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                placeholder="可选，OpenAI 兼容时可配置"
+                :placeholder="baseURLPlaceholder"
               />
+              <p v-if="baseURLHelpText" class="mt-1 text-xs text-gray-400">
+                {{ baseURLHelpText }}
+              </p>
             </div>
           </div>
 
@@ -453,6 +460,8 @@ import {
   AI_MODEL_TYPE_OPTIONS,
   AI_PROTOCOL_OPTIONS,
   AI_PROVIDER_OPTIONS,
+  PROVIDER_DEFAULT_BASE_URLS,
+  PROVIDER_MODEL_CATALOG,
 } from '../constants/ai-provider.constants';
 
 const { items, loading, list, create, update, remove, testConnection } =
@@ -501,6 +510,18 @@ const typeOptions = AI_MODEL_TYPE_OPTIONS;
 const statusOptions = AI_MODEL_STATUS_OPTIONS;
 
 const protocolDisabled = computed(() => form.provider !== 'custom');
+const providerModelOptions = computed(
+  () => PROVIDER_MODEL_CATALOG[form.provider] ?? [],
+);
+const baseURLPlaceholder = computed(() => {
+  const defaultURL = PROVIDER_DEFAULT_BASE_URLS[form.provider];
+  return defaultURL || '可选，OpenAI 兼容时可配置';
+});
+const baseURLHelpText = computed(() => {
+  const defaultURL = PROVIDER_DEFAULT_BASE_URLS[form.provider];
+  if (!defaultURL) return '';
+  return `默认使用 ${defaultURL}，需要代理或国际站时可覆盖`;
+});
 
 const providerProtocolMap: Record<string, 'openai' | 'anthropic'> = {
   anthropic: 'anthropic',
@@ -510,12 +531,39 @@ function resolveProtocol(provider: string): 'openai' | 'anthropic' {
   return providerProtocolMap[provider] ?? 'openai';
 }
 
+/**
+ * 判断 baseURL 是否为系统内置默认地址。
+ * @keyword-en provider-default-base-url-check
+ */
+function isProviderDefaultBaseURL(value: string): boolean {
+  const normalized = value.trim();
+  if (!normalized) return true;
+  return Object.values(PROVIDER_DEFAULT_BASE_URLS).includes(normalized);
+}
+
+/**
+ * 根据 provider 同步协议和默认 baseURL。
+ * @keyword-en provider-form-defaults-sync
+ */
+function syncProviderDefaults(provider: string, oldProvider?: string) {
+  if (provider !== 'custom') {
+    form.apiProtocol = resolveProtocol(provider);
+  }
+  const oldDefault = oldProvider ? PROVIDER_DEFAULT_BASE_URLS[oldProvider] : '';
+  const nextDefault = PROVIDER_DEFAULT_BASE_URLS[provider] ?? '';
+  if (
+    !form.baseURL.trim() ||
+    form.baseURL.trim() === oldDefault ||
+    isProviderDefaultBaseURL(form.baseURL)
+  ) {
+    form.baseURL = nextDefault;
+  }
+}
+
 watch(
   () => form.provider,
-  (provider) => {
-    if (provider !== 'custom') {
-      form.apiProtocol = resolveProtocol(provider);
-    }
+  (provider, oldProvider) => {
+    syncProviderDefaults(provider, oldProvider);
     testResult.value = null;
   },
 );
@@ -572,6 +620,7 @@ function openCreateModal() {
   form.description = '';
   form.enabled = true;
   form.thinkingEnabled = false;
+  syncProviderDefaults(form.provider);
   testResult.value = null;
   showModal.value = true;
 }

@@ -10,6 +10,7 @@ import { z } from 'zod';
 export interface TodoItem {
   id: string;
   initiatorId: string;
+  sessionId: string | null;
   title: string;
   description: string | null;
   content: string | null;
@@ -44,6 +45,7 @@ export interface TodoFollowupComment {
 
 export interface CreateTodoRequest {
   initiatorId: string;
+  sessionId?: string;
   title: string;
   description?: string;
   content?: string;
@@ -53,6 +55,7 @@ export interface CreateTodoRequest {
 }
 
 export interface UpdateTodoRequest {
+  sessionId?: string | null;
   title?: string;
   description?: string;
   content?: string;
@@ -92,6 +95,7 @@ export interface UpdateFollowupRequest {
  */
 export const CreateTodoRequestSchema = z.object({
   initiatorId: z.string().min(1),
+  sessionId: z.string().optional(),
   title: z.string().min(1),
   description: z.string().optional(),
   content: z.string().optional(),
@@ -101,6 +105,7 @@ export const CreateTodoRequestSchema = z.object({
 });
 
 export const UpdateTodoRequestSchema = z.object({
+  sessionId: z.string().nullable().optional(),
   title: z.string().optional(),
   description: z.string().optional(),
   content: z.string().optional(),
@@ -133,6 +138,7 @@ export const UpdateFollowupRequestSchema = z.object({
 });
 
 export const ListTodoQuerySchema = z.object({
+  sessionId: z.string().optional(),
   status: z.string().optional(),
   followerId: z.string().optional(),
   initiatorId: z.string().optional(),

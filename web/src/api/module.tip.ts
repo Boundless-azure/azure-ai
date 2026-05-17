@@ -12,10 +12,14 @@ export const moduleDescription = {
       en: 'Resource API',
       file: 'resource.ts',
       functions: {
+        asBaseResponse: 'asBaseResponse',
         upload: 'upload',
+        list: 'list',
       },
       hashes: {
+        asBaseResponse: 'api_res_normalize_003',
         upload: 'api_res_upload_001',
+        list: 'api_res_list_002',
       },
     },
     'im-api': {
@@ -68,7 +72,7 @@ export const moduleDescription = {
       en: 'Todo API',
       file: 'todo.ts',
       functions: {
-        list: 'list',
+        list: 'list(sessionId?/status?/followerId?/initiatorId?/q?)',
         get: 'get',
         create: 'create',
         update: 'update',

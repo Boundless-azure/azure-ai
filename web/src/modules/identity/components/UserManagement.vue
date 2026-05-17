@@ -373,24 +373,27 @@
             />
           </div>
 
-          <div v-if="!isEdit">
+          <!-- Password Field :: 新增时设置初始密码，编辑时可留空不修改 -->
+          <div>
             <label class="block text-sm font-medium text-gray-700 mb-1"
-              >密码</label
+              >{{ isEdit ? '新密码' : '密码' }}</label
             >
             <div class="flex items-center gap-2">
               <input
                 v-model="form.password"
                 :type="showPassword ? 'text' : 'password'"
                 class="flex-1 px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                placeholder="请输入密码"
+                :placeholder="isEdit ? '留空则不修改密码' : '请输入密码'"
               />
               <button
+                type="button"
                 class="px-3 py-2 rounded-lg border border-gray-200 text-sm hover:bg-gray-50"
                 @click="togglePassword"
               >
                 {{ showPassword ? '隐藏' : '显示' }}
               </button>
               <button
+                type="button"
                 class="px-3 py-2 rounded-lg border border-gray-200 text-sm hover:bg-gray-50"
                 @click="generatePassword"
               >
@@ -589,6 +592,10 @@ onMounted(() => {
   fetchData();
 });
 
+/**
+ * @description 获取用户列表并按当前前端分页裁切展示。
+ * @keyword-en fetch-user-data
+ */
 async function fetchData() {
   try {
     const all = await listUsers({
@@ -603,11 +610,19 @@ async function fetchData() {
   }
 }
 
+/**
+ * @description 重置页码并按当前筛选条件查询用户。
+ * @keyword-en search-users
+ */
 function handleSearch() {
   page.value = 1;
   fetchData();
 }
 
+/**
+ * @description 将用户主体类型转换为中文显示名。
+ * @keyword-en format-user-type
+ */
 function formatType(type: string) {
   const map: Record<string, string> = {
     user: '企业用户',
@@ -619,11 +634,19 @@ function formatType(type: string) {
   return map[type] || type;
 }
 
+/**
+ * @description 格式化列表创建时间。
+ * @keyword-en format-user-date
+ */
 function formatDate(dateStr?: string) {
   if (!dateStr) return '-';
   return new Date(dateStr).toLocaleString();
 }
 
+/**
+ * @description 打开新增用户弹窗并重置表单。
+ * @keyword-en open-create-user-modal
+ */
 function openCreateModal() {
   isEdit.value = false;
   form.displayName = '';
@@ -636,6 +659,10 @@ function openCreateModal() {
   showModal.value = true;
 }
 
+/**
+ * @description 打开编辑用户弹窗；密码默认留空，保存时不修改。
+ * @keyword-en open-edit-user-modal
+ */
 function openEditModal(user: IdentityPrincipalItem) {
   isEdit.value = true;
   form.id = user.id;
@@ -649,11 +676,19 @@ function openEditModal(user: IdentityPrincipalItem) {
   showModal.value = true;
 }
 
+/**
+ * @description 上传并写入用户头像资源路径。
+ * @keyword-en confirm-user-avatar
+ */
 async function onAvatarConfirm(file: File) {
   const res = await uploadResource(file);
   form.avatarUrl = res.data.path;
 }
 
+/**
+ * @description 归一化用户管理支持的主体类型。
+ * @keyword-en to-user-principal-type
+ */
 function toUserPrincipalType(type: string): UserPrincipalType {
   if (
     type === 'user' ||
@@ -665,15 +700,27 @@ function toUserPrincipalType(type: string): UserPrincipalType {
   return 'user';
 }
 
+/**
+ * @description 生成随机密码并切换为可见。
+ * @keyword-en generate-user-password
+ */
 function generatePassword() {
   form.password = buildRandomPassword(12);
   showPassword.value = true;
 }
 
+/**
+ * @description 切换密码输入可见状态。
+ * @keyword-en toggle-user-password-visibility
+ */
 function togglePassword() {
   showPassword.value = !showPassword.value;
 }
 
+/**
+ * @description 使用浏览器随机源生成指定长度密码。
+ * @keyword-en build-random-password
+ */
 function buildRandomPassword(length: number): string {
   const chars =
     'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*';
@@ -693,6 +740,10 @@ function buildRandomPassword(length: number): string {
   return out;
 }
 
+/**
+ * @description 关闭用户编辑弹窗并同步关闭头像裁剪弹窗。
+ * @keyword-en close-user-modal
+ */
 function closeModal() {
   showModal.value = false;
   showAvatarModal.value = false;
@@ -720,9 +771,11 @@ async function handleSubmit() {
         alert('请填写邮箱');
         return;
       }
+      const password = form.password.trim();
       await updateUser(form.id, {
         displayName: form.displayName,
         email: form.email,
+        password: password ? password : undefined,
         phone: form.phone || null,
         avatarUrl: form.avatarUrl,
       });

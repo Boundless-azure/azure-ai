@@ -53,6 +53,7 @@ import { createAgent } from 'langchain';
 import { ModuleRef } from '@nestjs/core';
 import { selectProcessor } from '../processors';
 import type { ChunkContext } from '../processors';
+import { KimiChatOpenAI } from '../providers/kimi-chat-openai';
 
 /**
  * AI模型服务
@@ -93,6 +94,7 @@ export class AIModelService implements OnModuleInit {
 
   /**
    * 创建AI模型实例
+   * @keyword-en model-instance-provider-routing
    */
   private createModelInstance(config: AIModelEntity, request: AIModelRequest) {
     try {
@@ -111,6 +113,7 @@ export class AIModelService implements OnModuleInit {
       //  - Azure OpenAI o-series      :: 同 OpenAI
       //  - Gemini 2.5                 :: { thinkingConfig: { thinkingBudget: 4096 } }
       //  - DeepSeek-R1 (reasoner)     :: 模型自带, 不传 (传 reasoning_effort 反而被忽略 / 不识别)
+      //  - Kimi / Moonshot            :: OpenAI 兼容协议, 专用 adapter 保留 reasoning_content
       //  - NVIDIA NIM (Qwen3 / QwQ / DeepSeek-R1 等)
       //                               :: vLLM 标准开关 { chat_template_kwargs: { enable_thinking: bool } }
       //                                  注意 enable_thinking=false 才能强制关闭, 不传一般默认开
@@ -158,6 +161,25 @@ export class AIModelService implements OnModuleInit {
               temperature: config.defaultParams?.temperature || 0.7,
               maxTokens: config.defaultParams?.maxTokens || 4096,
               __includeRawResponse: true,
+              configuration: { baseURL },
+            } as ConstructorParameters<typeof ChatOpenAI>[0] & {
+              __includeRawResponse?: boolean;
+            });
+          }
+          break;
+        case 'kimi':
+          {
+            // Kimi / Moonshot :: OpenAI 兼容协议, 国内默认 endpoint 为 api.moonshot.cn/v1.
+            // KimiChatOpenAI 负责在 thinking + tool calling 时保留并回放 reasoning_content.
+            const baseURL = config.baseURL || 'https://api.moonshot.cn/v1';
+            model = new KimiChatOpenAI({
+              apiKey: config.apiKey,
+              modelName: config.name,
+              maxTokens: config.defaultParams?.maxTokens || 4096,
+              __includeRawResponse: true,
+              modelKwargs: {
+                thinking: { type: thinkingEnabled ? 'enabled' : 'disabled' },
+              },
               configuration: { baseURL },
             } as ConstructorParameters<typeof ChatOpenAI>[0] & {
               __includeRawResponse?: boolean;
@@ -302,7 +324,7 @@ export class AIModelService implements OnModuleInit {
       // processor :: 按 provider 选 chunk → ModelSseEvent 迭代器,
       // 主流程不感知字段差异, 新增 provider 只需加 processor 文件 + 注册
       const processor = selectProcessor(config);
-      return { agent: Agent, processor };
+      return { agent: Agent, processor, config };
     } catch (error) {
       this.logger.error(`Failed to create model instance: ${config.id}`, error);
       throw error;
@@ -318,10 +340,14 @@ export class AIModelService implements OnModuleInit {
     try {
       // Ensure proxy is applied in case lifecycle hook didn't run
       this.ensureProxyConfigured();
-      const { agent } = await this.getModelInstance(request);
+      const { agent, config } = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
-      const invocationOptions = this.buildInvocationOptions(agent, request);
+      const invocationOptions = this.buildInvocationOptions(
+        agent,
+        request,
+        config,
+      );
       const response = await agent.invoke(
         {
           messages,
@@ -517,11 +543,15 @@ export class AIModelService implements OnModuleInit {
     try {
       // Ensure proxy is applied in case lifecycle hook didn't run
       this.ensureProxyConfigured();
-      const { agent, processor } = await this.getModelInstance(request);
+      const { agent, processor, config } = await this.getModelInstance(request);
       const messages = this.convertToLangChainMessages(request.messages);
 
       const recursionLimit = 200;
-      const invocationOptions = this.buildInvocationOptions(agent, request);
+      const invocationOptions = this.buildInvocationOptions(
+        agent,
+        request,
+        config,
+      );
       const stream = agent.streamEvents(
         {
           messages,
@@ -831,6 +861,7 @@ export class AIModelService implements OnModuleInit {
   private applyModelParams(
     _model: unknown,
     _params: Partial<ModelParameters> & { stop?: string[] },
+    provider?: string,
   ): ChatOpenAICompletionsCallOptions &
     ChatOpenAIResponsesCallOptions &
     ChatAnthropicCallOptions &
@@ -840,10 +871,12 @@ export class AIModelService implements OnModuleInit {
       ChatAnthropicCallOptions &
       GoogleGenerativeAIChatCallOptions = {};
 
-    if (typeof _params.temperature === 'number') {
+    const omitSamplingParams = provider === 'kimi';
+
+    if (!omitSamplingParams && typeof _params.temperature === 'number') {
       (options as { temperature?: number }).temperature = _params.temperature;
     }
-    if (typeof _params.topP === 'number') {
+    if (!omitSamplingParams && typeof _params.topP === 'number') {
       (options as { topP?: number }).topP = _params.topP;
     }
     if (typeof _params.maxTokens === 'number') {
@@ -866,6 +899,7 @@ export class AIModelService implements OnModuleInit {
   private buildInvocationOptions(
     model: unknown,
     request: AIModelRequest,
+    config: AIModelEntity,
   ):
     | (ChatOpenAICompletionsCallOptions &
         ChatOpenAIResponsesCallOptions &
@@ -876,6 +910,7 @@ export class AIModelService implements OnModuleInit {
       ? this.applyModelParams(
           model,
           request.params as Partial<ModelParameters> & { stop?: string[] },
+          config.provider,
         )
       : {};
     let threadId: string | undefined = request.conversationGroupId;

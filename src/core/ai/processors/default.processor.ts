@@ -7,6 +7,7 @@ import { extractReasoning, yieldContentText } from './utils';
  *   - OpenAI / Azure OpenAI (gpt-* / o-series)
  *   - Anthropic Claude (含 4.x extended thinking, 数组 content 内的 text/thinking block 已在 utils 处理)
  *   - Google / Gemini (含 2.5 thinking 的 additional_kwargs.thoughts)
+ *   - Kimi / Moonshot (OpenAI 兼容协议)
  *   - custom (openai 协议) / custom (anthropic 协议)
  * 提取规则 ::
  *   - reasoning :: additional_kwargs 各种 fallback 字段名 + chunk.content 数组中 thinking block

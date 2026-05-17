@@ -5,6 +5,7 @@
 - 提供分片上传接口：支持大文件分片上传（2MB/片）、断点续传、查询缺失分片。
 - 提供统一资源访问接口：按资源表 id 进行流式返回，支持 Range、ETag 与缓存头，尽可能接近 Nginx 静态文件能力。
 - 提供批量复制接口：支持通过资源 ID 列表批量复制资源（粘贴功能）。
+- 支持资源与聊天会话可选关联：resources.session_id 为空表示全局资源，非空可用于对话窗口文件列表。
 
 文件清单（File List）
 - app/resource/entities/resource.entity.ts
@@ -22,6 +23,7 @@
   - commitChunkedUpload() - 完成分片上传，合并文件
   - abortChunkedUpload() - 取消分片上传
   - batchDuplicate() - 批量复制资源
+  - list(query) - 查询 resources 表，可按 sessionId/category/q 过滤
   - getResourceFileOrThrow() - 获取资源文件路径
   - countMd5References() - 统计MD5引用计数（跨租户去重）
 - ResourceController
@@ -32,8 +34,9 @@
   - GET /resources/chunked/status/:uploadId - 查询分片状态
   - POST /resources/chunked/commit - 完成分片上传
   - DELETE /resources/chunked/abort/:uploadId - 取消分片上传
-  - POST /resources/batch/copy - 批量复制（粘贴）
-  - GET /resources/:id - 资源访问（流式+Range）
+- POST /resources/batch/copy - 批量复制（粘贴）
+- GET /resources?sessionId=xxx - 查询资源列表（聊天文件列表使用 resources 表）
+- GET /resources/:id - 资源访问（流式+Range）
 
 关键词索引（中文 / English Keyword Index）
 资源表 -> app/resource/entities/resource.entity.ts
@@ -61,6 +64,7 @@ SHA256去重 -> app/resource/services/resource.service.ts
 - ResourceService.batchDuplicate -> res_batch_copy_006
 - ResourceService.countMd5References -> res_md5_ref_count_007
 - ResourceService.getResourceFileOrThrow -> res_get_file_or_throw_008
+- ResourceService.list -> res_list_017
 - ResourceController.upload -> res_ctl_upload_009
 - ResourceController.uploadMultiple -> res_ctl_upload_multiple_010
 - ResourceController.initChunkedUpload -> res_ctl_chunk_init_011
@@ -69,6 +73,7 @@ SHA256去重 -> app/resource/services/resource.service.ts
 - ResourceController.commitChunkedUpload -> res_ctl_chunk_commit_014
 - ResourceController.batchDuplicate -> res_ctl_batch_copy_015
 - ResourceController.get -> res_ctl_get_016
+- ResourceController.list -> res_ctl_list_017
 
 模块功能描述（Description）
 本模块统一了文件资源的上传、去重与访问：

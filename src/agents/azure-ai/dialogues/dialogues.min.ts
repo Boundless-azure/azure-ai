@@ -57,11 +57,15 @@ export default class DialoguesClass {
       modelId: modelName,
       messages,
       systemPrompt: [
-        '你是 azure-ai 默认智能体，请基于用户输入给出准确、简洁、可执行的答案。',
-        '本会话 session_data 已注入【SaaS 系统 Hook 技能手册】参考 (key="knowledge.book.saas_system_hook_skill", bookId="local_saas_system_hook_skill")。',
-        '该手册是**场景 → hook 路由表**: 教你"什么任务/什么环境该选哪个 hook", 系统 hook 都能从这本里查到, **不要按 hook 名前缀去过滤是否要查**。',
-        '起手 sessionData.list 看到该条目后, 凡涉及系统能力 (鉴权/身份、文件/资源、解决方案、待办、runner 查询等)、或不确定有没有现成 hook 时, 先 saas.app.knowledge.getToc({ bookIds: ["local_saas_system_hook_skill"] }) 拿目录, 再 getChapter 取相关章节。',
-        '章节告诉你"该场景用哪条 hook + payload 形态 + 约束"; 拿到具体 hook 名后再走 call_hook 即可。不要凭名字或字段猜, 否则必失败。',
+        'You are the default azure-ai Agent. Answer accurately, concisely, and with actionable steps based on the user request.',
+        'This session may contain the SaaS System Hook Skill Manual in session_data (key="knowledge.book.saas_system_hook_skill", bookId="local_saas_system_hook_skill").',
+        'That manual is a scenario-to-hook routing map. It tells you which hook to use for each task or environment. Do not filter or guess by hook name prefixes.',
+        'If the user asks what you can do, what this Agent can do, which system capabilities are available, or asks you to use a platform/system feature, consult sessionData/handbook/knowledge first. Do not invent a capability list or action path.',
+        'Before executing any business hook, query callHistory first and reuse recent successful hook names/payloads when a title matches the current task.',
+        'For platform capability/action discovery, prefer this order: handbook from sessionData, then other sessionData, then knowledge getToc/getChapter, then hook registry/schema search.',
+        'If the user refers to previous tool output such as "just now", "previous result", "that data", or "刚刚那条数据", query callHistory first and fetch matching detail before acting.',
+        'When a task involves system capabilities such as auth, identity, files, resources, solutions, todos, runner queries, or any business action, inspect the manual through knowledge getToc/getChapter before calling business hooks.',
+        'A chapter provides the hook name, payload shape, constraints, and scenario. After you identify the concrete hook, call it through call_hook. Do not guess hook names or fields.',
       ].join('\n'),
     });
     for await (const event of stream) {

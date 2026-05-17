@@ -78,7 +78,7 @@ Hook能力中间件 -> app/identity/services/hook.ability-middleware.service.ts
 - PrincipalService.list -> id_psi_list_001
 - PrincipalService.listUsers -> id_psi_list_users_006（用户管理列表；未指定 type 时查询 DB 类型 user/consumer/system）
 - PrincipalService.createUser -> id_psi_create_user_007
-- PrincipalService.updateUser -> id_psi_update_user_008
+- PrincipalService.updateUser -> id_psi_update_user_008（更新用户资料；password 非空时重置登录密码）
 - PrincipalService.deleteUser -> id_psi_delete_user_009
 - OrganizationService.list -> id_org_list_002
 - RoleService.upsertPermissions -> id_role_upsert_perm_003

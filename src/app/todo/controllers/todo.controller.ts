@@ -46,6 +46,7 @@ const todoStatusSchema = z.enum([
 ]);
 
 const onTodoListInput = z.object({
+  sessionId: z.string().optional(),
   status: todoStatusSchema.optional(),
   followerId: z.string().optional(),
   initiatorId: z.string().optional(),
@@ -56,6 +57,7 @@ const onTodoIdParamInput = z.object({ id: z.string() });
 
 const onTodoCreateInput = z.object({
   initiatorId: z.string(),
+  sessionId: z.string().optional(),
   title: z.string(),
   description: z.string().optional(),
   content: z.string().optional(),
@@ -65,6 +67,7 @@ const onTodoCreateInput = z.object({
 });
 
 const onTodoUpdateInput = z.object({
+  sessionId: z.string().nullable().optional(),
   title: z.string().optional(),
   description: z.string().optional(),
   content: z.string().optional(),
