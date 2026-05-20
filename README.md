@@ -1,13 +1,18 @@
 ```
-   ___  ___  __   __   __   __   ___
-  /   /\  / /__  / /  /__/ /_   /__
- /___/--\/ /___ / /__/  / /___/___/
+ __        _______ _______ ______          __  __
+ \ \      / / ____|__   __|  ____|   /\   |  \/  |
+  \ \ /\ / / |__     | |  | |__     /  \  | \  / |
+   \ \/  \/ /|  __|    | |  |  __|   / /\ \ | |\/| |
+    \  /\  / | |____   | |  | |____ / ____ \| |  | |
+     \/  \/  |______|  |_|  |______/_/    \_\_|  |_|
 
-     小蓝 (Azure AI)  ::  v0.0.1
-     AI 生成 + 租户自托管 PaaS  ·  面向超级个体
+     weteam  ::  v0.0.1
+     AI 企业构建 PaaS  ·  应用 + Agent + 云 Runner
+
+     " we  ::  are your AI team "
 ```
 
-> `prod ::` AI 产代码 · 租户自托管运行 · FRP 自动公网化 · 多端天然适配
+> `prod ::` AI 产应用 · 应用配套 Agent 同步导出 · 云 Runner 一站式自动运维
 
 lang :: [English](/docs/readme/README.en.md) · [中文](/docs/readme/README.zh-CN.md)
 
@@ -15,48 +20,85 @@ lang :: [English](/docs/readme/README.en.md) · [中文](/docs/readme/README.zh-
 
 ## `# whoami`
 
-**小蓝** != 聊天机器人 · != 无代码平台 · != 纯开发工具
+**weteam** != 聊天机器人 · != 无代码平台 · != 纯 IDE 助手
 
-是 **"AI 生成应用 → 托管在用户自己机器上运行"** 的 PaaS.
+是 **"AI 给企业产应用 + 同步产配套 Agent + 全托管在云 Runner 上运行"** 的 PaaS.
 
 ```
  target ::
-   超级个体  ( 一人 / 小团队做多个产品的创业者 · 独立开发者 · 内容创作者 )
+   AI 企业构建  ( 想用 AI 替代部分团队 · 想给业务装 AI 控制层 · 想做内部应用工厂的中小企业 )
+
+ product ::
+   [+]  App Studio     ::  AI Agent 团队 (Design → Dev → QA) 产全栈应用代码
+   [+]  Agent Export   ::  每个应用 同步产出 配套 Agent · 可独立导出 · 贴合应用任何控制
+   [+]  Cloud Runner   ::  一站式自动运维 · 企业不碰 Docker · 按订阅付费
 
  value-loop ::
-   自然语言/语音描述需求
+   企业用自然语言描述需求
         │
         ▼
-   SaaS 端 AI Agent 团队  ( Design → Dev → QA )  产代码
+   App Studio  →  产代码 (前后端 + DB)  +  同步产 应用 Agent (绑定该应用 Hook 清单)
         │
         ▼
-   代码签名下发  →  用户自己的 Runner  ( Docker 一键部署 )
+   weteam 云 Runner  →  自动部署 · 自动域名 · 自动 SSL · 自动监控 · 自动备份
         │
         ▼
-   FRP 自动分配子域名  →  公网可达  ( Web / 小程序 / 移动端 )
+   企业拿到 ::  一个能用的应用  +  一个永远能操作该应用的 Agent
         │
         ▼
-   AI 持续通过 HookBus + WebMCP 操作界面与数据
+   Agent 可导出  →  接入企业 IM · 嵌入工作流 · 作为 API 调用 · 跨应用编排
 ```
+
+---
+
+## `# product`  —  三件商品
+
+```
+ ┌──────────────────────────────────────────────────────────────────┐
+ │                                                                    │
+ │   [1]  App Studio                                                  │
+ │        ────────────                                                │
+ │        AI Agent 团队产全栈应用 :: Design → Dev → QA                │
+ │        客户:  企业 IT / 业务部门 / 数字化负责人                     │
+ │        计费:  按生成次数 + 按存储 + 按 Runner 用量                  │
+ │                                                                    │
+ │   [2]  Agent Export                                                │
+ │        ─────────────                                               │
+ │        应用 = 代码 + 一个**永远能操作它**的 Agent                   │
+ │        Agent 含 :: Hook 清单 · Prompt 模板 · WebMCP 声明 · 状态记忆 │
+ │        出口:  接入企业 IM · 作为 API · 嵌入工作流 · 跨应用编排      │
+ │                                                                    │
+ │   [3]  Cloud Runner                                                │
+ │        ─────────────                                               │
+ │        weteam 全托管 · 企业不碰 Docker / 域名 / SSL / 监控          │
+ │        SLA:  企业级 (起步 99.5%, 合规客户独立 VPS)                  │
+ │        计费:  按月订阅 · 按 CPU/RAM 阶梯 · 按 Agent 调用次数        │
+ │                                                                    │
+ └──────────────────────────────────────────────────────────────────┘
+```
+
+`moat ::` 三件商品**绑成一根价值链** —— 单买 App Studio = Lovable, 单买 Agent = Manus, 单买 Cloud Runner = Vercel. **三个一起 + 同一份元数据驱动 = 当前市场无 1:1 对位**.
 
 ---
 
 ## `# vs`  —  跟业界的差异
 
-| 对手                 | 它们的局限                       | 小蓝的不同                           |
-|----------------------|----------------------------------|--------------------------------------|
-| **Bubble · Webflow** | 无代码 · vendor lock-in · 逃不出来 | 产出**真代码** · 跑在你自己机器      |
-| **Lovable · v0**     | 只生成前端 · 没运行时              | 前后端全栈 + 数据库 + 部署            |
-| **Replit Agents**    | 代码跑在 Replit 云 · 成本高       | 跑在租户 Runner · 成本极低            |
-| **n8n · Zapier**     | 自动化 · 非应用开发                | 能产**完整应用** · 不只是流程         |
-| **传统 SaaS 工具**   | 企业导向 · 超级个体过重           | 专为超级个体 · 轻量                    |
+| 对手                          | 它们的局限                                   | weteam 的不同                                  |
+|-------------------------------|----------------------------------------------|------------------------------------------------|
+| **Lovable Teams · v0**        | 只产代码 · 应用部署完 Agent 链路就断了        | 应用 + **配套 Agent** 同步产出 · Agent 持续控应用 |
+| **Replit Teams**              | 云 IDE 强 · 但 Agent 不绑定具体应用            | Agent 与应用 1:1 绑定 · Hook 白名单即 capability  |
+| **Manus 企业版 · Devin**      | 通用 Agent · 不产长期持有的"商品级应用"        | 产**可交付资产** :: 应用 + Agent + 运维三合一    |
+| **火山引擎 · 阿里 Qwen 企业** | 卖模型 / API · 不卖"应用 + 运维"               | 卖**端到端交付物** · 企业拿到即可用             |
+| **Bubble · Webflow · 钉钉宜搭** | 无代码 · vendor lock-in · 不开放 Agent 协议    | 产**真代码** · WebMCP 协议开放 · 可导出 Agent    |
+| **n8n · Zapier**              | 自动化流程 · 非应用开发                       | 产**完整应用** + Agent 同时能跑流程            |
 
 ```
  moat ::
-   HookBus    (代码白名单)
- + WebMCP     (前端操作协议)
- + Runner+FRP (自托管 + 自动公网化)
- + Knowledge  (AI 可编程记忆)
+   HookBus           (Agent 的 capability 清单 = 商品定义)
+ + WebMCP            (应用控制协议 = Agent 操作 UI 的标准)
+ + Agent Export      (Agent 作为可交付资产)
+ + Cloud Runner      (全托管运维 + 企业级 SLA)
+ + 同源元数据驱动     (一处声明 → 应用 + Agent + 权限 + 审计 全自动对齐)
 ```
 
 ---
@@ -65,16 +107,16 @@ lang :: [English](/docs/readme/README.en.md) · [中文](/docs/readme/README.zh-
 
 ```
  ┌───────────────────────────────────────────────────────────────────┐
- │                          小蓝 (Azure AI)                           │
+ │                              weteam                                │
  ├──────────────────┬────────────────────────┬──────────────────────┤
  │   web/            │     src/                │     runner/           │
  │   Astro + Vue     │     NestJS 后端         │     Fastify Runner    │
- │   管理后台        │     (稳定元平台)         │     (租户本机执行)     │
+ │   管理后台        │     (元平台 · 高可用)    │     (云 Runner 容器)   │
  │                   │                         │                       │
- │  > 对话入口        │  > AI Agent 团队         │  > 代码执行沙箱        │
- │  > 插件市场        │  > HookBus 调度          │  > Unit Core 基座     │
- │  > SaaS 控制台     │  > Knowledge 记忆         │  > FRP 公网化         │
- │                   │  > Runner 注册           │  > Docker 一键部署     │
+ │  > 对话入口        │  > AI Agent 团队         │  > 应用代码执行        │
+ │  > Agent 市场      │  > HookBus 调度          │  > Unit Core 基座     │
+ │  > 控制台 + 计费   │  > Agent Export 引擎      │  > 自动域名 + SSL     │
+ │                   │  > Runner 编排 + 隔离     │  > Docker + cgroup    │
  └──────────────────┴────────────────────────┴──────────────────────┘
                          ▲
                          │  Socket.IO 长连接
@@ -85,11 +127,12 @@ lang :: [English](/docs/readme/README.en.md) · [中文](/docs/readme/README.zh-
 
 ```
  role ::
-   web      ─►  交互层  ·  超级个体操作入口
-   saas     ─►  元平台  ·  AI 生成 + 调度  ·  **必须高可用**
-   runner   ─►  租户自己的机器(本机/VPS/家用服务器)
-                跑用户的应用与数据
-                SaaS 不负责稳定性, 但保存代码镜像 → **一键恢复**
+   web      ─►  交互层  ·  企业客户操作入口  ·  控制台 + 计费 + Agent 商店
+   saas     ─►  元平台  ·  AI Agent 团队 + HookBus + Agent Export 引擎
+                **必须高可用** · 一切产出与计费的源头
+   runner   ─►  weteam 云 Runner  ·  全托管 Docker 容器  ·  per-customer 隔离
+                自动域名 + SSL + 监控 + 备份  ·  企业不碰底层
+                SLA  ::  起步 99.5%  ·  合规客户升独立 VPS 至 99.9%
 ```
 
 ---
@@ -139,33 +182,63 @@ AI 产代码调这些 Unit · 不碰底层 API.
  source    ::  本地预置 (代码声明, 只读)  +  用户扩展 (数据库)
 ```
 
-### `[5]  Solution 市场`  ::  超级个体商店
-
-应用模板 (含 app + unit + workflow + agent) 可**购买 → 安装 → 卸载**.
-超级个体做的 Solution 上架 → 其他用户装到自己 Runner 直接用.
-
-`biz ::` **被动收入支柱之一**.
-
-### `[6]  FRP 自动公网化`  ::  零运维部署通道
+### `[5]  Solution Catalog + Agent Export`  ::  可交付资产引擎
 
 ```
- Runner 启动  →  frpc.toml 自动生成  →  连入 SaaS frps  →  分配子域名  →  应用公网可达
+ Solution (应用模板, 含 app + unit + workflow + agent)
+      │
+      ├─►  企业内部 Catalog  ::  本企业生成的应用模板 · 跨部门复用
+      │
+      └─►  公开市场 (后期)   ::  weteam 审核 · 厂商上架 · 抽佣
 ```
 
-解决超级个体最头疼的部署问题 :: 不用买服务器 · 配 DNS · 装 Nginx · 申 SSL.
-一行 `docker-compose up` 搞定.
+**Agent Export** 是这一层的核心新协议:
 
 ```
- [x] frps   内置于 SaaS Docker compose
- [x] frpc   内置于 Runner 镜像
- [ ] 自定义域名 CNAME 绑定  (Phase 4 完善)
+ Application  ──产出──►  Agent Bundle
+                         ├─ Hook 清单         (capability)
+                         ├─ Prompt 模板       (角色与上下文)
+                         ├─ WebMCP 声明        (UI 控制协议)
+                         ├─ 状态记忆 schema    (长期 context)
+                         └─ 计费元数据         (按调用次数)
+
+ 出口 ::
+   [+]  接入企业 IM        (钉钉 / 飞书 / 企业微信 / Slack)
+   [+]  作为 HTTP API       (Agent-as-a-Service)
+   [+]  嵌入工作流           (n8n / 内部 BPM 节点)
+   [+]  跨应用编排           (多 Agent 协作)
 ```
 
-### `[7]  Storage 网盘`  ::  跨租户 MD5 去重
+`biz ::` Agent 调用次数计费  +  Solution Catalog 抽佣  +  应用部署订阅 = **三层叠加营收**.
+
+### `[6]  Cloud Runner`  ::  一站式自动运维
+
+```
+ 企业点 "部署"  →  weteam 调度  →  Docker 容器拉起  →  自动域名 + SSL + 监控  →  应用可达
+```
+
+企业**不碰任何底层**:: 不买服务器 · 不配 DNS · 不装 Nginx · 不申 SSL · 不写 Dockerfile.
+
+```
+ phase A  (0-50 客户)    ::  单机 Docker + cgroup + Caddy + FRP 内部反代
+ phase B  (50-200)        ::  + gVisor runtime (容器逃逸防护)
+ phase C  (200+)           ::  Docker Swarm / Nomad 横向扩
+ phase D  (合规客户)       ::  per-customer 独立 VPS · 单独 SLA 协议
+
+ capability ::
+   [x] Caddy 自动 SSL (Let's Encrypt)        现有
+   [x] FRP 反代 + 子域名分配                  现有
+   [ ] 多客户 Docker 编排 + cgroup 限流        Phase 0.5
+   [ ] 容器逃逸防护 (gVisor runtime 开关)      Phase 1
+   [ ] 自动备份 + 一键恢复                    Phase 2
+   [ ] 自定义域名 CNAME 绑定                  Phase 4
+```
+
+### `[7]  Storage 网盘`  ::  跨客户 MD5 去重
 
 完整网盘能力 :: 目录树 · 分享链接 (永久/临时/密码) · 拖拽 · 断点续传.
 
-`highlight ::` MD5 跨租户引用计数  →  同文件全平台只存一份物理副本  →  显著省存储.
+`highlight ::` MD5 跨客户引用计数  →  同文件全平台只存一份物理副本  →  显著省存储成本.
 
 ### `[8]  AI 代码生成流水线  [WIP]`
 
@@ -306,7 +379,7 @@ AI 生成代码的**运行时原语库**:
  [x]  Runner 5-Tab 控制面板     (Performance · Domain · AppDomain · App · Solution)
  [x]  Knowledge 模块             (pgvector + LM 必读 + 本地预置 + Hook 暴露)
  [x]  Solution 市场              (CRUD / 市场 / 购买 / 安装 / 卸载)
- [x]  Storage 网盘               (MD5 跨租户去重)
+ [x]  Storage 网盘               (MD5 跨客户去重)
  [x]  FRP 自动公网化             (frpc 自启 · Caddy HTTPS)
  [x]  HookBus + Unit Core        (装饰器 + system-unit 原语)
  [x]  WebMCP                     (SDK + Demo)
@@ -385,12 +458,13 @@ AI 生成代码的**运行时原语库**:
  recall  ::  返回完整原文 · 让 LLM 在 raw context 上自己推理
 ```
 
-### `[5]`  SaaS 稳定 · Runner 可弃
+### `[5]`  SaaS 高可用 · Cloud Runner 企业级 SLA · 客户零运维
 
 ```
- saas    ::  元平台 · AI Agent 团队的家 · 必须高可用
- runner  ::  租户的机器 · 稳定性租户自担
- backup  ::  SaaS 保存所有代码镜像 · Runner 挂了能一键恢复
+ saas    ::  元平台 · AI Agent 团队 + Agent Export 引擎 · 必须高可用
+ runner  ::  weteam 全托管 · per-customer 容器隔离 · weteam 担稳定性
+ backup  ::  代码镜像 + Agent Bundle + 数据卷 三层备份 · 客户一键恢复
+ SLA     ::  起步 99.5%  ·  独立 VPS 客户升 99.9%  ·  合规客户单签
 ```
 
 ### `[6]`  Debug 作为协议一等公民
@@ -405,7 +479,9 @@ AI 生成代码的**运行时原语库**:
 
 ---
 
-## `# quickstart`
+## `# quickstart`  —  开发者本地起 weteam
+
+> 本节面向 **weteam 开发者**, 不是面向客户. 客户使用 weteam 不需要装任何东西, 浏览器打开控制台即可.
 
 ```
  requires ::
@@ -414,7 +490,7 @@ AI 生成代码的**运行时原语库**:
    Docker + Docker Compose
 ```
 
-### `saas ::`
+### `saas ::` 元平台
 
 ```bash
 $ pnpm install
@@ -425,14 +501,14 @@ $ pnpm run start:dev              # backend
 $ cd web && pnpm run dev          # frontend
 ```
 
-### `runner ::` (租户侧)
+### `runner ::` 云 Runner 容器  (开发态本地起一份)
 
 ```bash
 $ cd runner
 $ docker-compose up -d
 ```
 
-首次启动 → 在 SaaS 的 Runner 管理页面创建 Runner → 拿 `runnerKey` 填入 Runner 配置.
+首次启动 → SaaS 控制台创建 Runner 实例 → 拿 `runnerKey` 注入容器. 生产环境下 weteam 自动调度多客户容器, 开发态此步等价于"模拟一个客户"用于联调.
 
 ### `build ::` 生产
 
@@ -445,7 +521,7 @@ $ pnpm run build
 ## `# tree`
 
 ```
- azure-ai/
+ weteam/                  # repo 内部代号: azure-ai
    ├── web/                  # Astro + Vue 前端
    │    └── src/modules/      ::  功能模块
    ├── src/                  # NestJS 后端
