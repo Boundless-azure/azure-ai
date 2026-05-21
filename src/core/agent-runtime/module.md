@@ -20,7 +20,7 @@
 - `load(inputDir, invocationContext?)` — 加载 Agent 目录, 注入 5 个 hook 工具 (闭包持有 ctx); call_hook 副作用同时落 SessionCallTracker (内存) 和 AiCallLogService (持久化, 仅成功项) | keywords: load-agent, inject-tools, ctx-closure, call-log-sink
 - `startDialogue(agentDir, messages, options)` — 启动对话流, options 含 proactiveContext / invocationContext / agentContext | keywords: start-dialogue, proactive-chat, invocation-context, agent-context
 - `getTools(agentDir, invocationContext?)` — 获取 Agent 工具集 (含 5 个内置 hook 工具) | keywords: get-tools
-- `buildAiAdapter()` — 构建 AI 适配器, 始终注入英文 base system prompt; 支持 agent-runtime-context 前置注入当前 agent 元信息和业务 tenant; 主动对话规则以英文 `[system-prompt-tip priority="critical"]` 注入; Agent 定义以英文 `[agent-definition priority="high"]` 包裹 | keywords: ai-adapter, base-prompt, agent-runtime-context, proactive-priority, agent-definition
+- `buildAiAdapter()` — 构建 AI 适配器, 始终注入 JSON system prompt; 将 agent-runtime、proactive-dialogue、agent-definition 作为 `role.*` 字段合并进同一个 JSON, 稳定规则在前、动态角色在后以利于 prompt cache | keywords: ai-adapter, base-prompt, agent-runtime-context, proactive-priority, agent-definition
 - `attachDialogue(agent)` — 把 AIModelService 注入对话层 | keywords: attach-dialogue
 - `maybeTriggerSaveLlmAfterTurn(ctx, modelIds)` — 整轮结束低频硬匹配命中即异步触发 sinking LLM | keywords: maybe-trigger-save-llm
 
@@ -60,7 +60,8 @@ LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationCont
 ### prompts/base-llm.prompt.ts
 基础 LLM 系统提示词
 
-- `buildBaseLlmSystemPrompt()` — 生成英文基础提示: 明确 `[system-prompt-tip]` 与 `[agent-definition]` 优先级 + 禁止编造真实数据/调用 + 结构化 IM JSON 输入识别 (`bookTip/includeHOOK/includeTip/text`) + 工具协议 + 复杂 hook 任务按需发现链路 (callHistory/sessionData/knowledge/hook registry) + batch/错误处理约束 | keywords: base-llm-prompt, prompt-priority, no-fabrication, structured-im-input, conditional-discovery, batch-plan
+- `buildBaseLlmSystemPrompt()` — 生成 JSON 基础 system prompt: 明确 `role.system/role.agentRuntime/role.proactiveDialogue/role.agentDefinition` 角色优先级 + 禁止编造真实数据/调用 + v3 结构化 IM JSON 输入识别 (`v/kind/text/task/mode/must/refs`) + guidanceCodes/sectionRefs 代号解释 + knowledgeCatalog 常驻知识库名称与真实 tags + semanticResolution 同义词语义归一 + 工具协议 + 未知情况固定按 sessionData -> knowledge -> hook registry/schema 查证 + 复杂 hook 任务按需发现链路 (callHistory/sessionData/knowledge/hook registry) + batch/错误处理约束 | keywords: base-llm-prompt, prompt-priority, no-fabrication, structured-im-input, conditional-discovery, batch-plan
+- `LlmSystemPromptJson` (type) — system prompt JSON 合同, 供基础提示、guidanceCodes/sectionRefs 与运行时 `role.*` 注入共用 | keywords: system-prompt-json, role-json, prompt-contract
 
 ### types/agent-runtime.types.ts
 - `LoadedAgent` — Agent 加载结果类型 (tools, dialogues, descriptor)

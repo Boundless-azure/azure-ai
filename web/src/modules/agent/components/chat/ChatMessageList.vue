@@ -273,7 +273,7 @@ import { storeToRefs } from 'pinia';
 import type { ChatMessage } from '../../types/agent.types';
 import { ChatRole, ToolCallStatus } from '../../enums/agent.enums';
 import { useI18n } from '../../composables/useI18n';
-import { resolveResourceUrl } from '../../../../utils/http';
+import { resolveImageUrl } from '../../../resource/services/resource-url.service';
 import { usePanelStore } from '../../store/panel.store';
 import { useImStore } from '../../../im/im.module';
 import { AI_AWAITING_EMOJI } from '../../../im/constants/im.constants';
@@ -462,7 +462,7 @@ const avatarSrcById = computed<Record<string, string>>(() => {
     const pid = (item?.principalId || '').trim();
     const raw = typeof item.avatarUrl === 'string' ? item.avatarUrl.trim() : '';
     if (!pid || !raw) continue;
-    out[pid] = (resolveResourceUrl(raw) || raw).trim();
+    out[pid] = (resolveImageUrl(raw) || raw).trim();
   }
   console.log(out);
   return out;
@@ -534,7 +534,7 @@ md.renderer.rules.image = function (tokens, idx, options, env, self) {
   const srcIndex = token.attrIndex('src');
   if (srcIndex >= 0 && token.attrs) {
     const src = token.attrs[srcIndex][1];
-    const resolved = resolveResourceUrl(src);
+    const resolved = resolveImageUrl(src);
     if (resolved) {
       token.attrs[srcIndex][1] = resolved;
     }

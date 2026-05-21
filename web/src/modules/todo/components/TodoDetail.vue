@@ -305,7 +305,7 @@ import { useI18n } from '../../agent/composables/useI18n';
 import type { TodoItem, TodoFollowup } from '../types/todo.types';
 import { useTodos } from '../hooks/useTodos';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';
-import { resolveResourceUrl } from '../../../utils/http';
+import { resolveImageUrl } from '../../resource/services/resource-url.service';
 import FollowupTimeline from './FollowupTimeline.vue';
 import AddFollowupModal from './AddFollowupModal.vue';
 import EditFollowupModal from './EditFollowupModal.vue';
@@ -377,7 +377,7 @@ async function loadFollowerOptions() {
 
 const getAvatarUrl = (id: string) => {
   const p = principalMap.value[id];
-  return p?.avatarUrl ? resolveResourceUrl(p.avatarUrl) : '';
+  return p?.avatarUrl ? resolveImageUrl(p.avatarUrl) : '';
 };
 
 const getNickname = (id: string) => {

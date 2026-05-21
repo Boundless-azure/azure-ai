@@ -86,7 +86,7 @@
                   >
                     <img
                       v-if="user.avatarUrl"
-                      :src="resolveResourceUrl(user.avatarUrl)"
+                      :src="resolveImageUrl(user.avatarUrl)"
                       class="w-full h-full object-cover"
                     />
                     <i v-else class="fa-solid fa-user"></i>
@@ -205,7 +205,7 @@
             >
               <img
                 v-if="user.avatarUrl"
-                :src="resolveResourceUrl(user.avatarUrl)"
+                :src="resolveImageUrl(user.avatarUrl)"
                 class="w-full h-full object-cover"
               />
               <i v-else class="fa-solid fa-user"></i>
@@ -319,7 +319,7 @@
               >
                 <img
                   v-if="form.avatarUrl"
-                  :src="resolveResourceUrl(form.avatarUrl)"
+                  :src="resolveImageUrl(form.avatarUrl)"
                   class="w-full h-full object-cover"
                 />
                 <i v-else class="fa-solid fa-user"></i>
@@ -433,7 +433,7 @@
     <SquareAvatarCropModal
       v-model:open="showAvatarModal"
       title="裁剪头像"
-      :initial-url="resolveResourceUrl(form.avatarUrl)"
+      :initial-url="resolveImageUrl(form.avatarUrl)"
       @confirm="onAvatarConfirm"
     />
   </div>
@@ -533,7 +533,7 @@ import {
   SquareAvatarCropModal,
   useResourceUpload,
 } from '../../resource/resource.module';
-import { resolveResourceUrl } from '../../../utils/http';
+import { resolveImageUrl } from '../../resource/services/resource-url.service';
 import type {
   IdentityPrincipalItem,
   UserPrincipalType,

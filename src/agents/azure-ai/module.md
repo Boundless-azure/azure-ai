@@ -22,13 +22,13 @@
 默认智能体 -> agents/azure-ai/agent.desc.ts
 对话层 -> agents/azure-ai/dialogues/dialogues.min.ts
 模型ID选择 -> agents/azure-ai/dialogues/dialogues.min.ts
-SaaS 系统 Hook 手册引导 -> agents/azure-ai/dialogues/dialogues.min.ts
+系统手册引导 -> agents/azure-ai/dialogues/dialogues.min.ts
 
 Keywords (EN)
 default-agent -> agents/azure-ai/agent.desc.ts
 dialogue-layer -> agents/azure-ai/dialogues/dialogues.min.ts
 model-id-selection -> agents/azure-ai/dialogues/dialogues.min.ts
-saas-system-hook-handbook-hint -> agents/azure-ai/dialogues/dialogues.min.ts
+system-manual-handbook-hint -> agents/azure-ai/dialogues/dialogues.min.ts
 
 关键词到文件函数哈希映射（Keywords -> Function Hash）
 - DialoguesClass.handleAiServer -> azure_ai_dialogue_ai_server_001

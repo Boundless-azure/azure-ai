@@ -7,7 +7,7 @@
           >
             <img
               v-if="form.avatarUrl"
-              :src="resolveResourceUrl(form.avatarUrl)"
+              :src="resolveImageUrl(form.avatarUrl)"
               class="w-full h-full object-cover"
             />
             <span v-else class="text-sm font-semibold text-gray-600">
@@ -147,7 +147,7 @@ import {
   SquareAvatarCropModal,
   useResourceUpload,
 } from '../../resource/resource.module';
-import { resolveResourceUrl } from '../../../utils/http';
+import { resolveImageUrl } from '../../resource/services/resource-url.service';
 import { authService } from '../../auth/services/auth.service';
 
 defineEmits<{

@@ -401,14 +401,14 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { imApi, type ImMemberInfo } from '../../../api/im';
-import { resolveResourceUrl } from '../../../utils/http';
+import { resolveImageUrl } from '../../resource/services/resource-url.service';
 import { useImStore } from '../../im/im.module';
 import { usePanelStore } from '../store/panel.store';
 import { useUIStore } from '../store/ui.store';
 import { useAgentSessionStore } from '../store/session.store';
 import MemberSelectorPanel from './MemberSelectorPanel.vue';
 
-const toResourceUrl = resolveResourceUrl;
+const toResourceUrl = resolveImageUrl;
 
 const props = defineProps<{
   sessionId: string;

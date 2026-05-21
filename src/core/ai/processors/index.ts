@@ -13,15 +13,18 @@ import type { AIModelEntity } from '../entities';
 import type { ChatModelProcessor } from './types';
 import { defaultProcessor } from './default.processor';
 import { reasoningProcessor } from './reasoning.processor';
+import { minimaxProcessor } from './minimax.processor';
 
 /**
  * 仅列出"行为偏离 LangChain 标准映射"的 provider; 其余全部走 default.
  *  - deepseek :: R1 把思考过程塞 __raw_response.delta.reasoning_content (LangChain 标准 converter 不读)
  *  - nvidia   :: NIM 主流 reasoning 模型 (QwQ / Qwen3 / R1 NV 部署) 同 R1 风格, 思考严格分离
+ *  - minimax  :: OpenAI reasoning_split 走 delta.reasoning_details; Anthropic 走 thinking block
  * @keyword-en provider-specialization
  */
 const PROVIDER_PROCESSORS: Record<string, ChatModelProcessor> = {
   deepseek: reasoningProcessor,
+  minimax: minimaxProcessor,
   nvidia: reasoningProcessor,
 };
 

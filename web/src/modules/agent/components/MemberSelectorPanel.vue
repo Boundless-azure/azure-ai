@@ -73,7 +73,7 @@
           >
             <img
               v-if="item.avatarUrl"
-              :src="resolveResourceUrl(item.avatarUrl)"
+              :src="resolveImageUrl(item.avatarUrl)"
               class="w-full h-full object-cover"
             />
             <i v-else class="fa-solid fa-user"></i>
@@ -137,7 +137,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';
 import type { IdentityPrincipalItem } from '../../identity/types/identity.types';
-import { resolveResourceUrl } from '../../../utils/http';
+import { resolveImageUrl } from '../../resource/services/resource-url.service';
 
 // Simple debounce implementation to avoid lodash-es dependency
 function debounce<T extends (...args: any[]) => any>(fn: T, delay: number) {

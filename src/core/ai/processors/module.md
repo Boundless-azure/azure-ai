@@ -13,6 +13,8 @@
   - keywords: default-processor, standard-mapping, baseline
 - `reasoning.processor.ts` — reasoning_content 严格按 reasoning yield, 覆盖 DeepSeek-R1 / NVIDIA NIM
   - keywords: reasoning-processor, thinking-separated, deepseek-r1, nim
+- `minimax.processor.ts` — MiniMax Anthropic thinking block + OpenAI reasoning_split.reasoning_details 分离
+  - keywords: minimax-processor, thinking-separated, reasoning-details
 - `index.ts` — selectProcessor(config) 注册表, 未注册 provider 走 default
   - keywords: processor-registry, select-processor, default-fallback
 
@@ -22,6 +24,7 @@
 |---|---|---|
 | default | additional_kwargs.reasoning_content / thoughts / thinking 等 → reasoning | chunk.content 字符串/数组 text block → token |
 | reasoning | __raw_response.delta.reasoning_content → reasoning | chunk.content → token |
+| minimax | Anthropic thinking block / __raw_response.delta.reasoning_details[].text → reasoning | chunk.content → token |
 
 ## 新增 provider 的工作流
 

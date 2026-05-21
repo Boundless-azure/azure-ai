@@ -28,7 +28,7 @@
             <div class="flex items-center gap-2">
               <!-- 跟进人头像 -->
               <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-600 overflow-hidden cursor-help" :title="followup.followerName || followup.followerId">
-                <img v-if="followup.followerAvatar" :src="resolveResourceUrl(followup.followerAvatar)" class="w-full h-full object-cover" />
+                <img v-if="followup.followerAvatar" :src="resolveImageUrl(followup.followerAvatar)" class="w-full h-full object-cover" />
                 <span v-else>{{ getInitials(followup.followerName || followup.followerId) }}</span>
               </div>
               <div>
@@ -93,6 +93,7 @@
  */
 import { ref } from 'vue';
 import { useI18n } from '../../agent/composables/useI18n';
+import { resolveImageUrl } from '../../resource/services/resource-url.service';
 import type { TodoFollowup } from '../types/todo.types';
 import CommentList from './CommentList.vue';
 

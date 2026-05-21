@@ -2,7 +2,7 @@
 
 概述
 - 提供 AI 模型配置、会话上下文管理和会话摘要生成能力。
-- 支持多模型接入：OpenAI、Azure OpenAI、Anthropic、Google Gemini、DeepSeek、Kimi 等。
+- 支持多模型接入：OpenAI、Azure OpenAI、Anthropic、Google Gemini、DeepSeek、Kimi、MiniMax、NVIDIA 等。
 - 提供会话消息的存储、检索和摘要功能。
 - 通过 LangGraph 实现复杂的多步骤推理能力。
 
@@ -12,6 +12,7 @@
 - core/ai/services/ai-model.service.ts
 - core/ai/providers/module.md
 - core/ai/providers/kimi-chat-openai.ts
+- core/ai/processors/minimax.processor.ts
 - core/ai/entities/chat-session.entity.ts
 - core/ai/entities/chat-message.entity.ts
 - core/ai/entities/base.entity.ts
@@ -29,7 +30,7 @@
   - getHistory(sessionId, limit?)
   - createSummary(sessionId)
 - AIModelService
-  - createModelInstance(config, request)：按 provider 创建 LangChain 模型实例；支持 kimi OpenAI 兼容接口。
+  - createModelInstance(config, request)：按 provider 创建 LangChain 模型实例；支持 kimi OpenAI 兼容接口与 minimax OpenAI/Anthropic 兼容接口。
   - chat(request)：非流式模型调用。
   - chatStream(request)：流式模型调用。
   - getModels(provider?, type?)：查询模型配置。
@@ -44,7 +45,7 @@
 - ChatMessageEntity
   - id, sessionId, role, content, functionCall?, result?
 - AIProvider
-  - openai, anthropic, google, gemini, deepseek, kimi, nvidia, azure_openai, custom
+  - openai, anthropic, google, gemini, deepseek, kimi, minimax, nvidia, azure_openai, custom
 - BaseAuditedEntity.ensureId() — 插入前生成 UUID v7 主键 | keywords: id-generation, uuid-v7, before-insert
 
 关键词索引（中文 / English Keyword Index）
@@ -52,6 +53,7 @@ AI核心模块 -> core/ai/ai-core.module.ts
 AI服务 -> core/ai/ai-core.service.ts
 AI模型运行时 -> core/ai/services/ai-model.service.ts
 Kimi模型适配 -> core/ai/providers/kimi-chat-openai.ts
+MiniMax模型适配 -> core/ai/processors/minimax.processor.ts
 会话实体 -> core/ai/entities/chat-session.entity.ts
 消息实体 -> core/ai/entities/chat-message.entity.ts
 基础实体 -> core/ai/entities/base.entity.ts
@@ -72,6 +74,7 @@ AI模型类型 -> core/ai/types/ai-model.types.ts
 - KimiChatOpenAI.withConfig -> kimi-with-config-preserve-adapter
 - KimiChatOpenAI._streamResponseChunks -> kimi-stream-with-reasoning-content
 - KimiChatOpenAI._generate -> kimi-generate-with-reasoning-content
+- minimaxProcessor.processStreamChunk -> minimax-process-stream-chunk
 
 模块功能描述（Description）
-AI 核心模块是系统的大脑：管理 AI 模型的配置与会话生命周期，提供标准化的聊天接口，支持函数调用和多模态交互。Kimi 通过 OpenAI 兼容接口接入，默认 baseURL 为 `https://api.moonshot.cn/v1`，也允许模型配置覆盖；Kimi 专用适配器会保留并回放 reasoning_content，使 thinking + tool calling 可继续使用。会话消息持久化到数据库，支持上下文窗口管理和历史检索。
+AI 核心模块是系统的大脑：管理 AI 模型的配置与会话生命周期，提供标准化的聊天接口，支持函数调用和多模态交互。Kimi 通过 OpenAI 兼容接口接入，默认 baseURL 为 `https://api.moonshot.cn/v1`，也允许模型配置覆盖；Kimi 专用适配器会保留并回放 reasoning_content，使 thinking + tool calling 可继续使用。MiniMax 支持 OpenAI-compatible 与 Anthropic-compatible 两种接入，默认国内 endpoint，可通过模型配置切换海外 endpoint；MiniMax processor 会把 OpenAI reasoning_split 的 reasoning_details 与 Anthropic thinking block 分离为 reasoning 事件。会话消息持久化到数据库，支持上下文窗口管理和历史检索。

@@ -26,7 +26,9 @@ export function useResourceUpload() {
   const items = shallowRef<UploadItem[]>([]);
 
   /**
-   * 单文件上传
+   * 单文件上传。
+   * @keyword-cn 单文件上传, 资源上传, 上传进度
+   * @keyword-en single-upload, resource-upload, upload-progress
    */
   async function upload(file: File, opts?: { signal?: AbortSignal }) {
     uploading.value = true;
@@ -52,8 +54,9 @@ export function useResourceUpload() {
   }
 
   /**
-   * 多文件上传
-   * @keyword-en upload-multiple
+   * 多文件上传。
+   * @keyword-cn 多文件上传, 资源上传, 上传队列
+   * @keyword-en multi-upload, resource-upload, upload-queue
    * @returns 包含 results 和 items 的对象，items 包含每个文件的进度和状态
    */
   async function uploadMultiple(files: File[], opts?: { signal?: AbortSignal }): Promise<{ results: UploadResourceResponse[]; items: UploadItem[] }> {
@@ -115,7 +118,9 @@ export function useResourceUpload() {
   }
 
   /**
-   * 取消上传
+   * 取消指定上传项。
+   * @keyword-cn 取消上传, 资源上传, 上传中止
+   * @keyword-en abort-upload, resource-upload, upload-cancel
    */
   function abort(itemId?: string) {
     if (itemId) {
@@ -125,7 +130,9 @@ export function useResourceUpload() {
   }
 
   /**
-   * 取消所有上传
+   * 取消所有上传项。
+   * @keyword-cn 全部取消, 资源上传, 上传中止
+   * @keyword-en abort-all-uploads, resource-upload, upload-cancel
    */
   function abortAll() {
     for (const item of items.value) {

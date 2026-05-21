@@ -48,6 +48,7 @@ export function useAiProviders() {
     baseURL?: string | null;
     description?: string | null;
     enabled?: boolean;
+    thinkingEnabled?: boolean;
   }) {
     const res = await agentApi.createAiModel(payload);
     return res.data;
@@ -66,6 +67,7 @@ export function useAiProviders() {
       baseURL?: string | null;
       description?: string | null;
       enabled?: boolean;
+      thinkingEnabled?: boolean;
     },
   ) {
     const res = await agentApi.updateAiModel(id, payload);

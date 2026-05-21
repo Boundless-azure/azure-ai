@@ -157,6 +157,7 @@ export class AiModelsService {
 
       if (apiProtocol === AIModelApiSpec.ANTHROPIC) {
         const ok = await this.testAnthropicConnection({
+          provider,
           apiKey,
           modelId,
           baseURL,
@@ -211,7 +212,9 @@ export class AiModelsService {
       messages: [{ role: 'user', content: 'ping' }],
       max_tokens: 1,
     };
-    if (params.provider !== 'kimi') {
+    if (params.provider === 'minimax') {
+      body.temperature = 1;
+    } else if (params.provider !== 'kimi') {
       body.temperature = 0;
     } else {
       body.thinking = { type: 'disabled' };
@@ -237,11 +240,16 @@ export class AiModelsService {
    * @keyword-en anthropic-connection-test
    */
   private async testAnthropicConnection(params: {
+    provider?: string;
     apiKey: string;
     modelId: string;
     baseURL?: string;
   }): Promise<{ ok: boolean; message: string }> {
-    const baseURL = params.baseURL?.trim() || 'https://api.anthropic.com';
+    const baseURL =
+      params.baseURL?.trim() ||
+      (params.provider === 'minimax'
+        ? 'https://api.minimaxi.com/anthropic'
+        : 'https://api.anthropic.com');
     const endpoint = baseURL.endsWith('/v1')
       ? `${baseURL}/messages`
       : `${baseURL}/v1/messages`;
@@ -274,6 +282,7 @@ export class AiModelsService {
     if (baseURL && baseURL.trim()) return baseURL.trim();
     if (provider === 'deepseek') return 'https://api.deepseek.com';
     if (provider === 'kimi') return 'https://api.moonshot.cn/v1';
+    if (provider === 'minimax') return 'https://api.minimaxi.com/v1';
     if (provider === 'nvidia') return 'https://integrate.api.nvidia.com/v1';
     if (provider === 'azure_openai') return 'https://api.openai.com';
     return 'https://api.openai.com';

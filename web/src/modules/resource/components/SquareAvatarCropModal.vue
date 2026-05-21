@@ -300,8 +300,8 @@
 /**
  * @title Square Avatar Crop Modal
  * @description 增强版方形头像裁剪弹窗组件，支持拖拽、缩放、旋转与网格辅助。
- * @keywords-cn 方形裁剪, 头像裁剪, 拖拽, 缩放, 旋转, 网格, 预览
- * @keywords-en square-crop, avatar-crop, drag, zoom, rotate, grid, preview
+ * @keywords-cn 方形裁剪, 头像裁剪, 拖拽, 缩放, 预览
+ * @keywords-en square-crop, avatar-crop, drag, zoom, preview
  */
 
 import {
@@ -768,6 +768,11 @@ async function updatePreview() {
   }
 }
 
+/**
+ * 确认头像裁剪并返回裁剪后的文件。
+ * @keyword-cn 方形裁剪, 头像裁剪, 拖拽, 缩放, 预览
+ * @keyword-en square-crop, avatar-crop, drag, zoom, preview
+ */
 async function confirm() {
   if (processing.value) return;
   try {

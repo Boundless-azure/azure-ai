@@ -7,3 +7,8 @@
 
 export { useResourceUpload } from './hooks/useResourceUpload';
 export { default as SquareAvatarCropModal } from './components/SquareAvatarCropModal.vue';
+export {
+  resolveImageUrl,
+  resolveResourceUrl,
+} from './services/resource-url.service';
+export type { ResolveResourceUrlOptions } from './services/resource-url.service';

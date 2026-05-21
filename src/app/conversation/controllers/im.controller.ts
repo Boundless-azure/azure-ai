@@ -19,7 +19,10 @@ import {
   HookRoute,
 } from '@/core/hookbus/decorators/hook-controller.decorator';
 import { HookResultStatus } from '@/core/hookbus/enums/hook.enums';
-import type { HookResult } from '@/core/hookbus/types/hook.types';
+import type {
+  HookInvocationContext,
+  HookResult,
+} from '@/core/hookbus/types/hook.types';
 import type {
   ImSessionDetail,
   ImMemberInfo,
@@ -366,7 +369,7 @@ export class ImController {
 
   /**
    * 通过 HookBus 向指定 IM 会话发送消息。
-   * @keyword-en send-msg-hook-controller
+   * @keyword-en send-msg, proactive, reply-to-id
    */
   @HookRoute({
     hook: 'saas.app.conversation.sendMsg',
@@ -376,7 +379,11 @@ export class ImController {
     metadata: { tags: ['im', 'proactive', 'send'] },
   })
   @CheckAbility('create', 'message')
-  async handleSendMsg(payload: SendMsgPayload): Promise<HookResult> {
+  async handleSendMsg(
+    payload: SendMsgPayload,
+    _principal?: unknown,
+    context?: HookInvocationContext,
+  ): Promise<HookResult> {
     const {
       sessionId,
       content,
@@ -387,16 +394,28 @@ export class ImController {
       strictMention,
     } = payload;
 
-    if (replyToId) {
+    const contextReplyToId =
+      context?.source === 'llm' &&
+      typeof context.extras?.triggerMessageId === 'string'
+        ? context.extras.triggerMessageId
+        : null;
+    const effectiveReplyToId = contextReplyToId ?? replyToId;
+    if (contextReplyToId && replyToId && replyToId !== contextReplyToId) {
+      this.logger.warn(
+        `[sendMsg] replyToId overridden by llm context session=${sessionId} payload=${replyToId} context=${contextReplyToId}`,
+      );
+    }
+
+    if (effectiveReplyToId) {
       const maxReplies = 4;
       const replyCount = await this.messageService.countReplyMessages(
         sessionId,
         senderPrincipalId,
-        replyToId,
+        effectiveReplyToId,
       );
       if (replyCount >= maxReplies) {
         this.logger.warn(
-          `[sendMsg] reply limit reached (${replyCount}/${maxReplies}) session=${sessionId} replyTo=${replyToId}`,
+          `[sendMsg] reply limit reached (${replyCount}/${maxReplies}) session=${sessionId} replyTo=${effectiveReplyToId}`,
         );
         return {
           status: HookResultStatus.Error,
@@ -411,7 +430,7 @@ export class ImController {
         {
           sessionId,
           content,
-          replyToId,
+          replyToId: effectiveReplyToId,
           ...(mentions && mentions.length > 0
             ? {
                 mentions: mentions.map((principalId) => ({

@@ -75,7 +75,7 @@ import { ChatRole } from '../../enums/agent.enums';
 import type { Attachment, ChatMessage } from '../../types/agent.types';
 import { useUIStore } from '../../store/ui.store';
 import { resourceApi } from '../../../../api/resource';
-import { resolveResourceUrl } from '../../../../utils/http';
+import { resolveResourceUrl } from '../../../resource/services/resource-url.service';
 
 const props = defineProps<{
   selfPrincipalId?: string;

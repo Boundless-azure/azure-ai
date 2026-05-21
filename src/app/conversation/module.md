@@ -30,7 +30,7 @@ Hook 注册（由 HookControllerExplorerService 自动发现, 全部通过 `@Hoo
 - saas.app.conversation.webControlPageinfo — 获取最新注册页面信息 Schema (sessionId)
 - saas.app.conversation.webControlData    — 请求前端实时返回指定 data key 值 (sessionId / dataKey)
 - saas.app.conversation.webControlStatus  — 查询 MCP 连接状态 (sessionId)
-- saas.app.conversation.sendMsg           — 主动对话: LLM 通过 call_hook('saas.app.conversation.sendMsg') 发消息 (sessionId / content / senderPrincipalId / replyToId)
+- saas.app.conversation.sendMsg           — 主动对话: LLM 通过 call_hook('saas.app.conversation.sendMsg') 发消息 (sessionId / content / senderPrincipalId / replyToId); LLM context.extras.triggerMessageId 优先绑定 replyToId, 普通 curl/无 LLM context 时保持 payload 行为
   · payload schema 走 zod, handler 签名通过 z.infer 复用类型 (SSOT)
 - saas.app.conversation.smartTags         — 三步历史检索 ①: 拉取 smart 段 keywords 全景 (sessionId)
 - saas.app.conversation.smartSearch       — 三步历史检索 ②: 按 keywords 命中 smart 段 summary (sessionId / keywords / limit?)
@@ -141,7 +141,7 @@ Summary 接口
 - 对话服务 ↔ conversation service ↔ services/conversation.service.ts
 - 类型与守卫 ↔ types and guards ↔ types/conversation.types.ts
 - IM 消息历史 ↔ im message history ↔ controllers/im.controller.ts
-- IM Agent 结构化隐藏提示 ↔ im agent structured guidance envelope ↔ services/im-message.service.ts (metadata.llmContent; JSON 结构 `{ bookTip, includeHOOK, includeTip, text }`; `text` 为用户原话, 其他字段为隐藏推理/工具规划引导; 执行业务 hook 前优先 callHistory 复用近期成功调用, 无命中再按 handbook -> sessionData -> knowledge -> hook 查询)
+- IM Agent 结构化隐藏提示 ↔ im agent structured guidance envelope ↔ services/im-message.service.ts (metadata.llmContent; Agent 可见用户消息均使用 v3 紧凑 JSON `{ v, kind, text, task, mode, must, refs }`; 旧版本/缺失 llmContent 读取时重包为当前短 envelope; `task/must/refs` 仅承载任务标签与 system prompt 规则代号; 非聊天任务携带 `resolve_terms_by_knowledge` 与 `unknown_discovery_order`, 要求同义词先按知识库语义归一, 未知情况按 sessionData -> knowledge -> hook 顺序查证; `text` 为用户原话)
 - IM 新消息探测 ↔ im has-new probe ↔ controllers/im.controller.ts
 - IM 邀请成员 ↔ im invite members ↔ controllers/im.controller.ts
 - IM 会话更新 ↔ im session update ↔ controllers/im.controller.ts
@@ -170,6 +170,14 @@ Summary 接口
 - ImMessageService.getMessages -> im_msg_get_001
 - ImMessageService.resolveAgentTargetIds -> im_msg_agent_target_001
 - ImMessageService.withStructuredLlmGuidance -> im_msg_structured_guidance_001
+- ImMessageService.buildGuidanceTask(content) — 从用户原文推导轻量任务标签 | keywords: guidance-task, structured-guidance, intent-detect -> im_msg_guidance_task_002
+- ImMessageService.buildGuidanceMustCodes(task) — 把任务标签转换为 system prompt 规则代号, 非聊天任务追加 resolve_terms_by_knowledge, 能力/平台任务追加 unknown_discovery_order | keywords: guidance-codes, structured-guidance, tool-planning -> im_msg_guidance_must_003
+- ImMessageService.buildGuidanceRefs(task) — 把任务标签转换为 system prompt sectionRefs 短引用 | keywords: section-refs, structured-guidance, system-prompt -> im_msg_guidance_refs_004
+- ImMessageService.resolveGuidanceDomain(normalized) — 识别用户请求的平台业务域 | keywords: guidance-domain, intent-detect, structured-guidance -> im_msg_guidance_domain_005
+- ImMessageService.resolveGuidanceIntent(normalized) — 识别用户请求的动作意图 | keywords: guidance-intent, intent-detect, structured-guidance -> im_msg_guidance_intent_006
+- ImMessageService.isPreviousResultReference(normalized) — 判断用户是否引用上一轮或工具结果 | keywords: previous-result, context-reference, intent-detect -> im_msg_guidance_previous_007
+- ImMessageService.isContextualFollowup(normalized) — 判断用户短答是否依赖前文语境继续执行 | keywords: contextual-followup, short-reply, intent-detect -> im_msg_guidance_followup_008
+- ImMessageService.isCapabilityOrActionTask(content) — 判断用户文本是否应进入平台能力/action 提示, 包含员工/成员/应用/提醒等同义触发词 | keywords: is-capability-or-action-task -> im_msg_guidance_capability_009
 - ImMessageService.buildAgentInvocationContext -> im_msg_agent_ctx_001 (SaaS hook 鉴权主体以 agent principalId 为准, tenantId 跟随当前触发用户, principalType 固定按 agent 注入, 日志打印 sender/agent tenant 对比)
 - ImMessageService.buildAgentRuntimeContext -> im_msg_agent_runtime_ctx_001 (把当前 agent 元信息和业务 tenant 作为 AgentRuntime 前置上下文注入, 仅辅助 LLM 认知, 不参与鉴权)
 - ImMessageService.hasNew -> im_msg_has_new_002
@@ -198,7 +206,7 @@ Summary 接口
 - ImContactGroupController.removeMember -> im_cg_members_remove_025
 - ImContactGroupService.listGroups -> im_cg_svc_list_026
 - ImContactGroupService.addMembers -> im_cg_svc_add_027
-- ImController.handleSendMsg -> im_hook_send_msg_028
+- ImController.handleSendMsg(payload, _principal, context) — 主动对话 sendMsg hook; LLM context.extras.triggerMessageId 优先绑定 replyToId, 无 LLM context 时沿用 payload.replyToId | keywords: send-msg, proactive, reply-to-id -> im_hook_send_msg_028
 - WebMcpGateway.handleWebControl -> webmcp_hook_control_029
 - WebMcpGateway.handleWebControlPageInfo -> webmcp_hook_page_info_030
 - WebMcpGateway.handleWebControlData -> webmcp_hook_data_031

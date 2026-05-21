@@ -85,7 +85,7 @@
 import { onMounted, ref, watch } from 'vue';
 import { resourceApi } from '../../../api/resource';
 import type { ResourceListItem } from '../../resource/types/resource.types';
-import { resolveResourceUrl } from '../../../utils/http';
+import { resolveResourceUrl } from '../../resource/services/resource-url.service';
 
 const props = defineProps<{
   sessionId: string;

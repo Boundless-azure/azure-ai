@@ -410,7 +410,7 @@ import { tabRegistry } from '../config/tab.registry';
 import { useI18n } from '../composables/useI18n';
 import { useRightPanelStore } from '../store/right-panel.store';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';
-import { resolveResourceUrl } from '../../../utils/http';
+import { resolveImageUrl } from '../../resource/services/resource-url.service';
 import { agentApi } from '../../../api/agent';
 import { runnerApi } from '../../../api/runner';
 import { todoApi } from '../../../api/todo';
@@ -730,7 +730,7 @@ const getFollowerName = (id: string) => {
 
 const getFollowerAvatar = (id: string) => {
   const p = principalMap.value[id];
-  return p?.avatarUrl ? resolveResourceUrl(p.avatarUrl) : '';
+  return p?.avatarUrl ? resolveImageUrl(p.avatarUrl) : '';
 };
 
 const getFollowerInitials = (id: string) => {

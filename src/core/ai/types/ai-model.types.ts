@@ -8,6 +8,7 @@ export enum AIProvider {
   GEMINI = 'gemini',
   DEEPSEEK = 'deepseek',
   KIMI = 'kimi',
+  MINIMAX = 'minimax',
   NVIDIA = 'nvidia',
   AZURE_OPENAI = 'azure_openai',
   CUSTOM = 'custom',

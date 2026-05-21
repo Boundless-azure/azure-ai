@@ -16,7 +16,10 @@ import {
   buildGetHookInfoTool,
   type InvocationContextProvider,
 } from '../tools/call-hook.tools';
-import { buildBaseLlmSystemPrompt } from '../prompts/base-llm.prompt';
+import {
+  buildBaseLlmSystemPrompt,
+  type LlmSystemPromptJson,
+} from '../prompts/base-llm.prompt';
 import { SessionCallTrackerService } from './session-call-tracker.service';
 import { SessionSaveLlmService } from './session-save-llm.service';
 import { AiCallLogService } from '@/app/conversation/services/ai-call-log.service';
@@ -263,41 +266,72 @@ export class AgentRuntimeService {
     tools?: unknown[],
     agentContext?: AgentRuntimeContext,
   ) {
-    const agentRuntimePrefix = agentContext
-      ? [
-          '[agent-runtime-context]',
-          `Current agent_id="${agentContext.agentId}", agent_principal_id="${agentContext.agentPrincipalId}".`,
-          `Current business tenant_id="${agentContext.tenantId ?? 'null'}"; it comes from the current triggering user and is used only for business data isolation.`,
-          `Hook authorization always uses agent_principal_id. Never use tenant_id as principal_id.`,
-          agentContext.nickname
-            ? `Current agent nickname="${agentContext.nickname}".`
-            : '',
-          agentContext.purpose
-            ? `Current agent purpose="${agentContext.purpose}".`
-            : '',
-          '[/agent-runtime-context]',
-        ]
-          .filter(Boolean)
-          .join('\n')
-      : null;
-    // 主动对话模式: 前置注入系统提示词, 用 [system-prompt-tip]...[/system-prompt-tip] 包裹
-    // 不再硬塞手册引用 —— 手册改由 SessionHandbookSeederService 种入 session_data 的 handbook.* 槽位,
-    // sessionData.list 自动按 category 渲染 + 起手协议强制读, 这里只点一句即可.
-    const injectedPrefix = proactiveContext
-      ? [
-          '[system-prompt-tip priority="critical" mode="proactive-dialogue"]',
-          `Hard rule: you are in proactive dialogue mode. Any user-visible reply must be sent by calling saas.app.conversation.sendMsg through call_hook. Returning final text directly will not be delivered to the user and counts as failure.`,
-          `Current IM session_id="${proactiveContext.sessionId}", your principal_id="${proactiveContext.agentPrincipalId}".`,
-          `Before executing any business hook, first query callHistory and reuse recent successful hook names/payloads when a title matches the current task. If callHistory has no usable match, use this discovery order before sendMsg: handbook first (sessionData.list, then sessionData.get for relevant handbook.*), then other sessionData, then knowledge, then hook registry/schema. Manuals contain payloads, constraints, and scenarios. Do not guess hook names or fields.`,
-          `If the user refers to previous tool output such as "just now", "previous result", "that data", or "刚刚那条数据", query callHistory first and fetch matching detail before acting.`,
-          `Capability/action requests must be manual-backed. Do not answer or act from generic model knowledge.`,
-          `For sendMsg, replyToId must be exactly "${proactiveContext.triggerMessageId}". Do not change or invent it.`,
-          `Decide from the full context whether to send, when to send, and what to send. Consider all recent messages, not only the last one, so the reply stays coherent.`,
-          `You may split a long answer into up to 4 sendMsg calls for natural conversation. Do not over-send.`,
-          `After sending the needed message(s), finish the turn. Do not wait for the user or start another turn.`,
-          '[/system-prompt-tip]',
-        ].join('\n')
-      : null;
+    const buildMergedSystemPrompt = (
+      agentDefinitionPrompt?: string,
+    ): string => {
+      const systemPromptJson: LlmSystemPromptJson = buildBaseLlmSystemPrompt();
+
+      if (agentContext) {
+        systemPromptJson.role.agentRuntime = {
+          priority: 'system',
+          agentId: agentContext.agentId,
+          agentPrincipalId: agentContext.agentPrincipalId,
+          tenantId: agentContext.tenantId ?? null,
+          ...(agentContext.nickname
+            ? { nickname: agentContext.nickname }
+            : {}),
+          ...(agentContext.purpose ? { purpose: agentContext.purpose } : {}),
+          notes: [
+            'Current business tenant_id comes from the current triggering user and is used only for business data isolation.',
+            'Hook authorization always uses agentPrincipalId. Never use tenantId as principalId.',
+          ],
+        };
+      }
+
+      if (proactiveContext) {
+        systemPromptJson.role.proactiveDialogue = {
+          priority: 'critical',
+          sessionId: proactiveContext.sessionId,
+          agentPrincipalId: proactiveContext.agentPrincipalId,
+          triggerMessageId: proactiveContext.triggerMessageId,
+          rules: [
+            'Any user-visible reply must be sent by calling saas.app.conversation.sendMsg through call_hook. Returning final text directly will not be delivered to the user and counts as failure.',
+            'Before executing any business hook, first query callHistory and reuse recent successful hook names/payloads when a title matches the current task.',
+            'If user wording may be an informal alias or synonym of a platform concept, resolve it with knowledgeCatalog plus sessionData/knowledge before choosing hooks or answering.',
+            'If callHistory has no usable match or the situation is uncertain, use this discovery order before sendMsg: sessionData first (handbook.* plus other relevant keys), then knowledge base, then hook registry/schema last.',
+            'If the user refers to previous tool output, query callHistory first and fetch matching detail before acting.',
+            'Capability/action requests must be manual-backed. Do not answer or act from generic model knowledge.',
+            'For sendMsg, replyToId must exactly equal triggerMessageId from this JSON role.',
+            'Decide from the full context whether to send, when to send, and what to send. Consider all recent messages, not only the last one.',
+            'You may split a long answer into up to 4 sendMsg calls for natural conversation. Do not over-send.',
+            'After sending the needed message(s), finish the turn. Do not wait for the user or start another turn.',
+          ],
+        };
+      }
+
+      const trimmedAgentDefinition = agentDefinitionPrompt?.trim();
+      if (trimmedAgentDefinition) {
+        systemPromptJson.role.agentDefinition = {
+          priority: 'high',
+          prompt: trimmedAgentDefinition,
+          rules: [
+            'Follow this Agent definition continuously for role, tone, boundaries, and business goals.',
+            'Do not fall back to a generic assistant identity.',
+          ],
+        };
+      }
+
+      const { system, agentRuntime, agentDefinition, proactiveDialogue } =
+        systemPromptJson.role;
+      systemPromptJson.role = {
+        system,
+        ...(agentRuntime ? { agentRuntime } : {}),
+        ...(agentDefinition ? { agentDefinition } : {}),
+        ...(proactiveDialogue ? { proactiveDialogue } : {}),
+      };
+
+      return JSON.stringify(systemPromptJson);
+    };
 
     const isCheckpointSaver = (x: unknown): x is BaseCheckpointSaver =>
       typeof x === 'object' &&
@@ -314,23 +348,7 @@ export class AgentRuntimeService {
         checkpointer?: unknown;
         params?: Record<string, unknown>;
       }) => {
-        const basePrompt = buildBaseLlmSystemPrompt();
-        const agentDefinition = req.systemPrompt?.trim()
-          ? [
-              '[agent-definition priority="high"]',
-              'The following is this Agent definition prompt. Follow it continuously and do not fall back to a generic assistant identity:',
-              req.systemPrompt.trim(),
-              '[/agent-definition]',
-            ].join('\n')
-          : null;
-        const mergedSystemPrompt = [
-          basePrompt,
-          agentRuntimePrefix,
-          injectedPrefix,
-          agentDefinition,
-        ]
-          .filter(Boolean)
-          .join('\n');
+        const mergedSystemPrompt = buildMergedSystemPrompt(req.systemPrompt);
 
         const aiReq: AIModelRequest = {
           modelId: req.modelId,

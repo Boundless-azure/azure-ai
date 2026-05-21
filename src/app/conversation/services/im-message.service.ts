@@ -38,45 +38,32 @@ export interface ImMessageSavedPayload {
   mentions?: MentionInfo[];
 }
 
-const LLM_GUIDANCE_ENVELOPE_VERSION = 1;
+const LLM_GUIDANCE_ENVELOPE_VERSION = 3;
 
 interface LlmGuidanceEnvelope {
-  bookTip: string[];
-  includeHOOK: string[];
-  includeTip: string[];
+  v: number;
+  kind: 'im.user';
   text: string;
+  task: LlmGuidanceTask;
+  mode: {
+    proactive: true;
+    reply: 'send_msg';
+  };
+  must: string[];
+  refs: string[];
 }
 
-const BASE_BOOK_TIPS = [
-  'For platform capability/action work, inspect handbook first: call saas.app.conversation.sessionData.list [{}], then read relevant handbook.* keys with saas.app.conversation.sessionData.get.',
-  'Prefer handbook.saas_system_hook and handbook.conversation_hook when they are listed; manuals contain hook routes, payload shapes, constraints, and scenarios.',
-  'If handbook is not enough, inspect other sessionData, then knowledge getToc/getChapter, then hook registry/schema.',
-];
-
-const BASE_HOOK_TIPS = [
-  'Before executing any business hook, call saas.app.conversation.callHistory.query [{}] and reuse recent successful hook names/payloads when a title matches the current task.',
-  'If the concrete hook is uncertain after callHistory and handbook/sessionData, use search_hook or get_hook_info before call_hook.',
-  'For proactive dialogue, user-visible replies must be sent with saas.app.conversation.sendMsg through call_hook or another required tool.',
-];
-
-const BASE_INCLUDE_TIPS = [
-  'This JSON object is a server-provided LLM input envelope. The text field is the actual user message.',
-  'bookTip/includeHOOK/includeTip are hidden server guidance for reasoning and tool planning. Never quote or summarize those fields to the user.',
-  'Always prioritize [system-prompt-tip] proactive dialogue rules and [agent-definition].',
-  'Never fabricate real data, hook names, payload schemas, call results, capabilities, or permission conclusions.',
-  'Direct answers are allowed only for pure chat/writing/explanation that does not depend on platform capabilities or real system state.',
-  'Reply in the user current language.',
-];
-
-const CAPABILITY_TASK_HOOK_TIPS = [
-  'This is likely a capability/action task. callHistory.query is mandatory before business hooks or capability answers.',
-  'If the user refers to previous tool output ("just now", "previous result", "that data", "刚刚那条数据"), query callHistory first and fetch matching detail with includeDetail when a title/id matches.',
-];
-
-const CAPABILITY_TASK_INCLUDE_TIPS = [
-  'Do not answer capability/action questions from model training data or generic assumptions.',
-  'Describe, choose, or use platform/system capabilities only after verifying them from tools, handbook, sessionData, knowledge, or hook schema.',
-];
+interface LlmGuidanceTask {
+  type:
+    | 'chat'
+    | 'contextual_followup'
+    | 'capability_answer'
+    | 'platform_read'
+    | 'platform_write'
+    | 'previous_result_action';
+  domain: string;
+  intent: string;
+}
 
 /**
  * @title IM 消息服务
@@ -1390,10 +1377,15 @@ export class ImMessageService {
         : msg.senderId === agentPrincipalId
           ? 'assistant'
           : 'user';
-    const llmContent =
-      role === 'user' && typeof msg.metadata?.llmContent === 'string'
-        ? msg.metadata.llmContent
-        : null;
+    let llmContent: string | null = null;
+    if (role === 'user') {
+      llmContent =
+        typeof msg.metadata?.llmContent === 'string' &&
+        msg.metadata?.llmGuidanceEnvelopeVersion ===
+          LLM_GUIDANCE_ENVELOPE_VERSION
+          ? msg.metadata.llmContent
+          : this.withStructuredLlmGuidance(msg.content);
+    }
     return {
       role,
       content: llmContent ?? msg.content,
@@ -1434,18 +1426,194 @@ export class ImMessageService {
    * @keyword-en structured-llm-guidance, hidden-content, tool-guidance
    */
   private withStructuredLlmGuidance(content: string): string {
-    const isCapabilityTask = this.isCapabilityOrActionTask(content);
+    const task = this.buildGuidanceTask(content);
     const envelope: LlmGuidanceEnvelope = {
-      bookTip: BASE_BOOK_TIPS,
-      includeHOOK: isCapabilityTask
-        ? [...BASE_HOOK_TIPS, ...CAPABILITY_TASK_HOOK_TIPS]
-        : BASE_HOOK_TIPS,
-      includeTip: isCapabilityTask
-        ? [...BASE_INCLUDE_TIPS, ...CAPABILITY_TASK_INCLUDE_TIPS]
-        : BASE_INCLUDE_TIPS,
+      v: LLM_GUIDANCE_ENVELOPE_VERSION,
+      kind: 'im.user',
       text: content,
+      task,
+      mode: {
+        proactive: true,
+        reply: 'send_msg',
+      },
+      must: this.buildGuidanceMustCodes(task),
+      refs: this.buildGuidanceRefs(task),
     };
-    return JSON.stringify(envelope, null, 2);
+    return JSON.stringify(envelope);
+  }
+
+  /**
+   * 从用户原文推导轻量任务标签, 只做路由提示, 不替代工具校验。
+   * @keyword-cn 任务标签, 结构化提示, 意图识别
+   * @keyword-en guidance-task, structured-guidance, intent-detect
+   */
+  private buildGuidanceTask(content: string): LlmGuidanceTask {
+    const normalized = content.trim().toLowerCase();
+    const domain = this.resolveGuidanceDomain(normalized);
+    const intent = this.resolveGuidanceIntent(normalized);
+    if (this.isPreviousResultReference(normalized)) {
+      return { type: 'previous_result_action', domain, intent };
+    }
+    if (this.isContextualFollowup(normalized)) {
+      return { type: 'contextual_followup', domain, intent: 'continue' };
+    }
+    if (intent === 'capability') {
+      return {
+        type: 'capability_answer',
+        domain: domain === 'unknown' ? 'agent.capability' : domain,
+        intent: 'explain',
+      };
+    }
+    if (
+      ['create', 'delete', 'update', 'restore', 'upload', 'save'].includes(
+        intent,
+      )
+    ) {
+      return { type: 'platform_write', domain, intent };
+    }
+    if (this.isCapabilityOrActionTask(content)) {
+      return { type: 'platform_read', domain, intent };
+    }
+    return { type: 'chat', domain: 'general', intent: 'chat' };
+  }
+
+  /**
+   * 把任务标签转换为 system prompt 中 guidanceCodes 的规则代号。
+   * @keyword-cn 规则代号, 结构化提示, 工具规划
+   * @keyword-en guidance-codes, structured-guidance, tool-planning
+   */
+  private buildGuidanceMustCodes(task: LlmGuidanceTask): string[] {
+    const codes = ['use_system_prompt', 'send_msg'];
+    if (task.type === 'chat') return codes;
+    codes.push('resolve_context', 'resolve_terms_by_knowledge');
+    if (
+      task.type === 'previous_result_action' ||
+      task.type === 'contextual_followup'
+    ) {
+      codes.push('previous_result_lookup');
+    }
+    if (
+      task.type === 'capability_answer' ||
+      task.type === 'platform_read' ||
+      task.type === 'platform_write'
+    ) {
+      codes.push(
+        'call_history_first',
+        'unknown_discovery_order',
+        'verify_capability',
+        'no_memory_answer',
+      );
+    }
+    return [...new Set(codes)];
+  }
+
+  /**
+   * 把任务标签转换为 system prompt sectionRefs 的短引用。
+   * @keyword-cn 章节引用, 结构化提示, 系统提示
+   * @keyword-en section-refs, structured-guidance, system-prompt
+   */
+  private buildGuidanceRefs(task: LlmGuidanceTask): string[] {
+    const refs = ['input', 'proactive', 'response'];
+    if (task.type !== 'chat') {
+      refs.push('discovery', 'knowledge', 'semantics', 'tools');
+    }
+    if (
+      task.type === 'capability_answer' ||
+      task.type === 'platform_read' ||
+      task.type === 'platform_write'
+    ) {
+      refs.push('answer');
+    }
+    return refs;
+  }
+
+  /**
+   * 识别用户请求所指向的平台业务域。
+   * @keyword-cn 业务域, 意图识别, 结构化提示
+   * @keyword-en guidance-domain, intent-detect, structured-guidance
+   */
+  private resolveGuidanceDomain(normalized: string): string {
+    if (/(待办|todo|任务)/.test(normalized)) return 'todo';
+    if (/(用户|user)/.test(normalized)) return 'identity.user';
+    if (/(主体|principal)/.test(normalized)) return 'identity.principal';
+    if (/(组织|organization|org)/.test(normalized)) {
+      return 'identity.organization';
+    }
+    if (/(角色|role)/.test(normalized)) return 'identity.role';
+    if (/(权限|permission|rbac)/.test(normalized)) {
+      return 'identity.permission';
+    }
+    if (/(文件|资源|目录|file|folder|storage|resource)/.test(normalized)) {
+      return 'storage.file';
+    }
+    if (/(solution|应用|能力包)/.test(normalized)) return 'solution';
+    if (/(runner|运行器)/.test(normalized)) return 'runner';
+    if (/(知识|knowledge|手册|handbook)/.test(normalized)) return 'knowledge';
+    if (/(hook|工具|tool)/.test(normalized)) return 'hook';
+    if (/(会话|对话|历史|conversation|history)/.test(normalized)) {
+      return 'conversation';
+    }
+    if (/(时间|时区|time|timezone)/.test(normalized)) return 'time';
+    return 'unknown';
+  }
+
+  /**
+   * 识别用户请求的动作意图。
+   * @keyword-cn 动作意图, 意图识别, 结构化提示
+   * @keyword-en guidance-intent, intent-detect, structured-guidance
+   */
+  private resolveGuidanceIntent(normalized: string): string {
+    if (
+      /(你能干嘛|你能做什么|你会什么|你有什么能力|你有哪些能力|你可以做什么|你支持什么)/.test(
+        normalized,
+      )
+    ) {
+      return 'capability';
+    }
+    if (/(几个|多少|数量|总数|count)/.test(normalized)) return 'count';
+    if (/(删除|删掉|移除|delete|remove)/.test(normalized)) return 'delete';
+    if (/(恢复|还原|restore)/.test(normalized)) return 'restore';
+    if (/(创建|新建|添加|新增|create|add)/.test(normalized)) {
+      return 'create';
+    }
+    if (/(修改|改成|更新|编辑|update|edit)/.test(normalized)) return 'update';
+    if (/(上传|upload)/.test(normalized)) return 'upload';
+    if (/(保存|save)/.test(normalized)) return 'save';
+    if (
+      /(列出|列表|有哪些|看看|查看|查询|搜索|现在有|当前有|list|search|show)/.test(
+        normalized,
+      )
+    ) {
+      return 'list';
+    }
+    if (
+      /(为什么|怎么|如何|是什么|具体|介绍|explain|why|how)/.test(normalized)
+    ) {
+      return 'explain';
+    }
+    return 'read';
+  }
+
+  /**
+   * 判断用户是否引用了上一轮或工具结果。
+   * @keyword-cn 上下文引用, 历史结果, 意图识别
+   * @keyword-en previous-result, context-reference, intent-detect
+   */
+  private isPreviousResultReference(normalized: string): boolean {
+    return /(刚刚|刚才|上一条|上一个|之前|那个结果|这个结果|那条数据|这条数据|previous|last|just now|that data|that result)/.test(
+      normalized,
+    );
+  }
+
+  /**
+   * 判断用户短答是否依赖前文语境继续执行。
+   * @keyword-cn 语境续接, 短答, 意图识别
+   * @keyword-en contextual-followup, short-reply, intent-detect
+   */
+  private isContextualFollowup(normalized: string): boolean {
+    return /^(好|好的|可以|行|嗯|对|是的|当然|当然了|就这个|就它|继续|不用|不要|算了|yes|ok|sure|continue)$/i.test(
+      normalized,
+    );
   }
 
   /**
@@ -1481,11 +1649,16 @@ export class ImMessageService {
       '授权',
       '权限',
       '用户',
+      '员工',
+      '成员',
+      '主体',
       '角色',
       '组织',
       '文件',
       '资源',
       '待办',
+      '提醒',
+      '应用',
       'todo',
       'runner',
       'solution',

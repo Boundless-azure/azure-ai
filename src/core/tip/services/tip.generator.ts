@@ -184,7 +184,7 @@ export class TipGeneratorService {
     );
     lines.push('- [warning] 若函数索引为空，AST 解析可能受限或目录不正确');
     lines.push(
-      '- [info] Provider 说明需与实际支持的提供者保持一致：openai、anthropic、google、gemini、deepseek、kimi',
+      '- [info] Provider 说明需与实际支持的提供者保持一致：openai、anthropic、google、gemini、deepseek、kimi、minimax、nvidia、azure_openai、custom',
     );
 
     const content = lines.join('\n');

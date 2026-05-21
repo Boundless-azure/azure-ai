@@ -59,6 +59,24 @@ export function extractRawDelta(
 }
 
 /**
+ * 从 MiniMax OpenAI-compatible reasoning_split delta 中提取 thinking 片段。
+ * @keyword-en extract-minimax-reasoning-details
+ */
+export function extractMiniMaxReasoningDetails(
+  delta?: Record<string, unknown>,
+): string | null {
+  const details = delta?.['reasoning_details'];
+  if (!Array.isArray(details)) return null;
+  const parts: string[] = [];
+  for (const item of details) {
+    if (!item || typeof item !== 'object') continue;
+    const text = (item as Record<string, unknown>)['text'];
+    if (typeof text === 'string' && text.length > 0) parts.push(text);
+  }
+  return parts.length > 0 ? parts.join('') : null;
+}
+
+/**
  * 从 chunk.content (string | array) 顺序产出 text 片段, 空串忽略.
  *  - string :: 整段
  *  - array  :: 遍历 { type: 'text', text } block

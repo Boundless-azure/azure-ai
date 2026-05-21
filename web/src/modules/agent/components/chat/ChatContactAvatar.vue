@@ -14,7 +14,7 @@
     >
       <img
         v-if="member.startsWith('http') || member.startsWith('/')"
-        :src="resolveResourceUrl(member)"
+        :src="resolveImageUrl(member)"
         :class="imgClass"
       />
       <span v-else>{{ member.slice(0, 1) }}</span>
@@ -23,7 +23,7 @@
   <div v-else :class="singleAvatarClass">
     <img
       v-if="hasAvatarUrl"
-      :src="resolveResourceUrl(avatarUrl)"
+      :src="resolveImageUrl(avatarUrl)"
       :class="imgClass"
     />
     <i v-else class="fa-solid" :class="threadIcon(thread)"></i>
@@ -39,7 +39,7 @@
  */
 import { computed } from 'vue';
 import type { ThreadListItem } from '../../types/agent.types';
-import { resolveResourceUrl } from '../../../../utils/http';
+import { resolveImageUrl } from '../../../resource/services/resource-url.service';
 
 interface Props {
   thread: ThreadListItem;

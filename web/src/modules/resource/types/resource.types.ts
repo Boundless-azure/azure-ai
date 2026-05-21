@@ -33,6 +33,11 @@ export interface ResourceListItem {
   updatedAt: string;
 }
 
+/**
+ * @description 校验资源上传响应结构。
+ * @keyword-cn 上传响应, 资源校验, 访问路径
+ * @keyword-en upload-response, resource-schema, access-path
+ */
 export const UploadResourceResponseSchema = z.object({
   id: z.string().min(1),
   path: z.string().min(1),
@@ -40,6 +45,11 @@ export const UploadResourceResponseSchema = z.object({
   duplicated: z.boolean(),
 });
 
+/**
+ * @description 校验资源列表查询条件。
+ * @keyword-cn 资源列表, 查询参数, 会话文件
+ * @keyword-en resource-list, query-schema, session-files
+ */
 export const ResourceListQuerySchema = z.object({
   sessionId: z.string().optional(),
   category: z.string().optional(),

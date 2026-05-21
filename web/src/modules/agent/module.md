@@ -148,6 +148,7 @@ src/modules/agent/
 |--------|-----------|
 | `openRoleModal` | 打开 Agent 角色分配 Modal, 落点为 agent.principalId |
 | `closeRoleModal` | 关闭 Modal 并清理选中 Agent |
+| `getAgentAvatarUrl` | 通过 Resource 模块统一图片路径解析 Agent 头像 |
 
 ### components/AgentRoleAssignModal.vue
 
@@ -240,6 +241,7 @@ src/modules/agent/
 | `contacts_add_member` | `hash_contacts_add_member_003` |
 | `contacts_remove_member` | `hash_contacts_remove_member_004` |
 | `resolveFixedEntryAvatarUrl` | `agent_fixed_entry_avatar_001` |
+| `getAgentAvatarUrl` | `agent_avatar_image_url_001` |
 | `handleLogout` | `agent_sidebar_logout_001` |
 | `getSingleAvatarVisualClass` | `chat_contact_avatar_visual_001` |
 | `getTranslateX` | `chat_thread_translate_001` |

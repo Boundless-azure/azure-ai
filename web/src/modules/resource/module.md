@@ -1,72 +1,78 @@
 # Resource Module（资源管理模块）
 
-## 功能描述
+## 模块名称 (Module Name)
 
-Resource module provides unified upload hook with progress, chunked upload, resume support, drag-drop and multi-file upload for reuse across modules. Resources can be optionally linked to an IM session via `sessionId`, and chat file drawers read from the resources table.
+Resource（资源管理模块）
 
-## 目录结构
+## 概述 (Overview)
 
-```
-src/modules/resource/
-├── api/
-│   └── resource.ts                # 资源 API
-├── components/
-│   └── SquareAvatarCropModal.vue  # 方形头像裁剪组件
-├── description/
-│   └── module.tip.ts              # 模块提示（开发用）
-├── hooks/
-│   └── useResourceUpload.ts       # 资源上传 Hook
-├── types/
-│   └── resource.types.ts          # 类型定义
-└── resource.module.ts             # 模块定义
-```
+Resource 模块提供前端资源上传、头像裁剪、资源类型定义，以及统一的图片/资源路径解析能力。图片路径统一通过 `services/resource-url.service.ts` 处理，后续可集中接入 `PUBLIC_RESOURCE_BASE_URL` 或 `PUBLIC_API_BASE_URL`。
 
-## 核心文件与函数
+## 文件清单 (File List)
 
-### hooks/useResourceUpload.ts
+`resource.module.ts` — 导出资源上传 hook、头像裁剪组件、图片/资源路径解析函数。
 
-| 函数名 | 关键词描述 |
-|--------|-----------|
-| `upload` | 上传单个文件 |
-| `uploadMultiple` | 上传多个文件 |
-| `abort` | 取消上传 |
+`components/SquareAvatarCropModal.vue` — 方形头像裁剪组件，支持选图、拖拽、缩放、旋转、预览与确认导出。
 
-### api/resource.ts
+`hooks/useResourceUpload.ts` — 统一资源上传 hook，支持单文件、多文件、分片上传与取消上传。
 
-| 函数名 | 关键词描述 |
-|--------|-----------|
-| `asBaseResponse` | 兼容资源接口原始响应与统一包装响应 |
-| `list` | 查询 resources 表资源列表，支持 sessionId 过滤 |
-| `upload` | 基础上传 |
-| `uploadMultiple` | 多文件上传 |
-| `smartUpload` | 智能上传（自动选择方式） |
-| `initChunkedUpload` | 初始化分片上传 |
-| `uploadChunk` | 上传分片 |
-| `getChunkStatus` | 获取分片状态 |
-| `commitChunkedUpload` | 提交分片上传 |
-| `batchCopy` | 批量复制 |
+`services/resource-url.service.ts` — 统一解析前端图片路径和资源路径，集中处理 base URL。
 
-### components/SquareAvatarCropModal.vue
+`types/resource.types.ts` — 资源上传响应、资源列表项与查询 schema 类型。
 
-主要区域：
-- `crop-area` - 裁剪区域
-- `preview-area` - 预览区域
+## 函数清单 (Function List)
 
-## 函数哈希映射
+`useResourceUpload()` — 创建资源上传状态与操作集合 | keywords: resource-upload-hook, drag-drop, multi-file, chunked, resume
 
-| 函数 | Hash |
-|------|------|
-| `resourceApi_asBaseResponse` | `web_res_api_normalize_014` |
-| `resourceApi_upload` | `web_res_api_upload_001` |
-| `resourceApi_list` | `web_res_api_list_013` |
-| `resourceApi_uploadMultiple` | `web_res_api_upload_multiple_002` |
-| `resourceApi_smartUpload` | `web_res_api_smart_upload_003` |
-| `resourceApi_initChunkedUpload` | `web_res_api_chunked_init_004` |
-| `resourceApi_uploadChunk` | `web_res_api_chunk_upload_005` |
-| `resourceApi_getChunkStatus` | `web_res_api_chunk_status_006` |
-| `resourceApi_commitChunkedUpload` | `web_res_api_chunk_commit_007` |
-| `resourceApi_batchCopy` | `web_res_api_batch_copy_008` |
-| `useResourceUpload_upload` | `web_res_hook_upload_009` |
-| `useResourceUpload_uploadMultiple` | `web_res_hook_upload_multiple_010` |
-| `useResourceUpload_abort` | `web_res_hook_abort_011` |
-| `SquareAvatarCropModal_confirm` | `web_res_cmp_avatar_crop_confirm_012` |
+`upload(file, opts?)` — 上传单个文件并维护上传进度 | keywords: single-upload, resource-upload, upload-progress
+
+`uploadMultiple(files, opts?)` — 上传多个文件并维护上传队列状态 | keywords: multi-upload, resource-upload, upload-queue
+
+`abort(itemId?)` — 取消指定上传项 | keywords: abort-upload, resource-upload, upload-cancel
+
+`abortAll()` — 取消所有上传项 | keywords: abort-all-uploads, resource-upload, upload-cancel
+
+`resolveImageUrl(path?, options?)` — 解析头像、markdown 图片等前端图片可渲染地址 | keywords: image-url, resource-url, base-url
+
+`resolveResourceUrl(path?, options?)` — 解析文件下载、上传结果等资源访问地址 | keywords: resource-url, image-url, base-url
+
+`SquareAvatarCropModal.confirm()` — 确认头像裁剪结果并向调用方返回文件 | keywords: square-crop, avatar-crop, drag, zoom, preview
+
+## 关键词索引 (Keyword Index)
+
+| 中文关键词 | English Keywords |
+|---|---|
+| 图片路径 | image-url |
+| 资源地址 | resource-url |
+| 基础地址 | base-url |
+| 资源上传 | resource-upload |
+| 单文件上传 | single-upload |
+| 多文件上传 | multi-upload |
+| 上传进度 | upload-progress |
+| 上传队列 | upload-queue |
+| 取消上传 | abort-upload |
+| 上传中止 | upload-cancel |
+| 上传响应 | upload-response |
+| 资源校验 | resource-schema |
+| 访问路径 | access-path |
+| 资源列表 | resource-list |
+| 查询参数 | query-schema |
+| 会话文件 | session-files |
+| 方形裁剪 | square-crop |
+| 头像裁剪 | avatar-crop |
+
+## 类型导出 (Type Exports)
+
+`ResolveResourceUrlOptions` — 图片/资源路径解析的可选配置，当前支持 `baseUrl` 覆盖。
+
+`UploadResourceResponse` — `/resources/upload` 返回的资源上传结果。
+
+`ResourceListItem` — `/resources` 列表返回的资源条目。
+
+`UploadResourceResponseSchema` — 校验资源上传响应结构。
+
+`ResourceListQuerySchema` — 校验资源列表查询条件。
+
+## 模块功能描述 (Module Function Description)
+
+资源上传相关界面通过 `useResourceUpload` 上传文件并获取后端返回的资源路径。任何头像、markdown 图片、用户图片预览、资源链接展示，都应通过 `resolveImageUrl` 或 `resolveResourceUrl` 统一补齐访问地址，避免组件内自行拼接 `/api`、静态路径或未来资源 base URL。

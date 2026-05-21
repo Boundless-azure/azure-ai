@@ -217,7 +217,7 @@
               >
                 <img
                   v-if="editForm.avatarUrl"
-                  :src="editForm.avatarUrl"
+                  :src="resolveImageUrl(editForm.avatarUrl)"
                   class="w-full h-full object-cover"
                 />
                 <i v-else class="fa-solid fa-robot text-xl text-gray-400"></i>
@@ -361,7 +361,7 @@
     <SquareAvatarCropModal
       v-model:open="showAvatarModal"
       title="裁剪头像"
-      :initial-url="resolveResourceUrl(editForm.avatarUrl) || null"
+      :initial-url="resolveImageUrl(editForm.avatarUrl) || null"
       @confirm="onAvatarConfirm"
     />
 
@@ -391,7 +391,7 @@ import {
   SquareAvatarCropModal,
   useResourceUpload,
 } from '../../resource/resource.module';
-import { resolveResourceUrl } from '../../../utils/http';
+import { resolveImageUrl } from '../../resource/services/resource-url.service';
 import { agentApi } from '../../../api/agent';
 import type { AiModelItem } from '../../ai-provider/types/ai-provider.types';
 import AgentRoleAssignModal from './AgentRoleAssignModal.vue';
@@ -457,11 +457,20 @@ function closeEditModal() {
   showAvatarModal.value = false;
 }
 
+/**
+ * 解析 Agent 列表卡片头像的可渲染地址。
+ * @keyword-cn Agent头像, 图片路径, 基础地址
+ * @keyword-en agent-avatar, image-url, base-url
+ */
 function getAgentAvatarUrl(agent: Agent): string {
   const v1 = agent.avatarUrl;
-  if (typeof v1 === 'string' && v1.trim()) return v1.trim();
+  if (typeof v1 === 'string' && v1.trim()) {
+    return resolveImageUrl(v1) || v1.trim();
+  }
   const v2 = agent.avatar_url;
-  if (typeof v2 === 'string' && v2.trim()) return v2.trim();
+  if (typeof v2 === 'string' && v2.trim()) {
+    return resolveImageUrl(v2) || v2.trim();
+  }
   return '';
 }
 

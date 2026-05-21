@@ -114,6 +114,7 @@ export class AIModelService implements OnModuleInit {
       //  - Gemini 2.5                 :: { thinkingConfig: { thinkingBudget: 4096 } }
       //  - DeepSeek-R1 (reasoner)     :: 模型自带, 不传 (传 reasoning_effort 反而被忽略 / 不识别)
       //  - Kimi / Moonshot            :: OpenAI 兼容协议, 专用 adapter 保留 reasoning_content
+      //  - MiniMax                    :: 国内/海外 OpenAI + Anthropic 兼容协议; 默认国内 Anthropic endpoint
       //  - NVIDIA NIM (Qwen3 / QwQ / DeepSeek-R1 等)
       //                               :: vLLM 标准开关 { chat_template_kwargs: { enable_thinking: bool } }
       //                                  注意 enable_thinking=false 才能强制关闭, 不传一般默认开
@@ -184,6 +185,42 @@ export class AIModelService implements OnModuleInit {
             } as ConstructorParameters<typeof ChatOpenAI>[0] & {
               __includeRawResponse?: boolean;
             });
+          }
+          break;
+        case 'minimax':
+          {
+            // MiniMax :: 同时支持 OpenAI-compatible 与 Anthropic-compatible.
+            // 国内默认 minimaxi.com, 海外可在 baseURL 中改为 api.minimax.io.
+            if (config.apiProtocol === AIModelApiSpec.ANTHROPIC) {
+              const baseURL =
+                config.baseURL || 'https://api.minimaxi.com/anthropic';
+              model = new ChatAnthropic({
+                anthropicApiKey: config.apiKey,
+                modelName: config.name,
+                temperature: config.defaultParams?.temperature || 0.7,
+                maxTokens: config.defaultParams?.maxTokens || 4096,
+                maxRetries,
+                ...(anthropicThinkingKwargs && {
+                  modelKwargs: anthropicThinkingKwargs,
+                }),
+                clientOptions: { baseURL },
+              });
+            } else {
+              const baseURL = config.baseURL || 'https://api.minimaxi.com/v1';
+              model = new ChatOpenAI({
+                apiKey: config.apiKey,
+                modelName: config.name,
+                temperature: config.defaultParams?.temperature || 0.7,
+                maxTokens: config.defaultParams?.maxTokens || 4096,
+                __includeRawResponse: true,
+                modelKwargs: {
+                  reasoning_split: true,
+                },
+                configuration: { baseURL },
+              } as ConstructorParameters<typeof ChatOpenAI>[0] & {
+                __includeRawResponse?: boolean;
+              });
+            }
           }
           break;
         case 'nvidia':

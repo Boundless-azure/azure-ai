@@ -7,6 +7,7 @@
 ## 文件路径
 
 - `agent.ts` - Agent、Identity、AI Provider 等业务 API 聚合封装。
+  - AI Provider create/update 透传 `thinkingEnabled` 与 Minimax 协议预设映射后的 `apiProtocol/baseURL`。
 - `resource.ts` - resources 表上传、访问与会话文件列表 API 封装。
 - `storage.ts` - 存储资源相关 API 封装。
 - `todo.ts` - Todo 增删改查与会话绑定 API 封装。

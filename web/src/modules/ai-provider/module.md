@@ -2,7 +2,7 @@
 
 ## 功能描述
 
-AI Provider module provides UI and hooks for managing AI model configurations. Kimi uses the OpenAI-compatible API and defaults to `https://api.moonshot.cn/v1`; the runtime has a Kimi adapter for preserving reasoning_content in thinking + tool-calling flows.
+AI Provider module provides UI and hooks for managing AI model configurations. Kimi uses the OpenAI-compatible API and defaults to `https://api.moonshot.cn/v1`; MiniMax supports OpenAI / Anthropic compatible API presets for domestic and overseas endpoints; the runtime has a Kimi adapter for preserving reasoning_content in thinking + tool-calling flows.
 
 ## 目录结构
 
@@ -40,6 +40,7 @@ src/modules/ai-provider/
 主要区域：
 - `provider-form` - 商户配置表单
 - `provider-form-kimi` - Kimi 提供商、模型候选与默认 BaseURL
+- `provider-form-minimax` - MiniMax 提供商、国内/海外 OpenAI/Anthropic 预设与默认 BaseURL
 - `model-list` - 模型列表
 - `connection-test` - 连接测试
 
@@ -54,3 +55,5 @@ src/modules/ai-provider/
 | `useAiProviders_testConnection` | `web_ai_provider_hook_test_005` |
 | `AiProviderManagement_submit` | `web_ai_provider_ui_submit_006` |
 | `AiProviderManagement_syncProviderDefaults` | `provider-form-defaults-sync` |
+| `AiProviderManagement_resolveSubmitApiProtocol` | `submit-api-protocol-resolve` |
+| `AiProviderManagement_resolveProviderDefaultBaseURL` | `provider-base-url-resolve` |

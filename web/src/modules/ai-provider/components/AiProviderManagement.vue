@@ -119,7 +119,7 @@
                   {{ formatProvider(item.provider) }}
                 </td>
                 <td class="px-6 py-3 text-gray-600">
-                  {{ formatProtocol(item.apiProtocol) }}
+                  {{ formatProtocol(item.apiProtocol, item.provider, item.baseURL) }}
                 </td>
                 <td class="px-6 py-3 text-gray-600">
                   {{ formatType(item.type) }}
@@ -217,7 +217,8 @@
                 <span class="text-gray-400">类型:</span> {{ formatType(item.type) }}
               </div>
               <div>
-                <span class="text-gray-400">协议:</span> {{ formatProtocol(item.apiProtocol) }}
+                <span class="text-gray-400">协议:</span>
+                {{ formatProtocol(item.apiProtocol, item.provider, item.baseURL) }}
               </div>
               <div>
                 <span
@@ -460,6 +461,8 @@ import {
   AI_MODEL_TYPE_OPTIONS,
   AI_PROTOCOL_OPTIONS,
   AI_PROVIDER_OPTIONS,
+  MINIMAX_ENDPOINT_PRESETS,
+  MINIMAX_PROTOCOL_OPTIONS,
   PROVIDER_DEFAULT_BASE_URLS,
   PROVIDER_MODEL_CATALOG,
 } from '../constants/ai-provider.constants';
@@ -505,30 +508,87 @@ const paginatedItems = computed(() => {
 });
 
 const providerOptions = AI_PROVIDER_OPTIONS;
-const protocolOptions = AI_PROTOCOL_OPTIONS;
+const protocolOptions = computed(() =>
+  form.provider === 'minimax' ? MINIMAX_PROTOCOL_OPTIONS : AI_PROTOCOL_OPTIONS,
+);
 const typeOptions = AI_MODEL_TYPE_OPTIONS;
 const statusOptions = AI_MODEL_STATUS_OPTIONS;
 
-const protocolDisabled = computed(() => form.provider !== 'custom');
+const protocolDisabled = computed(
+  () => form.provider !== 'custom' && form.provider !== 'minimax',
+);
 const providerModelOptions = computed(
   () => PROVIDER_MODEL_CATALOG[form.provider] ?? [],
 );
 const baseURLPlaceholder = computed(() => {
-  const defaultURL = PROVIDER_DEFAULT_BASE_URLS[form.provider];
+  const defaultURL = resolveProviderDefaultBaseURL(form.provider);
   return defaultURL || '可选，OpenAI 兼容时可配置';
 });
 const baseURLHelpText = computed(() => {
-  const defaultURL = PROVIDER_DEFAULT_BASE_URLS[form.provider];
+  const defaultURL = resolveProviderDefaultBaseURL(form.provider);
   if (!defaultURL) return '';
   return `默认使用 ${defaultURL}，需要代理或国际站时可覆盖`;
 });
 
-const providerProtocolMap: Record<string, 'openai' | 'anthropic'> = {
+const providerProtocolMap: Record<string, string> = {
   anthropic: 'anthropic',
+  minimax: 'minimax-anthropic-cn',
 };
 
-function resolveProtocol(provider: string): 'openai' | 'anthropic' {
+function resolveProtocol(provider: string): string {
   return providerProtocolMap[provider] ?? 'openai';
+}
+
+/**
+ * 判断当前表单协议值是否为 MiniMax 端点预设。
+ * @keyword-en minimax-protocol-preset-check
+ */
+function isMiniMaxProtocolPreset(value: string): boolean {
+  return Object.prototype.hasOwnProperty.call(MINIMAX_ENDPOINT_PRESETS, value);
+}
+
+/**
+ * 将 UI 协议预设映射为后端真实 apiProtocol。
+ * @keyword-en submit-api-protocol-resolve
+ */
+function resolveSubmitApiProtocol(): 'openai' | 'anthropic' {
+  const preset = MINIMAX_ENDPOINT_PRESETS[form.apiProtocol];
+  if (preset) return preset.apiProtocol;
+  return form.apiProtocol === 'anthropic' ? 'anthropic' : 'openai';
+}
+
+/**
+ * 根据 provider + MiniMax 预设解析默认 BaseURL。
+ * @keyword-en provider-base-url-resolve
+ */
+function resolveProviderDefaultBaseURL(provider: string): string {
+  if (provider === 'minimax') {
+    return (
+      MINIMAX_ENDPOINT_PRESETS[form.apiProtocol]?.baseURL ??
+      PROVIDER_DEFAULT_BASE_URLS.minimax
+    );
+  }
+  return PROVIDER_DEFAULT_BASE_URLS[provider] ?? '';
+}
+
+/**
+ * 根据已保存协议与 BaseURL 反推 MiniMax UI 预设。
+ * @keyword-en form-protocol-value-resolve
+ */
+function resolveFormProtocol(item: AiModelItem): string {
+  if (item.provider !== 'minimax') {
+    return item.apiProtocol === 'anthropic'
+      ? 'anthropic'
+      : resolveProtocol(item.provider);
+  }
+  const matched = Object.entries(MINIMAX_ENDPOINT_PRESETS).find(
+    ([, preset]) =>
+      preset.apiProtocol === item.apiProtocol && preset.baseURL === item.baseURL,
+  );
+  if (matched) return matched[0];
+  return item.apiProtocol === 'openai'
+    ? 'minimax-openai-cn'
+    : 'minimax-anthropic-cn';
 }
 
 /**
@@ -538,7 +598,12 @@ function resolveProtocol(provider: string): 'openai' | 'anthropic' {
 function isProviderDefaultBaseURL(value: string): boolean {
   const normalized = value.trim();
   if (!normalized) return true;
-  return Object.values(PROVIDER_DEFAULT_BASE_URLS).includes(normalized);
+  return (
+    Object.values(PROVIDER_DEFAULT_BASE_URLS).includes(normalized) ||
+    Object.values(MINIMAX_ENDPOINT_PRESETS).some(
+      (preset) => preset.baseURL === normalized,
+    )
+  );
 }
 
 /**
@@ -550,7 +615,7 @@ function syncProviderDefaults(provider: string, oldProvider?: string) {
     form.apiProtocol = resolveProtocol(provider);
   }
   const oldDefault = oldProvider ? PROVIDER_DEFAULT_BASE_URLS[oldProvider] : '';
-  const nextDefault = PROVIDER_DEFAULT_BASE_URLS[provider] ?? '';
+  const nextDefault = resolveProviderDefaultBaseURL(provider);
   if (
     !form.baseURL.trim() ||
     form.baseURL.trim() === oldDefault ||
@@ -559,6 +624,26 @@ function syncProviderDefaults(provider: string, oldProvider?: string) {
     form.baseURL = nextDefault;
   }
 }
+
+watch(
+  () => form.apiProtocol,
+  (protocol, oldProtocol) => {
+    if (form.provider !== 'minimax') return;
+    if (!isMiniMaxProtocolPreset(protocol)) return;
+    const oldDefault = oldProtocol
+      ? MINIMAX_ENDPOINT_PRESETS[oldProtocol]?.baseURL
+      : '';
+    const nextDefault = MINIMAX_ENDPOINT_PRESETS[protocol]?.baseURL ?? '';
+    if (
+      !form.baseURL.trim() ||
+      form.baseURL.trim() === oldDefault ||
+      isProviderDefaultBaseURL(form.baseURL)
+    ) {
+      form.baseURL = nextDefault;
+    }
+    testResult.value = null;
+  },
+);
 
 watch(
   () => form.provider,
@@ -572,8 +657,24 @@ function formatProvider(value: string) {
   return providerOptions.find((i) => i.value === value)?.label || value;
 }
 
-function formatProtocol(value: string) {
-  return protocolOptions.find((i) => i.value === value)?.label || value;
+function formatProtocol(value: string, provider?: string, baseURL?: string | null) {
+  if (provider === 'minimax') {
+    const matched = Object.entries(MINIMAX_ENDPOINT_PRESETS).find(
+      ([, preset]) => preset.apiProtocol === value && preset.baseURL === baseURL,
+    );
+    if (matched) {
+      return (
+        MINIMAX_PROTOCOL_OPTIONS.find((i) => i.value === matched[0])?.label ||
+        value
+      );
+    }
+    return value === 'anthropic'
+      ? 'Anthropic 兼容 · 自定义'
+      : 'OpenAI 兼容 · 自定义';
+  }
+  const options =
+    provider === 'minimax' ? MINIMAX_PROTOCOL_OPTIONS : AI_PROTOCOL_OPTIONS;
+  return options.find((i) => i.value === value)?.label || value;
 }
 
 function formatType(value: string) {
@@ -633,10 +734,7 @@ function openEditModal(item: AiModelItem) {
   form.provider = providerOptions.some((i) => i.value === item.provider)
     ? item.provider
     : 'custom';
-  form.apiProtocol =
-    item.apiProtocol === 'anthropic'
-      ? 'anthropic'
-      : resolveProtocol(form.provider);
+  form.apiProtocol = resolveFormProtocol(item);
   form.type = item.type;
   form.status = item.status;
   form.apiKey = '';
@@ -665,7 +763,7 @@ async function handleSubmit() {
       name: form.name,
       displayName: form.displayName || null,
       provider: form.provider,
-      apiProtocol: form.apiProtocol,
+      apiProtocol: resolveSubmitApiProtocol(),
       type: form.type,
       status: form.status,
       baseURL: form.baseURL || null,
@@ -682,7 +780,7 @@ async function handleSubmit() {
       name: form.name,
       displayName: form.displayName || null,
       provider: form.provider,
-      apiProtocol: form.apiProtocol,
+      apiProtocol: resolveSubmitApiProtocol(),
       type: form.type,
       status: form.status,
       apiKey: form.apiKey,
@@ -705,8 +803,7 @@ async function handleTestConnection() {
     testResult.value = { ok: false, message: '请先填写模型ID' };
     return;
   }
-  const protocol: 'openai' | 'anthropic' =
-    form.apiProtocol === 'anthropic' ? 'anthropic' : 'openai';
+  const protocol = resolveSubmitApiProtocol();
   testingConnection.value = true;
   try {
     const result = await testConnection({

@@ -23,9 +23,9 @@ interface HandbookSeed {
 const DEFAULT_HANDBOOK: HandbookSeed = {
   key: 'handbook.saas_system_hook',
   bookId: 'local_saas_system_hook_skill',
-  bookName: 'Saas 系统hook技能手册',
+  bookName: '系统手册',
   title:
-    'SaaS 系统 Hook 技能手册 :: identity / storage / solution / todo / runner 查询. bookId=local_saas_system_hook_skill, 调 saas.app.knowledge.getToc 拿目录后 getChapter 取章节',
+    '系统手册 :: 术语 / identity / storage / solution / todo / time / 数据触点指引. bookId=local_saas_system_hook_skill, 调 saas.app.knowledge.getToc 拿目录后 getChapter 取章节',
 };
 
 /** proactiveChatEnabled 时额外 seed 的手册 :: 主动对话场景必读 */

@@ -52,7 +52,7 @@ const saveSchema = z.object({
       '⚠ 必填 + 高质量 :: title 是你下次 sessionData.list 时**唯一**的判断依据 (list 不返 value, 只返 key + title)。' +
         '必须写成"描述性长标题", 让你下次一眼能判断这条记忆是干什么的。' +
         '反例 :: "memo" / "记录" / "数据" — 全是废 title, 列表里根本认不出来。' +
-        '正例 :: "membershipList 调用配方 :: payload 必须包 input{} 不能裸字段" / "SaaS 系统 Hook 总览 :: identity 模块支持的过滤维度速记" / "查用户角色的两步路径 :: membershipList → roleList 按 code 配对"。',
+        '正例 :: "membershipList 调用配方 :: payload 必须包 input{} 不能裸字段" / "系统手册总览 :: identity 模块支持的过滤维度速记" / "查用户角色的两步路径 :: membershipList → roleList 按 code 配对"。',
     ),
 });
 

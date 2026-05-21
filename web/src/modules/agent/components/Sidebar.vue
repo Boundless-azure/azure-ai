@@ -241,7 +241,7 @@ import LanguageModal from './LanguageModal.vue';
 import { useAgentSessionStore } from '../store/session.store';
 import { useAuthStore } from '../../auth/store/auth.store';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { resolveResourceUrl } from '../../../utils/http';
+import { resolveImageUrl } from '../../resource/services/resource-url.service';
 import AccountProfileModal from './AccountProfileModal.vue';
 import { useRightPanelStore } from '../store/right-panel.store';
 
@@ -284,7 +284,7 @@ const displayName = computed(() => authStore.principal?.displayName || 'User');
 const email = computed(() => authStore.principal?.email || '');
 const avatarUrl = computed(() => {
   const raw = authStore.principal?.avatarUrl;
-  return raw ? resolveResourceUrl(raw) : '';
+  return raw ? resolveImageUrl(raw) : '';
 });
 const initials = computed(() => {
   const name = displayName.value.trim();

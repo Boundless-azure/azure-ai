@@ -160,27 +160,6 @@ export const resolvedBase = (() => {
   return '/api';
 })();
 
-/**
- * Resolves a relative resource path to a full URL using the API base URL.
- * @param path The relative path (e.g. /resources/...)
- * @returns The full URL or undefined if path is empty
- */
-export function resolveResourceUrl(path?: string | null): string | undefined {
-  if (!path) return undefined;
-  if (
-    path.startsWith('http') ||
-    path.startsWith('blob:') ||
-    path.startsWith('data:')
-  )
-    return path;
-
-  // Remove leading slash to avoid double slashes if base ends with one
-  const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-  const base = resolvedBase.endsWith('/') ? resolvedBase : `${resolvedBase}/`;
-
-  return `${base}${cleanPath}`;
-}
-
 export const http = new HttpClient(resolvedBase);
 
 /**

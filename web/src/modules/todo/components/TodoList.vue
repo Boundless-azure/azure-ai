@@ -174,7 +174,7 @@ import { useI18n } from '../../agent/composables/useI18n';
 import type { TodoItem } from '../types/todo.types';
 import { useTodos } from '../hooks/useTodos';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';
-import { resolveResourceUrl } from '../../../utils/http';
+import { resolveImageUrl } from '../../resource/services/resource-url.service';
 import CreateTodoModal from './CreateTodoModal.vue';
 import TodoDetail from './TodoDetail.vue';
 
@@ -285,7 +285,7 @@ const statusClass = (status: string): string => {
 
 const getAvatarUrl = (id: string) => {
   const p = principalMap.value[id];
-  return p?.avatarUrl ? resolveResourceUrl(p.avatarUrl) : '';
+  return p?.avatarUrl ? resolveImageUrl(p.avatarUrl) : '';
 };
 
 const getNickname = (id: string) => {
