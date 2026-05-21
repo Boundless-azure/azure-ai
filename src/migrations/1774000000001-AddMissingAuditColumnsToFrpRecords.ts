@@ -12,8 +12,8 @@ export class AddMissingAuditColumnsToFrpRecords1774000000001 implements Migratio
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE "frp_records"
-      ADD COLUMN IF NOT EXISTS "created_user" char(36),
-      ADD COLUMN IF NOT EXISTS "update_user" char(36),
+      ADD COLUMN IF NOT EXISTS "created_user" varchar(36),
+      ADD COLUMN IF NOT EXISTS "update_user" varchar(36),
       ADD COLUMN IF NOT EXISTS "channel_id" varchar(100),
       ADD COLUMN IF NOT EXISTS "is_delete" boolean NOT NULL DEFAULT false,
       ADD COLUMN IF NOT EXISTS "deleted_at" timestamptz
@@ -21,8 +21,8 @@ export class AddMissingAuditColumnsToFrpRecords1774000000001 implements Migratio
 
     await queryRunner.query(`
       ALTER TABLE "domain_bindings"
-      ADD COLUMN IF NOT EXISTS "created_user" char(36),
-      ADD COLUMN IF NOT EXISTS "update_user" char(36),
+      ADD COLUMN IF NOT EXISTS "created_user" varchar(36),
+      ADD COLUMN IF NOT EXISTS "update_user" varchar(36),
       ADD COLUMN IF NOT EXISTS "channel_id" varchar(100),
       ADD COLUMN IF NOT EXISTS "is_delete" boolean NOT NULL DEFAULT false,
       ADD COLUMN IF NOT EXISTS "deleted_at" timestamptz

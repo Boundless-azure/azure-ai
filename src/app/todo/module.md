@@ -4,7 +4,7 @@
 - 管理待办事项（发起人、待办名、描述、内容、跟进人、状态、状态颜色）
 - 提供待办增删改查接口；支持按状态、跟进人过滤
 - 支持待办与聊天会话可选关联：todos.session_id 为空表示全局待办，非空可用于对话窗口待办列表。
-- 列表接口默认只返回当前登录主体发起或跟进的待办，聊天窗口待办抽屉使用真实 Todo 接口并按 sessionId 过滤。
+- 列表接口对普通用户默认只返回当前登录主体发起或跟进的待办；具备 `todo/*` 或全局 `*` 管理权限的管理员默认可看全量，聊天窗口待办抽屉使用真实 Todo 接口并按 sessionId 过滤。
 - 支持跟进记录管理（创建、列表、删除跟进记录）
 - 支持评论管理（创建、列表、删除评论）
 
@@ -20,7 +20,8 @@
 
 函数清单（Function Index）
 - TodoService
-  - list(query)
+  - list(query, principal?) — 查询待办列表，管理员跳过默认自己过滤，普通用户只看发起或跟进自己的待办 | keywords: todo-list, admin-bypass, own-filter
+  - canReadAllTodos(ctx) — 判断当前主体是否拥有待办管理级读取能力 | keywords: todo-admin-bypass, todo-list, management-permission
   - get(id)
   - create(dto)
   - update(id, dto)

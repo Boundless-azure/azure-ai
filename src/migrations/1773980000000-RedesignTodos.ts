@@ -22,7 +22,7 @@ export class RedesignTodos1773980000000 implements MigrationInterface {
     // 2. 新增字段
     await queryRunner.query(`
       ALTER TABLE todos
-        ADD COLUMN IF NOT EXISTS initiator_id CHAR(36),
+        ADD COLUMN IF NOT EXISTS initiator_id VARCHAR(36),
         ADD COLUMN IF NOT EXISTS content TEXT,
         ADD COLUMN IF NOT EXISTS followerids JSONB,
         ADD COLUMN IF NOT EXISTS statuscolor VARCHAR(16),

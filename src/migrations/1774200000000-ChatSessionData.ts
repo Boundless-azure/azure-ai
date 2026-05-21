@@ -12,12 +12,12 @@ export class ChatSessionData1774200000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS chat_sessions_data (
-        id             CHAR(36)     NOT NULL,
+        id             VARCHAR(36)     NOT NULL,
         data_type      VARCHAR(50)  NOT NULL CHECK (data_type IN ('webmcp_schema', 'webmcp_conn')),
         data_val       TEXT         NOT NULL,
         for_session_id VARCHAR(100) NOT NULL,
-        created_user   CHAR(36),
-        update_user    CHAR(36),
+        created_user   VARCHAR(36),
+        update_user    VARCHAR(36),
         channel_id     VARCHAR(100),
         is_delete      BOOLEAN      DEFAULT false,
         created_at     TIMESTAMP    DEFAULT NOW(),

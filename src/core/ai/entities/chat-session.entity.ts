@@ -31,7 +31,7 @@ export class ChatSessionEntity extends BaseAuditedEntity {
   type!: ChatSessionType;
 
   /** 创建者主体 ID */
-  @Column({ name: 'creator_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'creator_id', type: 'varchar', length: 36, nullable: true })
   creatorId!: string | null;
 
   /** 会话头像 URL */
@@ -69,7 +69,7 @@ export class ChatSessionEntity extends BaseAuditedEntity {
    */
   @Column({
     name: 'conversation_group_id',
-    type: 'char',
+    type: 'varchar',
     length: 36,
     nullable: true,
   })

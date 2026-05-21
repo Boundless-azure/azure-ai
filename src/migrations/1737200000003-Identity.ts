@@ -22,16 +22,16 @@ export class Identity1737200000003 implements MigrationInterface {
     // principals: 身份主体表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS principals (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         display_name VARCHAR(255) NOT NULL,
         principal_type principal_type NOT NULL,
         avatar_url VARCHAR(255),
         email VARCHAR(255),
         phone VARCHAR(64),
-        tenant_id CHAR(36),
+        tenant_id VARCHAR(36),
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -56,16 +56,16 @@ export class Identity1737200000003 implements MigrationInterface {
     // users: 用户扩展表（密码等敏感信息）
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
-        principal_id CHAR(36) NOT NULL UNIQUE,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        principal_id VARCHAR(36) NOT NULL UNIQUE,
         email VARCHAR(255) NOT NULL UNIQUE,
         password_hash VARCHAR(255),
         password_salt VARCHAR(64),
         last_login_at TIMESTAMPTZ,
         login_attempts INT DEFAULT 0,
         locked_until TIMESTAMPTZ,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -84,12 +84,12 @@ export class Identity1737200000003 implements MigrationInterface {
     // organizations: 组织表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS organizations (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         name VARCHAR(255) NOT NULL,
         code VARCHAR(64),
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -111,14 +111,14 @@ export class Identity1737200000003 implements MigrationInterface {
     // roles: 角色表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS roles (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         name VARCHAR(255) NOT NULL,
         code VARCHAR(64) NOT NULL,
         description TEXT,
-        organization_id CHAR(36),
+        organization_id VARCHAR(36),
         builtin BOOLEAN NOT NULL DEFAULT FALSE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -140,13 +140,13 @@ export class Identity1737200000003 implements MigrationInterface {
     // role_permissions: 角色权限关联表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS role_permissions (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
-        role_id CHAR(36) NOT NULL,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        role_id VARCHAR(36) NOT NULL,
         subject VARCHAR(64) NOT NULL,
         action VARCHAR(64) NOT NULL,
         conditions JSONB,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -171,12 +171,12 @@ export class Identity1737200000003 implements MigrationInterface {
     // permission_definitions: 权限定义表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS permission_definitions (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         subject VARCHAR(64) NOT NULL,
         action VARCHAR(64) NOT NULL,
         description TEXT,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -195,15 +195,15 @@ export class Identity1737200000003 implements MigrationInterface {
     // memberships: 成员关系表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS memberships (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
-        organization_id CHAR(36) NOT NULL,
-        principal_id CHAR(36) NOT NULL,
-        role_id CHAR(36),
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        organization_id VARCHAR(36) NOT NULL,
+        principal_id VARCHAR(36) NOT NULL,
+        role_id VARCHAR(36),
         department VARCHAR(255),
         tags JSONB,
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

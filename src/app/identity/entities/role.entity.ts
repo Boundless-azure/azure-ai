@@ -20,7 +20,7 @@ export class RoleEntity extends BaseAuditedEntity {
   @Column({ name: 'description', type: 'text', nullable: true })
   description!: string | null;
 
-  @Column({ name: 'organization_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'organization_id', type: 'varchar', length: 36, nullable: true })
   organizationId!: string | null;
 
   @Column({ name: 'builtin', type: 'boolean', default: false })

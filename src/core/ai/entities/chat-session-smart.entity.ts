@@ -14,15 +14,15 @@ import { BaseAuditedEntity } from './base.entity';
 @Index(['analyzedAt'])
 export class ChatSessionSmartEntity extends BaseAuditedEntity {
   /** 会话 ID */
-  @Column({ name: 'session_id', type: 'char', length: 36 })
+  @Column({ name: 'session_id', type: 'varchar', length: 36 })
   sessionId!: string;
 
   /** 分段起始消息 ID */
-  @Column({ name: 'start_message_id', type: 'char', length: 36 })
+  @Column({ name: 'start_message_id', type: 'varchar', length: 36 })
   startMessageId!: string;
 
   /** 分段结束消息 ID */
-  @Column({ name: 'end_message_id', type: 'char', length: 36 })
+  @Column({ name: 'end_message_id', type: 'varchar', length: 36 })
   endMessageId!: string;
 
   /** 消息数量 (通常 5-10 条) */

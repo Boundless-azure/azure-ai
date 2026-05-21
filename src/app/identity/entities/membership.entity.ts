@@ -12,13 +12,13 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Index(['principalId'])
 @Index(['roleId'])
 export class MembershipEntity extends BaseAuditedEntity {
-  @Column({ name: 'organization_id', type: 'char', length: 36 })
+  @Column({ name: 'organization_id', type: 'varchar', length: 36 })
   organizationId!: string;
 
-  @Column({ name: 'principal_id', type: 'char', length: 36 })
+  @Column({ name: 'principal_id', type: 'varchar', length: 36 })
   principalId!: string;
 
-  @Column({ name: 'role_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'role_id', type: 'varchar', length: 36, nullable: true })
   roleId!: string | null;
 
   @Column({ name: 'department', type: 'varchar', length: 255, nullable: true })

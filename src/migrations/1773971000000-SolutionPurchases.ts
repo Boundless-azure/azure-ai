@@ -12,16 +12,16 @@ export class SolutionPurchases1773971000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS solution_purchases (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
-        user_id CHAR(36) NOT NULL,
-        solution_id CHAR(36) NOT NULL,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        user_id VARCHAR(36) NOT NULL,
+        solution_id VARCHAR(36) NOT NULL,
         solution_name VARCHAR(255) NOT NULL,
         solution_version VARCHAR(64) NOT NULL,
-        runner_id CHAR(36),
+        runner_id VARCHAR(36),
         source VARCHAR(32) NOT NULL DEFAULT 'marketplace',
         purchased_at TIMESTAMPTZ NOT NULL,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

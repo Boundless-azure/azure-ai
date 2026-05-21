@@ -13,13 +13,13 @@ export class LangGraph1737200000005 implements MigrationInterface {
     // lg_checkpoints: LangGraph 检查点表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS lg_checkpoints (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         thread_id VARCHAR(255) NOT NULL,
-        parent_id CHAR(36),
+        parent_id VARCHAR(36),
         checkpoint JSONB NOT NULL,
         metadata JSONB,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -41,15 +41,15 @@ export class LangGraph1737200000005 implements MigrationInterface {
     // lg_writes: LangGraph 写入记录表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS lg_writes (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         thread_id VARCHAR(255) NOT NULL,
-        checkpoint_id CHAR(36) NOT NULL,
+        checkpoint_id VARCHAR(36) NOT NULL,
         task_id VARCHAR(255) NOT NULL,
         idx INT NOT NULL,
         channel VARCHAR(255) NOT NULL,
         value JSONB,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

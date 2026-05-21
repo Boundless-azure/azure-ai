@@ -19,7 +19,7 @@ export class ChatMessageEntity extends BaseAuditedEntity {
   sessionId!: string;
 
   /** 发送者主体 ID */
-  @Column({ name: 'sender_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'sender_id', type: 'varchar', length: 36, nullable: true })
   senderId!: string | null;
 
   /** 消息类型 */
@@ -36,7 +36,7 @@ export class ChatMessageEntity extends BaseAuditedEntity {
   content!: string;
 
   /** 回复的消息 ID (用于消息引用) */
-  @Column({ name: 'reply_to_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'reply_to_id', type: 'varchar', length: 36, nullable: true })
   replyToId!: string | null;
 
   /** 附件信息 (JSON) */

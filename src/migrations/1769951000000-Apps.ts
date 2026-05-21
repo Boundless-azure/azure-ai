@@ -43,9 +43,9 @@ export class Apps1769951000000 implements MigrationInterface {
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS app_units (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         session_id VARCHAR(100),
-        app_id CHAR(36) NOT NULL,
+        app_id VARCHAR(36) NOT NULL,
         name VARCHAR(255) NOT NULL,
         version VARCHAR(64),
         description TEXT,
@@ -54,8 +54,8 @@ export class Apps1769951000000 implements MigrationInterface {
         keywords_zh TEXT,
         keywords_en TEXT,
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

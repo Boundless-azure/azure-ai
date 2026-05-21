@@ -12,13 +12,13 @@ export class ImContactGroups1769950000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS im_contact_groups (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
-        owner_principal_id CHAR(36) NOT NULL,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        owner_principal_id VARCHAR(36) NOT NULL,
         name VARCHAR(100) NOT NULL,
         sort_order INT NOT NULL DEFAULT 0,
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -39,12 +39,12 @@ export class ImContactGroups1769950000000 implements MigrationInterface {
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS im_contact_group_members (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
-        group_id CHAR(36) NOT NULL,
-        owner_principal_id CHAR(36) NOT NULL,
-        member_principal_id CHAR(36) NOT NULL,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        group_id VARCHAR(36) NOT NULL,
+        owner_principal_id VARCHAR(36) NOT NULL,
+        member_principal_id VARCHAR(36) NOT NULL,
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -31,7 +31,7 @@ export class PrincipalEntity extends BaseAuditedEntity {
   @Column({ name: 'phone', type: 'varchar', length: 64, nullable: true })
   phone!: string | null;
 
-  @Column({ name: 'tenant_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true })
   tenantId!: string | null;
 
   @Column({ name: 'active', type: 'boolean', default: true })

@@ -14,6 +14,7 @@
 - core/ai/providers/kimi-chat-openai.ts
 - core/ai/entities/chat-session.entity.ts
 - core/ai/entities/chat-message.entity.ts
+- core/ai/entities/base.entity.ts
 - core/ai/entities/round-summary.entity.ts
 - core/ai/entities/ai-model.entity.ts
 - core/ai/types/ai.types.ts
@@ -44,6 +45,7 @@
   - id, sessionId, role, content, functionCall?, result?
 - AIProvider
   - openai, anthropic, google, gemini, deepseek, kimi, nvidia, azure_openai, custom
+- BaseAuditedEntity.ensureId() — 插入前生成 UUID v7 主键 | keywords: id-generation, uuid-v7, before-insert
 
 关键词索引（中文 / English Keyword Index）
 AI核心模块 -> core/ai/ai-core.module.ts
@@ -52,6 +54,8 @@ AI模型运行时 -> core/ai/services/ai-model.service.ts
 Kimi模型适配 -> core/ai/providers/kimi-chat-openai.ts
 会话实体 -> core/ai/entities/chat-session.entity.ts
 消息实体 -> core/ai/entities/chat-message.entity.ts
+基础实体 -> core/ai/entities/base.entity.ts
+base-entity -> core/ai/entities/base.entity.ts
 摘要实体 -> core/ai/entities/round-summary.entity.ts
 AI类型 -> core/ai/types/ai.types.ts
 AI模型类型 -> core/ai/types/ai-model.types.ts

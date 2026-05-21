@@ -7,10 +7,10 @@ export class AddRunnerProxyTables1774000000000 implements MigrationInterface {
     // 创建 frp_records 表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "frp_records" (
-        "id" char(36) NOT NULL DEFAULT uuid_generate_v7()::text,
+        "id" varchar(36) NOT NULL DEFAULT uuid_generate_v7()::text,
         "created_at" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updated_at" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "runner_id" char(36) NOT NULL,
+        "runner_id" varchar(36) NOT NULL,
         "domain" varchar(255) NOT NULL,
         "frp_node_addr" varchar(255) NOT NULL DEFAULT 'default',
         "port" int NOT NULL UNIQUE,
@@ -31,12 +31,12 @@ export class AddRunnerProxyTables1774000000000 implements MigrationInterface {
     // 创建 domain_bindings 表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "domain_bindings" (
-        "id" char(36) NOT NULL DEFAULT uuid_generate_v7()::text,
+        "id" varchar(36) NOT NULL DEFAULT uuid_generate_v7()::text,
         "created_at" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updated_at" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "domain" varchar(255) NOT NULL UNIQUE,
-        "runner_id" char(36) NOT NULL,
-        "tenant_id" char(36) NOT NULL,
+        "runner_id" varchar(36) NOT NULL,
+        "tenant_id" varchar(36) NOT NULL,
         "app_id" varchar(128),
         "path_pattern" varchar(500) NOT NULL DEFAULT '.*',
         "active" boolean NOT NULL DEFAULT true,

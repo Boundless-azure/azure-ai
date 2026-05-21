@@ -27,7 +27,7 @@ export class RunnerEntity extends BaseAuditedEntity {
   })
   runnerKeyPlain!: string | null;
 
-  @Column({ name: 'principal_id', type: 'char', length: 36 })
+  @Column({ name: 'principal_id', type: 'varchar', length: 36 })
   principalId!: string;
 
   @Column({ name: 'description', type: 'text', nullable: true })

@@ -13,7 +13,7 @@ export class Plugin1737200000006 implements MigrationInterface {
     // plugins: 插件注册表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS plugins (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         name VARCHAR(100) NOT NULL,
         display_name VARCHAR(200),
         description TEXT,
@@ -21,8 +21,8 @@ export class Plugin1737200000006 implements MigrationInterface {
         version VARCHAR(20),
         config JSONB,
         enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

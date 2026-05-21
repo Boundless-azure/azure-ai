@@ -17,6 +17,7 @@ import { TodoStatus } from '../enums/todo.enums';
 import {
   DataPermissionService,
   DataPermissionContextService,
+  type DataPermissionContext,
 } from '@core/data-permission';
 import { AbilityService } from '@/app/identity/services/ability.service';
 import { PermissionDefinitionType } from '@/app/identity/enums/permission.enums';
@@ -51,7 +52,7 @@ export class TodoService {
    */
   private async buildDpContext(principal?: JwtPayload) {
     const principalId = principal?.id ?? '';
-    const [dataPerms, mgmtPerms] = principalId
+    const [dataPerms, mgmtPerms, abilityRules] = principalId
       ? await Promise.all([
           this.abilityService.listPermissionsByType(
             principalId,
@@ -61,19 +62,49 @@ export class TodoService {
             principalId,
             PermissionDefinitionType.Management,
           ),
+          this.abilityService
+            .buildForPrincipal(principalId)
+            .then((ability) => ability.rules),
         ])
-      : [[], []];
+      : [[], [], []];
+    const managementPermissions = [...mgmtPerms];
+    const seenManagement = new Set(
+      managementPermissions.map((item) => `${item.subject}::${item.action}`),
+    );
+    for (const rule of abilityRules) {
+      const key = `${rule.subject}::${rule.action}`;
+      if (seenManagement.has(key)) continue;
+      seenManagement.add(key);
+      managementPermissions.push(rule);
+    }
     return this.dataPermissionContext.build({
       principalId: principal?.id,
       attributes: { principalType: principal?.type },
       dataPermissions: dataPerms,
-      managementPermissions: mgmtPerms,
+      managementPermissions,
+    });
+  }
+
+  /**
+   * 判断当前主体是否拥有待办管理级读取能力。
+   * @keyword-cn 管理员放行, 待办列表, 管理权限
+   * @keyword-en todo-admin-bypass, todo-list, management-permission
+   */
+  private canReadAllTodos(ctx: DataPermissionContext): boolean {
+    return ctx.managementPermissions.some((permission) => {
+      const subjectMatches =
+        permission.subject === '*' || permission.subject === 'todo';
+      const actionMatches =
+        permission.action === '*' || permission.action === 'manage';
+      return subjectMatches && actionMatches;
     });
   }
 
   /**
    * @title 获取待办列表
    * @description 支持按状态、跟进人、发起人过滤; 数据权限通过 applyTo 校验
+   * @keyword-cn 待办列表, 管理员放行, 自己过滤
+   * @keyword-en todo-list, admin-bypass, own-filter
    */
   async list(
     query: QueryTodoDto,
@@ -115,7 +146,12 @@ export class TodoService {
         followerText: followerText(query.followerId),
       });
     }
-    if (!query.initiatorId && !query.followerId && principal?.id) {
+    if (
+      !this.canReadAllTodos(ctx) &&
+      !query.initiatorId &&
+      !query.followerId &&
+      principal?.id
+    ) {
       qb.andWhere(
         `(todo.initiatorId = :principalId OR ${jsonContainsPrincipal()})`,
         {

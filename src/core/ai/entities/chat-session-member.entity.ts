@@ -14,11 +14,11 @@ import { ChatMemberRole } from '../enums/chat.enums';
 @Index(['sessionId', 'principalId'], { unique: true })
 export class ChatSessionMemberEntity extends BaseAuditedEntity {
   /** 会话 ID */
-  @Column({ name: 'session_id', type: 'char', length: 36 })
+  @Column({ name: 'session_id', type: 'varchar', length: 36 })
   sessionId!: string;
 
   /** 成员主体 ID */
-  @Column({ name: 'principal_id', type: 'char', length: 36 })
+  @Column({ name: 'principal_id', type: 'varchar', length: 36 })
   principalId!: string;
 
   /** 成员角色 */
@@ -45,7 +45,7 @@ export class ChatSessionMemberEntity extends BaseAuditedEntity {
   /** 最后已读消息 ID */
   @Column({
     name: 'last_read_message_id',
-    type: 'char',
+    type: 'varchar',
     length: 36,
     nullable: true,
   })

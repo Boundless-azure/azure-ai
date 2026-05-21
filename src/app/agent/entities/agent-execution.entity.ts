@@ -13,7 +13,7 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Index(['runnerId'])
 export class AgentExecutionEntity extends BaseAuditedEntity {
   /** 引用的 Agent ID */
-  @Column({ name: 'agent_id', type: 'char', length: 36 })
+  @Column({ name: 'agent_id', type: 'varchar', length: 36 })
   agentId!: string;
 
   /** 任务说明 */
@@ -31,14 +31,14 @@ export class AgentExecutionEntity extends BaseAuditedEntity {
   /** 关联上下文（产生该执行的调用消息ID或上下文键） */
   @Column({
     name: 'context_message_id',
-    type: 'char',
+    type: 'varchar',
     length: 36,
     nullable: true,
   })
   contextMessageId!: string | null;
 
   /** 关联 Runner ID（用于执行来源归属） */
-  @Column({ name: 'runner_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'runner_id', type: 'varchar', length: 36, nullable: true })
   runnerId!: string | null;
 
   /** 是否启用 */

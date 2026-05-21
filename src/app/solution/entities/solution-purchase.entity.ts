@@ -13,11 +13,11 @@ import { SolutionSource } from '../enums/solution.enums';
 @Index(['solutionId'])
 export class SolutionPurchaseEntity extends BaseAuditedEntity {
   /** 购买用户 ID */
-  @Column({ name: 'user_id', type: 'char', length: 36 })
+  @Column({ name: 'user_id', type: 'varchar', length: 36 })
   userId!: string;
 
   /** Solution ID */
-  @Column({ name: 'solution_id', type: 'char', length: 36 })
+  @Column({ name: 'solution_id', type: 'varchar', length: 36 })
   solutionId!: string;
 
   /** Solution 名称 */
@@ -29,7 +29,7 @@ export class SolutionPurchaseEntity extends BaseAuditedEntity {
   solutionVersion!: string;
 
   /** 安装到的 Runner ID */
-  @Column({ name: 'runner_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'runner_id', type: 'varchar', length: 36, nullable: true })
   runnerId!: string | null;
 
   /** Solution 来源 */

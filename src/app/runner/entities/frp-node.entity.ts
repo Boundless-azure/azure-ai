@@ -9,7 +9,7 @@ import { Column, Entity, Index, PrimaryColumn } from 'typeorm';
 @Entity('frp_nodes')
 @Index(['status'])
 export class FrpNodeEntity {
-  @PrimaryColumn({ name: 'id', type: 'char', length: 36 })
+  @PrimaryColumn({ name: 'id', type: 'varchar', length: 36 })
   id!: string;
 
   @Column({ name: 'node_ip', type: 'varchar', length: 45 })

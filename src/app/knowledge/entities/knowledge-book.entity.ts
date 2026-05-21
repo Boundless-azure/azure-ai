@@ -25,7 +25,7 @@ export class KnowledgeBookEntity extends BaseAuditedEntity {
   description!: string | null;
 
   /** 创建人 principal_id */
-  @Column({ name: 'creator_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'creator_id', type: 'varchar', length: 36, nullable: true })
   creatorId!: string | null;
 
   /** 描述向量（pgvector，float[]） */

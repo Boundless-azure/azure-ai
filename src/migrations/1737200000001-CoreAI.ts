@@ -33,7 +33,7 @@ export class CoreAI1737200000001 implements MigrationInterface {
     // ai_models: AI 模型配置表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS ai_models (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         name VARCHAR(100) NOT NULL,
         "displayName" VARCHAR(200),
         provider VARCHAR(50) NOT NULL,
@@ -45,8 +45,8 @@ export class CoreAI1737200000001 implements MigrationInterface {
         "defaultParams" JSONB,
         description TEXT,
         enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -71,15 +71,15 @@ export class CoreAI1737200000001 implements MigrationInterface {
     // prompt_templates: 提示词模板表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS prompt_templates (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         name VARCHAR(100) NOT NULL,
         template TEXT NOT NULL,
         variables JSONB NOT NULL DEFAULT '[]'::jsonb,
         description TEXT,
         category VARCHAR(50),
         enabled BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

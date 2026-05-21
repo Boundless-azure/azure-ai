@@ -12,8 +12,8 @@ export class Resources1769890000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS resources (
-        id CHAR(36) PRIMARY KEY,
-        uploader_id CHAR(36),
+        id VARCHAR(36) PRIMARY KEY,
+        uploader_id VARCHAR(36),
         original_name VARCHAR(255) NOT NULL,
         file_ext VARCHAR(32),
         mime_type VARCHAR(128),
@@ -21,10 +21,10 @@ export class Resources1769890000000 implements MigrationInterface {
         md5 VARCHAR(64) NOT NULL,
         category VARCHAR(32) NOT NULL,
         storage_path TEXT NOT NULL,
-        copied_from_id CHAR(36),
+        copied_from_id VARCHAR(36),
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

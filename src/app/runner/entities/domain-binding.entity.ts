@@ -14,10 +14,10 @@ export class DomainBindingEntity extends BaseAuditedEntity {
   @Column({ name: 'domain', type: 'varchar', length: 255 })
   domain!: string;
 
-  @Column({ name: 'runner_id', type: 'char', length: 36 })
+  @Column({ name: 'runner_id', type: 'varchar', length: 36 })
   runnerId!: string;
 
-  @Column({ name: 'tenant_id', type: 'char', length: 36 })
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36 })
   tenantId!: string;
 
   @Column({ name: 'path_pattern', type: 'varchar', length: 500, default: '.*' })

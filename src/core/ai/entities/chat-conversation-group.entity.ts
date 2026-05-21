@@ -13,7 +13,7 @@ import { BaseAuditedEntity } from './base.entity';
 @Index(['threadType'])
 @Index(['isPinned'])
 export class ChatConversationGroupEntity extends BaseAuditedEntity {
-  @Column({ name: 'day_group_id', type: 'char', length: 36 })
+  @Column({ name: 'day_group_id', type: 'varchar', length: 36 })
   dayGroupId!: string;
 
   @Column({

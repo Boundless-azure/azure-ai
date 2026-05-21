@@ -12,16 +12,16 @@ export class RewardRecords1774000000002 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "reward_records" (
-        "id" char(36) NOT NULL DEFAULT uuid_generate_v7()::text,
-        "created_user" char(36),
-        "update_user" char(36),
+        "id" varchar(36) NOT NULL DEFAULT uuid_generate_v7()::text,
+        "created_user" varchar(36),
+        "update_user" varchar(36),
         "channel_id" varchar(100),
         "is_delete" boolean NOT NULL DEFAULT false,
         "created_at" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updated_at" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "deleted_at" timestamptz,
         "reward_type" varchar(64) NOT NULL,
-        "related_id" char(36) NOT NULL,
+        "related_id" varchar(36) NOT NULL,
         "description" varchar(500),
         CONSTRAINT "PK_reward_records" PRIMARY KEY ("id")
       )

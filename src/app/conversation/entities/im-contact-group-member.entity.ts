@@ -14,12 +14,12 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Index(['groupId', 'memberPrincipalId'])
 @Index(['groupId', 'isDelete'])
 export class ImContactGroupMemberEntity extends BaseAuditedEntity {
-  @Column({ name: 'group_id', type: 'char', length: 36 })
+  @Column({ name: 'group_id', type: 'varchar', length: 36 })
   groupId!: string;
 
-  @Column({ name: 'owner_principal_id', type: 'char', length: 36 })
+  @Column({ name: 'owner_principal_id', type: 'varchar', length: 36 })
   ownerPrincipalId!: string;
 
-  @Column({ name: 'member_principal_id', type: 'char', length: 36 })
+  @Column({ name: 'member_principal_id', type: 'varchar', length: 36 })
   memberPrincipalId!: string;
 }

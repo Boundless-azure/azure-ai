@@ -12,7 +12,7 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Index(['email'], { unique: true })
 export class UserEntity extends BaseAuditedEntity {
   /** 关联的主体 ID */
-  @Column({ name: 'principal_id', type: 'char', length: 36 })
+  @Column({ name: 'principal_id', type: 'varchar', length: 36 })
   principalId!: string;
 
   /** 用户邮箱 (用于登录) */

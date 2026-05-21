@@ -15,7 +15,7 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Index(['category'])
 @Index(['isDelete'])
 export class ResourceEntity extends BaseAuditedEntity {
-  @Column({ name: 'uploader_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'uploader_id', type: 'varchar', length: 36, nullable: true })
   uploaderId!: string | null;
 
   /** 关联聊天会话 ID；为空表示资源不属于特定会话 */
@@ -52,7 +52,7 @@ export class ResourceEntity extends BaseAuditedEntity {
   @Column({ name: 'storage_path', type: 'text' })
   storagePath!: string;
 
-  @Column({ name: 'copied_from_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'copied_from_id', type: 'varchar', length: 36, nullable: true })
   copiedFromId!: string | null;
 
   /** 分片上传总片数，0表示不分片 */

@@ -12,16 +12,16 @@ export class KnowledgeModule1774100000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS knowledge_books (
-        id CHAR(36) PRIMARY KEY,
+        id VARCHAR(36) PRIMARY KEY,
         type VARCHAR(16) NOT NULL,
         name VARCHAR(255) NOT NULL,
         description TEXT,
-        creator_id CHAR(36),
+        creator_id VARCHAR(36),
         embedding vector,
         is_embedded BOOLEAN DEFAULT false,
         active BOOLEAN DEFAULT true,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -39,14 +39,14 @@ export class KnowledgeModule1774100000000 implements MigrationInterface {
 
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS knowledge_chapters (
-        id CHAR(36) PRIMARY KEY,
-        book_id CHAR(36) NOT NULL,
+        id VARCHAR(36) PRIMARY KEY,
+        book_id VARCHAR(36) NOT NULL,
         title VARCHAR(255) NOT NULL,
         sort_order INT DEFAULT 0,
         is_lm_required BOOLEAN DEFAULT false,
         content TEXT,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

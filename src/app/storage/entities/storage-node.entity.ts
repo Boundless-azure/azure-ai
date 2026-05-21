@@ -31,11 +31,11 @@ export enum ShareMode {
 @Index(['shareToken'])
 export class StorageNodeEntity extends BaseAuditedEntity {
   /** 租户 ID */
-  @Column({ name: 'tenant_id', type: 'char', length: 36 })
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36 })
   tenantId!: string;
 
   /** 父节点 ID（null 表示根目录） */
-  @Column({ name: 'parent_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'parent_id', type: 'varchar', length: 36, nullable: true })
   parentId!: string | null;
 
   /** 节点名称 */
@@ -59,7 +59,7 @@ export class StorageNodeEntity extends BaseAuditedEntity {
   mimeType!: string | null;
 
   /** 关联的资源 ID（仅对文件类型有效，关联 resource 表） */
-  @Column({ name: 'resource_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'resource_id', type: 'varchar', length: 36, nullable: true })
   resourceId!: string | null;
 
   /** 分享模式 */

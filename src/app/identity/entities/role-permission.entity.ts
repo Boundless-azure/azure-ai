@@ -22,7 +22,7 @@ import { PermissionDefinitionType } from '../enums/permission.enums';
 @Index(['action'])
 @Index(['permissionType'])
 export class RolePermissionEntity extends BaseAuditedEntity {
-  @Column({ name: 'role_id', type: 'char', length: 36 })
+  @Column({ name: 'role_id', type: 'varchar', length: 36 })
   roleId!: string;
 
   @Column({ name: 'subject', type: 'varchar', length: 64 })

@@ -11,7 +11,7 @@ import { BaseAuditedEntity } from '../../ai/entities/base.entity';
 @Unique('UQ_APP_NAME_VERSION', ['name', 'version'])
 export class AppEntity extends BaseAuditedEntity {
   /** 关联 Runner ID（用于脱离 SaaS 的执行节点隔离） */
-  @Column({ name: 'runner_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'runner_id', type: 'varchar', length: 36, nullable: true })
   @Index()
   runnerId!: string | null;
 

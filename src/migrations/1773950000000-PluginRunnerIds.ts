@@ -27,7 +27,7 @@ export class PluginRunnerIds1773950000000 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
-      ALTER TABLE "plugins" ADD COLUMN IF NOT EXISTS "runner_id" char(36)
+      ALTER TABLE "plugins" ADD COLUMN IF NOT EXISTS "runner_id" varchar(36)
     `);
   }
 }

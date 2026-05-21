@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(ls \"C:/Users/Admin（无密码）/.claude/projects/c--project-azure-ai/memory/\" 2>/dev/null)",
+      "Read(//c/Users/Admin（无密码）/.claude/projects/c--project-azure-ai/memory/**)",
+      "Bash(xargs grep -l \"streaming\\\\|SSE\\\\|EventSource\")"
     ]
   }
 }

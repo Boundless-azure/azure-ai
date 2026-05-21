@@ -141,7 +141,7 @@ Summary 接口
 - 对话服务 ↔ conversation service ↔ services/conversation.service.ts
 - 类型与守卫 ↔ types and guards ↔ types/conversation.types.ts
 - IM 消息历史 ↔ im message history ↔ controllers/im.controller.ts
-- IM Agent 隐藏提示 ↔ im agent hidden import-tip v8 ↔ services/im-message.service.ts (metadata.llmContent; 英文隐藏提醒, 强调主动对话和 Agent 定义优先级、禁止编造; 执行业务 hook 前优先 callHistory 复用近期成功调用, 无命中再按 handbook -> sessionData -> knowledge -> hook 查询)
+- IM Agent 结构化隐藏提示 ↔ im agent structured guidance envelope ↔ services/im-message.service.ts (metadata.llmContent; JSON 结构 `{ bookTip, includeHOOK, includeTip, text }`; `text` 为用户原话, 其他字段为隐藏推理/工具规划引导; 执行业务 hook 前优先 callHistory 复用近期成功调用, 无命中再按 handbook -> sessionData -> knowledge -> hook 查询)
 - IM 新消息探测 ↔ im has-new probe ↔ controllers/im.controller.ts
 - IM 邀请成员 ↔ im invite members ↔ controllers/im.controller.ts
 - IM 会话更新 ↔ im session update ↔ controllers/im.controller.ts
@@ -169,7 +169,7 @@ Summary 接口
 - ConversationService.getSessionHistory -> 1d9b7e02
 - ImMessageService.getMessages -> im_msg_get_001
 - ImMessageService.resolveAgentTargetIds -> im_msg_agent_target_001
-- ImMessageService.withSystemPromptImportTip -> im_msg_import_tip_001
+- ImMessageService.withStructuredLlmGuidance -> im_msg_structured_guidance_001
 - ImMessageService.buildAgentInvocationContext -> im_msg_agent_ctx_001 (SaaS hook 鉴权主体以 agent principalId 为准, tenantId 跟随当前触发用户, principalType 固定按 agent 注入, 日志打印 sender/agent tenant 对比)
 - ImMessageService.buildAgentRuntimeContext -> im_msg_agent_runtime_ctx_001 (把当前 agent 元信息和业务 tenant 作为 AgentRuntime 前置上下文注入, 仅辅助 LLM 认知, 不参与鉴权)
 - ImMessageService.hasNew -> im_msg_has_new_002

@@ -12,7 +12,7 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Index(['ownerPrincipalId', 'isDelete'])
 @Index(['ownerPrincipalId', 'name'])
 export class ImContactGroupEntity extends BaseAuditedEntity {
-  @Column({ name: 'owner_principal_id', type: 'char', length: 36 })
+  @Column({ name: 'owner_principal_id', type: 'varchar', length: 36 })
   ownerPrincipalId!: string;
 
   @Column({ name: 'name', type: 'varchar', length: 100 })

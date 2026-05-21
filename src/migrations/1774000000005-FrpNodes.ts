@@ -6,7 +6,7 @@ export class FrpNodes1774000000005 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "frp_nodes" (
-        "id" char(36) NOT NULL,
+        "id" varchar(36) NOT NULL,
         "node_ip" varchar(45) NOT NULL,
         "node_port" int NOT NULL DEFAULT 7000,
         "node_address" varchar(255) NOT NULL,

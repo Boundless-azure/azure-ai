@@ -40,7 +40,7 @@ export class AgentEntity extends BaseAuditedEntity {
   embedding!: string | null;
 
   /** 关联的主体 ID */
-  @Column({ name: 'principal_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'principal_id', type: 'varchar', length: 36, nullable: true })
   principalId!: string | null;
 
   /** 关键词数组（JSON 存储，做为回退匹配机制） */

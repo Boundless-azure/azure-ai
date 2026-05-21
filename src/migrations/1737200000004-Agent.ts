@@ -13,7 +13,7 @@ export class Agent1737200000004 implements MigrationInterface {
     // agents: Agent 元信息表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS agents (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         code_dir VARCHAR(255) NOT NULL,
         nickname VARCHAR(100) NOT NULL,
         is_ai_generated BOOLEAN NOT NULL DEFAULT FALSE,
@@ -21,10 +21,10 @@ export class Agent1737200000004 implements MigrationInterface {
         embedding vector(1536),
         keywords JSONB,
         nodes JSONB,
-        principal_id CHAR(36),
+        principal_id VARCHAR(36),
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -46,15 +46,15 @@ export class Agent1737200000004 implements MigrationInterface {
     // agent_executions: Agent 执行记录表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS agent_executions (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
-        agent_id CHAR(36) NOT NULL,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        agent_id VARCHAR(36) NOT NULL,
         task_description TEXT NOT NULL,
         node_status JSONB,
         latest_response JSONB,
-        context_message_id CHAR(36),
+        context_message_id VARCHAR(36),
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,

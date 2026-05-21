@@ -46,11 +46,11 @@ export class ChatIM1737200000002 implements MigrationInterface {
     // chat_sessions: IM 会话表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS chat_sessions (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         session_id VARCHAR(100) NOT NULL UNIQUE,
         name VARCHAR(255),
         type chat_session_type DEFAULT 'private',
-        creator_id CHAR(36),
+        creator_id VARCHAR(36),
         avatar_url VARCHAR(255),
         description TEXT,
         last_message_at TIMESTAMPTZ,
@@ -60,10 +60,10 @@ export class ChatIM1737200000002 implements MigrationInterface {
         -- 向后兼容字段（已弃用）
         user_id VARCHAR(100),
         system_prompt TEXT,
-        conversation_group_id CHAR(36),
+        conversation_group_id VARCHAR(36),
         -- 审计字段
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -88,12 +88,12 @@ export class ChatIM1737200000002 implements MigrationInterface {
     // chat_session_messages: 消息表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS chat_session_messages (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         session_id VARCHAR(100) NOT NULL,
-        sender_id CHAR(36),
+        sender_id VARCHAR(36),
         message_type chat_message_type DEFAULT 'text',
         content TEXT NOT NULL,
-        reply_to_id CHAR(36),
+        reply_to_id VARCHAR(36),
         attachments JSON,
         metadata JSONB,
         is_edited BOOLEAN DEFAULT FALSE,
@@ -102,8 +102,8 @@ export class ChatIM1737200000002 implements MigrationInterface {
         role chat_message_role DEFAULT 'user',
         keywords JSONB,
         -- 审计字段
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -139,16 +139,16 @@ export class ChatIM1737200000002 implements MigrationInterface {
     // chat_session_members: 会话成员表
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS chat_session_members (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
-        session_id CHAR(36) NOT NULL,
-        principal_id CHAR(36) NOT NULL,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        session_id VARCHAR(36) NOT NULL,
+        principal_id VARCHAR(36) NOT NULL,
         role chat_member_role DEFAULT 'member',
         joined_at TIMESTAMPTZ,
         muted_until TIMESTAMPTZ,
         last_read_at TIMESTAMPTZ,
-        last_read_message_id CHAR(36),
-        created_user CHAR(36),
-        update_user CHAR(36),
+        last_read_message_id VARCHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -168,17 +168,17 @@ export class ChatIM1737200000002 implements MigrationInterface {
     // chat_session_smart: AI 智能分析片段
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS chat_session_smart (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
-        session_id CHAR(36) NOT NULL,
-        start_message_id CHAR(36) NOT NULL,
-        end_message_id CHAR(36) NOT NULL,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        session_id VARCHAR(36) NOT NULL,
+        start_message_id VARCHAR(36) NOT NULL,
+        end_message_id VARCHAR(36) NOT NULL,
         message_count INT DEFAULT 0,
         keywords JSONB,
         embedding vector(1536),
         summary TEXT,
         analyzed_at TIMESTAMPTZ,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMPTZ DEFAULT NOW(),

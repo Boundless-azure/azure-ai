@@ -11,7 +11,7 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Index(['runnerId'])
 @Index(['port'])
 export class FrpRecordEntity extends BaseAuditedEntity {
-  @Column({ name: 'runner_id', type: 'char', length: 36 })
+  @Column({ name: 'runner_id', type: 'varchar', length: 36 })
   runnerId!: string;
 
   @Column({ name: 'domain', type: 'varchar', length: 255 })

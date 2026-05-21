@@ -12,17 +12,17 @@ export class Runners1773300000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS runners (
-        id CHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
+        id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v7()::text,
         alias VARCHAR(120) NOT NULL,
         runner_key_hash VARCHAR(128) NOT NULL,
         runner_key_plain VARCHAR(128) NOT NULL,
-        principal_id CHAR(36) NOT NULL,
+        principal_id VARCHAR(36) NOT NULL,
         description TEXT,
         status VARCHAR(32) NOT NULL DEFAULT 'offline',
         last_seen_at TIMESTAMPTZ,
         active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_user CHAR(36),
-        update_user CHAR(36),
+        created_user VARCHAR(36),
+        update_user VARCHAR(36),
         channel_id VARCHAR(100),
         is_delete BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -50,15 +50,15 @@ export class Runners1773300000000 implements MigrationInterface {
 
     await queryRunner.query(`
       ALTER TABLE IF EXISTS apps
-      ADD COLUMN IF NOT EXISTS runner_id CHAR(36)
+      ADD COLUMN IF NOT EXISTS runner_id VARCHAR(36)
     `);
     await queryRunner.query(`
       ALTER TABLE IF EXISTS app_units
-      ADD COLUMN IF NOT EXISTS runner_id CHAR(36)
+      ADD COLUMN IF NOT EXISTS runner_id VARCHAR(36)
     `);
     await queryRunner.query(`
       ALTER TABLE IF EXISTS agent_executions
-      ADD COLUMN IF NOT EXISTS runner_id CHAR(36)
+      ADD COLUMN IF NOT EXISTS runner_id VARCHAR(36)
     `);
 
     await queryRunner.query(

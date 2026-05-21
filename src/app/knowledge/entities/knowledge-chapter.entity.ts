@@ -12,7 +12,7 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Index(['bookId', 'sortOrder'])
 export class KnowledgeChapterEntity extends BaseAuditedEntity {
   /** 所属书本 ID */
-  @Column({ name: 'book_id', type: 'char', length: 36 })
+  @Column({ name: 'book_id', type: 'varchar', length: 36 })
   bookId!: string;
 
   /** 章节标题 */

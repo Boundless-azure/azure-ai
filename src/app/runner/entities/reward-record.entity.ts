@@ -14,7 +14,7 @@ export class RewardRecordEntity extends BaseAuditedEntity {
   @Column({ name: 'reward_type', type: 'varchar', length: 64 })
   rewardType!: string;
 
-  @Column({ name: 'related_id', type: 'char', length: 36 })
+  @Column({ name: 'related_id', type: 'varchar', length: 36 })
   relatedId!: string;
 
   @Column({ name: 'description', type: 'varchar', length: 500, nullable: true })

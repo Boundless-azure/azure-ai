@@ -16,7 +16,7 @@ import { PermissionDefinitionType } from '../enums/permission.enums';
 @Index(['nodeKey'])
 @Index(['permissionType'])
 export class PermissionDefinitionEntity extends BaseAuditedEntity {
-  @Column({ name: 'fid', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'fid', type: 'varchar', length: 36, nullable: true })
   fid!: string | null;
 
   @Column({ name: 'node_key', type: 'varchar', length: 64 })

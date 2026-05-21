@@ -12,7 +12,7 @@ export class PermissionDefinitionTreeModel1769954000000 implements MigrationInte
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE IF EXISTS permission_definitions
-      ADD COLUMN IF NOT EXISTS fid CHAR(36) NULL
+      ADD COLUMN IF NOT EXISTS fid VARCHAR(36) NULL
     `);
     await queryRunner.query(`
       ALTER TABLE IF EXISTS permission_definitions

@@ -11,11 +11,11 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
 @Index(['todoId'])
 export class TodoFollowupEntity extends BaseAuditedEntity {
   /** 关联待办ID */
-  @Column({ name: 'todoid', type: 'char', length: 36 })
+  @Column({ name: 'todoid', type: 'varchar', length: 36 })
   todoId!: string;
 
   /** 跟进人ID */
-  @Column({ name: 'followerid', type: 'char', length: 36 })
+  @Column({ name: 'followerid', type: 'varchar', length: 36 })
   followerId!: string;
 
   /** 跟进人名称 */

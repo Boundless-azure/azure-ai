@@ -60,7 +60,7 @@ LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationCont
 ### prompts/base-llm.prompt.ts
 基础 LLM 系统提示词
 
-- `buildBaseLlmSystemPrompt()` — 生成英文基础提示: 明确 `[system-prompt-tip]` 与 `[agent-definition]` 优先级 + 禁止编造真实数据/调用 + import-tip 识别 + 工具协议 + 复杂 hook 任务按需发现链路 (callHistory/sessionData/knowledge/hook registry) + batch/错误处理约束 | keywords: base-llm-prompt, prompt-priority, no-fabrication, conditional-discovery, batch-plan
+- `buildBaseLlmSystemPrompt()` — 生成英文基础提示: 明确 `[system-prompt-tip]` 与 `[agent-definition]` 优先级 + 禁止编造真实数据/调用 + 结构化 IM JSON 输入识别 (`bookTip/includeHOOK/includeTip/text`) + 工具协议 + 复杂 hook 任务按需发现链路 (callHistory/sessionData/knowledge/hook registry) + batch/错误处理约束 | keywords: base-llm-prompt, prompt-priority, no-fabrication, structured-im-input, conditional-discovery, batch-plan
 
 ### types/agent-runtime.types.ts
 - `LoadedAgent` — Agent 加载结果类型 (tools, dialogues, descriptor)

@@ -19,7 +19,7 @@ export class SolutionEntity extends BaseAuditedEntity {
   runnerIds!: string[] | null;
 
   /** 租户 ID */
-  @Column({ name: 'tenant_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'tenant_id', type: 'varchar', length: 36, nullable: true })
   @Index()
   tenantId!: string | null;
 
@@ -53,7 +53,7 @@ export class SolutionEntity extends BaseAuditedEntity {
   authorName!: string | null;
 
   /** 作者 ID */
-  @Column({ name: 'author_id', type: 'char', length: 36, nullable: true })
+  @Column({ name: 'author_id', type: 'varchar', length: 36, nullable: true })
   authorId!: string | null;
 
   /** Markdown 详细描述（支持图片） */
