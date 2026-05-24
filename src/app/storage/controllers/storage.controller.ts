@@ -28,6 +28,7 @@ import {
 import type { HookInvocationContext } from '@/core/hookbus/types/hook.types';
 import { StorageService } from '../services/storage.service';
 import { ResourceService } from '../../resource/services/resource.service';
+import { ResourceSignService } from '../../resource/services/resource-sign.service';
 import type { StorageNodeEntity } from '../entities/storage-node.entity';
 import {
   type CreateStorageNodeRequest,
@@ -127,12 +128,22 @@ function readString(value: unknown): string | null {
 
 /**
  * 输出 Storage 节点响应; 对外隐藏 parentId, 统一引导调用方使用 path。
- * @keyword-en to-storage-node-response
+ * 对 file 类型节点, 注入 resourcePath (带签名的资源访问 URL), 前端直接 window.open 即可。
+ * @keyword-en to-storage-node-response, signed-resource-path
  */
-function toStorageNodeResponse(node: StorageNodeEntity): Record<string, unknown> {
+function toStorageNodeResponse(
+  node: StorageNodeEntity,
+  sign: ResourceSignService,
+): Record<string, unknown> {
   const data = { ...node } as Record<string, unknown>;
   delete data['parentId'];
   delete data['parent'];
+  if (node.resourceId) {
+    data['resourcePath'] = sign.buildAccessPath(
+      node.resourceId,
+      node.tenantId ?? null,
+    );
+  }
   return data;
 }
 
@@ -142,8 +153,9 @@ function toStorageNodeResponse(node: StorageNodeEntity): Record<string, unknown>
  */
 function toStorageNodeResponseList(
   nodes: StorageNodeEntity[],
+  sign: ResourceSignService,
 ): Array<Record<string, unknown>> {
-  return nodes.map((node) => toStorageNodeResponse(node));
+  return nodes.map((node) => toStorageNodeResponse(node, sign));
 }
 
 /**
@@ -160,17 +172,31 @@ export class StorageController {
   constructor(
     private readonly storageService: StorageService,
     private readonly resourceService: ResourceService,
+    private readonly sign: ResourceSignService,
   ) {}
 
   /**
    * @title 创建节点
-   * @description 创建文件夹或文件节点
+   * @description 创建文件夹或文件节点。
+   *
+   * **type=file 限制**:
+   * 文件类节点必须绑定一个已存在的 resourceId, 该 resourceId 只能由"用户在聊天对话框上传文件"产生。
+   * LLM 必须先调用 `saas.app.resource.currentSession` 查询本会话已上传的资源, 拿到 items[].resourceId
+   * 后才能创建文件节点; 禁止从 markdown 链接 / URL 中反向解析 ID, 禁止编造 ID。
+   * 如果用户尚未上传任何文件, 请通过 sendMsg 提示用户在对话框上传, 而不要凭空创建。
+   *
+   * @keywords-cn 创建节点, 文件节点, resourceId 必填, 聊天上传
+   * @keywords-en create-node, file-node, resource-id-required, chat-upload-only
    */
   @Post('nodes')
   @CheckAbility('create', 'storage')
   @HookRoute({
     hook: 'saas.app.storage.createNode',
-    description: 'Storage 节点创建 (文件夹或文件)',
+    description:
+      'Storage 节点创建 (文件夹或文件)。' +
+      'type=file 时 resourceId 必填, 且必须来自用户在当前聊天对话框上传的文件 ' +
+      '(通过 saas.app.resource.currentSession 查询拿到)。' +
+      'LLM 禁止编造 resourceId; 用户未上传时请用 sendMsg 提示其上传, 不要凭空创建。',
     args: [CreateStorageNodeSchema],
   })
   async createNode(
@@ -180,8 +206,34 @@ export class StorageController {
   ) {
     const tenantId = resolveStorageTenantId(req, context);
     const userId = resolveStorageUserId(req, context);
+
+    // 防御性二次校验 (Schema superRefine 已校过, 这里兜底防绕过):
+    // type=file 必须提供 resourceId, 且该 resource 必须存在于当前租户。
+    if (body.type === StorageNodeType.FILE) {
+      const resourceId = body.resourceId?.trim();
+      if (!resourceId) {
+        throw new BadRequestException(
+          'createNode type=file 必须提供 resourceId: 该 ID 必须来自用户在当前聊天对话框上传的文件 ' +
+            '(请先调用 saas.app.resource.currentSession 查询)。LLM 禁止编造 resourceId。',
+        );
+      }
+      const resource = await this.resourceService.getResourceById(resourceId);
+      if (!resource) {
+        throw new BadRequestException(
+          `createNode 失败: resourceId="${resourceId}" 不存在。` +
+            '请通过 saas.app.resource.currentSession 重新查询当前会话已上传文件后再试; 禁止编造或猜测 ID。',
+        );
+      }
+      // 跨租户校验: resource.channelId 必须等于当前 tenantId
+      if (resource.channelId && resource.channelId !== tenantId) {
+        throw new BadRequestException(
+          `createNode 失败: resourceId="${resourceId}" 属于其它租户, 当前租户无访问权限。`,
+        );
+      }
+    }
+
     const node = await this.storageService.createNode(tenantId, userId, body);
-    return { success: true, data: toStorageNodeResponse(node) };
+    return { success: true, data: toStorageNodeResponse(node, this.sign) };
   }
 
   /**
@@ -213,7 +265,7 @@ export class StorageController {
       },
     );
 
-    return { success: true, data: toStorageNodeResponseList(nodes) };
+    return { success: true, data: toStorageNodeResponseList(nodes, this.sign) };
   }
 
   /**
@@ -249,7 +301,7 @@ export class StorageController {
     const tenantId = req.user?.tenantId ?? req.user?.id ?? 'default';
     const userId = req.user?.id ?? 'system';
 
-    // 1. 调用统一上传服务
+    // 1. 调用统一上传服务 (透传 tenantId, 让资源带租户隔离签名)
     const resource = await this.resourceService.upload(
       {
         path: file.path,
@@ -258,6 +310,8 @@ export class StorageController {
         size: file.size,
       },
       userId,
+      undefined,
+      tenantId,
     );
 
     // 2. 创建存储节点
@@ -270,7 +324,7 @@ export class StorageController {
       mimeType: file.mimetype,
     });
 
-    return { success: true, data: toStorageNodeResponse(node) };
+    return { success: true, data: toStorageNodeResponse(node, this.sign) };
   }
 
   /**
@@ -292,7 +346,7 @@ export class StorageController {
   ) {
     const tenantId = resolveStorageTenantId(req, context);
     const nodes = await this.storageService.listNodes(tenantId, query);
-    return { success: true, data: toStorageNodeResponseList(nodes) };
+    return { success: true, data: toStorageNodeResponseList(nodes, this.sign) };
   }
 
   /**
@@ -317,7 +371,7 @@ export class StorageController {
         `reqTenant=${req.user?.tenantId ?? 'null'} reqUser=${req.user?.id ?? 'null'}`,
     );
     const nodes = await this.storageService.getRootNodes(tenantId);
-    return { success: true, data: toStorageNodeResponseList(nodes) };
+    return { success: true, data: toStorageNodeResponseList(nodes, this.sign) };
   }
 
   /**
@@ -338,7 +392,7 @@ export class StorageController {
   ) {
     const tenantId = resolveStorageTenantId(req, context);
     const node = await this.storageService.getNode(id, tenantId);
-    return { success: true, data: toStorageNodeResponse(node) };
+    return { success: true, data: toStorageNodeResponse(node, this.sign) };
   }
 
   /**
@@ -366,7 +420,7 @@ export class StorageController {
       userId,
       body,
     );
-    return { success: true, data: toStorageNodeResponse(node) };
+    return { success: true, data: toStorageNodeResponse(node, this.sign) };
   }
 
   /**
@@ -443,6 +497,6 @@ export class StorageController {
     @Query('password') password?: string,
   ) {
     const node = await this.storageService.getShareContent(token, password);
-    return { success: true, data: toStorageNodeResponse(node) };
+    return { success: true, data: toStorageNodeResponse(node, this.sign) };
   }
 }

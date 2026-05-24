@@ -24,9 +24,17 @@
           class="relative group"
         >
           <img
+            v-if="item.kind === 'image'"
             :src="item.preview"
             class="w-full h-24 object-cover rounded-md border border-gray-200"
           />
+          <div
+            v-else
+            class="w-full h-24 rounded-md border border-gray-200 bg-gray-50 flex flex-col items-center justify-center px-2 text-center"
+          >
+            <i class="fa-solid fa-file text-2xl text-gray-400 mb-1"></i>
+            <span class="text-xs text-gray-600 truncate w-full" :title="item.file.name">{{ item.file.name }}</span>
+          </div>
           <button
             class="absolute top-1 right-1 bg-white/90 text-gray-700 rounded-full w-6 h-6 flex items-center justify-center shadow hover:bg-white"
             @click="removeAttachment(idx)"
@@ -71,7 +79,6 @@
               type="file"
               ref="fileInput"
               class="hidden"
-              accept="image/*"
               multiple
               @change="handleFileSelect"
             />
@@ -635,19 +642,22 @@ const handlePaste = (event: ClipboardEvent) => {
     document.execCommand('insertText', false, textData);
   }
 
-  // Handle image paste logic from original
+  // 粘贴: 图片走 dataURL 预览, 其它文件 (含从资源管理器拖拽的) 直接进入附件列表
   const items = event.clipboardData?.items;
   if (!items) return;
   for (let i = 0; i < items.length; i++) {
-    if (items[i].type.indexOf('image') !== -1) {
-      const file = items[i].getAsFile();
-      if (!file) continue;
+    if (items[i].kind !== 'file') continue;
+    const file = items[i].getAsFile();
+    if (!file) continue;
+    if (items[i].type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (e) => {
         const preview = String(e.target?.result ?? '');
-        attachments.value.push({ file, preview });
+        attachments.value.push({ file, preview, kind: 'image' });
       };
       reader.readAsDataURL(file);
+    } else {
+      attachments.value.push({ file, preview: '', kind: 'file' });
     }
   }
 };
@@ -662,9 +672,12 @@ const handleFileSelect = (event: Event) => {
         const reader = new FileReader();
         reader.onload = (e) => {
           const preview = String(e.target?.result ?? '');
-          attachments.value.push({ file, preview });
+          attachments.value.push({ file, preview, kind: 'image' });
         };
         reader.readAsDataURL(file);
+      } else {
+        // 非图片: 不生成 base64 dataURL (避免大文件卡浏览器), UI 显示通用文件图标
+        attachments.value.push({ file, preview: '', kind: 'file' });
       }
     });
   }

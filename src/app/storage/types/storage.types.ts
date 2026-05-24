@@ -12,17 +12,47 @@ const storageNodeNameSchema = z
   });
 
 // 创建节点请求
-export const CreateStorageNodeSchema = z.object({
-  parentPath: z
-    .string()
-    .optional()
-    .describe('父目录路径, 例如 "/" 或 "/workspace"; 不传默认为根目录'),
-  name: storageNodeNameSchema,
-  type: z.nativeEnum(StorageNodeType),
-  resourceId: z.string().optional().nullable(),
-  size: z.number().optional().nullable(),
-  mimeType: z.string().optional().nullable(),
-});
+//
+// type=file 时 resourceId 必填且非空: resourceId 必须来源于"用户在聊天对话框上传的文件",
+// 通过 saas.app.resource.currentSession 查询本会话已上传文件后取 items[].resourceId。
+// LLM 不允许编造或猜测 resourceId; 不允许从 markdown 链接 / URL 中反向 parse。
+// 系统永不主动凭空创建文件节点; 必须先由真实用户上传, 资源落库后才能 createNode。
+export const CreateStorageNodeSchema = z
+  .object({
+    parentPath: z
+      .string()
+      .optional()
+      .describe('父目录路径, 例如 "/" 或 "/workspace"; 不传默认为根目录'),
+    name: storageNodeNameSchema,
+    type: z
+      .nativeEnum(StorageNodeType)
+      .describe('folder=文件夹; file=文件 (此时 resourceId 必填)'),
+    resourceId: z
+      .string()
+      .min(1)
+      .optional()
+      .nullable()
+      .describe(
+        'type=file 时必填; 必须是用户在当前聊天上传的真实资源 ID (来自 saas.app.resource.currentSession 的 items[].resourceId), 禁止编造',
+      ),
+    size: z.number().optional().nullable(),
+    mimeType: z.string().optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.type === StorageNodeType.FILE) {
+      const rid = value.resourceId?.trim();
+      if (!rid) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['resourceId'],
+          message:
+            'type=file 时 resourceId 必填: 必须使用用户在当前聊天对话框上传的文件的 resourceId。' +
+            '请先调用 saas.app.resource.currentSession 查询本会话已上传的文件, 拿到 items[].resourceId 后再调用本 hook。' +
+            '如果用户尚未上传文件, 请通过 sendMsg 提示用户上传, 不要凭空创建。',
+        });
+      }
+    }
+  });
 
 export type CreateStorageNodeRequest = z.infer<typeof CreateStorageNodeSchema>;
 

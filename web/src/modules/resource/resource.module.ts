@@ -7,6 +7,7 @@
 
 export { useResourceUpload } from './hooks/useResourceUpload';
 export { default as SquareAvatarCropModal } from './components/SquareAvatarCropModal.vue';
+export { default as ImageViewer } from './components/ImageViewer.vue';
 export {
   resolveImageUrl,
   resolveResourceUrl,

@@ -47,7 +47,7 @@ export interface CallLogQueryItem {
  *              enrichWithSessionRecall 注入, 仅 LLM 主动 callHistory.query 才能查询. 用于:
  *               - "上次查过的 X" 类引用 (避免重复 hook 调用)
  *               - 调试 / 历史回溯
- *              失败 (errorMsg.length>0) 项不记录 — sinking LLM 已经管教训沉淀, 这里只留"事实日志".
+ *              失败 (errorMsg.length>0) 项不记录 — 失败只服务当前轮纠错, 跨轮只保留成功事实日志.
  * @keywords-cn 调用日志, 硬记录, FIFO, 50条上限, 仅成功项, 查询历史
  * @keywords-en call-log, hard-record, fifo, only-success, query-history
  */

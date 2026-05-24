@@ -60,6 +60,13 @@ web/src/modules/storage/
 | `clear` | 清空剪贴板 |
 
 ### components/StorageManagement.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `openNode` | folder 进入目录; file 节点根据 mime 判定: 图片走 ImageViewer 站内灯箱, 其它类型 window.open(resourcePath) 让浏览器按后端 Content-Disposition 自动 inline 渲染或下载 |
+| `isImageNode` | 通过 mime 优先 + 文件名后缀兜底判定 image 类节点 |
+| `uploading` (computed) | 派生本地上传是否进行中, 用于 template v-else-if 展示上传进度块 |
+
 主要区域：
 - `toolbar` - 搜索、新建文件夹、上传、粘贴按钮
 - `breadcrumb` - 面包屑导航

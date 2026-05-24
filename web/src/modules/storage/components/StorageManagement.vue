@@ -307,6 +307,14 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- 图片预览灯箱 (站内, Teleport to body) -->
+    <ImageViewer
+      :open="!!previewImageUrl"
+      :src="previewImageUrl"
+      :alt="previewImageAlt"
+      @close="previewImageUrl = null"
+    />
   </div>
 </template>
 
@@ -325,6 +333,8 @@ import { resourceApi } from '../../../api/resource';
 import { storageNodeCopy } from '../../../api/storage';
 import { storageUpload } from '../../../api/storage';
 import type { StorageNode } from '../types/storage.types';
+import ImageViewer from '../../resource/components/ImageViewer.vue';
+import { resolveResourceUrl } from '../../resource/services/resource-url.service';
 import { SHARE_MODE_LABEL, SHARE_MODE } from '../constants/storage.constants';
 
 const {
@@ -383,6 +393,16 @@ interface LocalUploadItem {
 const uploadItems = shallowRef<LocalUploadItem[]>([]);
 const abortControllers = new Map<string, AbortController>();
 
+/**
+ * 是否有进行中的本地上传任务 (pending 或 uploading 状态), template v-else-if 用。
+ * @keyword-en uploading-flag, derived-from-upload-items
+ */
+const uploading = computed(() =>
+  uploadItems.value.some(
+    (it) => it.status === 'pending' || it.status === 'uploading',
+  ),
+);
+
 // 右键菜单
 const contextMenu = reactive({
   show: false,
@@ -427,15 +447,54 @@ const navigateTo = (node: StorageNode) => {
   loadChildren(node.path);
 };
 
+// 图片预览状态
+const previewImageUrl = ref<string | null>(null);
+const previewImageAlt = ref<string>('');
+
+/**
+ * 判断 node 是否为图片 (按 mime 优先, 兜底按文件名后缀)
+ * @keyword-en is-image-node
+ */
+const isImageNode = (node: StorageNode): boolean => {
+  const mime = (node.mimeType || '').toLowerCase();
+  if (mime.startsWith('image/') && !mime.includes('svg')) return true;
+  const name = (node.name || '').toLowerCase();
+  return /\.(png|jpe?g|gif|webp|bmp|heic|heif)$/.test(name);
+};
+
+/**
+ * 打开节点:
+ *   - folder → 进入目录
+ *   - file 且为图片 → 走 ImageViewer 灯箱 (站内预览)
+ *   - file 其它类型 → 走 resourcePath (后端按 mime 白名单决定 inline / attachment, 浏览器自动)
+ *     · PDF / video / audio → 浏览器原生预览
+ *     · 二进制 / HTML / SVG / 文档类 → 浏览器下载
+ * @keyword-en open-node, image-preview, signed-resource-path, browser-inline-or-download
+ */
 const openNode = (node: StorageNode) => {
   if (node.type === 'folder') {
     breadcrumbs.value.push(node);
     currentPath.value = node.path;
     loadChildren(node.path);
-  } else {
-    // 打开文件详情或下载
-    window.open(`/resources/${node.resourceId}`, '_blank');
+    return;
   }
+
+  // 文件: 必须用后端返回的带签名 resourcePath, 不能用裸 id
+  if (!node.resourcePath) {
+    console.warn('[storage] openNode: missing resourcePath for', node.id);
+    return;
+  }
+  const fullUrl = resolveResourceUrl(node.resourcePath) || node.resourcePath;
+
+  if (isImageNode(node)) {
+    previewImageUrl.value = fullUrl;
+    previewImageAlt.value = node.name;
+    return;
+  }
+
+  // 非图片: 后端 GET 路由按 mime 决定 inline (image/video/audio/pdf) 或 attachment (其它),
+  // 浏览器收到 Content-Disposition: attachment 会自动下载, 收到 inline 会自动渲染。
+  window.open(fullUrl, '_blank', 'noopener,noreferrer');
 };
 
 const handleOpenNode = () => {

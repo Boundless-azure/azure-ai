@@ -183,13 +183,12 @@
                   v-html="renderMarkdown(msg.content)"
                   @click="handleMessageClick"
                 ></div>
-                <p
+                <div
                   v-else
-                  class="leading-relaxed whitespace-pre-wrap relative z-10"
+                  class="markdown-body prose prose-sm max-w-none relative z-10 user-markdown leading-relaxed"
+                  v-html="renderUserMarkdown(msg.content)"
                   @click="handleMessageClick"
-                >
-                  {{ msg.content }}
-                </p>
+                ></div>
 
                 <!-- AI 待响应胶囊 :: 气泡内底部, emoji 翻转动效 + 等待语; phrase per 队列实例随机, AI 回完队列空时一起消失 -->
                 <div
@@ -240,24 +239,13 @@
       </div>
     </div>
 
-    <!-- Image Preview Modal -->
-    <div
-      v-if="previewUrl"
-      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 animate-fade-in"
-      @click="previewUrl = null"
-    >
-      <img
-        :src="previewUrl"
-        class="max-w-[95vw] max-h-[95vh] object-contain rounded-lg shadow-2xl transition-transform transform scale-100"
-        @click.stop
-      />
-      <button
-        class="absolute top-4 right-4 text-white/70 hover:text-white text-2xl transition-colors"
-        @click="previewUrl = null"
-      >
-        <i class="fa-solid fa-xmark"></i>
-      </button>
-    </div>
+    <!-- Image Preview (Teleport to body, 避祖先 transform 锚定 fixed) -->
+    <ImageViewer
+      :open="!!previewUrl"
+      :src="previewUrl"
+      :alt="previewAlt"
+      @close="previewUrl = null"
+    />
   </div>
 </template>
 
@@ -278,6 +266,7 @@ import { usePanelStore } from '../../store/panel.store';
 import { useImStore } from '../../../im/im.module';
 import { AI_AWAITING_EMOJI } from '../../../im/constants/im.constants';
 import MarkdownIt from 'markdown-it';
+import ImageViewer from '../../../resource/components/ImageViewer.vue';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
 
@@ -337,6 +326,7 @@ const getAwaitingPhraseFor = (messageId: string): string | null => {
 const { t } = useI18n();
 const panelStore = usePanelStore();
 const previewUrl = ref<string | null>(null);
+const previewAlt = ref<string>('');
 
 // ===== 虚拟窗口 virtual-window =====
 /** 默认每次渲染的最大条数 */
@@ -356,6 +346,18 @@ const topSentinel = ref<HTMLElement | null>(null);
  */
 watch(() => props.sessionId, () => {
   windowExpand.value = 0;
+});
+
+/**
+ * 重置虚拟窗口到尾部, 用于主动跳到底部或发送消息后的强制置底。
+ * @keyword-en reset-window-to-tail virtual-scroll-bottom
+ */
+const resetWindowToTail = () => {
+  windowExpand.value = 0;
+};
+
+defineExpose({
+  resetWindowToTail,
 });
 
 /**
@@ -464,7 +466,6 @@ const avatarSrcById = computed<Record<string, string>>(() => {
     if (!pid || !raw) continue;
     out[pid] = (resolveImageUrl(raw) || raw).trim();
   }
-  console.log(out);
   return out;
 });
 
@@ -547,6 +548,83 @@ md.renderer.rules.image = function (tokens, idx, options, env, self) {
 md.renderer.rules.table_open = () => '<div class="md-table-wrapper"><table>';
 md.renderer.rules.table_close = () => '</table></div>';
 
+// 用户消息单独的 markdown 实例: html=false 关闭 raw HTML 注入, 防 XSS
+// 用户输入是不可信源, 不允许走 <agent-lazy-guard> 等系统自定义标签那条路。
+// 仍然支持 markdown 语法生成的 <img> / <a> / <code> / 列表等, 让用户发的图片/链接能正常渲染。
+// @keyword-en user-md-renderer, safe-markdown, no-raw-html
+const mdUser = new MarkdownIt({
+  html: false,
+  linkify: true,
+  typographer: true,
+});
+
+const defaultUserImageRender =
+  mdUser.renderer.rules.image ||
+  function (tokens, idx, options, env, self) {
+    return self.renderToken(tokens, idx, options);
+  };
+
+mdUser.renderer.rules.image = function (tokens, idx, options, env, self) {
+  const token = tokens[idx];
+  const srcIndex = token.attrIndex('src');
+  if (srcIndex >= 0 && token.attrs) {
+    const src = token.attrs[srcIndex][1];
+    const resolved = resolveImageUrl(src);
+    if (resolved) {
+      token.attrs[srcIndex][1] = resolved;
+    }
+  }
+  return defaultUserImageRender(tokens, idx, options, env, self);
+};
+
+mdUser.renderer.rules.table_open = () =>
+  '<div class="md-table-wrapper"><table>';
+mdUser.renderer.rules.table_close = () => '</table></div>';
+
+// 链接强制 target=_blank + rel=noopener
+const defaultUserLinkOpen =
+  mdUser.renderer.rules.link_open ||
+  function (tokens, idx, options, env, self) {
+    return self.renderToken(tokens, idx, options);
+  };
+mdUser.renderer.rules.link_open = function (tokens, idx, options, env, self) {
+  const token = tokens[idx];
+  const targetIdx = token.attrIndex('target');
+  if (targetIdx < 0) token.attrPush(['target', '_blank']);
+  else if (token.attrs) token.attrs[targetIdx][1] = '_blank';
+  const relIdx = token.attrIndex('rel');
+  if (relIdx < 0) token.attrPush(['rel', 'noopener noreferrer']);
+  else if (token.attrs) token.attrs[relIdx][1] = 'noopener noreferrer';
+  return defaultUserLinkOpen(tokens, idx, options, env, self);
+};
+
+/**
+ * 固定 lazy guard markdown 标签匹配。
+ * @keyword-en lazy-guard-tag-regex
+ */
+const LAZY_GUARD_TAG_RE =
+  /<agent-lazy-guard(?:\s+[^>]*)?><\/agent-lazy-guard>/gi;
+
+/**
+ * 把后端固定 lazy guard 标签渲染成本地化提示块。
+ * @keyword-en render-lazy-guard-tag i18n
+ */
+const renderLazyGuardTags = (content: string): string => {
+  return content.replace(LAZY_GUARD_TAG_RE, () => {
+    const title = md.utils.escapeHtml(t('chat.lazyToolTitle'));
+    const hint = md.utils.escapeHtml(t('chat.lazyToolRequired'));
+    return [
+      '<div class="agent-lazy-guard" role="status">',
+      '<span class="agent-lazy-guard__icon"><i class="fa-solid fa-shield-halved"></i></span>',
+      '<span class="agent-lazy-guard__body">',
+      `<strong>${title}</strong>`,
+      `<span>${hint}</span>`,
+      '</span>',
+      '</div>',
+    ].join('');
+  });
+};
+
 const handleMessageClick = (e: MouseEvent) => {
   const target = e.target;
   if (!(target instanceof HTMLElement)) return;
@@ -556,6 +634,7 @@ const handleMessageClick = (e: MouseEvent) => {
     const src = target.src;
     if (src) {
       previewUrl.value = src;
+      previewAlt.value = target.alt || '';
       e.preventDefault();
       e.stopPropagation();
     }
@@ -629,14 +708,33 @@ const handleAvatarClick = (msg: ChatMessage) => {
  * @keyword-en render-markdown markdown-cache
  */
 const renderMarkdown = (content: string): string => {
-  const cached = markdownCache.get(content);
+  const cacheKey = `${t('chat.lazyToolTitle')}::${t('chat.lazyToolRequired')}::${content}`;
+  const cached = markdownCache.get(cacheKey);
   if (cached !== undefined) return cached;
-  const result = md.render(content);
+  const result = md.render(renderLazyGuardTags(content));
   if (markdownCache.size >= MAX_CACHE_SIZE) {
     const firstKey = markdownCache.keys().next().value;
     if (firstKey !== undefined) markdownCache.delete(firstKey);
   }
-  markdownCache.set(content, result);
+  markdownCache.set(cacheKey, result);
+  return result;
+};
+
+/**
+ * 渲染用户消息 markdown (html=false, 安全模式), 主要让 ![](url) 出图, [text](url) 出链接。
+ * 单独缓存键防止跟 assistant 渲染串台。
+ * @keyword-en render-user-markdown, safe-markdown
+ */
+const renderUserMarkdown = (content: string): string => {
+  const cacheKey = `user::${content}`;
+  const cached = markdownCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const result = mdUser.render(content);
+  if (markdownCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = markdownCache.keys().next().value;
+    if (firstKey !== undefined) markdownCache.delete(firstKey);
+  }
+  markdownCache.set(cacheKey, result);
   return result;
 };
 </script>
@@ -671,6 +769,88 @@ const renderMarkdown = (content: string): string => {
   margin-bottom: 0.7em;
 }
 
+/* 用户气泡 (深色) 的 markdown 渲染样式 */
+.user-markdown {
+  color: rgba(255, 255, 255, 0.96);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.user-markdown :deep(p),
+.user-markdown :deep(ul),
+.user-markdown :deep(ol),
+.user-markdown :deep(blockquote) {
+  margin-top: 0;
+  margin-bottom: 0.55em;
+}
+
+.user-markdown :deep(p:last-child),
+.user-markdown :deep(ul:last-child),
+.user-markdown :deep(ol:last-child) {
+  margin-bottom: 0;
+}
+
+.user-markdown :deep(img) {
+  /* 缩略图风格: 单行的小格子, 点击放大 */
+  display: inline-block;
+  width: 140px;
+  height: 140px;
+  object-fit: cover;
+  margin: 0.3em 0.3em 0.3em 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: zoom-in;
+  vertical-align: middle;
+  /* 用 outline 取代 scale: outline 不占布局, 不会撑大气泡触发滚动条 */
+  outline: 0 solid rgba(255, 255, 255, 0);
+  transition: outline 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+}
+
+.user-markdown :deep(img:hover) {
+  /* outline 在元素外侧绘制, 不影响 layout, 不会触发父容器 overflow */
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 2px;
+  filter: brightness(1.06);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.user-markdown :deep(a) {
+  color: #93c5fd;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.user-markdown :deep(a:hover) {
+  color: #bfdbfe;
+}
+
+.user-markdown :deep(code:not(pre code)) {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.88em;
+}
+
+.user-markdown :deep(pre) {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+  overflow-x: auto;
+  font-size: 0.84em;
+}
+
+.user-markdown :deep(blockquote) {
+  border-left: 3px solid rgba(255, 255, 255, 0.35);
+  padding-left: 0.75rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.user-markdown :deep(ul),
+.user-markdown :deep(ol) {
+  padding-left: 1.1rem;
+}
+
 .assistant-markdown :deep(ul),
 .assistant-markdown :deep(ol) {
   padding-left: 1.1rem;
@@ -698,6 +878,64 @@ const renderMarkdown = (content: string): string => {
   background: rgba(212, 212, 216, 0.35);
   border-radius: 0.4rem;
   padding: 0.12rem 0.35rem;
+}
+
+.assistant-markdown :deep(.agent-lazy-guard) {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.72rem;
+  width: min(100%, 28rem);
+  overflow: hidden;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(248, 250, 252, 0.98)),
+    #f8fafc;
+  color: #1e293b;
+  border-radius: 8px;
+  padding: 0.78rem 0.88rem;
+  font-size: 0.84rem;
+  line-height: 1.38;
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.assistant-markdown :deep(.agent-lazy-guard::before) {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  content: '';
+  background: linear-gradient(180deg, #2563eb, #14b8a6);
+}
+
+.assistant-markdown :deep(.agent-lazy-guard__icon) {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  color: #1d4ed8;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 999px;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.12);
+}
+
+.assistant-markdown :deep(.agent-lazy-guard__body) {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.assistant-markdown :deep(.agent-lazy-guard__body strong) {
+  font-size: 0.9rem;
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.assistant-markdown :deep(.agent-lazy-guard__body span) {
+  color: #64748b;
 }
 
 /* ===== 标题层级 :: 让 LLM 输出的 h1~h4 视觉层次清晰 md-headings ===== */

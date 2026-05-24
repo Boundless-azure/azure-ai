@@ -39,13 +39,14 @@ export class ChatMessageEntity extends BaseAuditedEntity {
   @Column({ name: 'reply_to_id', type: 'varchar', length: 36, nullable: true })
   replyToId!: string | null;
 
-  /** 附件信息 (JSON) */
+  /** 附件信息 (JSON) — resourceId 由聊天上传通道写入, 是 LLM 操作文件 (createNode 等) 的唯一凭据 */
   @Column({ name: 'attachments', type: 'json', nullable: true })
   attachments!: Array<{
     type: string;
     url: string;
     name?: string;
     size?: number;
+    resourceId?: string;
   }> | null;
 
   /** 自定义元数据 */

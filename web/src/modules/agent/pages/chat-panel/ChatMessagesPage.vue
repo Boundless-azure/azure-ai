@@ -5,6 +5,7 @@
       ref="chatContainer"
     >
       <ChatMessageList
+        ref="messageListRef"
         :mode="'chat'"
         :isLoadingHistory="isLoadingHistory"
         :isHistoryEmpty="isHistoryEmpty"
@@ -16,16 +17,21 @@
         :scrollContainerEl="chatContainer"
         :sessionId="currentSessionId ?? undefined"
       />
+      <div
+        ref="bottomAnchor"
+        class="h-px w-full"
+        aria-hidden="true"
+      ></div>
     </div>
 
     <!-- 新消息浮动按钮 :: 锚在 chatContainer 跟 InputArea 边界上方
          h-0 父 div 不占 flex 空间, 不影响任何 scroll 计算, button absolute 相对它定位 -->
-    <div class="relative h-0 z-20">
+    <div class="relative h-0 z-40">
       <Transition name="new-msg-fade">
         <button
           v-if="unreadNewCount > 0"
           type="button"
-          class="absolute -top-12 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-[linear-gradient(180deg,#262626_0%,#111111_100%)] text-white text-xs font-medium shadow-[0_8px_20px_rgba(0,0,0,0.25)] flex items-center gap-1.5 hover:bg-black transition-colors border border-white/10 whitespace-nowrap"
+          class="absolute -top-12 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-[linear-gradient(180deg,#262626_0%,#111111_100%)] text-white text-xs font-medium shadow-[0_8px_20px_rgba(0,0,0,0.25)] flex items-center gap-1.5 hover:bg-black transition-colors border border-white/10 whitespace-nowrap z-30"
           @click="onClickJumpToBottom"
         >
           <span>新消息 {{ unreadNewCount }} 条</span>
@@ -109,16 +115,40 @@ const {
 } = storeToRefs(imStore);
 
 const chatContainer = ref<HTMLElement | null>(null);
+const bottomAnchor = ref<HTMLElement | null>(null);
+const messageListRef = ref<{ resetWindowToTail?: () => void } | null>(null);
 
 const isPinnedToBottom = ref(true);
 const bottomThresholdPx = 80;
+let forceBottomUntil = 0;
+
+/**
+ * 判断当前是否应继续跟随到底部, 包含发送后的强制跟随窗口。
+ * @keyword-en should-follow-bottom forced-bottom-follow
+ */
+const shouldFollowBottom = () => {
+  return isPinnedToBottom.value || forceBottomUntil > performance.now();
+};
 
 /** 上滚看历史期间累积的新消息条数 :: 回到底部 / 主动跳到底 时清零 */
 const unreadNewCount = ref(0);
 
+/**
+ * 计算当前消息快照相对上一帧新增了几条尾部消息; 兼容最近消息窗口满 50 条时 length 不变的场景。
+ * @keyword-en count-new-message-ids unread-bottom-notice
+ */
+const countNewMessageIds = (ids: string[], prevIds: string[]) => {
+  const previous = new Set(prevIds);
+  return ids.filter((id) => !previous.has(id)).length;
+};
 const updatePinnedState = () => {
   const el = chatContainer.value;
   if (!el) return;
+  if (forceBottomUntil > performance.now()) {
+    isPinnedToBottom.value = true;
+    unreadNewCount.value = 0;
+    return;
+  }
   const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
   const wasPinned = isPinnedToBottom.value;
   isPinnedToBottom.value = distance <= bottomThresholdPx;
@@ -135,7 +165,15 @@ const updatePinnedState = () => {
 const onClickJumpToBottom = () => {
   isPinnedToBottom.value = true;
   unreadNewCount.value = 0;
-  scrollToBottom();
+  scrollToBottom(2000);
+};
+
+/**
+ * 用户主动滚动/触摸时取消程序化置底保护, 避免之后的补帧把阅读位置拉回底部。
+ * @keyword-en cancel-programmatic-bottom-scroll
+ */
+const cancelProgrammaticBottomScroll = () => {
+  forceBottomUntil = 0;
 };
 
 const isProcessing = ref(false);
@@ -249,14 +287,47 @@ const getPrincipalId = (): string | undefined => {
   }
 };
 
-const scrollToBottom = () => {
+/**
+ * 滚动到底部; 用底部锚点 + 多帧校准覆盖深滚动和异步高度增长。
+ * @keyword-en scroll-to-bottom bottom-anchor multi-frame
+ */
+const scrollToBottom = (followMs = 1200) => {
+  isPinnedToBottom.value = true;
+  unreadNewCount.value = 0;
+  forceBottomUntil = Math.max(forceBottomUntil, performance.now() + followMs);
+  messageListRef.value?.resetWindowToTail?.();
   nextTick(() => {
-    if (!chatContainer.value) return;
-    chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-    requestAnimationFrame(() => {
-      if (!chatContainer.value) return;
-      chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
-    });
+    let attempts = 0;
+    const run = () => {
+      const el = chatContainer.value;
+      if (!el) return;
+      bottomAnchor.value?.scrollIntoView({
+        block: 'end',
+        inline: 'nearest',
+        behavior: 'auto',
+      });
+      el.scrollTop = el.scrollHeight;
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      attempts += 1;
+      if (distance > 2 && attempts < 10) {
+        forceBottomUntil = Math.max(forceBottomUntil, performance.now() + followMs);
+        requestAnimationFrame(run);
+        return;
+      }
+      requestAnimationFrame(() => {
+        const finalEl = chatContainer.value;
+        const finalDistance = finalEl
+          ? finalEl.scrollHeight - finalEl.scrollTop - finalEl.clientHeight
+          : 0;
+        if (finalDistance <= bottomThresholdPx) {
+          updatePinnedState();
+        } else {
+          isPinnedToBottom.value = true;
+          unreadNewCount.value = 0;
+        }
+      });
+    };
+    requestAnimationFrame(run);
   });
 };
 
@@ -277,7 +348,7 @@ const openSessionAndLoadHistory = async (
 
   isPinnedToBottom.value = true;
   unreadNewCount.value = 0;
-  scrollToBottom();
+  scrollToBottom(2000);
 };
 
 watch(
@@ -325,7 +396,12 @@ const attachContainerResizeObserver = (el: HTMLElement | null) => {
   const observeInner = (inner: HTMLElement) => {
     containerResizeObserver?.disconnect();
     containerResizeObserver = new ResizeObserver(() => {
-      if (isPinnedToBottom.value && chatContainer.value) {
+      if (shouldFollowBottom() && chatContainer.value) {
+        bottomAnchor.value?.scrollIntoView({
+          block: 'end',
+          inline: 'nearest',
+          behavior: 'auto',
+        });
         chatContainer.value.scrollTop = chatContainer.value.scrollHeight;
       }
     });
@@ -354,7 +430,19 @@ watch(
   chatContainer,
   (el, prev) => {
     prev?.removeEventListener('scroll', onScroll);
+    prev?.removeEventListener('wheel', cancelProgrammaticBottomScroll);
+    prev?.removeEventListener('touchstart', cancelProgrammaticBottomScroll);
+    prev?.removeEventListener('pointerdown', cancelProgrammaticBottomScroll);
     el?.addEventListener('scroll', onScroll, { passive: true });
+    el?.addEventListener('wheel', cancelProgrammaticBottomScroll, {
+      passive: true,
+    });
+    el?.addEventListener('touchstart', cancelProgrammaticBottomScroll, {
+      passive: true,
+    });
+    el?.addEventListener('pointerdown', cancelProgrammaticBottomScroll, {
+      passive: true,
+    });
     nextTick(() => {
       updatePinnedState();
       attachContainerResizeObserver(el ?? null);
@@ -364,7 +452,11 @@ watch(
 );
 
 onUnmounted(() => {
-  chatContainer.value?.removeEventListener('scroll', onScroll);
+  const el = chatContainer.value;
+  el?.removeEventListener('scroll', onScroll);
+  el?.removeEventListener('wheel', cancelProgrammaticBottomScroll);
+  el?.removeEventListener('touchstart', cancelProgrammaticBottomScroll);
+  el?.removeEventListener('pointerdown', cancelProgrammaticBottomScroll);
   containerResizeObserver?.disconnect();
   containerResizeObserver = null;
   containerMutationObserver?.disconnect();
@@ -373,14 +465,14 @@ onUnmounted(() => {
 });
 
 watch(
-  () => currentMessages.value.length,
-  (len, prevLen) => {
-    if (len <= prevLen) return;
-    const delta = len - prevLen;
-    if (isPinnedToBottom.value) {
+  () => currentMessages.value.map((m) => m.id),
+  (ids, prevIds) => {
+    const delta = countNewMessageIds(ids, prevIds ?? []);
+    if (delta <= 0) return;
+    if (shouldFollowBottom()) {
       // 在底部: 自动滚到底, 未读清零
       unreadNewCount.value = 0;
-      scrollToBottom();
+      scrollToBottom(Math.max(1200, forceBottomUntil - performance.now()));
     } else {
       // 上滚看历史: 累积未读计数, 不打扰当前阅读位置
       unreadNewCount.value += delta;
@@ -398,7 +490,9 @@ watch(
 watch(
   () => Object.keys(awaitingAiByQueue.value ?? {}).length,
   () => {
-    if (isPinnedToBottom.value) scrollToBottom();
+    if (shouldFollowBottom()) {
+      scrollToBottom(Math.max(1200, forceBottomUntil - performance.now()));
+    }
   },
   { flush: 'post' },
 );
@@ -492,14 +586,18 @@ const sendMessage = async (payload: {
     url: string;
     name?: string;
     size?: number;
+    resourceId?: string;
   }> = [];
   const attachmentMarkdown: string[] = [];
 
   if (attachments.length > 0) {
+    let failedName = '';
     try {
       for (const item of attachments) {
+        failedName = item.file.name;
         const res = await resourceApi.smartUpload(item.file, { sessionId });
         const path = res.data.path;
+        const resourceId = res.data.id;
         const url = resolveResourceUrl(path) || path;
         const type = item.file.type.startsWith('image/') ? 'image' : 'file';
         uploadedAttachments.push({
@@ -507,6 +605,7 @@ const sendMessage = async (payload: {
           url: path,
           name: item.file.name,
           size: item.file.size,
+          resourceId,
         });
         attachmentMarkdown.push(
           type === 'image'
@@ -514,8 +613,16 @@ const sendMessage = async (payload: {
             : `[${item.file.name}](${url})`,
         );
       }
-    } catch {
-      ui.showToast('附件上传失败', 'error');
+    } catch (err) {
+      // 透出后端真实错误 (e.g. "file too large (>500MB)"), 方便用户定位是大小/类型/网络
+      const detail =
+        (err as { data?: { message?: string }; message?: string })?.data
+          ?.message ??
+        (err as { message?: string })?.message ??
+        '未知错误';
+      ui.showToast(`附件 "${failedName}" 上传失败: ${detail}`, 'error');
+      // eslint-disable-next-line no-console
+      console.error('[Upload] failed:', failedName, err);
       return;
     }
   }
@@ -531,21 +638,28 @@ const sendMessage = async (payload: {
   // 强制 pin + 清零未读, 实际滚动由 ResizeObserver / watch(length) 在 temp 插入后触发
   isPinnedToBottom.value = true;
   unreadNewCount.value = 0;
+  forceBottomUntil = performance.now() + 5000;
+  messageListRef.value?.resetWindowToTail?.();
 
   void imStore
     .sendMessageOptimistic(sessionId, combinedContent, {
       attachments: uploadedAttachments.length ? uploadedAttachments : undefined,
+    })
+    .then(() => {
+      if (shouldFollowBottom()) scrollToBottom(1500);
     })
     .catch(() => {
       ui.showToast('发送失败', 'error');
     });
 
   // 兜底滚到底 :: temp 插入是异步的 (ensureSelfIsMember + mergeMessagesIncremental 各 await)
-  // 50ms / 200ms / 500ms 三次兜底, 覆盖快速 / 中速 / 慢速 (markdown 渲染) 场景
-  // 每次只在 isPinnedToBottom=true 时滚, 避免用户期间手动上滚被打扰
-  [50, 200, 500].forEach((delay) => {
+  // 发送后的 5s 强制跟随窗口覆盖深滚动区、虚拟窗口收缩、markdown 慢渲染和 optimistic 插入延迟。
+  // 用户主动滚动/触摸会取消强制窗口, 避免阅读历史时被拉回底部。
+  [0, 50, 150, 300, 700, 1200, 2000, 3500, 5000].forEach((delay) => {
     window.setTimeout(() => {
-      if (isPinnedToBottom.value) scrollToBottom();
+      if (shouldFollowBottom()) {
+        scrollToBottom(Math.max(1000, forceBottomUntil - performance.now()));
+      }
     }, delay);
   });
 };

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ResourceEntity } from './entities/resource.entity';
 import { ResourceService } from './services/resource.service';
+import { ResourceSignService } from './services/resource-sign.service';
 import { ResourceController } from './controllers/resource.controller';
 
 /**
@@ -12,8 +13,8 @@ import { ResourceController } from './controllers/resource.controller';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([ResourceEntity])],
-  providers: [ResourceService],
+  providers: [ResourceService, ResourceSignService],
   controllers: [ResourceController],
-  exports: [ResourceService],
+  exports: [ResourceService, ResourceSignService],
 })
 export class ResourceModule {}

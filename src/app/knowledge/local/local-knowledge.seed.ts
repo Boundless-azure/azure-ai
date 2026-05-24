@@ -192,7 +192,7 @@ export const LOCAL_CHAPTER_CONVERSATION_HOOK_CONTEXT_RECOVERY: KnowledgeChapterI
     content: `# 获取缺失上下文 — 三步分层检索
 
 > 当用户引用过去对话、或你需要早期消息才能理解当前请求时, **不要靠猜**。
-> 本会话历史已被切成若干 \`smart\` 段 (5-10 条消息一段, 每段有 keywords + AI 摘要 summary)。
+> 本会话历史已被切成若干 \`smart\` 段 (按配置阈值分段, 默认约 5000 字可见正文一段, 每段有 keywords + summary)。
 > 通过下面三步精准取回需要的部分, 不要把整段历史塞进上下文窗口。
 
 ---
@@ -262,7 +262,7 @@ call_hook(
   items: [
     {
       smartId:        string,          // ③ 用这个 ID 精准取段
-      summary:        string,          // AI 生成的分段摘要, 用它决定要不要展开
+      summary:        string,          // 分段摘要, 用它决定要不要展开
       keywords:       string[],
       startMessageId: string,
       endMessageId:   string,
@@ -274,7 +274,7 @@ call_hook(
 }
 \`\`\`
 
-> 用法: 通读 summary, 选 1-3 个真正相关的 smartId 进入 ③。一段 5-10 条消息, 别贪多。
+> 用法: 通读 summary, 选 1-3 个真正相关的 smartId 进入 ③。单段按配置阈值生成 (默认约 5000 字可见正文), 别贪多。
 
 ---
 

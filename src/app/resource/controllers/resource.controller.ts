@@ -19,10 +19,17 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import { Public } from '@/core/auth/decorators/public.decorator';
 import type { JwtPayload } from '@/core/auth/types/auth.types';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
+import type { HookInvocationContext } from '@/core/hookbus/types/hook.types';
 import { ResourceService } from '../services/resource.service';
+import { ResourceSignService } from '../services/resource-sign.service';
 import type {
   UploadResourceResponse,
   ChunkedUploadInitResponse,
@@ -65,14 +72,114 @@ function tempDir(): string {
 }
 
 /**
+ * Hook payload schema (SSOT) — currentSession 仅接受分页 + 过滤参数, sessionId 强制由 ctx 注入。
+ * @keyword-en resource-current-session-payload, ctx-driven-session
+ */
+const currentSessionInput = z.object({
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe('返回数量, 默认 20, 上限 100'),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('分页偏移, 默认 0'),
+  category: z
+    .enum(['image', 'video', 'document', 'audio', 'archive', 'code', 'other'])
+    .optional()
+    .describe('按资源类别过滤; 留空表示不过滤'),
+  q: z
+    .string()
+    .optional()
+    .describe('按文件名子串过滤 (大小写不敏感)'),
+});
+
+/**
  * @title 资源控制器
  * @description 提供统一资源上传（简单/分片）、资源访问（流式/Range/缓存头）、断点续传和批量复制接口。
  * @keywords-cn 资源控制器, 上传, 下载, 流式返回, Range, 分片上传, 断点续传
  * @keywords-en resource-controller, upload, download, streaming, range, chunked-upload, resume
  */
+@HookController({ pluginName: 'resource', tags: ['resource', 'file'] })
 @Controller('resources')
 export class ResourceController {
-  constructor(private readonly service: ResourceService) {}
+  constructor(
+    private readonly service: ResourceService,
+    private readonly sign: ResourceSignService,
+  ) {}
+
+  /**
+   * Hook only: saas.app.resource.currentSession
+   * 列出当前聊天会话已上传的资源 (按 createdAt DESC 排序, 分页)。
+   * sessionId 由 invocationContext.extras.sessionId 强制注入, LLM 无法跨会话查询。
+   *
+   * @keyword-cn 当前会话资源, 列表分页
+   * @keyword-en current-session-resources, paged-list
+   */
+  @HookRoute({
+    hook: 'saas.app.resource.currentSession',
+    description:
+      '列出"当前聊天会话"已上传的资源, 按上传时间倒序分页。' +
+      'sessionId 由系统从当前对话上下文自动注入, LLM 无法跨会话查询。' +
+      '返回 items[].id 即 resourceId, 可作为 saas.app.storage.createNode 的 resourceId 入参。',
+    args: [currentSessionInput],
+  })
+  @CheckAbility('read', 'resource')
+  async currentSessionResources(
+    body: z.infer<typeof currentSessionInput>,
+    context?: HookInvocationContext,
+  ): Promise<{
+    items: Array<{
+      resourceId: string;
+      name: string;
+      path: string;
+      category: string;
+      mimeType: string | null;
+      fileSize: string;
+      createdAt: Date;
+    }>;
+    total: number;
+    hasMore: boolean;
+    limit: number;
+    offset: number;
+  }> {
+    const sessionId =
+      typeof context?.extras?.sessionId === 'string'
+        ? context.extras.sessionId
+        : null;
+    if (!sessionId) {
+      throw new BadRequestException(
+        'saas.app.resource.currentSession 只能在聊天会话上下文中调用 (extras.sessionId 缺失); 如需跨会话查询请走 HTTP GET /resources?sessionId=...',
+      );
+    }
+    const page = await this.service.listPaged({
+      sessionId,
+      limit: body.limit,
+      offset: body.offset,
+      category: body.category,
+      q: body.q,
+    });
+    return {
+      items: page.items.map((item) => ({
+        resourceId: item.id,
+        name: item.originalName,
+        path: item.path,
+        category: item.category,
+        mimeType: item.mimeType,
+        fileSize: item.fileSize,
+        createdAt: item.createdAt,
+      })),
+      total: page.total,
+      hasMore: page.hasMore,
+      limit: page.limit,
+      offset: page.offset,
+    };
+  }
 
   /**
    * GET /resources
@@ -121,6 +228,7 @@ export class ResourceController {
   ): Promise<UploadResourceResponse> {
     try {
       const uploaderId = req.user?.id ?? req.user?.principalId ?? null;
+      const tenantId = req.user?.tenantId ?? null;
       if (!isMulterFileLike(file)) {
         throw new BadRequestException('file is required');
       }
@@ -133,6 +241,7 @@ export class ResourceController {
         },
         uploaderId,
         sessionId,
+        tenantId,
       );
     } catch (err) {
       console.error('[Resource] Upload error:', err);
@@ -163,6 +272,7 @@ export class ResourceController {
     @Body('sessionId') sessionId?: string,
   ): Promise<UploadResourceResponse[]> {
     const uploaderId = req.user?.id ?? req.user?.principalId ?? null;
+    const tenantId = req.user?.tenantId ?? null;
     const results: UploadResourceResponse[] = [];
     for (const file of files) {
       if (!isMulterFileLike(file)) continue;
@@ -176,6 +286,7 @@ export class ResourceController {
           },
           uploaderId,
           sessionId,
+          tenantId,
         );
         results.push(result);
       } catch {
@@ -201,6 +312,7 @@ export class ResourceController {
     await validateOrReject(dto);
 
     const uploaderId = req.user?.id ?? req.user?.principalId ?? null;
+    const tenantId = req.user?.tenantId ?? null;
     return await this.service.initChunkedUpload(
       dto.filename,
       dto.totalChunks,
@@ -209,6 +321,7 @@ export class ResourceController {
       dto.mimeType || 'application/octet-stream',
       uploaderId,
       dto.sessionId,
+      tenantId,
     );
   }
 
@@ -300,23 +413,61 @@ export class ResourceController {
     @Req() req: AuthedReq,
   ): Promise<BatchDuplicateResponse> {
     const uploaderId = req.user?.id ?? req.user?.principalId ?? null;
+    const tenantId = req.user?.tenantId ?? null;
     const items = await this.service.batchDuplicate(
       body.resourceIds,
       uploaderId,
+      tenantId,
     );
     return { items };
   }
 
   // ==================== 资源访问 ====================
 
+  /**
+   * GET /resources/:id?sig=<hmac>&tid=<tenantId>
+   *
+   * 鉴权设计:
+   *   - 保留 @Public 以兼容 <img>/<video> 浏览器原生标签 (无法附带 Authorization Bearer)
+   *   - 强制要求 sig + tid query 参数, 并比对 entity.channelId === tid + sig 通过
+   *   - 历史资源 (channelId == null) 不强制要求 sig, 兼容期内允许访问 (后续可关闭)
+   *
+   * 防御设计:
+   *   - 全部强制 Content-Disposition: attachment + Content-Type: application/octet-stream
+   *   - 浏览器一律走下载流, 杜绝 HTML / SVG / JS 在同源被渲染导致 XSS
+   *   - X-Content-Type-Options: nosniff 关闭 MIME sniff
+   *
+   * @keyword-en get-resource, signed-access, tenant-isolation, force-download, nosniff
+   */
   @Get(':id')
   @Public()
   async get(
     @Param('id') id: string,
+    @Query('sig') sig: string | undefined,
+    @Query('tid') tid: string | undefined,
     @Req() req: Request,
     @Res() res: Response,
   ) {
     const { entity, filePath } = await this.service.getResourceFileOrThrow(id);
+
+    // 租户隔离 + 签名校验
+    const entityTenant = entity.channelId ?? null;
+    if (entityTenant !== null) {
+      // 必须带 sig + tid, 且 tid 必须等于资源租户, sig 必须 HMAC 匹配
+      if (!sig || !tid) {
+        res.status(403).json({ message: 'resource access denied: missing sig' });
+        return;
+      }
+      if (tid !== entityTenant) {
+        res.status(403).json({ message: 'resource access denied: tenant mismatch' });
+        return;
+      }
+      if (!this.sign.verify(id, tid, sig)) {
+        res.status(403).json({ message: 'resource access denied: bad sig' });
+        return;
+      }
+    }
+    // entityTenant === null: legacy resource, 兼容期放行
     const stat = await fs.promises.stat(filePath);
 
     const etag = `"${entity.sha256 || entity.md5}"`;
@@ -329,11 +480,40 @@ export class ResourceController {
 
     res.setHeader('ETag', etag);
     res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader(
-      'Content-Type',
-      entity.mimeType || 'application/octet-stream',
-    );
+    // 资源已租户隔离, 不进入 CDN/共享缓存
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    // 关键防御: nosniff 关闭 MIME sniff, 阻止"伪装成图片的 HTML"被当 HTML 执行
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    // 仅"非脚本可渲染类型"允许 inline, 保留聊天图片/视频/PDF 预览体验
+    // 其它一切 (HTML / SVG / JS / EXE / 文档 ...) 强制 octet-stream + attachment, 浏览器一律下载
+    const rawMime = (entity.mimeType || '').toLowerCase();
+    const isInlineSafe =
+      rawMime.startsWith('image/') &&
+      !rawMime.includes('svg') && // SVG 能跑 JS, 排除
+      !rawMime.includes('xml');
+    const isMediaSafe =
+      rawMime.startsWith('video/') || rawMime.startsWith('audio/');
+    const isPdfSafe = rawMime === 'application/pdf';
+    const allowInline = isInlineSafe || isMediaSafe || isPdfSafe;
+
+    const safeName = (entity.originalName || 'file').replace(/[\r\n"\\]/g, '_');
+    const asciiName = safeName.replace(/[^\x20-\x7E]/g, '_');
+    const utf8Name = encodeURIComponent(safeName);
+
+    if (allowInline) {
+      res.setHeader('Content-Type', rawMime);
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
+      );
+    } else {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${asciiName}"; filename*=UTF-8''${utf8Name}`,
+      );
+    }
 
     const range = req.headers.range;
     if (typeof range === 'string' && range.startsWith('bytes=')) {

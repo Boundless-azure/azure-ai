@@ -85,6 +85,7 @@ export const ImMessageInfoSchema = z.object({
         url: z.string(),
         name: z.string().optional(),
         size: z.number().optional(),
+        resourceId: z.string().optional(),
       }),
     )
     .nullable(),
@@ -112,6 +113,7 @@ export interface SendMessageRequest {
     url: string;
     name?: string;
     size?: number;
+    resourceId?: string;
   }>;
 }
 

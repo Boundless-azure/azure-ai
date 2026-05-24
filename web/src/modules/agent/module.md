@@ -75,7 +75,10 @@ src/modules/agent/
 | 函数名 | 关键词描述 |
 |--------|-----------|
 | `sendMessage` | 发送消息（水容乐观发送，fire-and-forget，不锁定输入框） |
-| `scrollToBottom` | 滚动到底部 |
+| `scrollToBottom` | 滚动到底部（底部锚点 + 多帧校准，兼容深滚动区） |
+| `shouldFollowBottom` | 判断当前是否需要继续跟随底部（包含发送后的强制跟随窗口） |
+| `countNewMessageIds` | 计算消息快照中新增的消息数量，用于深历史区的新消息提醒 |
+| `cancelProgrammaticBottomScroll` | 用户主动滚动/触摸时取消程序化置底保护 |
 | `openSessionAndLoadHistory` | 打开会话并加载历史 |
 | `getPrincipalId` | 获取当前用户 principalId |
 | `extractMentions` | 从文本提取 @提及 |
@@ -87,10 +90,14 @@ src/modules/agent/
 | `visibleMessages` | 虚拟窗口切片（最后 WINDOW_SIZE + 展开量） |
 | `topPaddingPx` | 顶部占位高度（隐藏消息的估算高度） |
 | `expandWindow` | 向上展开虚拟窗口并恢复滚动位置 |
+| `resetWindowToTail` | 主动置底/发送消息时收回虚拟窗口到尾部 |
 | `setupObserver` | 初始化 IntersectionObserver 监听顶部哨兵 |
 | `renderMarkdown` | 渲染 markdown（带 LRU 缓存，最多200条） |
+| `renderLazyGuardTags` | 渲染后端固定 lazy guard 标签为本地化状态卡 |
 | `markNewMessage` | 标记新消息以触发进场动画 |
 | `handleAvatarClick` | 点击头像打开用户信息抽屉 |
+| `renderUserMarkdown` | 用户消息 markdown 渲染 (html=false 防 XSS), 让 `![]()` 出图、`[]()` 出链接 |
+| `handleMessageClick` | 委托点击事件: 点 img 打开 ImageViewer (设置 previewUrl + previewAlt), 点 a 新窗口打开 |
 
 ### components/chat/ChatContactAvatar.vue
 
@@ -209,6 +216,14 @@ src/modules/agent/
 - `emoji-picker` - 表情选择
 - `voice-recording` - 语音录制
 - `mention-suggestions` - @提及建议
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `triggerFileInput` | 打开文件选择器, 无 accept 限制, 接受任意类型 (后端按白名单 mime 决定 inline/attachment) |
+| `handleFileSelect` | 选中文件入队: 图片走 FileReader 生成 base64 预览, 非图片仅记录 File 元信息显示通用文件图标 |
+| `handlePaste` | 剪贴板粘贴: 图片走预览路径, 其它 file kind 直接进入附件列表 |
+| `removeAttachment` | 从附件队列移除指定项 |
+| `send` | 发送消息, 把附件队列连同文本 emit 给父组件 |
 
 ## 函数哈希映射
 

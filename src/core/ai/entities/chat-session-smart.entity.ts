@@ -25,7 +25,7 @@ export class ChatSessionSmartEntity extends BaseAuditedEntity {
   @Column({ name: 'end_message_id', type: 'varchar', length: 36 })
   endMessageId!: string;
 
-  /** 消息数量 (通常 5-10 条) */
+  /** 消息数量 (分段以累计到 smart 配置阈值的可见正文为准) */
   @Column({ name: 'message_count', type: 'int', default: 0 })
   messageCount!: number;
 
@@ -40,7 +40,7 @@ export class ChatSessionSmartEntity extends BaseAuditedEntity {
   @Column({ name: 'embedding', type: 'vector', nullable: true })
   embedding!: string | null;
 
-  /** AI 生成的分段摘要 */
+  /** 分段摘要 */
   @Column({ name: 'summary', type: 'text', nullable: true })
   summary!: string | null;
 

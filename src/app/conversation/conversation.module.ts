@@ -18,7 +18,10 @@ import { AiSessionDataService } from './services/ai-session-data.service';
 import { AiSessionDataHookController } from './controllers/ai-session-data.hook-controller';
 import { AiCallLogService } from './services/ai-call-log.service';
 import { AiCallLogHookController } from './controllers/ai-call-log.hook-controller';
+import { CurrentSessionService } from './services/current-session.service';
+import { CurrentSessionHookController } from './controllers/current-session.hook-controller';
 import { SessionHandbookSeederService } from './services/session-handbook-seeder.service';
+import { ChatSessionSmartService } from './services/chat-session-smart.service';
 import { ImContactGroupEntity } from './entities/im-contact-group.entity';
 import { ImContactGroupMemberEntity } from './entities/im-contact-group-member.entity';
 import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
@@ -89,7 +92,10 @@ import { AuthModule } from '@/core/auth/auth.module';
     AiSessionDataHookController,
     AiCallLogService,
     AiCallLogHookController,
+    CurrentSessionService,
+    CurrentSessionHookController,
     SessionHandbookSeederService,
+    ChatSessionSmartService,
   ],
   exports: [
     ConversationService,
@@ -99,7 +105,9 @@ import { AuthModule } from '@/core/auth/auth.module';
     WebMcpSessionDataService,
     AiSessionDataService,
     AiCallLogService,
+    CurrentSessionService,
     SessionHandbookSeederService,
+    ChatSessionSmartService,
   ],
 })
 export class ConversationModule {}

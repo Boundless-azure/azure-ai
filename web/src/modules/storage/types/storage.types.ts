@@ -21,6 +21,8 @@ export interface StorageNode {
   size: string | null;
   mimeType: string | null;
   resourceId: string | null;
+  /** 后端拼好的资源访问 path (含 sig+tid 签名); folder 节点为 undefined */
+  resourcePath?: string;
   shareMode: ShareMode;
   shareToken: string | null;
   shareExpiresAt: string | null;

@@ -91,28 +91,27 @@ export interface ChunkStatusResult {
   missingChunks: number[];
 }
 
-function computeMd5(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const buffer = reader.result as ArrayBuffer;
-      const hashBuffer = crypto.subtle.digest('MD5', buffer).then((buf) => {
-        const hashArray = Array.from(new Uint8Array(buf));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      });
-      hashBuffer.then(resolve).catch(reject);
-    };
-    reader.onerror = reject;
-    // 读取整个文件用于MD5计算（适用于<100MB文件）
-    reader.readAsArrayBuffer(file.slice(0, Math.min(file.size, 100 * 1024 * 1024)));
-  });
-}
-
+/**
+ * 计算文件的浏览器侧 hash, 用于分片上传 `initChunkedUpload` 的"预去重" md5 字段。
+ *
+ * 实现说明:
+ *   - Web Crypto `crypto.subtle.digest` 不支持 MD5 (MDN: 仅 SHA-1/256/384/512)。
+ *     早期版本传 'MD5' 会抛 `OperationError: Unsupported algorithm`, 导致所有 >=10MB 文件 (视频/大图等)
+ *     在前端 catch 显示"附件上传失败"。
+ *   - 改走 SHA-256, 取 hex 前 32 字符 (与 MD5 长度对齐, 后端 md5 字段是 varchar(64) 兼容)。
+ *   - 后端 service.commitChunkedUpload 阶段会再次算真 SHA-256 做最终去重, 这里 md5 只是预去重提示,
+ *     真伪 MD5 算法都不影响正确性, 最坏情况是同内容文件多走一次完整分片上传。
+ *
+ * @keyword-en compute-file-hash-fallback, sha256-as-md5, browser-md5-unsupported
+ */
 async function computeMd5Full(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
-  const hashBuffer = await crypto.subtle.digest('MD5', buffer);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashArray
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 32);
 }
 
 export const resourceApi = {

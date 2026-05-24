@@ -115,6 +115,9 @@ const translations = {
       statusError: 'Error',
       noMessages: 'No messages',
       errorOccurred: 'Error occurred',
+      lazyToolTitle: 'Tool check blocked',
+      lazyToolRequired:
+        'Retried once, but the assistant still skipped a required tool check.',
       pin: 'Pin',
       unpin: 'Unpin',
     },
@@ -480,6 +483,8 @@ const translations = {
       statusError: '异常',
       noMessages: '暂无消息',
       errorOccurred: '执行出错',
+      lazyToolTitle: '工具判定未通过',
+      lazyToolRequired: '已自动重试一次，但模型仍跳过了必要工具检查。',
       pin: '置顶',
       unpin: '取消置顶',
     },

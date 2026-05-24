@@ -48,6 +48,12 @@ DB_DATABASE=azure_ai_dev
 # Redis
 REDIS_HOST=localhost
 REDIS_PORT=6379
+
+# 鉴权与签名 secret
+JWT_SECRET=...
+# 资源访问 HMAC 签名 (GET /resources/:id?sig=&tid=)
+# 必须与 JWT_SECRET 分离, 生产环境用 `openssl rand -hex 32` 生成
+RESOURCE_SIGN_SECRET=...
 ```
 
 ## Docker 命令

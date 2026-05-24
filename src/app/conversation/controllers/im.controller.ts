@@ -48,15 +48,41 @@ import {
 } from '../types/im.types';
 
 /**
+ * 从 HTTP 请求拿客户端 IP; 优先 X-Forwarded-For 头部 (反向代理), 回退到 req.ip.
+ * @keyword-en resolve-client-ip
+ */
+function resolveClientIp(req: {
+  ip?: string;
+  headers?: Record<string, string | string[] | undefined>;
+}): string | null {
+  const fwd = req.headers?.['x-forwarded-for'];
+  const firstFwd = typeof fwd === 'string' ? fwd : Array.isArray(fwd) ? fwd[0] : '';
+  const parsed = firstFwd ? firstFwd.split(',')[0]?.trim() : '';
+  if (parsed) return parsed;
+  return req.ip?.trim() || null;
+}
+
+/**
  * @title saas.app.conversation.sendMsg payload schema (SSOT)
  * @description 主动发消息 hook 的参数 schema, 与 ImController 内 HookRoute 共用。
  * @keywords-cn 主动发消息, payloadSchema, SSOT
  * @keywords-en send-msg, payload-schema, ssot
  */
 const sendMsgSchema = z.object({
-  sessionId: z.string().describe('目标 IM 会话 ID, 必填'),
+  sessionId: z
+    .string()
+    .optional()
+    .describe(
+      '目标 IM 会话 ID; LLM 留空即可, 服务端从 ctx.extras.sessionId 自动补',
+    ),
   content: z.string().min(1).describe('消息正文, 必填非空'),
-  senderPrincipalId: z.string().describe('发送者主体 ID, 必填'),
+  senderPrincipalId: z
+    .string()
+    .optional()
+    .describe(
+      '发送者主体 ID; LLM 留空即可, 服务端强制使用 ctx.principalId (agent 自身), ' +
+        'LLM 不允许冒充其他主体发消息. 即使填了也会被 ctx.principalId 覆盖.',
+    ),
   replyToId: z
     .string()
     .optional()
@@ -358,13 +384,18 @@ export class ImController {
   async sendMessage(
     @Param('id') id: string,
     @Body() dto: Omit<SendMessageDto, 'sessionId'>,
-    @Req() req: { user?: { id?: string } },
+    @Req() req: { user?: { id?: string }; ip?: string; headers?: Record<string, string | string[] | undefined> },
   ): Promise<ImMessageInfo> {
     const senderId = req.user?.id ?? 'anonymous';
-    return this.messageService.sendMessage(senderId, {
-      ...dto,
-      sessionId: id,
-    });
+    const senderIp = resolveClientIp(req);
+    return this.messageService.sendMessage(
+      senderId,
+      {
+        ...dto,
+        sessionId: id,
+      },
+      senderIp ? { senderIp } : undefined,
+    );
   }
 
   /**
@@ -385,18 +416,55 @@ export class ImController {
     context?: HookInvocationContext,
   ): Promise<HookResult> {
     const {
-      sessionId,
+      sessionId: payloadSessionId,
       content,
-      senderPrincipalId,
+      senderPrincipalId: payloadSenderPrincipalId,
       replyToId,
       messageType,
       mentions,
       strictMention,
     } = payload;
 
+    // sessionId :: ctx.extras.sessionId 优先, payload 兜底 (兼容外部 curl 调用)
+    const ctxSessionId =
+      typeof context?.extras?.sessionId === 'string'
+        ? context.extras.sessionId.trim()
+        : '';
+    const sessionId = ctxSessionId || payloadSessionId?.trim() || '';
+    if (!sessionId) {
+      return {
+        status: HookResultStatus.Error,
+        error:
+          'sessionId 缺失 :: LLM 留空即可, 服务端会从 ctx.extras.sessionId 自动补; 外部调用方需显式传 sessionId.',
+      };
+    }
+
+    // senderPrincipalId :: LLM 链路强制使用 ctx.principalId, 禁止冒充其他主体发消息
+    //  - 外部 curl / 系统内部调用 (无 llm context) 可保留 payload 字段
+    const ctxPrincipalId = context?.principalId?.trim() ?? '';
+    const isLlmCall = context?.source === 'llm';
+    if (
+      isLlmCall &&
+      payloadSenderPrincipalId &&
+      payloadSenderPrincipalId !== ctxPrincipalId
+    ) {
+      this.logger.warn(
+        `[sendMsg] senderPrincipalId override (impersonation blocked) session=${sessionId} payload=${payloadSenderPrincipalId} ctx=${ctxPrincipalId}`,
+      );
+    }
+    const senderPrincipalId = isLlmCall
+      ? ctxPrincipalId
+      : payloadSenderPrincipalId?.trim() || ctxPrincipalId;
+    if (!senderPrincipalId) {
+      return {
+        status: HookResultStatus.Error,
+        error:
+          'senderPrincipalId 缺失 :: LLM 链路从 ctx.principalId 自动取, 外部调用方需显式传 senderPrincipalId.',
+      };
+    }
+
     const contextReplyToId =
-      context?.source === 'llm' &&
-      typeof context.extras?.triggerMessageId === 'string'
+      isLlmCall && typeof context?.extras?.triggerMessageId === 'string'
         ? context.extras.triggerMessageId
         : null;
     const effectiveReplyToId = contextReplyToId ?? replyToId;

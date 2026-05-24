@@ -32,7 +32,8 @@
   - HookController(pluginName=storage, tags=[storage, file])
   - resolveStorageTenantId() - 统一解析 HTTP / Hook 调用的租户 ID；Hook 路径优先使用 context.extras.tenantId，StorageController.getRootNodes 会打印实际查询 tenant 便于核查
   - resolveStorageUserId() - 统一解析 HTTP / Hook 调用的操作主体 ID
-  - POST /storage/nodes - 创建节点
+  - POST /storage/nodes - 创建节点; **hook saas.app.storage.createNode**: type=file 时 resourceId 必填且不可编造, 必须先通过 saas.app.resource.currentSession 拿到本会话已上传的 items[].resourceId 才能创建; service + zod superRefine + controller 三层校验, 跨租户/不存在 resource 均拒绝 | keywords: create-node, file-node, resource-id-required, chat-upload-only, no-fabrication
+- toStorageNodeResponse(node, sign) — 输出 storage node 响应; **对 file 类节点自动挂 `resourcePath` 字段** (走 ResourceSignService.buildAccessPath(node.resourceId, node.tenantId) 拼带签名的 URL), 前端可直接 window.open(resourcePath) 打开文件; folder 节点不挂 | keywords: signed-resource-path, file-open
   - GET /storage/nodes - 获取节点列表（path=/ 或 /workspace）
   - GET /storage/nodes/root - 获取根目录
     - HookRoute: saas.app.storage.getRootNodes；复用同一方法，Hook payload 可传 `[]` 或 `[{}]`

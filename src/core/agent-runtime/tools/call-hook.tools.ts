@@ -104,8 +104,8 @@ const hookCallEntrySchema = z.object({
 type HookCallInput = z.infer<typeof hookCallEntrySchema>;
 
 /**
- * call_hook / call_hook_async 批量入参; 单调用传单元素数组, 批量并发派发 (上限 20)
- * @keyword-en call-hook-batch-schema
+ * call_hook / call_hook_async 批量入参; reasoning 强制思考已废除 (LLM 实测不填), 行为约束改由 init_tip 的 usageRules 承载.
+ * @keyword-en call-hook-batch-schema, batch-calls
  */
 const callHookSchema = z.object({
   calls: z
@@ -209,10 +209,8 @@ async function dispatchSaasHook(
     if (regs.length === 0) {
       return softError(
         `hook-not-found:${input.hookName} :: This hook is not registered on saas. ` +
-          'Correction order: first call saas.app.conversation.callHistory.query with payload [{}] ' +
-          'to reuse recent successful hook names/payloads. If a matching title exists, fetch detail with ' +
-          '[{ id:"<matched-id>", includeDetail:true }]. If no usable history exists, inspect handbook via ' +
-          'sessionData.list/get, then knowledge getToc/getChapter, and only then search_hook/get_hook_info. ' +
+          '⚠ Correction order: call tool init_tip first to receive discoveryChains, ' +
+          'then walk the hook chain (get_hook_tag → search_hook → get_hook_info → call_hook) to find the right hook. ' +
           'Do not guess hook names.',
       );
     }
@@ -326,8 +324,7 @@ function projectSaasRegistrations(regs: HookRegistration[]): Array<{
  * ========================================================================= */
 
 /**
- * call_hook 完成后的副作用回调 :: 主对话 runtime 用它接 SessionCallTracker 做记录 + 硬触发沉淀 LLM.
- * SessionSaveLlmService 给独立 LLM 提供工具时不传(也通过 ctx.extras.disableTracker 防自我触发)。
+ * call_hook 完成后的副作用回调 :: 主对话 runtime 用它把成功项写入 callHistory.
  * @keyword-en call-hook-side-effects
  */
 export interface CallHookSideEffects {
@@ -345,7 +342,7 @@ export interface CallHookSideEffects {
 }
 
 /**
- * 处理单条调用的失败追踪 + hint 注入 + 副作用回调; per-call 触发
+ * 处理单条调用的失败 hint 注入 + 副作用回调; per-call 触发
  * @keyword-en process-one-call-aftermath
  */
 function processOneCallAftermath(
@@ -371,20 +368,20 @@ function processOneCallAftermath(
         entry.target === RUNNER && entry.runnerId
           ? `, runnerId:"${entry.runnerId}"`
           : '';
-      // Correction order :: reuse call history first; if no match, inspect schema.
-      // Keep this hint in English so truncated logs remain easier for LLMs to follow.
+      // Correction order :: 走 init_tip 拿发现链路, callLog 链路复用历史; 没有再走 hook 链路拿 schema.
       reply.errorMsg.push(
         `⚠ Payload schema invalid. Correction order: ` +
-          `First call saas.app.conversation.callHistory.query with payload ` +
-          `[{}] to read recent successful call titles. If a matching title exists, call it again with ` +
-          `[{ id:"<matched-id>", includeDetail:true }] and reuse that payload shape. ` +
-          `If no usable record exists, call get_hook_info({ target:"${entry.target}"${runnerHint}, hookNames:["${entry.hookName}"] }) and read the JSON Schema. ` +
-          `Then fix the payload and retry. Do not guess field names or skip these steps.`,
+          `(1) Call tool init_tip first to receive discoveryChains. ` +
+          `(2) Walk callLog chain: call_hook saas.app.conversation.callHistory.query [{}] to scan recent calls; ` +
+          `if a matching title exists, call [{ id:"<matched-id>", includeDetail:true }] to reuse that payload shape. ` +
+          `(3) If no usable history, call get_hook_info({ target:"${entry.target}"${runnerHint}, hookNames:["${entry.hookName}"] }) for JSON Schema, ` +
+          `then write payload according to schema. Do not guess field names.`,
       );
     } else if (failureCount >= FAILURE_HINT_THRESHOLD && !entry.debug) {
       reply.errorMsg.push(
-        `⚠ 该 hook 在本会话已连续失败 ${failureCount} 次。建议下次调用时传 debug: true ` +
-          `启用 OTel trace, 拿 handler 内部日志 (debugLog 字段) 辅助诊断 — ` +
+        `⚠ 该 hook 在本会话已连续失败 ${failureCount} 次。建议: ` +
+          `(1) 调 tool init_tip 重新拿 discoveryChains, 走 callLog / hook 链路重新发现正确用法; ` +
+          `(2) 下次调用时传 debug: true 启用 OTel trace, 拿 handler 内部日志 (debugLog 字段) 辅助诊断 — ` +
           `errorMsg 之外可能有 service 层 warn/info 解释根因 (如 id 格式 / 不存在 / 越权拦截)。`,
       );
     }
@@ -392,7 +389,7 @@ function processOneCallAftermath(
     recordHookSuccess(failureKey);
   }
 
-  if (sideEffects?.onCallComplete && !ctx.extras?.disableTracker) {
+  if (sideEffects?.onCallComplete) {
     try {
       sideEffects.onCallComplete(
         {
@@ -466,13 +463,37 @@ export function buildCallHookTool(
     {
       name: 'call_hook',
       description:
-        '同步批量调用 hook, 等待全部结果。入参 { calls: [{ hookName, payload, target, runnerId, debug, debugDb }, ...] }, 单调用传单元素数组。' +
-        'target 默认 saas; hookName 以 saas./runner. 开头时工具层按前缀自动归一化, 前缀优先于 target。' +
-        '每个 payload 必须是数组: 单参 [input], 多参 [arg1,arg2], 无参 []。' +
-        `批量上限 ${CALL_HOOK_BATCH_LIMIT}, 并发派发, 返回 { results: [{ hookName, errorMsg, result, debugLog }, ...] } 顺序与 calls 对齐。` +
-        '某项 errorMsg 非空 = 该项软错, 不影响其他项; 据此调整重试。' +
-        '【强约束】执行业务 hook 前先复用 callHistory 中的近期成功调用; 若无可用历史, 再按 handbook -> sessionData -> knowledge -> hook schema 确认。' +
-        '若 payload schema 未在历史/手册/知识中看到, 调用前必须先 get_hook_info(hookNames=[...]) 拿到 JSON Schema 再写 payload。凭名字猜字段会软错回退、浪费一轮。',
+        '同步批量调用 hook, 等待全部结果. 这是我触达平台真实数据/能力的唯一通道. ' +
+        '入参 { calls: [{ hookName, payload, target, runnerId, debug, debugDb }, ...] }.\n\n' +
+        '<when_to_call>\n' +
+        '我需要平台数据 / 想发消息给用户 / 想触发任何业务动作时调它. ' +
+        '若仅是闲聊且 initTip 已声明 false/false, 也要用本工具调 sendMsg 把回复发出去 — ' +
+        '直接返回 final prose 不会送达用户.\n' +
+        '</when_to_call>\n\n' +
+        '<routing>\n' +
+        '- saas.* 自动路由 SaaS; runner.* 自动路由 Runner (必填 runnerId).\n' +
+        '- hookName 前缀优先于 target 字段; SaaS hook 永远不会被发到 Runner.\n' +
+        '</routing>\n\n' +
+        '<payload>每个 payload 是位置参数数组: 单参 [input], 多参 [arg1, arg2], 无参 [].</payload>\n\n' +
+        '<batching>\n' +
+        '- 独立的读调用共享一个 batch (一次 call_hook 传多 entry).\n' +
+        '- 有依赖的调用拆 stage (前一次拿结果, 后一次基于结果再调).\n' +
+        '- 写调用仅在彼此独立、不会互相覆盖时才并行.\n' +
+        `- 单 batch 上限 ${CALL_HOOK_BATCH_LIMIT}.\n` +
+        '</batching>\n\n' +
+        '<errors>\n' +
+        '- errorMsg 非空 = 软错, 不影响 batch 其它项. 据此纠正再试.\n' +
+        '- payload-schema-invalid: 先 callHistory.query 复用历史 payload; 没有再 get_hook_info 拿 JSON Schema. 不要凭字段名猜.\n' +
+        '- hook-not-found: 同上, 先查历史; 再不行 search_hook / get_hook_tag.\n' +
+        '- 鉴权/数据缺失: 如实告诉用户, 不绕过.\n' +
+        '</errors>\n\n' +
+        '<example>\n' +
+        '用户问 "我的待办":\n' +
+        'call_hook({ calls: [{ hookName: "saas.app.todo.list", payload: [{ ownerPrincipalId: "<from-ctx>" }] }] })\n' +
+        '</example>\n\n' +
+        '<example_bad>\n' +
+        'call_hook 凭记忆编造 payload 字段 ← 软错回退浪费一轮; payload 不确定先看 callHistory 或 get_hook_info.\n' +
+        '</example_bad>',
       schema: callHookSchema,
     },
   );
@@ -515,11 +536,17 @@ export function buildCallHookAsyncTool(
     {
       name: 'call_hook_async',
       description:
-        '异步批量触发 hook (fire-and-forget), 立即返回不等结果。入参 { calls: [{...}, ...] }, 单调用传单元素数组; ' +
-        'target 默认 saas; hookName 以 saas./runner. 开头时工具层按前缀自动归一化。' +
-        '每个 payload 必须是数组: 单参 [input], 多参 [arg1,arg2], 无参 []。' +
-        `批量上限 ${CALL_HOOK_BATCH_LIMIT}, 并发派发, 返回 { results: [{ hookName, target, queued: true }, ...] } 顺序与 calls 对齐。` +
-        '适用于触发后台任务、不关心返回值。',
+        '异步批量触发 hook (fire-and-forget), 立即返回不等结果. ' +
+        '入参 { calls: [{...}, ...] }.\n\n' +
+        '<when_to_call>\n' +
+        '仅用于触发后台任务且我不关心返回值. 默认走 call_hook 同步; ' +
+        '只有明确不需要结果时才用 async (例: 触发分析任务、写日志、广播事件).\n' +
+        '</when_to_call>\n\n' +
+        '<routing/payload/batching>\n' +
+        '与 call_hook 相同 (saas./runner. 前缀路由, payload 数组, ' +
+        `单 batch 上限 ${CALL_HOOK_BATCH_LIMIT}).\n` +
+        '</routing/payload/batching>\n\n' +
+        '返回 { results: [{ hookName, target, queued: true }, ...] } 顺序与 calls 对齐.',
       schema: callHookSchema,
     },
   );
@@ -703,7 +730,7 @@ export function buildGetHookTagTool(
  * 5) get_hook_info  ::  批量取 hook 描述+tags+payload schema
  * ========================================================================= */
 /**
- * get_hook_info 完成后的可选副作用回调; 默认不参与 sessionData 沉淀触发.
+ * get_hook_info 完成后的可选副作用回调.
  * @keyword-en get-hook-info-side-effects
  */
 export interface GetHookInfoSideEffects {
@@ -724,9 +751,9 @@ export function buildGetHookInfoTool(
     async (input: GetHookInfoInput): Promise<string> => {
       const start = Date.now();
       const askCount = input.hookNames?.length ?? 0;
-      // 副作用 :: 统计 get_hook_info 调用次数; ctx.extras.disableTracker 防自我触发
+      // 副作用 :: 可选统计 get_hook_info 调用次数
       const ctx = getCtx();
-      if (sideEffects?.onGetHookInfo && !ctx.extras?.disableTracker) {
+      if (sideEffects?.onGetHookInfo) {
         try {
           sideEffects.onGetHookInfo(ctx);
         } catch (e) {

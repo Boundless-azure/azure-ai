@@ -47,13 +47,16 @@ export interface ChatMessage {
 
 /**
  * @title Chat Attachment
- * @description Attachment for chat messages (images currently supported).
- * @keywords-cn 聊天附件, 图片
- * @keywords-en chat-attachment, image
+ * @description Attachment for chat messages (images and general files).
+ *   - image: preview holds base64 dataURL for thumbnail rendering
+ *   - file: preview is empty, UI shows generic file icon + name
+ * @keywords-cn 聊天附件, 图片, 文件
+ * @keywords-en chat-attachment, image, file
  */
 export interface Attachment {
   file: File;
   preview: string;
+  kind: 'image' | 'file';
 }
 
 export interface WorkflowStep {

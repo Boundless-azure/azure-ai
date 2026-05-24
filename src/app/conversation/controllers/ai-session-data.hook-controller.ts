@@ -38,10 +38,10 @@ const saveSchema = z.object({
     .regex(/^[a-zA-Z0-9_.-]{1,128}$/)
     .describe(
       '数据键名 :: 字母 / 数字 / 下划线 / 短横 / 点 (1-128 字符)。' +
-        '第一段决定 category, 沿用约定: ' +
-        '`handbook.*` (必读手册, 按 agent 身份隔离) / `knowledge.*` (知识章节摘要) / ' +
-        '`recipe.*` (多步配方) / `hook.*` (单 hook 教训) / `entity.*` (实体 id 缓存) / 其他归 general. ' +
-        '推荐分层: entity.principal.admin / knowledge.book.todo_skill / recipe.invite-member.',
+        '第一段决定 category: ' +
+        '`handbook.*` (系统 seed 的必读手册, 按 agent 身份隔离) / ' +
+        '`directive.*` (本会话强约束) / `preference.*` (本会话偏好) / `recipe.*` (显式多步配方) / 其他归 general. ' +
+        '实体锚点请查 callHistory 成功记录, 知识请重新读知识源, 不要复制到 session_data。',
     ),
   value: z.unknown().describe('数据值，将被 JSON 序列化存储'),
   title: z
@@ -49,10 +49,10 @@ const saveSchema = z.object({
     .min(8)
     .max(255)
     .describe(
-      '⚠ 必填 + 高质量 :: title 是你下次 sessionData.list 时**唯一**的判断依据 (list 不返 value, 只返 key + title)。' +
+        '⚠ 必填 + 高质量 :: title 是你下次 sessionData.list 时**唯一**的判断依据 (list 不返 value, 只返 key + title)。' +
         '必须写成"描述性长标题", 让你下次一眼能判断这条记忆是干什么的。' +
         '反例 :: "memo" / "记录" / "数据" — 全是废 title, 列表里根本认不出来。' +
-        '正例 :: "membershipList 调用配方 :: payload 必须包 input{} 不能裸字段" / "系统手册总览 :: identity 模块支持的过滤维度速记" / "查用户角色的两步路径 :: membershipList → roleList 按 code 配对"。',
+        '正例 :: "本会话删除前必须先确认" / "本会话默认使用中文回答" / "查用户角色的两步路径 :: membershipList → roleList 按 code 配对"。',
     ),
 });
 
@@ -105,10 +105,10 @@ export class AiSessionDataHookController {
     hook: 'saas.app.conversation.sessionData.save',
     description:
       '保存或更新当前会话的一条持久化数据。key 为唯一标识，value 任意 JSON，title 必填。同 key 会覆盖旧值。' +
-      'key 第一段决定 category :: handbook (必读手册, 按 agent 身份隔离) / knowledge / recipe / hook / entity / 其他归 general. ' +
+      'key 第一段决定 category :: handbook (系统必读手册, 按 agent 身份隔离) / directive / preference / recipe / 其他归 general. ' +
       'sessionId 留空 → 服务端从 ctx 自动补当前会话 (LLM 用法). ' +
       'ownerPrincipalId 自动来自 ctx.principalId, **handbook 类只会被同 principal 看到**. ' +
-      '收尾**必须沉淀新经验** (knowledge 章节摘要 / recipe 配方 / hook 调用教训 / entity id), 下次同类任务通过 list 命中即可跳过重复查询.',
+      '仅在用户明确表达本会话偏好/约束或显式要求保存配方时写入; 实体锚点走 callHistory, 知识走知识库, 不做对话后自动沉淀。',
     args: [saveSchema],
     metadata: { tags: ['session-data', 'conversation'] },
   })
@@ -155,7 +155,7 @@ export class AiSessionDataHookController {
       '获取当前会话指定 key 的持久化数据 (含完整 value)。返回 { key, title, value, category, updatedAt }。' +
       'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法). ' +
       '**handbook.* 系列 = 必读技能手册, 起手协议要求逐条 get 取全文**, 不读必犯低级错. ' +
-      '其他 category 命中 title 才 get.',
+      'directive.* / preference.* 是本会话约束与偏好; 其他 category 命中 title 才 get.',
     args: [getSchema],
     metadata: { tags: ['session-data', 'conversation'] },
   })
@@ -202,10 +202,10 @@ export class AiSessionDataHookController {
     hook: 'saas.app.conversation.sessionData.list',
     description:
       '列出当前会话所有持久化数据的轻量元数据 (key + title + 更新时间 + 大小, **不含 value**), ' +
-      '按 category 分组渲染 (handbook / knowledge / recipe / hook / entity / general)。' +
+      '按 category 分组渲染 (handbook / directive / preference / recipe / legacy / general)。' +
       '返回字段 :: { count, listing }; listing 是分段 markdown 文本, 直接读它即可。' +
       '⚠ **handbook 段下每条都是必读技能手册**, 起手协议要求**逐条** sessionData.get 取全文, 不读必犯低级错。' +
-      '其他段命中 title 后 get 取详情。' +
+      'directive/preference 段是本会话约束与偏好; 其他段命中 title 后 get 取详情。' +
       'handbook 段按当前 agent 身份自动过滤, 你看到的就是你该读的 (群聊场景多 agent 互不可见)。' +
       'sessionId 留空 → 服务端从 ctx 自动补 (LLM 用法).',
     args: [listSchema],
@@ -312,8 +312,10 @@ function resolveSessionId(event: {
  */
 const CATEGORY_ORDER = [
   'handbook',
-  'knowledge',
+  'directive',
+  'preference',
   'recipe',
+  'knowledge',
   'hook',
   'entity',
   'general',
@@ -322,11 +324,13 @@ const CATEGORY_ORDER = [
 const CATEGORY_HEADER: Record<string, string> = {
   handbook:
     '## ⚠ handbook (必读, 起手协议要求**逐条** sessionData.get 取全文; 这是按你当前 agent 身份过滤的技能手册)',
-  knowledge: '## knowledge (知识章节摘要; 命中 title 才 get)',
-  recipe: '## recipe (多步配方; 命中 title 才 get)',
-  hook: '## hook (单 hook 调用教训 / 试错纠错; 命中 title 才 get)',
-  entity: '## entity (本会话复用的实体 id 缓存)',
-  general: '## general (未归类经验)',
+  directive: '## directive (本会话强约束; 命中 title 才 get)',
+  preference: '## preference (本会话偏好; 命中 title 才 get)',
+  recipe: '## recipe (显式多步配方; 命中 title 才 get)',
+  knowledge: '## knowledge (旧分类: 知识请优先重新读知识源; 命中 title 才 get)',
+  hook: '## hook (旧分类: hook 形态请优先查 callHistory/schema; 命中 title 才 get)',
+  entity: '## entity (旧分类: 实体锚点请优先查 callHistory; 命中 title 才 get)',
+  general: '## general (未归类会话数据)',
 };
 
 /**
@@ -339,8 +343,9 @@ function renderListing(items: SessionDataListItem[]): string {
   if (items.length === 0) {
     return [
       '本会话还没有任何 session_data 记忆。',
-      '完成查询/读章节/失败-成功修正后, 调 sessionData.save({ sessionId, key, value, title }) 沉淀。',
-      'key 命名约定 :: handbook.* / knowledge.* / recipe.* / hook.* / entity.* (第一段决定 category).',
+      '仅在用户明确表达本会话偏好/约束或显式要求保存配方时, 调 sessionData.save({ sessionId, key, value, title })。',
+      'key 命名约定 :: handbook.* / directive.* / preference.* / recipe.* (第一段决定 category).',
+      '实体锚点查 callHistory 成功记录; 知识内容重新读知识源; 不做对话后自动沉淀。',
       'title 必须是描述性长标题 (>= 8 字符), list 时凭它判断哪条命中。',
     ].join('\n');
   }
@@ -355,7 +360,7 @@ function renderListing(items: SessionDataListItem[]): string {
   }
 
   const parts: string[] = [
-    `共 ${items.length} 条记忆 (按 category 分组; handbook 必读, 其他按 title 命中再 get)。`,
+    `共 ${items.length} 条记忆 (按 category 分组; handbook 必读, directive/preference 是会话约束, 其他按 title 命中再 get)。`,
     '',
   ];
 

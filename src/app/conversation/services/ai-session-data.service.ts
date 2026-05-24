@@ -8,8 +8,8 @@ import {
 } from '@core/ai/entities/chat-session-data.entity';
 
 /**
- * 允许的 key 字符 :: 字母数字 + 下划线 + 短横 + **点号** (用于分层命名 entity.principal.admin / handbook.proactive);
- * key 的第一段就是 derived category (knowledge / recipe / hook / entity / handbook / general).
+ * 允许的 key 字符 :: 字母数字 + 下划线 + 短横 + **点号** (用于分层命名 directive.confirm-before-delete / handbook.proactive);
+ * key 的第一段就是 derived category (handbook / directive / preference / recipe / legacy categories / general).
  * @keyword-en session-data-key-regex layered-key
  */
 const KEY_RE = /^[a-zA-Z0-9_.-]{1,128}$/;
@@ -18,14 +18,18 @@ const MAX_VALUE_BYTES = 10_000;
 const MAX_TOTAL_BYTES = 200_000;
 
 /**
- * 已知 category 集合 :: 跟 SessionSaveLlmService 沉淀决策 prompt 的 key 命名约定一致;
+ * 已知 category 集合 :: session_data 只承担会话约束/偏好、系统手册和少量显式配方;
  *  - handbook :: **必读手册** (按 createdUser === 当前 principalId 过滤, 群聊多 agent 隔离)
- *  - knowledge / recipe / hook / entity :: session-wide 共享经验
+ *  - directive / preference :: 会话级约束与偏好, 可被调用方注入到每轮上下文
+ *  - recipe :: 显式保存的多步任务配方
+ *  - knowledge / hook / entity :: 旧分类兼容; 新链路不再自动沉淀
  *  - 其他不在白名单的前缀 → general
  * @keyword-en derive-category known-categories
  */
 const KNOWN_CATEGORIES = new Set([
   'handbook',
+  'directive',
+  'preference',
   'knowledge',
   'recipe',
   'hook',
@@ -55,7 +59,7 @@ export interface SessionDataListItem {
 /**
  * @title AI 会话数据服务
  * @description 管理 AI 自主读写的对话级 session_data，支持 key-value 存储与 category 分组查询。
- *              category 从 key 第一段派生 (handbook/knowledge/recipe/hook/entity/general);
+ *              category 从 key 第一段派生 (handbook/directive/preference/recipe/legacy/general);
  *              handbook 类按 createdUser 严格过滤, 群聊多 agent 互不可见对方手册。
  * @keywords-cn AI会话数据, session-data, key-value, 分类, 必读, 所有者过滤
  * @keywords-en ai-session-data, key-value, category, must-read, owner-filter

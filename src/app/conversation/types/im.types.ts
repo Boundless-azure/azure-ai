@@ -154,6 +154,9 @@ export interface ImMemberInfo {
 
 /**
  * 附件结构
+ *
+ * resourceId 是 LLM 操作文件 (e.g. saas.app.storage.createNode) 的唯一凭据。
+ * 由聊天上传通道在文件落库后回填, 不允许从 url 反向解析。
  */
 export class AttachmentDto {
   @IsString()
@@ -168,6 +171,10 @@ export class AttachmentDto {
 
   @IsOptional()
   size?: number;
+
+  @IsOptional()
+  @IsString()
+  resourceId?: string;
 }
 
 /**

@@ -440,7 +440,7 @@ export class ConversationController {
     hook: 'saas.app.conversation.smartSearch',
     description:
       '【三步检索 ②】按 keywords (任一命中即可) 在指定会话中匹配 smart 段, 返回每段的 summary / keywords / 起止消息 ID / 消息数。' +
-      '不返回全消息, 让 LLM 先按 summary 决策再用 smartMessages 精准取段。默认/上限 50 条, 按时间倒序。',
+      'smart 段按可见正文累计到配置阈值生成 (默认 5000, env CHAT_SESSION_SMART_SEGMENT_CHARS); 不返回全消息, 让 LLM 先按 summary 决策再用 smartMessages 精准取段。默认/上限 50 条, 按时间倒序。',
     args: [smartSearchSchema],
     metadata: { tags: ['conversation', 'smart', 'history', 'search'] },
   })
@@ -507,7 +507,7 @@ export class ConversationController {
     hook: 'saas.app.conversation.smartMessages',
     description:
       '【三步检索 ③】按 smartId 列表 (来自 smartSearch) 精准展开成对应 smart 段的全消息。' +
-      'sessionId 用作越权防护, 只返回属于该会话的消息。一次最多 20 段 smart, 单段通常 5-10 条消息。',
+      'sessionId 用作越权防护, 只返回属于该会话的消息。一次最多 20 段 smart, 单段按配置阈值分段 (默认 5000, env CHAT_SESSION_SMART_SEGMENT_CHARS)。',
     args: [smartMessagesSchema],
     metadata: { tags: ['conversation', 'smart', 'history', 'messages'] },
   })

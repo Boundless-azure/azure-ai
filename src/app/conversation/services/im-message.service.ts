@@ -21,6 +21,15 @@ import type { ChatMessage } from '@core/ai/types';
 import { ImSessionService } from './im-session.service';
 import { ImGateway } from '../controllers/im.gateway';
 import { SessionHandbookSeederService } from './session-handbook-seeder.service';
+import {
+  CURRENT_SESSION_LAZY_GUARD_MARKDOWN,
+  CurrentSessionService,
+  type CurrentSessionGuardResult,
+} from './current-session.service';
+import {
+  ChatSessionSmartService,
+  type ChatSessionSmartContextDigest,
+} from './chat-session-smart.service';
 import type {
   SendMessageDto,
   ImMessageInfo,
@@ -39,6 +48,43 @@ export interface ImMessageSavedPayload {
 }
 
 const LLM_GUIDANCE_ENVELOPE_VERSION = 3;
+const INIT_TIP_FIRST_MUST =
+  'init_tip_first';
+
+/**
+ * 从未知对象读取 boolean 字段。
+ * @keyword-en read-boolean-field
+ */
+function readBooleanPath(value: unknown, key: string): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  return (value as Record<string, unknown>)[key] === true;
+}
+
+/**
+ * 取两个 UUIDv7 消息 ID 中时间更靠后的一个。
+ * @keyword-en later-message-id
+ */
+function laterMessageId(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): string | null {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
+/**
+ * 判断消息 ID 是否晚于给定游标; 游标为空时默认通过。
+ * @keyword-en message-id-after
+ */
+function isMessageIdAfter(
+  id: string,
+  cursor: string | null | undefined,
+): boolean {
+  return !cursor || id > cursor;
+}
 
 interface LlmGuidanceEnvelope {
   v: number;
@@ -51,6 +97,8 @@ interface LlmGuidanceEnvelope {
   };
   must: string[];
   refs: string[];
+  currentSessionGuard: LlmCurrentSessionGuard;
+  currentSessionRetry?: LlmCurrentSessionRetry;
 }
 
 interface LlmGuidanceTask {
@@ -63,6 +111,40 @@ interface LlmGuidanceTask {
     | 'previous_result_action';
   domain: string;
   intent: string;
+}
+
+interface LlmCurrentSessionGuard {
+  required: true;
+  tool: 'call_hook';
+  hookName: 'saas.app.conversation.initTip';
+  payload: '[{needKnowledge,needHook,reason?}]';
+  reason: string;
+  rule: string;
+}
+
+interface LlmCurrentSessionRetry {
+  required: true;
+  severity: 'strict';
+  attempt: 2;
+  reasons: string[];
+  failedBecause: string;
+  previousDecision: {
+    declaredInitTip: CurrentSessionGuardResult['declaredInitTip'];
+    inferredInitTip: CurrentSessionGuardResult['inferredInitTip'];
+    completed: {
+      didInitTip: boolean;
+      didEvidenceHook: boolean;
+      didPendingAction: boolean;
+      didPendingActionDelivery: boolean;
+    };
+    pendingAction: CurrentSessionGuardResult['pendingAction'];
+    successfulHookNames: string[];
+  };
+  requiredReferences: string[];
+  hookName: 'saas.app.conversation.initTip';
+  payload: '[{needKnowledge,needHook,reason}]';
+  must: string[];
+  successCriteria: string[];
 }
 
 /**
@@ -93,6 +175,8 @@ export class ImMessageService {
     @Inject(forwardRef(() => AgentRuntimeService))
     private readonly agentRuntimeService: AgentRuntimeService,
     private readonly handbookSeeder: SessionHandbookSeederService,
+    private readonly currentSession: CurrentSessionService,
+    private readonly smartService: ChatSessionSmartService,
   ) {}
 
   // ===== agent 触发队列：执行锁（运行中保存最新 pending，完成后 5s 防抖再消费）=====
@@ -294,6 +378,8 @@ export class ImMessageService {
       role?: 'system' | 'user' | 'assistant';
       skipAgentTrigger?: boolean;
       messageType?: 'text' | 'notification';
+      /** 客户端 IP; 仅 HTTP user 入口注入, agent 主动 sendMsg 不带 */
+      senderIp?: string;
     },
   ): Promise<ImMessageInfo> {
     // 验证会话存在
@@ -351,14 +437,12 @@ export class ImMessageService {
       senderId,
       mentions,
     );
-    const llmContent =
-      agentTargetIds.length > 0
-        ? this.withStructuredLlmGuidance(dto.content)
-        : null;
+    // envelope (v3) 已弃用 :: user message 直发原话, init_tip suggestions + examples 承担引导
     const metadata = this.buildMessageMetadata({
       mentions,
-      llmContent,
+      llmContent: null,
       llmTargetAgentIds: agentTargetIds,
+      senderIp: options?.senderIp,
     });
 
     // 创建消息
@@ -412,6 +496,7 @@ export class ImMessageService {
       senderId,
       mentions,
     });
+    this.smartService.scheduleAnalyze(session.sessionId);
 
     // === AI 触发逻辑 ===
     if (!options?.skipAgentTrigger) {
@@ -507,6 +592,7 @@ export class ImMessageService {
       messageId: saved.id,
       senderId: ownerId,
     });
+    this.smartService.scheduleAnalyze(session.sessionId);
 
     return info;
   }
@@ -843,8 +929,8 @@ export class ImMessageService {
   /**
    * 执行主动对话模式的一轮 LLM 请求, 结束后验证是否有 assistant 消息产生。
    * 若 LLM 没通过 call_hook(saas.app.conversation.sendMsg) 发消息, 则把流式收集到的文本直接当回复发出去 (前提: 该轮没发过)。
-   * 不再注入提醒消息重试 — 一轮定胜负, 减少延迟和 token 浪费。
-   * @keyword-en run-proactive-dialogue collect-fallback no-retry
+   * lazy guard 命中时自动重试一次; 第二次仍失败才落固定提示。
+   * @keyword-en run-proactive-dialogue collect-fallback lazy-retry
    */
   private async runProactiveDialogue(
     agent: import('@/app/agent/entities/agent.entity').AgentEntity,
@@ -855,9 +941,11 @@ export class ImMessageService {
       userContent: string;
     },
     messages: ChatMessage[],
+    retryAttempt = 0,
   ): Promise<void> {
     const startedAt = new Date();
-    const tag = '[proactive]';
+    const tag =
+      retryAttempt > 0 ? `[proactive-retry:${retryAttempt}]` : '[proactive]';
 
     this.logger.log(
       `${tag} start — session=${payload.sessionId} agent=${payload.agentPrincipalId} msgs=${messages.length} trigger="${payload.userContent?.slice(0, 60)}"`,
@@ -871,6 +959,12 @@ export class ImMessageService {
     );
 
     const invocationContext = await this.buildAgentInvocationContext(payload);
+    this.currentSession.beginTurn(
+      payload.sessionId,
+      payload.agentPrincipalId,
+    );
+    const inferredNeed =
+      this.currentSession.inferInitTipFromMessages(messages);
     const gen = this.agentRuntimeService.startDialogue(
       agent.codeDir,
       messages,
@@ -921,11 +1015,57 @@ export class ImMessageService {
 
     // call_hook 是完整 await 的同步调用, generator 结束前 DB 必然已落库
     const elapsed = Date.now() - startedAt.getTime();
+    const guard = this.currentSession.evaluateToolGuard(
+      payload.sessionId,
+      payload.agentPrincipalId,
+      inferredNeed,
+    );
     const hasReply = await this.hasReplyToMessage(
       payload.sessionId,
       payload.agentPrincipalId,
       payload.triggerMessageId,
     );
+
+    if (guard.lazy && retryAttempt < 1) {
+      await this.persistLazyRetryNudgeToTriggerMessage(
+        payload.triggerMessageId,
+        guard,
+      );
+      if (hasReply) {
+        await this.discardLatestReplyForLazyRetry(
+          payload.sessionId,
+          payload.agentPrincipalId,
+          payload.triggerMessageId,
+          guard,
+        );
+      }
+      this.logger.warn(
+        `${tag} lazy guard hit, retrying once (reasons=${guard.reasons.join(',')})`,
+      );
+      const retryMessages = await this.buildAgentDialogueMessages(payload);
+      await this.runProactiveDialogue(
+        agent,
+        payload,
+        this.withLazyRetryNudge(retryMessages, guard),
+        retryAttempt + 1,
+      );
+      return;
+    }
+
+    if (guard.lazy && hasReply) {
+      const replaced = await this.replaceLatestReplyWithLazyGuard(
+        payload.sessionId,
+        payload.agentPrincipalId,
+        payload.triggerMessageId,
+        guard,
+      );
+      if (replaced) {
+        this.logger.warn(
+          `${tag} lazy guard replaced reply (${elapsed}ms, reasons=${guard.reasons.join(',')})`,
+        );
+        return;
+      }
+    }
 
     if (hasReply) {
       this.logger.log(`${tag} done — reply confirmed (${elapsed}ms)`);
@@ -938,13 +1078,21 @@ export class ImMessageService {
     //  - 3. emergency fallback: 真完全沉默 (模型异常 / 超时 / 提前终止 generator) — log 含 eventStats 详细统计便于排查
     const text = collectedText.trim();
     const reasoning = reasoningText.trim();
-    const isEmergency = !text && !reasoning;
-    const content = text
-      ? text
-      : reasoning
-        ? reasoning
-        : '抱歉, 暂未能完成响应, 请稍后重试或换一种方式提问。';
-    const source = text ? 'token' : reasoning ? 'reasoning' : 'emergency';
+    const isEmergency = !text && !reasoning && !guard.lazy;
+    const content = guard.lazy
+      ? CURRENT_SESSION_LAZY_GUARD_MARKDOWN
+      : text
+        ? text
+        : reasoning
+          ? reasoning
+          : '抱歉, 暂未能完成响应, 请稍后重试或换一种方式提问。';
+    const source = guard.lazy
+      ? 'lazy-guard'
+      : text
+        ? 'token'
+        : reasoning
+          ? 'reasoning'
+          : 'emergency';
     const statsStr = JSON.stringify(eventStats);
     if (isEmergency) {
       this.logger.warn(
@@ -986,6 +1134,50 @@ export class ImMessageService {
       triggerMessageId,
     );
     return count > 0;
+  }
+
+  /**
+   * 把最近一条 agent 回复替换为 lazy guard 标签, 让前端按固定 markdown tag 本地化渲染。
+   * @keyword-en replace-lazy-guard-reply markdown-tag i18n
+   */
+  private async replaceLatestReplyWithLazyGuard(
+    sessionId: string,
+    agentPrincipalId: string,
+    triggerMessageId: string,
+    guard: CurrentSessionGuardResult,
+  ): Promise<boolean> {
+    const msg = await this.messageRepo.findOne({
+      where: {
+        sessionId,
+        senderId: agentPrincipalId,
+        replyToId: triggerMessageId,
+        isDelete: false,
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (!msg) return false;
+
+    msg.content = CURRENT_SESSION_LAZY_GUARD_MARKDOWN;
+    msg.metadata = {
+      ...(msg.metadata ?? {}),
+      lazyGuard: {
+        reasons: guard.reasons,
+        didInitTip: guard.didInitTip,
+        didEvidenceHook: guard.didEvidenceHook,
+        didPendingAction: guard.didPendingAction,
+        didPendingActionDelivery: guard.didPendingActionDelivery,
+        declaredInitTip: guard.declaredInitTip,
+        inferredInitTip: guard.inferredInitTip,
+      },
+    };
+    msg.isEdited = true;
+    msg.editedAt = new Date();
+    await this.messageRepo.save(msg);
+    this.imGateway.broadcastNewMessageBeacon([], {
+      sessionId,
+      lastMessageId: msg.id,
+    });
+    return true;
   }
 
   /**
@@ -1042,14 +1234,37 @@ export class ImMessageService {
 
     // === 主动对话模式 ===
     // proactiveChatEnabled 时 LLM 通过 call_hook('saas.app.conversation.sendMsg', ...) 自行决定何时发消息;
-    // 没发的情况下 runProactiveDialogue 会用流式收集的文本兜底发, 不再注入提醒重试.
+    // 没发的情况下 runProactiveDialogue 会用流式收集的文本兜底发; lazy guard 命中时最多自动重试一次.
     if (agent.proactiveChatEnabled !== false) {
       await this.runProactiveDialogue(agent, payload, messages);
       return;
     }
 
-    // === 普通模式：收集完整回复后统一发送 ===
+    await this.runNormalDialogue(agent, payload, messages);
+  }
+
+  /**
+   * 普通模式执行一轮 LLM, lazy guard 命中时自动重试一次。
+   * @keyword-en run-normal-dialogue lazy-retry
+   */
+  private async runNormalDialogue(
+    agent: import('@/app/agent/entities/agent.entity').AgentEntity,
+    payload: {
+      sessionId: string;
+      agentPrincipalId: string;
+      triggerMessageId: string;
+      userContent: string;
+    },
+    messages: ChatMessage[],
+    retryAttempt = 0,
+  ): Promise<void> {
     const invocationContext = await this.buildAgentInvocationContext(payload);
+    this.currentSession.beginTurn(
+      payload.sessionId,
+      payload.agentPrincipalId,
+    );
+    const inferredNeed =
+      this.currentSession.inferInitTipFromMessages(messages);
     const gen = this.agentRuntimeService.startDialogue(
       agent.codeDir,
       messages,
@@ -1076,7 +1291,31 @@ export class ImMessageService {
       }
     }
 
-    const trimmed = fullContent.trim();
+    const guard = this.currentSession.evaluateToolGuard(
+      payload.sessionId,
+      payload.agentPrincipalId,
+      inferredNeed,
+    );
+    if (guard.lazy && retryAttempt < 1) {
+      await this.persistLazyRetryNudgeToTriggerMessage(
+        payload.triggerMessageId,
+        guard,
+      );
+      this.logger.warn(
+        `[normal-retry:${retryAttempt + 1}] lazy guard hit, retrying once (reasons=${guard.reasons.join(',')})`,
+      );
+      const retryMessages = await this.buildAgentDialogueMessages(payload);
+      await this.runNormalDialogue(
+        agent,
+        payload,
+        this.withLazyRetryNudge(retryMessages, guard),
+        retryAttempt + 1,
+      );
+      return;
+    }
+    const trimmed = guard.lazy
+      ? CURRENT_SESSION_LAZY_GUARD_MARKDOWN
+      : fullContent.trim();
     if (!trimmed) return;
 
     await this.sendMessage(
@@ -1087,6 +1326,396 @@ export class ImMessageService {
       },
       { role: 'assistant', skipAgentTrigger: true },
     );
+  }
+
+  /**
+   * 给 lazy retry 追加强提示; DB meta 是主来源, 这里兜底修补当前内存 messages。
+   * @keyword-en lazy-retry-nudge current-session-guard
+   */
+  private withLazyRetryNudge(
+    messages: ChatMessage[],
+    guard: CurrentSessionGuardResult,
+  ): ChatMessage[] {
+    const retry = this.buildLazyRetryNudge(guard);
+    const block = this.renderLazyRetryNudgeBlock(retry);
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i];
+      if (msg?.role !== 'user') continue;
+      if (
+        msg.content.includes('[current_session_retry]') ||
+        msg.content.includes('"currentSessionRetry"')
+      ) {
+        return messages;
+      }
+      return messages.map((it, index) =>
+        index === i
+          ? {
+              ...it,
+              content: this.mergeLazyRetryNudgeIntoContent(
+                it.content,
+                retry,
+                block,
+              ),
+            }
+          : it,
+      );
+    }
+    return messages;
+  }
+
+  /**
+   * 把 retry nudge 写入 JSON envelope; 非 JSON 文本才追加标记块。
+   * @keyword-en merge-lazy-retry-nudge json-envelope
+   */
+  private mergeLazyRetryNudgeIntoContent(
+    content: string,
+    retry: LlmCurrentSessionRetry,
+    block: string,
+  ): string {
+    try {
+      const parsed: unknown = JSON.parse(content);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return `${content}\n\n${block}`;
+      }
+      return JSON.stringify({
+        ...(parsed as Record<string, unknown>),
+        currentSessionRetry: retry,
+      });
+    } catch {
+      return `${content}\n\n${block}`;
+    }
+  }
+
+  /**
+   * 构建第二次尝试使用的强 currentSessionRetry JSON; 保底机制只查 init_tip + evidence hook 两条.
+   * @keyword-en build-lazy-retry-nudge, minimal-fallback-retry
+   */
+  private buildLazyRetryNudge(
+    guard: CurrentSessionGuardResult,
+  ): LlmCurrentSessionRetry {
+    const requiredReferences: string[] = [];
+    const missedInitTip = guard.reasons.includes('missing_init_tip');
+    const missedEvidence = guard.reasons.includes('missing_evidence_hook');
+    if (missedInitTip) {
+      requiredReferences.push(
+        'init_tip: call saas.app.conversation.initTip first this turn with honest needKnowledge/needHook. For pure chat use [{needKnowledge:false, needHook:false, reason:"chat"}], then call sendMsg. Read suggestions from the response before deciding next hook.',
+      );
+    }
+    if (missedEvidence) {
+      if (guard.didPendingAction && !guard.didPendingActionDelivery) {
+        requiredReferences.push(
+          'pending_action_delivery: setPendingAction already recorded; now call saas.app.conversation.sendMsg to ask pendingAction.question or missingFields.',
+        );
+      } else {
+        requiredReferences.push(
+          'evidence_hook: call any non-currentSession non-sendMsg business hook (or saas.app.knowledge.* / sessionData.get / callHistory.query) to back up your answer. If required args are missing, setPendingAction(stage=missing_args) + sendMsg the question. If no capability exists, setPendingAction(stage=not_found) + sendMsg the limitation.',
+        );
+      }
+    }
+    if (requiredReferences.length === 0) {
+      requiredReferences.push(
+        'Use the first decision below to complete the missing guard step before replying.',
+      );
+    }
+    const failedBecause = missedInitTip
+      ? 'Previous attempt did not call initTip. This is the mandatory turn-init step even when the answer is pure chat.'
+      : guard.didPendingAction && !guard.didPendingActionDelivery
+        ? 'Previous attempt stored a pendingAction but did not deliver the required follow-up question through sendMsg.'
+        : 'Previous attempt did not record any evidence hook, knowledge read, or pendingAction; the reply is unbacked.';
+    return {
+      required: true,
+      severity: 'strict',
+      attempt: 2,
+      reasons: guard.reasons,
+      failedBecause,
+      previousDecision: {
+        declaredInitTip: guard.declaredInitTip,
+        inferredInitTip: guard.inferredInitTip,
+        completed: {
+          didInitTip: guard.didInitTip,
+          didEvidenceHook: guard.didEvidenceHook,
+          didPendingAction: guard.didPendingAction,
+          didPendingActionDelivery: guard.didPendingActionDelivery,
+        },
+        pendingAction: guard.pendingAction,
+        successfulHookNames: guard.successfulHookNames,
+      },
+      requiredReferences,
+      hookName: 'saas.app.conversation.initTip',
+      payload: '[{needKnowledge,needHook,reason}]',
+      must: [
+        'DO THIS FIRST: call call_hook with hookName saas.app.conversation.initTip and payload [{needKnowledge,needHook,reason}] before any final text or sendMsg.',
+        'Read the suggestions in the response (callHistoryHints / handbookInventory / activeDirectives / suggestedChain / tipNote). Use them to choose the next hook freely — they are advisory, not forced.',
+        'If this is pure chat, use payload [{needKnowledge:false,needHook:false,reason:"chat"}], then call saas.app.conversation.sendMsg.',
+        'initTip only declares state; it never substitutes for evidence. If needHook=true, call a real business/knowledge hook, or setPendingAction (missing_args/not_found) + sendMsg.',
+        'Do not return final text directly in proactive mode — only sendMsg reaches the user.',
+      ],
+      successCriteria: [
+        'initTip is called with honest true/false flags and suggestions are read.',
+        'When needHook=true, a real evidence hook is recorded, OR pendingAction(missing_args/not_found) + sendMsg is delivered.',
+        'A visible reply is delivered through saas.app.conversation.sendMsg.',
+      ],
+    };
+  }
+
+  /**
+   * 把 lazy retry JSON 持久化到触发消息 meta, 让后续读取历史时重新拼入 envelope。
+   * @keyword-en persist-lazy-retry-nudge metadata-envelope
+   */
+  private async persistLazyRetryNudgeToTriggerMessage(
+    triggerMessageId: string,
+    guard: CurrentSessionGuardResult,
+  ): Promise<LlmCurrentSessionRetry> {
+    const retry = this.buildLazyRetryNudge(guard);
+    const msg = await this.messageRepo.findOne({
+      where: { id: triggerMessageId, isDelete: false },
+    });
+    if (!msg) return retry;
+    msg.metadata = {
+      ...(msg.metadata ?? {}),
+      currentSessionRetry: retry,
+    };
+    await this.messageRepo.save(msg);
+    return retry;
+  }
+
+  /**
+   * 渲染非 JSON 消息使用的 current_session_retry 文本块。
+   * @keyword-en render-lazy-retry-nudge
+   */
+  private renderLazyRetryNudgeBlock(retry: LlmCurrentSessionRetry): string {
+    return [
+      '[current_session_retry]',
+      `failed: ${retry.reasons.join(',')}`,
+      retry.failedBecause,
+      `must call: ${retry.hookName} ${retry.payload}`,
+      `previousDecision: ${JSON.stringify(retry.previousDecision)}`,
+      'requiredReferences:',
+      ...retry.requiredReferences.map((it) => `- ${it}`),
+      ...retry.must.map((it) => `- ${it}`),
+      '[/current_session_retry]',
+    ].join('\n');
+  }
+
+  /**
+   * 从消息 meta 读取 currentSessionRetry 并拼回 LLM envelope。
+   * @keyword-en merge-metadata-lazy-retry
+   */
+  private mergeMetadataLazyRetryNudge(
+    content: string,
+    value: unknown,
+  ): string {
+    const retry = this.readLazyRetryNudge(value);
+    if (!retry) return content;
+    return this.mergeLazyRetryNudgeIntoContent(
+      content,
+      retry,
+      this.renderLazyRetryNudgeBlock(retry),
+    );
+  }
+
+  /**
+   * 校验并读取 meta 中持久化的 currentSessionRetry JSON。
+   * @keyword-en read-lazy-retry-nudge
+   */
+  private readLazyRetryNudge(value: unknown): LlmCurrentSessionRetry | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    const record = value as Partial<LlmCurrentSessionRetry>;
+    if (
+      record.required !== true ||
+      record.severity !== 'strict' ||
+      record.attempt !== 2 ||
+      record.hookName !== 'saas.app.conversation.initTip' ||
+      record.payload !== '[{needKnowledge,needHook,reason}]' ||
+      !Array.isArray(record.reasons) ||
+      !Array.isArray(record.requiredReferences) ||
+      !Array.isArray(record.must) ||
+      !Array.isArray(record.successCriteria)
+    ) {
+      return null;
+    }
+    return {
+      required: true,
+      severity: 'strict',
+      attempt: 2,
+      reasons: record.reasons.filter(
+        (it): it is string => typeof it === 'string',
+      ),
+      failedBecause:
+        typeof record.failedBecause === 'string'
+          ? record.failedBecause
+          : 'Previous attempt failed the currentSession guard.',
+      previousDecision: this.readLazyRetryPreviousDecision(
+        record.previousDecision,
+      ),
+      requiredReferences: record.requiredReferences.filter(
+        (it): it is string => typeof it === 'string',
+      ),
+      hookName: 'saas.app.conversation.initTip',
+      payload: '[{needKnowledge,needHook,reason}]',
+      must: record.must.filter((it): it is string => typeof it === 'string'),
+      successCriteria: record.successCriteria.filter(
+        (it): it is string => typeof it === 'string',
+      ),
+    };
+  }
+
+  /**
+   * 校验并读取 retry meta 中的第一次 currentSession 判定快照。
+   * @keyword-en read-lazy-retry-previous-decision
+   */
+  private readLazyRetryPreviousDecision(
+    value: unknown,
+  ): LlmCurrentSessionRetry['previousDecision'] {
+    const fallback: LlmCurrentSessionRetry['previousDecision'] = {
+      declaredInitTip: null,
+      inferredInitTip: {
+        needKnowledge: false,
+        needHook: false,
+        reason: 'unknown',
+      },
+      completed: {
+        didInitTip: false,
+        didEvidenceHook: false,
+        didPendingAction: false,
+        didPendingActionDelivery: false,
+      },
+      pendingAction: null,
+      successfulHookNames: [],
+    };
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return fallback;
+    }
+    const record = value as Record<string, unknown>;
+    return {
+      declaredInitTip: this.readInitTipSnapshot(record.declaredInitTip),
+      inferredInitTip:
+        this.readInitTipSnapshot(record.inferredInitTip) ??
+        fallback.inferredInitTip,
+      completed: {
+        didInitTip: readBooleanPath(record.completed, 'didInitTip'),
+        didEvidenceHook: readBooleanPath(record.completed, 'didEvidenceHook'),
+        didPendingAction: readBooleanPath(record.completed, 'didPendingAction'),
+        didPendingActionDelivery: readBooleanPath(
+          record.completed,
+          'didPendingActionDelivery',
+        ),
+      },
+      pendingAction: this.readLazyRetryPendingAction(record.pendingAction),
+      successfulHookNames: Array.isArray(record.successfulHookNames)
+        ? record.successfulHookNames.filter(
+            (it): it is string => typeof it === 'string',
+          )
+        : [],
+    };
+  }
+
+  /**
+   * 读取 retry meta 中的 pendingAction 快照。
+   * @keyword-en read-lazy-retry-pending-action
+   */
+  private readLazyRetryPendingAction(
+    value: unknown,
+  ): CurrentSessionGuardResult['pendingAction'] {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    const record = value as Record<string, unknown>;
+    const stage = record.stage;
+    if (
+      stage !== 'missing_args' &&
+      stage !== 'ready' &&
+      stage !== 'not_found'
+    ) {
+      return null;
+    }
+    const missingFields = Array.isArray(record.missingFields)
+      ? record.missingFields.filter(
+          (it): it is string => typeof it === 'string',
+        )
+      : [];
+    const collectedFields =
+      record.collectedFields &&
+      typeof record.collectedFields === 'object' &&
+      !Array.isArray(record.collectedFields)
+        ? (record.collectedFields as Record<string, unknown>)
+        : {};
+    return {
+      stage,
+      missingFields,
+      collectedFields,
+      ...(typeof record.hookName === 'string'
+        ? { hookName: record.hookName }
+        : {}),
+      ...(typeof record.domain === 'string' ? { domain: record.domain } : {}),
+      ...(typeof record.action === 'string' ? { action: record.action } : {}),
+      ...(typeof record.question === 'string'
+        ? { question: record.question }
+        : {}),
+      ...(typeof record.reason === 'string' ? { reason: record.reason } : {}),
+    };
+  }
+
+  /**
+   * 读取 initTip 快照对象。
+   * @keyword-en read-need-some-think-snapshot
+   */
+  private readInitTipSnapshot(
+    value: unknown,
+  ): CurrentSessionGuardResult['declaredInitTip'] {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.needKnowledge !== 'boolean' ||
+      typeof record.needHook !== 'boolean'
+    ) {
+      return null;
+    }
+    return {
+      needKnowledge: record.needKnowledge,
+      needHook: record.needHook,
+      ...(typeof record.reason === 'string' ? { reason: record.reason } : {}),
+    };
+  }
+
+  /**
+   * lazy retry 前软删第一次无效回复, 避免重试成功后出现两条回复。
+   * @keyword-en discard-lazy-retry-reply soft-delete
+   */
+  private async discardLatestReplyForLazyRetry(
+    sessionId: string,
+    agentPrincipalId: string,
+    triggerMessageId: string,
+    guard: CurrentSessionGuardResult,
+  ): Promise<boolean> {
+    const msg = await this.messageRepo.findOne({
+      where: {
+        sessionId,
+        senderId: agentPrincipalId,
+        replyToId: triggerMessageId,
+        isDelete: false,
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (!msg) return false;
+    msg.isDelete = true;
+    msg.metadata = {
+      ...(msg.metadata ?? {}),
+      lazyRetryDiscarded: {
+        reasons: guard.reasons,
+        discardedAt: new Date().toISOString(),
+      },
+    };
+    await this.messageRepo.save(msg);
+    this.imGateway.broadcastNewMessageBeacon([], {
+      sessionId,
+      lastMessageId: msg.id,
+    });
+    return true;
   }
 
   /**
@@ -1264,7 +1893,7 @@ export class ImMessageService {
    * - 群聊：仅 @mention 本 agent 的消息（内容含 agentPrincipalId），避免无关群聊噪声
    *         同时确保 triggerMessageId 本身始终包含（兼容 @nickname 格式触发）
    *
-   * @keyword-en build-agent-dialogue-messages context-reorder pending-db-bound group-chat-filter
+   * @keyword-en build-agent-dialogue-messages, context-reorder, pending-db-bound, group-chat-filter, smart-context
    */
   private async buildAgentDialogueMessages(args: {
     sessionId: string;
@@ -1273,6 +1902,13 @@ export class ImMessageService {
     triggerMessageId: string;
   }): Promise<ChatMessage[]> {
     const context: ChatMessage[] = [];
+    const smartDigest = await this.smartService.getContextDigest(
+      args.sessionId,
+      args.triggerMessageId,
+    );
+    if (smartDigest.items.length > 0) {
+      context.push(this.toSmartDigestMessage(args.sessionId, smartDigest));
+    }
 
     // 并行查：(a) 本 agent 上一次 reply 的 reply_to_id 作为 pending 下界
     //         (b) 会话类型（私聊 vs 群聊）
@@ -1296,17 +1932,23 @@ export class ImMessageService {
 
     const prevTriggerMessageId = lastAgentReply?.replyToId ?? null;
     const isGroupChat = session?.type === ChatSessionType.Group;
+    const smartCoveredUntilMessageId = smartDigest.coveredUntilMessageId;
 
     if (prevTriggerMessageId) {
-      // 1. 历史消息：prevTriggerMessageId 之前（含）的最近 18 条
-      const historyRows = await this.messageRepo
+      // 1. 历史消息：已经进入 smart 的段只保留摘要索引, 未收录尾巴保留原消息
+      const historyQb = this.messageRepo
         .createQueryBuilder('m')
         .where('m.session_id = :sid', { sid: args.sessionId })
         .andWhere('m.is_delete = false')
         .andWhere('m.id <= :upper', { upper: prevTriggerMessageId })
         .orderBy('m.id', 'DESC')
-        .limit(18)
-        .getMany();
+        .limit(18);
+      if (smartCoveredUntilMessageId) {
+        historyQb.andWhere('m.id > :smartCovered', {
+          smartCovered: smartCoveredUntilMessageId,
+        });
+      }
+      const historyRows = await historyQb.getMany();
       for (const msg of historyRows.reverse()) {
         context.push(this.toDialogueMessage(msg, args.agentPrincipalId));
       }
@@ -1320,7 +1962,10 @@ export class ImMessageService {
         .andWhere('m.is_delete = false')
         .orderBy('m.created_at', 'DESC')
         .getOne();
-      if (lastAgentMsg) {
+      if (
+        lastAgentMsg &&
+        isMessageIdAfter(lastAgentMsg.id, smartCoveredUntilMessageId)
+      ) {
         context.push(
           this.toDialogueMessage(lastAgentMsg, args.agentPrincipalId),
         );
@@ -1328,6 +1973,10 @@ export class ImMessageService {
     }
 
     // 3. pending：prevTriggerMessageId（不含）到 triggerMessageId（含）之间的消息
+    const pendingLowerBound = laterMessageId(
+      prevTriggerMessageId,
+      smartCoveredUntilMessageId,
+    );
     const pendingQb = this.messageRepo
       .createQueryBuilder('m')
       .where('m.session_id = :sid', { sid: args.sessionId })
@@ -1336,8 +1985,8 @@ export class ImMessageService {
       .andWhere('m.message_type != :sys', { sys: ChatMessageType.System })
       .andWhere('m.id <= :to', { to: args.triggerMessageId });
 
-    if (prevTriggerMessageId) {
-      pendingQb.andWhere('m.id > :from', { from: prevTriggerMessageId });
+    if (pendingLowerBound) {
+      pendingQb.andWhere('m.id > :from', { from: pendingLowerBound });
     }
 
     if (isGroupChat) {
@@ -1364,8 +2013,54 @@ export class ImMessageService {
   }
 
   /**
-   * 将消息实体映射为对话消息
-   * @keyword-en to-dialogue-message entity-to-chat
+   * 把 smart 历史摘要索引转换为 LLM 可见的系统上下文消息。
+   * @keyword-cn smart上下文, 历史摘要, 上下文压缩
+   * @keyword-en smart-context-message, history-summary, context-compression
+   */
+  private toSmartDigestMessage(
+    sessionId: string,
+    digest: ChatSessionSmartContextDigest,
+  ): ChatMessage {
+    return {
+      role: 'assistant',
+      timestamp: new Date(),
+      content: [
+        '[conversation_smart_history]',
+        JSON.stringify({
+          sessionId,
+          purpose:
+            'Historical messages already compacted into smart segments. Treat this as an index, not as the current user request.',
+          instruction:
+            'Use items as [{smartId,keywords,summary}]. If details are needed, call saas.app.conversation.smartMessages with {sessionId,smartIds:[smartId]}. If omittedOlderSmartCount>0 or no item matches, call smartSearch by keywords first, then smartMessages. Do not ask the user to repeat before using these tools.',
+          coveredUntilMessageId: digest.coveredUntilMessageId,
+          omittedOlderSmartCount: digest.omittedCount,
+          items: digest.items.map((item) => ({
+            smartId: item.smartId,
+            keywords: item.keywords,
+            summary: item.summary,
+            startMessageId: item.startMessageId,
+            endMessageId: item.endMessageId,
+            messageCount: item.messageCount,
+            analyzedAt: item.analyzedAt,
+          })),
+        }),
+        '[/conversation_smart_history]',
+      ].join('\n'),
+    };
+  }
+
+  /**
+   * 将消息实体映射为对话消息。
+   *
+   * 附件透出策略 (LLM 可见):
+   *   - msg.attachments 非空时, 在 content 末尾追加 <im_attachments>...</im_attachments> 块
+   *   - 仅暴露 resourceId / name / type / size, 不暴露签名 URL (URL 是浏览器渲染用)
+   *   - LLM 拿 resourceId 后可直接调 saas.app.storage.createNode 入库,
+   *     或调 saas.app.resource.currentSession 查全量会话文件 (含历史)
+   *   - assistant 自己发的消息也带 attachments, 但通常无 resourceId; 透出仅供 LLM 回忆
+   *
+   * envelope (v3) 已弃用; 不再读 metadata.llmContent
+   * @keyword-en to-dialogue-message, attachments-llm-visible, resource-id
    */
   private toDialogueMessage(
     msg: ChatMessageEntity,
@@ -1377,20 +2072,46 @@ export class ImMessageService {
         : msg.senderId === agentPrincipalId
           ? 'assistant'
           : 'user';
-    let llmContent: string | null = null;
-    if (role === 'user') {
-      llmContent =
-        typeof msg.metadata?.llmContent === 'string' &&
-        msg.metadata?.llmGuidanceEnvelopeVersion ===
-          LLM_GUIDANCE_ENVELOPE_VERSION
-          ? msg.metadata.llmContent
-          : this.withStructuredLlmGuidance(msg.content);
-    }
+
+    const attachmentBlock = this.buildAttachmentBlockForLlm(msg.attachments);
+    const content = attachmentBlock
+      ? `${msg.content}\n${attachmentBlock}`
+      : msg.content;
+
     return {
       role,
-      content: llmContent ?? msg.content,
+      content,
       timestamp: msg.createdAt,
     };
+  }
+
+  /**
+   * 把消息附件序列化成 LLM 可见的结构化标签, 只透出 resourceId / name / type / size。
+   * 返回空串表示没有附件或附件都缺 resourceId (旧消息) — 不污染 prompt。
+   * @keyword-en build-attachment-block-for-llm, resource-id-injection
+   */
+  private buildAttachmentBlockForLlm(
+    attachments: ChatMessageEntity['attachments'],
+  ): string {
+    if (!attachments || attachments.length === 0) return '';
+    const lines: string[] = [];
+    for (const att of attachments) {
+      const rid = att.resourceId?.trim();
+      if (!rid) continue; // 历史无 resourceId 数据, 跳过 (旧 markdown 链接已在 content 里)
+      const name = att.name ?? '';
+      const type = att.type ?? 'file';
+      const size = typeof att.size === 'number' ? att.size : '';
+      lines.push(
+        `- resourceId="${rid}" name="${name}" type="${type}" size="${size}"`,
+      );
+    }
+    if (lines.length === 0) return '';
+    return [
+      '<im_attachments>',
+      '本条消息包含以下用户上传的文件 (resourceId 已可用, 可直接传入 saas.app.storage.createNode 等 hook):',
+      ...lines,
+      '</im_attachments>',
+    ].join('\n');
   }
 
   /**
@@ -1438,8 +2159,118 @@ export class ImMessageService {
       },
       must: this.buildGuidanceMustCodes(task),
       refs: this.buildGuidanceRefs(task),
+      currentSessionGuard: this.buildCurrentSessionGuardRequirement(task),
     };
     return JSON.stringify(envelope);
+  }
+
+  /**
+   * 判断旧版 guard 是否需要压缩为当前短结构。
+   * @keyword-cn 当前会话判定, 缓存稳定, 结构压缩
+   * @keyword-en current-session-guard, cache-stability, compact-shape
+   */
+  private hasCompactCurrentSessionGuard(
+    guard: unknown,
+  ): guard is LlmCurrentSessionGuard {
+    if (!guard || typeof guard !== 'object' || Array.isArray(guard)) {
+      return false;
+    }
+    const record = guard as Record<string, unknown>;
+    return (
+      record.required === true &&
+      record.tool === 'call_hook' &&
+      record.hookName ===
+        'saas.app.conversation.initTip' &&
+      typeof record.payload === 'string' &&
+      typeof record.reason === 'string' &&
+      typeof record.rule === 'string'
+    );
+  }
+
+  /**
+   * 给旧版 llmContent 幂等补齐 currentSessionGuard, 保持历史 user envelope 与新消息同形。
+   * @keyword-cn 结构化提示, 缓存稳定, 当前会话判定
+   * @keyword-en structured-guidance, cache-stability, current-session-guard
+   */
+  private ensureStructuredLlmGuidanceGuard(
+    content: string,
+    fallbackContent: string,
+  ): string {
+    try {
+      const parsed: unknown = JSON.parse(content);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return this.withStructuredLlmGuidance(fallbackContent);
+      }
+      const envelope = parsed as Partial<LlmGuidanceEnvelope>;
+      const task =
+        envelope.task &&
+        typeof envelope.task === 'object' &&
+        typeof envelope.task.type === 'string'
+          ? (envelope.task as LlmGuidanceTask)
+          : this.buildGuidanceTask(fallbackContent);
+      const envelopeMust = Array.isArray(envelope.must)
+        ? envelope.must.filter((it): it is string => typeof it === 'string')
+        : [];
+      const hadCurrentSessionMust = envelopeMust.includes(
+        INIT_TIP_FIRST_MUST,
+      );
+      const must = this.ensureCurrentSessionMustCode(
+        envelopeMust.length > 0
+          ? envelopeMust
+          : this.buildGuidanceMustCodes(task),
+      );
+      if (
+        this.hasCompactCurrentSessionGuard(envelope.currentSessionGuard) &&
+        hadCurrentSessionMust
+      ) {
+        return content;
+      }
+      return JSON.stringify({
+        ...envelope,
+        must,
+        currentSessionGuard: this.buildCurrentSessionGuardRequirement(task),
+      });
+    } catch {
+      return this.withStructuredLlmGuidance(fallbackContent);
+    }
+  }
+
+  /**
+   * 构建每轮强制调用 initTip 的 user envelope 字段。
+   * @keyword-cn 当前会话判定, 工具强制, 结构化提示
+   * @keyword-en current-session-guard, mandatory-tool, structured-guidance
+   */
+  private buildCurrentSessionGuardRequirement(
+    task: LlmGuidanceTask,
+  ): LlmCurrentSessionGuard {
+    return {
+      required: true,
+      tool: 'call_hook',
+      hookName: 'saas.app.conversation.initTip',
+      payload: '[{needKnowledge,needHook,reason?}]',
+      reason: task.type,
+      rule: 'FIRST tool call every turn. Pure chat => false,false then sendMsg. needHook + missing args => currentSession.setPendingAction(missing_args) then sendMsg question; ready => business hook.',
+    };
+  }
+
+  /**
+   * 从用户原文推导轻量任务标签, 只做路由提示, 不替代工具校验。
+   * @keyword-cn 任务标签, 结构化提示, 意图识别
+   * @keyword-en guidance-task, structured-guidance, intent-detect
+   */
+  /**
+   * 确保 v3 user envelope 的 must 列表显式包含 initTip 首步。
+   * @keyword-cn 当前会话判定, 强制步骤
+   * @keyword-en current-session-must, mandatory-tool
+   */
+  private ensureCurrentSessionMustCode(codes: string[]): string[] {
+    const normalized = codes.filter((it) => typeof it === 'string' && it);
+    if (normalized.includes(INIT_TIP_FIRST_MUST)) {
+      return [...new Set(normalized)];
+    }
+    const insertAt = normalized.includes('use_system_prompt') ? 1 : 0;
+    normalized.splice(insertAt, 0, INIT_TIP_FIRST_MUST);
+    return [...new Set(normalized)];
   }
 
   /**
@@ -1478,13 +2309,13 @@ export class ImMessageService {
   }
 
   /**
-   * 把任务标签转换为 system prompt 中 guidanceCodes 的规则代号。
-   * @keyword-cn 规则代号, 结构化提示, 工具规划
-   * @keyword-en guidance-codes, structured-guidance, tool-planning
+   * 把任务标签转换为 envelope must 字段的行为代号; ID 自解释, base prompt 不再附字典.
+   * @keyword-cn 行为代号, 结构化提示, 工具规划
+   * @keyword-en must-codes, structured-guidance, tool-planning
    */
   private buildGuidanceMustCodes(task: LlmGuidanceTask): string[] {
     const codes = ['use_system_prompt', 'send_msg'];
-    if (task.type === 'chat') return codes;
+    if (task.type === 'chat') return this.ensureCurrentSessionMustCode(codes);
     codes.push('resolve_context', 'resolve_terms_by_knowledge');
     if (
       task.type === 'previous_result_action' ||
@@ -1504,13 +2335,13 @@ export class ImMessageService {
         'no_memory_answer',
       );
     }
-    return [...new Set(codes)];
+    return this.ensureCurrentSessionMustCode(codes);
   }
 
   /**
-   * 把任务标签转换为 system prompt sectionRefs 的短引用。
-   * @keyword-cn 章节引用, 结构化提示, 系统提示
-   * @keyword-en section-refs, structured-guidance, system-prompt
+   * 把任务标签转换为 envelope refs 字段的提示锚点; 与 examples 配合体现, base prompt 不再附字典.
+   * @keyword-cn 提示锚点, 结构化提示, envelope
+   * @keyword-en envelope-refs, structured-guidance, anchor-hints
    */
   private buildGuidanceRefs(task: LlmGuidanceTask): string[] {
     const refs = ['input', 'proactive', 'response'];
@@ -1724,6 +2555,7 @@ export class ImMessageService {
     mentions: MentionInfo[];
     llmContent: string | null;
     llmTargetAgentIds: string[];
+    senderIp?: string;
   }): Record<string, unknown> | null {
     const metadata: Record<string, unknown> = {};
 
@@ -1737,6 +2569,10 @@ export class ImMessageService {
       metadata.llmContent = args.llmContent;
       metadata.llmGuidanceEnvelopeVersion = LLM_GUIDANCE_ENVELOPE_VERSION;
       metadata.llmTargetAgentIds = args.llmTargetAgentIds;
+    }
+
+    if (args.senderIp) {
+      metadata.senderIp = args.senderIp;
     }
 
     return Object.keys(metadata).length > 0 ? metadata : null;

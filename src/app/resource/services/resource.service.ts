@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { uuidv7 } from 'uuidv7';
 import { ResourceEntity } from '../entities/resource.entity';
+import { ResourceSignService } from './resource-sign.service';
 import type {
   UploadResourceResponse,
   ChunkedUploadInitResponse,
@@ -43,6 +44,7 @@ export class ResourceService {
   constructor(
     @InjectRepository(ResourceEntity)
     private readonly repo: Repository<ResourceEntity>,
+    private readonly sign: ResourceSignService,
   ) {}
 
   // ==================== 工具方法 ====================
@@ -362,6 +364,75 @@ export class ResourceService {
    * 查询资源列表，可按聊天会话过滤。
    * @keyword-en list-resources
    */
+  /**
+   * 分页列出资源, 返回 total 与 hasMore, 供 LLM hook (saas.app.resource.currentSession) 使用。
+   * @keyword-en list-resources-paged, current-session-resources
+   */
+  async listPaged(query: {
+    sessionId?: string | null;
+    category?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    items: ResourceListItem[];
+    total: number;
+    hasMore: boolean;
+    limit: number;
+    offset: number;
+  }> {
+    const limit = Math.min(Math.max(query.limit ?? 20, 1), 100);
+    const offset = Math.max(query.offset ?? 0, 0);
+    const qb = this.repo
+      .createQueryBuilder('resource')
+      .where('resource.isDelete = :isDelete', { isDelete: false })
+      .andWhere('resource.active = :active', { active: true });
+
+    const sessionId = query.sessionId?.trim();
+    if (sessionId) {
+      qb.andWhere('resource.sessionId = :sessionId', { sessionId });
+    }
+    const category = query.category?.trim();
+    if (category) {
+      qb.andWhere('resource.category = :category', { category });
+    }
+    const q = query.q?.trim();
+    if (q) {
+      qb.andWhere('LOWER(resource.originalName) LIKE :q', {
+        q: `%${q.toLowerCase()}%`,
+      });
+    }
+
+    const total = await qb.getCount();
+    const rows = await qb
+      .orderBy('resource.createdAt', 'DESC')
+      .skip(offset)
+      .take(limit)
+      .getMany();
+
+    const items: ResourceListItem[] = rows.map((item) => ({
+      id: item.id,
+      path: this.sign.buildAccessPath(item.id, item.channelId ?? null),
+      originalName: item.originalName,
+      fileExt: item.fileExt,
+      mimeType: item.mimeType,
+      fileSize: item.fileSize,
+      category: item.category,
+      sessionId: item.sessionId,
+      uploaderId: item.uploaderId,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    }));
+
+    return {
+      items,
+      total,
+      hasMore: offset + items.length < total,
+      limit,
+      offset,
+    };
+  }
+
   async list(query: {
     sessionId?: string;
     category?: string;
@@ -394,7 +465,7 @@ export class ResourceService {
     const rows = await qb.getMany();
     return rows.map((item) => ({
       id: item.id,
-      path: `/resources/${item.id}`,
+      path: this.sign.buildAccessPath(item.id, item.channelId ?? null),
       originalName: item.originalName,
       fileExt: item.fileExt,
       mimeType: item.mimeType,
@@ -415,6 +486,7 @@ export class ResourceService {
     file: MulterDiskFile,
     uploaderId: string | null,
     sessionId?: string | null,
+    tenantId?: string | null,
   ): Promise<UploadResourceResponse> {
     if (!file || typeof file.path !== 'string') {
       throw new BadRequestException('missing file');
@@ -450,6 +522,7 @@ export class ResourceService {
         id,
         uploaderId,
         sessionId: sessionId?.trim() || null,
+        channelId: tenantId ?? undefined,
         originalName: file.originalname || 'file',
         fileExt: fileExt || null,
         mimeType: file.mimetype || null,
@@ -469,7 +542,12 @@ export class ResourceService {
       } catch {
         void 0;
       }
-      return { id, path: `/resources/${id}`, md5, duplicated: true };
+      return {
+        id,
+        path: this.sign.buildAccessPath(id, tenantId ?? null),
+        md5,
+        duplicated: true,
+      };
     }
 
     // 没有重复，新文件
@@ -493,6 +571,7 @@ export class ResourceService {
       id,
       uploaderId,
       sessionId: sessionId?.trim() || null,
+      channelId: tenantId ?? undefined,
       originalName: file.originalname || 'file',
       fileExt: fileExt || null,
       mimeType: file.mimetype || null,
@@ -512,7 +591,12 @@ export class ResourceService {
     });
     await this.repo.save(entity);
 
-    return { id, path: `/resources/${id}`, md5, duplicated: false };
+    return {
+      id,
+      path: this.sign.buildAccessPath(id, tenantId ?? null),
+      md5,
+      duplicated: false,
+    };
   }
 
   // ==================== 分片上传 ====================
@@ -529,6 +613,7 @@ export class ResourceService {
     mimeType: string,
     uploaderId: string | null,
     sessionId?: string | null,
+    tenantId?: string | null,
   ): Promise<ChunkedUploadInitResponse> {
     this.ensureWithinLimit(fileSize, 500); // 分片上传最大500MB
 
@@ -554,6 +639,7 @@ export class ResourceService {
         id,
         uploaderId,
         sessionId: sessionId?.trim() || null,
+        channelId: tenantId ?? undefined,
         originalName: filename || 'file',
         fileExt: fileExt || null,
         mimeType: mimeType || null,
@@ -586,6 +672,7 @@ export class ResourceService {
       id,
       uploaderId,
       sessionId: sessionId?.trim() || null,
+      channelId: tenantId ?? undefined,
       originalName: filename || 'file',
       fileExt: fileExt || null,
       mimeType: mimeType || null,
@@ -777,7 +864,7 @@ export class ResourceService {
 
       return {
         id: entity.id,
-        path: `/resources/${entity.id}`,
+        path: this.sign.buildAccessPath(entity.id, entity.channelId ?? null),
         sha256,
         duplicated: true,
       };
@@ -801,7 +888,7 @@ export class ResourceService {
 
     return {
       id: entity.id,
-      path: `/resources/${entity.id}`,
+      path: this.sign.buildAccessPath(entity.id, entity.channelId ?? null),
       sha256,
       duplicated: false,
     };
@@ -838,6 +925,18 @@ export class ResourceService {
   }
 
   // ==================== 资源读取 ====================
+
+  /**
+   * 按 ID 获取资源元信息 (不验物理文件存在), 返回 null 表示不存在或已软删除。
+   * 主要给 storage.createNode 等 hook 做"resourceId 是否真实存在 + 跨租户校验"。
+   * @keyword-en get-resource-by-id, exists-check
+   */
+  async getResourceById(id: string): Promise<ResourceEntity | null> {
+    if (!id) return null;
+    return await this.repo.findOne({
+      where: { id, isDelete: false, active: true },
+    });
+  }
 
   /**
    * 获取资源文件路径，物理文件不存在时清理所有同SHA256资源并清除MD5
@@ -946,6 +1045,7 @@ export class ResourceService {
   async batchDuplicate(
     resourceIds: string[],
     uploaderId: string | null,
+    tenantId?: string | null,
   ): Promise<
     Array<{ id: string; originalId: string; path: string; name: string }>
   > {
@@ -969,6 +1069,7 @@ export class ResourceService {
       const entity = this.repo.create({
         id: newId,
         uploaderId,
+        channelId: tenantId ?? undefined,
         originalName: orig.originalName,
         fileExt: orig.fileExt,
         mimeType: orig.mimeType,
@@ -986,7 +1087,7 @@ export class ResourceService {
       results.push({
         id: newId,
         originalId: origId,
-        path: `/resources/${newId}`,
+        path: this.sign.buildAccessPath(newId, tenantId ?? null),
         name: orig.originalName,
       });
     }

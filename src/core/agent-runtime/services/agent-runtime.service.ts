@@ -16,13 +16,13 @@ import {
   buildGetHookInfoTool,
   type InvocationContextProvider,
 } from '../tools/call-hook.tools';
+import { buildInitTipTool } from '../tools/init-tip.tool';
 import {
   buildBaseLlmSystemPrompt,
   type LlmSystemPromptJson,
 } from '../prompts/base-llm.prompt';
-import { SessionCallTrackerService } from './session-call-tracker.service';
-import { SessionSaveLlmService } from './session-save-llm.service';
 import { AiCallLogService } from '@/app/conversation/services/ai-call-log.service';
+import { CurrentSessionService } from '@/app/conversation/services/current-session.service';
 
 type AgentRuntimeContext = {
   agentId: string;
@@ -54,17 +54,16 @@ export class AgentRuntimeService {
     private readonly hookBus: HookBusService,
     @Inject(forwardRef(() => RunnerHookRpcService))
     private readonly hookRpc: RunnerHookRpcService,
-    private readonly tracker: SessionCallTrackerService,
-    private readonly sessionSaveLlm: SessionSaveLlmService,
     @Inject(forwardRef(() => AiCallLogService))
     private readonly callLog: AiCallLogService,
+    @Inject(forwardRef(() => CurrentSessionService))
+    private readonly currentSession: CurrentSessionService,
   ) {}
 
   /**
    * 加载并准备 Agent (描述/工具/对话层)
    *  - 主对话工具集 :: call_hook / call_hook_async / search_hook / get_hook_tag / get_hook_info
-   *  - call_hook 挂 SessionCallTracker 副作用 :: **仅记录**, 不在 hook 完成时触发沉淀
-   *  - 触发判定挪到 startDialogue 末尾 (整轮主对话结束后统一硬匹配, 一轮只触发一次)
+   *  - call_hook 挂 callHistory 副作用 :: 仅成功项 (errorMsg 为空) 落库, FIFO 50 条上限
    * @keyword-en load-agent
    */
   async load(
@@ -74,10 +73,7 @@ export class AgentRuntimeService {
     const loaded = await this.loader.loadAll(inputDir);
     const getCtx: InvocationContextProvider = () => invocationContext ?? {};
 
-    // 副作用 ::
-    //  ① tracker 仅 record (沉淀 LLM 触发判定挪到整轮结束后, 由 startDialogue 统一做)
-    //  ② callLog 硬记录 :: 仅成功项 (errorMsg 为空) 落库, FIFO 50 条上限, fire-and-forget
-    //     失败的不记录 — sinking LLM 已经管"教训沉淀", 这里只留事实日志.
+    // 副作用 :: callLog 硬记录仅保存成功项; 失败项只服务当前轮纠错, 不跨轮沉淀.
     const onCallComplete = (
       record: {
         hookName: string;
@@ -91,7 +87,12 @@ export class AgentRuntimeService {
     ) => {
       const sessionId = ctx.extras?.sessionId;
       if (typeof sessionId !== 'string' || !sessionId) return;
-      this.tracker.record(sessionId, record);
+      this.currentSession.recordHookCall(
+        sessionId,
+        ctx.principalId,
+        record.hookName,
+        record.errorMsg.length === 0,
+      );
       // 仅成功项落库; service 内部还会 catch + warn, 不阻塞主对话
       if (record.errorMsg.length === 0) {
         void this.callLog
@@ -130,6 +131,7 @@ export class AgentRuntimeService {
       buildSearchHookTool(this.hookBus, this.hookRpc, getCtx),
       buildGetHookTagTool(this.hookBus, this.hookRpc, getCtx),
       buildGetHookInfoTool(this.hookBus, this.hookRpc, getCtx),
+      buildInitTipTool(this.currentSession, getCtx),
     ];
     loaded.tools = [...hookTools, ...loaded.tools];
     return loaded;
@@ -174,8 +176,7 @@ export class AgentRuntimeService {
     if (!loaded.dialogues) {
       throw new Error('该 Agent 未提供对话层 (dialogues)');
     }
-    // session_data 不再注入 messages 流 (会破坏 prompt cache 的 prefix 匹配)。
-    // 改为 base prompt 按需查询: 复杂 hook / 历史 / 记忆任务由 LLM 主动调 sessionData.list 等工具拿依据。
+    // session_data 不再自动注入 user message; directive/preference/handbook 通过 saas.app.conversation.initTip 的 suggestions 推过去 (callHistoryHints / handbookInventory / activeDirectives), LLM 自行 sessionData.get 取真内容.
     loaded.dialogues.handleAiServer(
       this.buildAiAdapter(
         options?.proactiveContext,
@@ -184,61 +185,11 @@ export class AgentRuntimeService {
       ),
     );
     loaded.dialogues.setAgentConfig?.({ aiModelIds: options?.aiModelIds });
+    // user message 直发原话, 不再补 currentSessionGuard; init_tip + examples + reasoning ≥ 20 承担引导
     const gen = loaded.dialogues.handle(messages);
-    try {
-      for await (const ev of gen as AsyncGenerator<ModelSseEvent>) {
-        yield ev;
-      }
-    } finally {
-      // 整轮主对话结束 (含异常 / 提前 break) → 低频硬匹配判定 → 命中则异步触发沉淀 LLM
-      // 放 finally 保证 caller 中途 break/throw 也能触发, 一轮只触发一次
-      this.maybeTriggerSaveLlmAfterTurn(
-        options?.invocationContext,
-        options?.aiModelIds,
-      );
+    for await (const ev of gen as AsyncGenerator<ModelSseEvent>) {
+      yield ev;
     }
-  }
-
-  /**
-   * 整轮对话结束后的沉淀触发 :: 低频硬匹配 (getChapter / 失败后成功) 命中即异步跑独立 LLM
-   *  - 一轮只触发一次, 不在 hook 完成时触发 (避免主对话期间反复跑沉淀)
-   *  - tracker 内置冷却时间, 避免每轮都触发总结
-   *  - aiModelIds 缺失或 sessionId 缺失 → 跳过 + reset
-   *  - fire-and-forget, 沉淀失败 / 慢都不影响主对话
-   * @keyword-en maybe-trigger-save-llm-after-turn
-   */
-  private maybeTriggerSaveLlmAfterTurn(
-    invocationContext?: HookInvocationContext,
-    aiModelIds?: string[],
-  ): void {
-    const sessionId = invocationContext?.extras?.sessionId;
-    if (typeof sessionId !== 'string' || !sessionId) {
-      this.logger.debug(
-        `[save-trigger] skip: no sessionId in invocationContext.extras`,
-      );
-      return;
-    }
-    const should = this.tracker.shouldTriggerSave(sessionId);
-    this.logger.log(
-      `[save-trigger] session=${sessionId} shouldTrigger=${should}`,
-    );
-    if (!should) return;
-    if (!aiModelIds || aiModelIds.length === 0 || !invocationContext) {
-      this.logger.warn(
-        `[save-trigger] hit but missing aiModelIds/ctx, reset. session=${sessionId}`,
-      );
-      this.tracker.resetTriggers(sessionId);
-      return;
-    }
-    this.logger.log(
-      `[save-trigger] firing runAsync session=${sessionId} models=${aiModelIds.join(',')}`,
-    );
-    this.tracker.resetTriggers(sessionId);
-    void this.sessionSaveLlm.runAsync({
-      sessionId,
-      aiModelIds,
-      invocationContext,
-    });
   }
 
   /**
@@ -277,13 +228,11 @@ export class AgentRuntimeService {
           agentId: agentContext.agentId,
           agentPrincipalId: agentContext.agentPrincipalId,
           tenantId: agentContext.tenantId ?? null,
-          ...(agentContext.nickname
-            ? { nickname: agentContext.nickname }
-            : {}),
+          ...(agentContext.nickname ? { nickname: agentContext.nickname } : {}),
           ...(agentContext.purpose ? { purpose: agentContext.purpose } : {}),
-          notes: [
-            'Current business tenant_id comes from the current triggering user and is used only for business data isolation.',
-            'Hook authorization always uses agentPrincipalId. Never use tenantId as principalId.',
+          myContext: [
+            'My business tenant_id comes from the current triggering user. I use it only for business data isolation.',
+            'My hook authorization always uses my agentPrincipalId. I never use tenantId as principalId.',
           ],
         };
       }
@@ -294,17 +243,12 @@ export class AgentRuntimeService {
           sessionId: proactiveContext.sessionId,
           agentPrincipalId: proactiveContext.agentPrincipalId,
           triggerMessageId: proactiveContext.triggerMessageId,
-          rules: [
-            'Any user-visible reply must be sent by calling saas.app.conversation.sendMsg through call_hook. Returning final text directly will not be delivered to the user and counts as failure.',
-            'Before executing any business hook, first query callHistory and reuse recent successful hook names/payloads when a title matches the current task.',
-            'If user wording may be an informal alias or synonym of a platform concept, resolve it with knowledgeCatalog plus sessionData/knowledge before choosing hooks or answering.',
-            'If callHistory has no usable match or the situation is uncertain, use this discovery order before sendMsg: sessionData first (handbook.* plus other relevant keys), then knowledge base, then hook registry/schema last.',
-            'If the user refers to previous tool output, query callHistory first and fetch matching detail before acting.',
-            'Capability/action requests must be manual-backed. Do not answer or act from generic model knowledge.',
-            'For sendMsg, replyToId must exactly equal triggerMessageId from this JSON role.',
-            'Decide from the full context whether to send, when to send, and what to send. Consider all recent messages, not only the last one.',
-            'You may split a long answer into up to 4 sendMsg calls for natural conversation. Do not over-send.',
-            'After sending the needed message(s), finish the turn. Do not wait for the user or start another turn.',
+          myProactiveBehavior: [
+            'My only voice channel to the user is saas.app.conversation.sendMsg through call_hook. If I return final text without sendMsg, the user never sees it — silently lost work.',
+            'For sendMsg, I leave replyToId unset; the server fills it from ctx.extras.triggerMessageId automatically. sessionId and senderPrincipalId are also auto-filled from ctx — I never impersonate other principals.',
+            'I decide what / when / whether to send by reading the full recent context, not only the last message.',
+            'I may split a long answer into up to 4 sendMsg calls for natural pacing. I do not over-send.',
+            'After delivering the needed reply, I finish the turn. I do not wait for the user or open another round.',
           ],
         };
       }
@@ -314,9 +258,9 @@ export class AgentRuntimeService {
         systemPromptJson.role.agentDefinition = {
           priority: 'high',
           prompt: trimmedAgentDefinition,
-          rules: [
-            'Follow this Agent definition continuously for role, tone, boundaries, and business goals.',
-            'Do not fall back to a generic assistant identity.',
+          myDefinitionBehavior: [
+            'I continuously follow my Agent definition for role, tone, boundaries, and business goals.',
+            'I never fall back to a generic assistant identity.',
           ],
         };
       }
