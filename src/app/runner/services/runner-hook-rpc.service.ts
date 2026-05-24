@@ -14,6 +14,8 @@ import type {
   HookCallReply,
   HookInvocationContextWire,
 } from '../types/runner.types';
+import { AbilityService } from '@/app/identity/services/ability.service';
+import { PermissionDefinitionType } from '@/app/identity/enums/permission.enums';
 
 /**
  * @title Runner Hook RPC 服务
@@ -26,6 +28,23 @@ import type {
  */
 type SocketResolver = (runnerId: string) => Socket | undefined;
 
+/**
+ * SaaS push 给 runner 的身份载荷, 与 runner/src/modules/identity/types/identity.types.ts 的 RunnerIdentityContext 同形。
+ * 类型在此重复声明避免 saas → runner 反向依赖。
+ * @keyword-en runner-identity-push-block, contract-mirror
+ */
+interface RunnerIdentityPushBlock {
+  principalId: string;
+  tenantId?: string;
+  abilityRules?: Array<{ action: string; subject: string }>;
+  dataPermissions?: Array<{
+    table: string;
+    nodeKey: string;
+    action?: string;
+    where?: Record<string, unknown>;
+  }>;
+}
+
 @Injectable()
 export class RunnerHookRpcService implements OnModuleDestroy {
   private readonly logger = new Logger(RunnerHookRpcService.name);
@@ -34,11 +53,63 @@ export class RunnerHookRpcService implements OnModuleDestroy {
   private readonly tick: NodeJS.Timeout;
   private resolver: SocketResolver = () => undefined;
 
-  constructor() {
+  constructor(private readonly ability: AbilityService) {
     this.tick = setInterval(
       () => this.scan(),
       HOOK_CALL_TICK_INTERVAL_MS,
     ).unref();
+  }
+
+  /**
+   * 30s in-memory 缓存: principalId → identity 上下文 (abilityRules + dataPermissions)。
+   * 减少 LLM 高频调 runner hook 时的 DB 查询压力; TTL 短足以让权限变更快速生效。
+   * @keyword-en identity-push-cache, principal-ttl-cache
+   */
+  private readonly identityCache = new Map<
+    string,
+    { value: RunnerIdentityPushBlock; expiresAt: number }
+  >();
+  private readonly IDENTITY_CACHE_TTL_MS = 30_000;
+
+  /**
+   * 拉取 principal 的 ability rules + data permissions, 序列化成 push 给 runner 的 identity 块。
+   * 失败时返回最小载荷 (仅 principalId), 不阻塞主调用 — runner middleware 会因 abilityRules 缺失而拒绝 LLM 调用。
+   * @keyword-en build-runner-identity-push
+   */
+  private async buildIdentityPush(
+    principalId: string,
+    tenantId?: string,
+  ): Promise<RunnerIdentityPushBlock> {
+    const cacheKey = `${principalId}::${tenantId ?? ''}`;
+    const cached = this.identityCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+    try {
+      const ability = await this.ability.buildForPrincipal(principalId);
+      const dataPerms = await this.ability.listPermissionsByType(
+        principalId,
+        PermissionDefinitionType.Data,
+      );
+      const value: RunnerIdentityPushBlock = {
+        principalId,
+        ...(tenantId ? { tenantId } : {}),
+        abilityRules: ability.rules,
+        dataPermissions: dataPerms.map((p) => ({
+          table: p.subject,
+          nodeKey: `${p.subject}:${p.action}`,
+          action: p.action,
+        })),
+      };
+      this.identityCache.set(cacheKey, {
+        value,
+        expiresAt: Date.now() + this.IDENTITY_CACHE_TTL_MS,
+      });
+      return value;
+    } catch (e) {
+      this.logger.warn(
+        `[runner-identity-push] failed for principal=${principalId}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return { principalId, ...(tenantId ? { tenantId } : {}) };
+    }
   }
 
   /**
@@ -85,11 +156,34 @@ export class RunnerHookRpcService implements OnModuleDestroy {
       return softError('runner-busy');
     }
     const callId = `${runnerId}.${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+
+    // LLM 链路: push identity (abilityRules + dataPermissions) 到 extras.identitySaasHint, 给 runner ability middleware 作为 **hint** 使用。
+    // - Runner 端有自己的本地 RBAC, 优先查本地; 仅当本地无该 principal 记录时, hint 作为 fallback
+    // - 非 LLM 来源 (system/runner 内部) 跳过, 避免不必要的 DB 查询
+    let enrichedExtras = body.context?.extras;
+    const isLlm = body.context?.source === 'llm';
+    const principalId = body.context?.principalId;
+    if (isLlm && principalId) {
+      const tid = (body.context?.extras as { tenantId?: string } | undefined)
+        ?.tenantId;
+      const identityHint = await this.buildIdentityPush(principalId, tid);
+      enrichedExtras = {
+        ...(enrichedExtras ?? {}),
+        identitySaasHint: identityHint,
+      };
+    }
+
     const envelope: HookCallEnvelope = {
       callId,
       hookName: body.hookName,
       payload: body.payload,
-      context: body.context ? { ...body.context, runnerId } : { runnerId },
+      context: body.context
+        ? {
+            ...body.context,
+            ...(enrichedExtras ? { extras: enrichedExtras } : {}),
+            runnerId,
+          }
+        : { runnerId },
       debug: body.debug,
       debugDb: body.debugDb,
     };

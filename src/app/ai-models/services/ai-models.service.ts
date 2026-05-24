@@ -88,6 +88,7 @@ export class AiModelsService {
       description: dto.description,
       enabled: dto.enabled ?? true,
       thinkingEnabled: dto.thinkingEnabled ?? false,
+      smartSegmentChars: dto.smartSegmentChars ?? null,
     });
     return await this.repository.save(entity);
   }
@@ -115,6 +116,8 @@ export class AiModelsService {
     if (dto.enabled !== undefined) entity.enabled = dto.enabled;
     if (dto.thinkingEnabled !== undefined)
       entity.thinkingEnabled = dto.thinkingEnabled;
+    if (dto.smartSegmentChars !== undefined)
+      entity.smartSegmentChars = dto.smartSegmentChars;
     await this.repository.save(entity);
   }
 

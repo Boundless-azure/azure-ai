@@ -106,7 +106,9 @@ export class AiCallLogService {
       select: ['id'],
     });
     if (all.length <= MAX_LOG_PER_SESSION) return;
-    const toEvictIds = all.slice(0, all.length - MAX_LOG_PER_SESSION).map((r) => r.id);
+    const toEvictIds = all
+      .slice(0, all.length - MAX_LOG_PER_SESSION)
+      .map((r) => r.id);
     await this.dataRepo.update({ id: In(toEvictIds) }, { isDelete: true });
     this.logger.debug(
       `[call-log] evicted ${toEvictIds.length} old records session=${sessionId}`,

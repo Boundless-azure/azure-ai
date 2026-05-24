@@ -17,6 +17,19 @@ export interface UnitHookDeclaration {
   name: string;
   description: string;
   payloadSchema?: ZodTypeAny;
+  /**
+   * 显式拒绝 LLM 调用; 用于纯内部 / 底层基座 hook (如 mongo.insert/update/delete)。
+   * 透传到 HookMetadata.denyLlm; RunnerHookAbilityMiddleware 在 source==='llm' 时软错拒绝。
+   * @keyword-en deny-llm
+   */
+  denyLlm?: boolean;
+  /**
+   * 所需能力 (CASL action/subject), AND 关系。透传到 HookMetadata.requiredAbility。
+   * @keyword-en required-ability
+   */
+  requiredAbility?:
+    | { action: string; subject: string }
+    | Array<{ action: string; subject: string }>;
 }
 
 export interface UnitHookModule {
@@ -41,6 +54,10 @@ export interface UnitHookRecord {
   keywordsCn?: string[];
   keywordsEn?: string[];
   payloadSchema?: ZodTypeAny;
+  denyLlm?: boolean;
+  requiredAbility?:
+    | { action: string; subject: string }
+    | Array<{ action: string; subject: string }>;
   source: 'workspace' | 'system';
 }
 
@@ -66,7 +83,7 @@ export interface UnitExecutionContext {
 export type UnitCoreHandler = (
   ctx: UnitExecutionContext,
   payload: unknown,
-) => Promise<unknown> | unknown;
+) => unknown;
 
 export interface UnitCoreModule {
   unitName: string;

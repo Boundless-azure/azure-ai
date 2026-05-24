@@ -3,7 +3,11 @@ import {
   ChatOpenAICompletions,
   type ChatOpenAIFields,
 } from '@langchain/openai';
-import { AIMessage, AIMessageChunk, BaseMessage } from '@langchain/core/messages';
+import {
+  AIMessage,
+  AIMessageChunk,
+  BaseMessage,
+} from '@langchain/core/messages';
 import { ChatGenerationChunk } from '@langchain/core/outputs';
 import type { CallbackManagerForLLMRun } from '@langchain/core/callbacks/manager';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
@@ -47,7 +51,11 @@ export class KimiChatOpenAI extends ChatOpenAI {
    */
   withConfig(
     config: Partial<this['ParsedCallOptions']>,
-  ): Runnable<BaseLanguageModelInput, AIMessageChunk, this['ParsedCallOptions']> {
+  ): Runnable<
+    BaseLanguageModelInput,
+    AIMessageChunk,
+    this['ParsedCallOptions']
+  > {
     const newModel = new KimiChatOpenAI(this.kimiFields);
     newModel.defaultOptions = {
       ...this.defaultOptions,
@@ -60,7 +68,9 @@ export class KimiChatOpenAI extends ChatOpenAI {
     >;
   }
 
-  invocationParams(options?: this['ParsedCallOptions']): Record<string, unknown> {
+  invocationParams(
+    options?: this['ParsedCallOptions'],
+  ): Record<string, unknown> {
     return this.completions.invocationParams(
       this._combineCallOptions(options) as never,
     ) as Record<string, unknown>;
@@ -71,7 +81,11 @@ export class KimiChatOpenAI extends ChatOpenAI {
     options: this['ParsedCallOptions'],
     runManager?: CallbackManagerForLLMRun,
   ) {
-    return await this.completions._generate(messages, options as never, runManager);
+    return await this.completions._generate(
+      messages,
+      options as never,
+      runManager,
+    );
   }
 
   async *_streamResponseChunks(
@@ -246,7 +260,10 @@ class KimiChatOpenAICompletions extends ChatOpenAICompletions {
       stream: true,
     };
     let defaultRole: string | undefined;
-    const streamIterable = await this.completionWithRetry(params as never, options);
+    const streamIterable = await this.completionWithRetry(
+      params as never,
+      options,
+    );
     let usage: Record<string, number> | undefined;
     for await (const data of streamIterable as AsyncIterable<{
       usage?: Record<string, number>;
@@ -452,7 +469,8 @@ function findStringField(
   field: string,
   depth = 0,
 ): string | undefined {
-  if (depth > 6 || value === null || typeof value !== 'object') return undefined;
+  if (depth > 6 || value === null || typeof value !== 'object')
+    return undefined;
   const obj = value as Record<string, unknown>;
   if (typeof obj[field] === 'string') return obj[field];
   for (const item of Object.values(obj)) {

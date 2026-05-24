@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RunnerHookBusService } from '../../modules/hookbus/services/hookbus.service';
 import type { RunnerDbService } from '../../modules/runner-db/services/runner-db.service';
@@ -31,7 +32,10 @@ export class UnitCoreService {
       mongoClient: RunnerMongoClient;
     },
   ) {
-    this.registry = new UnitRegistryService(options.workspacePath, options.systemUnitPath);
+    this.registry = new UnitRegistryService(
+      options.workspacePath,
+      options.systemUnitPath,
+    );
   }
 
   /**
@@ -65,6 +69,8 @@ export class UnitCoreService {
           keywordsCn: module.unit.keywordsCn,
           keywordsEn: module.unit.keywordsEn,
           payloadSchema: hook.payloadSchema,
+          denyLlm: hook.denyLlm,
+          requiredAbility: hook.requiredAbility,
           source: source.source,
         });
       }
@@ -94,7 +100,9 @@ export class UnitCoreService {
       const base = `${item.hookName} ${item.description}`.toLowerCase();
       const cn = (item.keywordsCn ?? []).join(' ').toLowerCase();
       const en = (item.keywordsEn ?? []).join(' ').toLowerCase();
-      return base.includes(needle) || cn.includes(needle) || en.includes(needle);
+      return (
+        base.includes(needle) || cn.includes(needle) || en.includes(needle)
+      );
     });
   }
 
@@ -171,7 +179,9 @@ export class UnitCoreService {
         hook.hookName,
         async (event) => {
           try {
-            const data = await this.executeHook(hook.hookName, event.payload, { hot: true });
+            const data = await this.executeHook(hook.hookName, event.payload, {
+              hot: true,
+            });
             return { status: 'success', data };
           } catch (error) {
             return {
@@ -186,6 +196,8 @@ export class UnitCoreService {
           description: hook.description,
           methodRef: `unit:${hook.unitName}:${hook.hookName}`,
           payloadSchema: hook.payloadSchema,
+          denyLlm: hook.denyLlm,
+          requiredAbility: hook.requiredAbility,
         },
       );
     }
@@ -224,7 +236,7 @@ export class UnitCoreService {
     const srcPath = join(basePath, 'src', 'unit-core', 'system-unit');
     const distPath = join(basePath, 'dist', 'unit-core', 'system-unit');
     try {
-      return require('node:fs').existsSync(srcPath) ? srcPath : distPath;
+      return existsSync(srcPath) ? srcPath : distPath;
     } catch {
       return srcPath;
     }

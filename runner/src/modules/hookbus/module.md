@@ -36,9 +36,11 @@ hook-lifecycle-registry -> modules/hookbus/lifecycle/registry.ts
 - HookEvent<T>           -- name + payload + context + filter + declaration + log
 - HookInvocationContext  -- token / principalId / principalType / source / traceId / runnerId / ts / extras
                             extras.debug=true 触发 OTel sandbox tracer (hook-rpc.client 把 envelope.debug 写在这里)
+                            extras.identity 由 SaaS 在调 runner hook 时 push (RunnerIdentityContext: principalId/tenantId/abilityRules/dataPermissions)
 - HookHandler<T,R>       -- (event) => HookResult
 - HookMiddleware<T,R>    -- (event, next) => HookResult
-- HookRequiredAbility    -- { action, subject }; metadata.requiredAbility 透传给 SaaS HookAbilityMiddleware 校验
+- HookRequiredAbility    -- { action, subject }; metadata.requiredAbility 由 RunnerHookAbilityMiddleware 在 source==='llm' 时校验 (rules 来自 extras.identity.abilityRules)
+- HookMetadata.denyLlm   -- 显式拒绝 LLM 调用; consumeTask 镜像到 declaration.denyLlm, middleware 识别后软错拒
 - HookLog                -- handler 可见的日志接口: trace/debug/info/warn/error/event(name, attrs?)
                             hookbus.service 注入到 event.log; 实现见 modules/observability/hook-log.factory.ts
 - HookLogEntry           -- drain 出来的单条 { ts, level, message, attrs? }; 写到 HookResult.debugLog
@@ -77,7 +79,8 @@ payload schema 校验 (zod, SSOT):
 - undeclare(hookName)   -- 应用主动撤销
 - report(name, env, ctx?) -- 业务方法完成时上报 envelope { input, meta?, ok?, result?, error? }
 - payloadSchema 自动包成 envelope schema 落 hookBus.metadata, 与 SaaS @HookLifecycle 行为对齐
-- requiredAbility 字段透传到 metadata, Runner 不本地校验, SaaS 派发前由 HookAbilityMiddleware 校验
+- requiredAbility 字段透传到 metadata, **同时由 Runner 端 RunnerHookAbilityMiddleware 本地校验** (rules 由 SaaS push 到 extras.identity.abilityRules); SaaS 端 HookAbilityMiddleware 仍做派发前一次校验, 形成双保险
+- denyLlm 字段透传到 metadata, RunnerHookAbilityMiddleware 在 source==='llm' + denyLlm=true 时直接软错拒
 - 声明落 hookBus 后即可被 runner.system.hookbus.search / runner.system.hookbus.getInfo 元 hook 看见; SaaS 不维护 runner 镜像,
   LLM 调用前用元 hook 自查即可 (getInfo 返回 item 含 requiredAbility, LLM 知道权限要求)
 - hookBus.unregister(name, predicate?) 是热替换的底座, 默认整组移除, 传 predicate 仅清匹配项

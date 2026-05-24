@@ -95,6 +95,7 @@
                   v-for="item in recentResources"
                   :key="item.id"
                   class="p-4 rounded-xl border border-gray-100 hover:border-gray-300 hover:bg-gray-50 cursor-pointer transition-all group"
+                  @click="openResource(item)"
                 >
                   <div class="flex items-start space-x-3">
                     <div
@@ -387,6 +388,14 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- 仪表盘"最近新增资源"图片预览灯箱, 与资源库同一组件 -->
+    <ImageViewer
+      :open="!!previewImageUrl"
+      :src="previewImageUrl"
+      :alt="previewImageAlt"
+      @close="previewImageUrl = null"
+    />
   </div>
 </template>
 
@@ -411,6 +420,7 @@ import { useI18n } from '../composables/useI18n';
 import { useRightPanelStore } from '../store/right-panel.store';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';
 import { resolveImageUrl } from '../../resource/services/resource-url.service';
+import ImageViewer from '../../resource/components/ImageViewer.vue';
 import { agentApi } from '../../../api/agent';
 import { runnerApi } from '../../../api/runner';
 import { todoApi } from '../../../api/todo';
@@ -549,9 +559,64 @@ interface RecentResource {
   icon: string;
   iconBg: string;
   iconColor: string;
+  // 打开节点需要的原始字段, 与资源库 StorageManagement.openNode 同源
+  type?: string;
+  path?: string;
+  resourcePath?: string | null;
+  mimeType?: string | null;
 }
 
 const recentResources = ref<RecentResource[]>([]);
+
+// 图片预览状态 :: 与资源库 ImageViewer 灯箱共用同一组件
+const previewImageUrl = ref<string | null>(null);
+const previewImageAlt = ref<string>('');
+
+/**
+ * 判断是否为图片资源 (mime 优先, 兜底文件名后缀); 与 StorageManagement.isImageNode 同源
+ * @keyword-en is-image-resource
+ */
+function isImageResource(item: RecentResource): boolean {
+  const mime = (item.mimeType || '').toLowerCase();
+  if (mime.startsWith('image/') && !mime.includes('svg')) return true;
+  return /\.(png|jpe?g|gif|webp|bmp|heic|heif)$/.test(
+    (item.name || '').toLowerCase(),
+  );
+}
+
+/**
+ * 仪表盘"最近新增资源"打开行为, 与资源库 StorageManagement.openNode 一致:
+ *   - 图片 → ImageViewer 灯箱 (站内预览)
+ *   - 其它文件 → 浏览器新 tab 打开签名 resourcePath, 后端按 mime 决定 inline / attachment
+ *   - 文件夹 → 跳转到资源库 (storage) tab, 由资源库自身的导航打开
+ * @keyword-en open-recent-resource, image-preview, signed-resource-path, folder-jump-storage
+ */
+function openResource(item: RecentResource) {
+  if (item.type === 'folder') {
+    const label =
+      tabRegistry.storage?.name ?? t('sidebar.storage') ?? 'Storage';
+    // jumpRequest 含 ts nonce, 让 StorageManagement 即使收到重复 path 也能触发跳转
+    openTab('storage', label, {
+      jumpRequest: { path: item.path || '/', ts: Date.now() },
+    });
+    if (props.activeView !== 'chat' && props.activeView !== 'storage') {
+      emit('change', 'storage');
+    }
+    return;
+  }
+  if (!item.resourcePath) {
+    console.warn('[dashboard] openResource: missing resourcePath for', item.id);
+    return;
+  }
+  const fullUrl =
+    resolveImageUrl(item.resourcePath) || item.resourcePath;
+  if (isImageResource(item)) {
+    previewImageUrl.value = fullUrl;
+    previewImageAlt.value = item.name;
+    return;
+  }
+  window.open(fullUrl, '_blank', 'noopener,noreferrer');
+}
 
 // Pending Todos data
 interface PendingTodo {
@@ -654,6 +719,11 @@ async function fetchDashboardData() {
             id: item.id,
             name: item.name || '未命名文件',
             time: formatTimeAgo(item.createdAt),
+            // 打开行为需要的原始字段 (resourcePath 是后端签好的; type 区分 folder/file; path 用于文件夹跳转资源库定位)
+            type: item.type,
+            path: item.path,
+            resourcePath: item.resourcePath ?? null,
+            mimeType: item.mimeType ?? null,
             ...iconInfo,
           };
         });

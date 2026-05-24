@@ -1,18 +1,41 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { join } from 'node:path';
 import type { TerminalRecord, TerminalStatus, TerminalPoolStatus } from './terminal.types';
 
 /**
  * @title Terminal 进程池
- * @description 管理 child_process 的生命周期、超时、记录持久化与定时清理。
- * @keywords-cn 进程池, 终端, 超时, 记录持久化
- * @keywords-en process-pool, terminal, timeout, record-persistence
+ * @description 管理 child_process 的生命周期、超时、记录持久化与延时批量删除。
+ *   持久化策略:
+ *     - sync 正常完成 → 不落盘 (race 已返回 record 给调用方, 盘上版本无意义)
+ *     - sync 超时转 async → 落盘 (LLM 后续靠 getOutput 拿结果)
+ *     - async 任意完成 → 落盘
+ *   删除策略:
+ *     - getOutput 调用后 markForDelete: 5 分钟延时, 单一 tick (30s) 扫到点批量 rm
+ *     - 24h 兜底: 从未 getOutput 的孤儿记录 (LLM 起了 async 任务忘了 getOutput) 24h 后强制清
+ * @keywords-cn 进程池, 终端, 超时, 异步持久化, 延时删除, 队列批量
+ * @keywords-en process-pool, terminal, timeout, async-persistence, delay-delete, batch-cleanup
  */
+
+const CLEANUP_TICK_MS = 30_000; // 30s 扫一次 pendingDelete + 24h 兜底
+const DELETE_DELAY_MS = 5 * 60 * 1000; // getOutput 后 5 分钟删
+const ORPHAN_CUTOFF_MS = 86_400_000; // 24h 兜底
+
 export class TerminalPool {
   private readonly processes = new Map<string, ChildProcess>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
+  /** spawn 内部 record 引用 + onComplete 闭包, 让 sync 超时分支可以 "提升为 async" 改写 record.persist 状态 */
+  private readonly pending = new Map<
+    string,
+    {
+      record: TerminalRecord;
+      persistRecord: boolean;
+      onComplete?: (r: TerminalRecord) => void;
+    }
+  >();
+  /** handleId → 到点时间戳, tick 扫到 <= now 的批量删 */
+  private readonly pendingDelete = new Map<string, number>();
   private readonly cleanupTimer: NodeJS.Timeout;
   private readonly recordsDir: string;
 
@@ -22,14 +45,17 @@ export class TerminalPool {
   ) {
     this.recordsDir = join(workspacePath, '.terminal-records');
     mkdirSync(this.recordsDir, { recursive: true });
-    // 每 1 小时清理超过 24h 的记录文件
-    this.cleanupTimer = setInterval(() => this.cleanOldRecords(), 3600_000).unref?.() ?? this.cleanupTimer;
+    // 30s 周期 tick: 同时处理 pendingDelete 到点 + 24h 兜底; unref() 返回 timer 自身, 失败兜底用原 timer
+    const timer = setInterval(() => this.runCleanupTick(), CLEANUP_TICK_MS);
+    this.cleanupTimer = (timer.unref?.() as NodeJS.Timeout | undefined) ?? timer;
   }
 
   /**
    * @title 执行命令并返回句柄信息
    * @description spawn 一个子进程, cwd 限制为 workspace 目录。
-   * @keyword-en spawn-command
+   *   persistRecord=true 时完成才落盘; sync 模式调用方应传 false (内存 race 已拿结果),
+   *   超时转 async 场景通过 promoteToAsync() 提升此标记。
+   * @keyword-en spawn-command, persist-on-async
    */
   spawn(
     command: string,
@@ -39,6 +65,9 @@ export class TerminalPool {
       timeout: number;
       maxBuffer: number;
       invocationContext?: Record<string, unknown>;
+      /** 完成后是否落盘. sync 默认 false; async 默认 true; sync 超时转 async 用 promoteToAsync 改 */
+      persistRecord?: boolean;
+      /** 完成回调; sync 一般不传, async 传 sendMsg 通知函数 */
       onComplete?: (record: TerminalRecord) => void;
     },
   ): { handleId: string; promise: Promise<TerminalRecord> } | { error: string } {
@@ -64,6 +93,12 @@ export class TerminalPool {
       timeout: options.timeout,
       invocationContext: options.invocationContext,
     };
+
+    this.pending.set(handleId, {
+      record,
+      persistRecord: options.persistRecord ?? options.mode === 'async',
+      onComplete: options.onComplete,
+    });
 
     const proc = spawn(command, [], {
       cwd,
@@ -99,8 +134,15 @@ export class TerminalPool {
         record.stderr = Buffer.concat(chunks_err).toString('utf8').slice(0, options.maxBuffer);
         record.finishedAt = Date.now();
 
-        this.writeRecord(record);
-        options.onComplete?.(record);
+        const meta = this.pending.get(handleId);
+        this.pending.delete(handleId);
+        // 落盘条件: 显式 persistRecord 或 timeout 状态 (sync 超时一律落盘, 让 LLM 能 getOutput)
+        const shouldPersist =
+          (meta?.persistRecord ?? false) || status === 'timeout';
+        if (shouldPersist) {
+          this.writeRecord(record);
+        }
+        meta?.onComplete?.(record);
         resolve(record);
       };
 
@@ -128,6 +170,35 @@ export class TerminalPool {
   }
 
   /**
+   * 把指定 handleId 从 "sync 不落盘" 提升为 "async 落盘"; 同时注入 (或替换) onComplete 通知回调。
+   * 用于 ops.exec 中 sync race 超时分支: 原 promise 还在跑, 让它完成时落盘 + 触发通知。
+   * @keyword-en promote-to-async
+   */
+  promoteToAsync(
+    handleId: string,
+    onComplete?: (record: TerminalRecord) => void,
+  ): boolean {
+    const meta = this.pending.get(handleId);
+    if (!meta) return false;
+    meta.persistRecord = true;
+    if (onComplete) meta.onComplete = onComplete;
+    return true;
+  }
+
+  /**
+   * 标记某条记录在 delayMs 后被删除; 由 getOutput 调用 (LLM 读过了, 5 分钟后清).
+   * 多次 mark 取最晚的删除时间.
+   * @keyword-en mark-for-delete, delayed-delete
+   */
+  markForDelete(handleId: string, delayMs = DELETE_DELAY_MS): void {
+    const target = Date.now() + delayMs;
+    const existing = this.pendingDelete.get(handleId);
+    if (existing === undefined || target > existing) {
+      this.pendingDelete.set(handleId, target);
+    }
+  }
+
+  /**
    * @title 终止指定进程
    * @keyword-en kill-process
    */
@@ -152,9 +223,12 @@ export class TerminalPool {
 
   /**
    * @title 读取执行记录
+   * @description 优先从 pending 内存拿 (running / 刚完成未落盘); 否则读盘.
    * @keyword-en get-record
    */
   getRecord(handleId: string): TerminalRecord | null {
+    const live = this.pending.get(handleId);
+    if (live) return live.record;
     const filePath = join(this.recordsDir, `${handleId}.json`);
     try {
       const raw = readFileSync(filePath, 'utf8');
@@ -193,12 +267,33 @@ export class TerminalPool {
     const filePath = join(this.recordsDir, `${record.handleId}.json`);
     try {
       writeFileSync(filePath, JSON.stringify(record, null, 2), 'utf8');
-    } catch { /* ignore write errors */ }
+    } catch {
+      /* ignore write errors */
+    }
   }
 
-  /** 清理超过 24h 的记录文件 */
-  private cleanOldRecords(): void {
-    const cutoff = Date.now() - 86_400_000; // 24h
+  /**
+   * 30s 周期 tick: 先扫 pendingDelete 到点的批量删, 再做 24h 兜底.
+   * @keyword-en cleanup-tick, batch-delete
+   */
+  private runCleanupTick(): void {
+    const now = Date.now();
+    // ① pendingDelete 批量删
+    const toDelete: string[] = [];
+    for (const [handleId, deleteAt] of this.pendingDelete) {
+      if (deleteAt <= now) toDelete.push(handleId);
+    }
+    for (const id of toDelete) {
+      this.pendingDelete.delete(id);
+      try {
+        rmSync(join(this.recordsDir, `${id}.json`), { force: true });
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // ② 24h 兜底: 扫盘, 已 finished 超过 24h 的强制清 (LLM 起了 async 忘 getOutput 的孤儿)
+    const orphanCutoff = now - ORPHAN_CUTOFF_MS;
     try {
       const files = readdirSync(this.recordsDir);
       for (const file of files) {
@@ -207,7 +302,7 @@ export class TerminalPool {
         try {
           const raw = readFileSync(filePath, 'utf8');
           const record = JSON.parse(raw) as TerminalRecord;
-          if (record.finishedAt && record.finishedAt < cutoff) {
+          if (record.finishedAt && record.finishedAt < orphanCutoff) {
             rmSync(filePath, { force: true });
           }
         } catch {
@@ -215,6 +310,8 @@ export class TerminalPool {
           rmSync(filePath, { force: true });
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 }

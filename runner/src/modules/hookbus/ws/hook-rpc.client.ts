@@ -99,16 +99,41 @@ function projectRegistrations(
 export function registerMetaHooks(hookBus: RunnerHookBusService): void {
   const existing = new Set(hookBus.listRegistrations().map((i) => i.name));
 
+  // 注: payload 入参约定跟 SaaS 端 HookLifecycle args 一致 —— **始终是 array, 真实参数在 args[0]**。
+  // dispatchOne / buildSearchHookTool 等调用方都包成 [{ ... }] 形态; schema 用 z.tuple 校验数组首元素结构。
+  // 取参数时统一用 readArg(event.payload) 提取 args[0], 兼容旧/新调用方。
+
+  const searchInputSchema = z
+    .object({
+      tags: z.array(z.string()).optional(),
+      pluginName: z.string().optional(),
+      cursor: z.number().int().nonnegative().optional(),
+      limit: z.number().int().positive().max(DEFAULT_PAGE_SIZE).optional(),
+    })
+    .optional();
+  const getTagInputSchema = z
+    .object({
+      pluginName: z.string().optional(),
+      cursor: z.number().int().nonnegative().optional(),
+      limit: z.number().int().positive().max(TAG_PAGE_LIMIT).optional(),
+    })
+    .optional();
+  const getInfoInputSchema = z
+    .object({
+      hookNames: z.array(z.string()).optional(),
+    })
+    .optional();
+
   if (!existing.has('runner.system.hookbus.search')) {
     hookBus.register(
       'runner.system.hookbus.search',
       (event) => {
-        const payload = (event.payload ?? {}) as {
+        const payload = readArg<{
           tags?: string[];
           pluginName?: string;
           cursor?: number;
           limit?: number;
-        };
+        }>(event.payload);
         const wantTags = (payload.tags ?? []).filter(Boolean);
         const all = projectRegistrations(hookBus).filter((item) => {
           if (wantTags.length > 0 && !wantTags.some((t) => item.tags.includes(t))) {
@@ -130,12 +155,8 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
         description:
           '搜索已注册 hook, 支持 tags 任一命中 / pluginName 过滤, 默认每页 100 条, 通过 cursor 翻页',
         tags: ['meta'],
-        payloadSchema: z.object({
-          tags: z.array(z.string()).optional(),
-          pluginName: z.string().optional(),
-          cursor: z.number().int().nonnegative().optional(),
-          limit: z.number().int().positive().max(DEFAULT_PAGE_SIZE).optional(),
-        }),
+        // args 形参: 跟 SaaS HookLifecycle 一致, payload[0] 是参数对象
+        payloadSchema: z.tuple([searchInputSchema]),
       },
     );
   }
@@ -144,11 +165,11 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
     hookBus.register(
       'runner.system.hookbus.getTag',
       (event) => {
-        const payload = (event.payload ?? {}) as {
+        const payload = readArg<{
           pluginName?: string;
           cursor?: number;
           limit?: number;
-        };
+        }>(event.payload);
         const tagCount = new Map<string, number>();
         for (const item of projectRegistrations(hookBus)) {
           if (payload.pluginName && item.pluginName !== payload.pluginName) continue;
@@ -171,11 +192,7 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
       {
         description: `获取已注册 hook 的 tag 频次榜, 支持 pluginName 过滤, 默认/上限 ${TAG_PAGE_LIMIT} 条, 超过用 cursor 翻页`,
         tags: ['meta'],
-        payloadSchema: z.object({
-          pluginName: z.string().optional(),
-          cursor: z.number().int().nonnegative().optional(),
-          limit: z.number().int().positive().max(TAG_PAGE_LIMIT).optional(),
-        }),
+        payloadSchema: z.tuple([getTagInputSchema]),
       },
     );
   }
@@ -184,7 +201,7 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
     hookBus.register(
       'runner.system.hookbus.getInfo',
       (event) => {
-        const payload = (event.payload ?? {}) as { hookNames?: string[] };
+        const payload = readArg<{ hookNames?: string[] }>(event.payload);
         const want = new Set(payload.hookNames ?? []);
         const items: Array<{
           name: string;
@@ -224,12 +241,25 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
         description:
           '批量获取 hook 的描述/tags/payload JSON Schema (Zod 派生)/requiredAbility (CASL action+subject), 不传 hookNames 则返回全部',
         tags: ['meta'],
-        payloadSchema: z.object({
-          hookNames: z.array(z.string()).optional(),
-        }),
+        payloadSchema: z.tuple([getInfoInputSchema]),
       },
     );
   }
+}
+
+/**
+ * 统一参数读取: meta hook 调用方约定 payload=[{...}] 数组, 但允许兼容旧调用 payload={...} object;
+ * 返回 args[0] 或 {} (零参数也合法).
+ * @keyword-en read-meta-hook-arg
+ */
+function readArg<T extends object>(payload: unknown): T {
+  if (Array.isArray(payload)) {
+    const head = payload[0];
+    if (head && typeof head === 'object') return head as T;
+    return {} as T;
+  }
+  if (payload && typeof payload === 'object') return payload as T;
+  return {} as T;
 }
 
 /**
@@ -241,7 +271,7 @@ function createCallSaaSHook(socket: Socket) {
   return async (
     hookName: string,
     payload: unknown,
-    context?: Record<string, unknown>,
+    context?: HookInvocationContext,
   ): Promise<{ errorMsg?: string[]; result: unknown }> => {
     const callId = `runner-saas.${randomUUID().slice(0, 12)}`;
     return new Promise((resolve) => {

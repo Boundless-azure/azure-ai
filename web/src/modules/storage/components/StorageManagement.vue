@@ -325,7 +325,7 @@
  * @keywords-cn 资源库管理, 拖拽上传, 多文件上传, 右键菜单, 复制粘贴
  * @keywords-en storage-management, drag-drop-upload, multi-file-upload, context-menu, copy-paste
  */
-import { ref, reactive, onMounted, onUnmounted, shallowRef, computed } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, shallowRef, computed, watch } from 'vue';
 import BaseModal from '../../../components/BaseModal.vue';
 import { useStorage } from '../hooks/useStorage';
 import { useStorageClipboardStore, type ClipboardItem } from '../store/clipboard.store';
@@ -336,6 +336,15 @@ import type { StorageNode } from '../types/storage.types';
 import ImageViewer from '../../resource/components/ImageViewer.vue';
 import { resolveResourceUrl } from '../../resource/services/resource-url.service';
 import { SHARE_MODE_LABEL, SHARE_MODE } from '../constants/storage.constants';
+
+/**
+ * 外部跳转请求 :: 用 ts (Date.now()) 作 nonce, 防止外部多次跳同一路径时 watch 不触发。
+ *   从仪表盘"最近新增资源"点文件夹时通过 openTab(props) 注入, 见 [RightPanel.openResource]
+ * @keyword-en jump-request-prop, dashboard-to-storage-folder
+ */
+const props = defineProps<{
+  jumpRequest?: { path: string; ts: number };
+}>();
 
 const {
   loading,
@@ -708,8 +717,63 @@ const closeContextMenu = () => {
   contextMenu.show = false;
 };
 
+/**
+ * 跳到指定 folder path :: 用于外部入口直接定位 (eg. 仪表盘"最近新增资源"点文件夹)。
+ *   path 分段重建合成 breadcrumbs (用 `__synth_*` id 与真实节点区分, 避免 navigateTo 的 findIndex 碰撞),
+ *   再 loadChildren 拉该目录文件列表。根目录 '/' 直接走 navigateToRoot 等价路径。
+ * @keyword-en jump-to-path, synthetic-breadcrumbs
+ */
+const jumpToPath = (path: string) => {
+  const normalized = (path || '/').replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+  if (normalized === '/') {
+    breadcrumbs.value = [];
+    currentPath.value = '/';
+    loadChildren('/');
+    return;
+  }
+  const segments = normalized.split('/').filter(Boolean);
+  const crumbs: StorageNode[] = [];
+  let cum = '';
+  for (const seg of segments) {
+    cum += `/${seg}`;
+    crumbs.push({
+      id: `__synth_${cum}`,
+      tenantId: '',
+      name: seg,
+      type: 'folder',
+      path: cum,
+      size: null,
+      mimeType: null,
+      resourceId: null,
+      shareMode: 'none',
+      shareToken: null,
+      shareExpiresAt: null,
+      active: true,
+      createdAt: '',
+      updatedAt: '',
+    });
+  }
+  breadcrumbs.value = crumbs;
+  currentPath.value = normalized;
+  loadChildren(normalized);
+};
+
+// 外部 jumpRequest 触发跳转 :: watch ts 即可 (即使 path 相同, ts 不同也会触发)
+watch(
+  () => props.jumpRequest?.ts,
+  (ts) => {
+    if (!ts || !props.jumpRequest) return;
+    jumpToPath(props.jumpRequest.path);
+  },
+);
+
 onMounted(() => {
-  loadChildren(currentPath.value);
+  // 初始挂载时若已有 jumpRequest (例如 tab 第一次打开就带了 path), 直接跳过去
+  if (props.jumpRequest && props.jumpRequest.path) {
+    jumpToPath(props.jumpRequest.path);
+  } else {
+    loadChildren(currentPath.value);
+  }
   document.addEventListener('click', closeContextMenu);
 });
 

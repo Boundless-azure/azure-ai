@@ -49,6 +49,7 @@ export function useAiProviders() {
     description?: string | null;
     enabled?: boolean;
     thinkingEnabled?: boolean;
+    smartSegmentChars?: number | null;
   }) {
     const res = await agentApi.createAiModel(payload);
     return res.data;
@@ -68,6 +69,7 @@ export function useAiProviders() {
       description?: string | null;
       enabled?: boolean;
       thinkingEnabled?: boolean;
+      smartSegmentChars?: number | null;
     },
   ) {
     const res = await agentApi.updateAiModel(id, payload);

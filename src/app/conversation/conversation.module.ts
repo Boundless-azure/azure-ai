@@ -22,6 +22,8 @@ import { CurrentSessionService } from './services/current-session.service';
 import { CurrentSessionHookController } from './controllers/current-session.hook-controller';
 import { SessionHandbookSeederService } from './services/session-handbook-seeder.service';
 import { ChatSessionSmartService } from './services/chat-session-smart.service';
+import { SessionLockService } from './services/session-lock.service';
+import { SmartLlmGeneratorService } from './services/smart-llm-generator.service';
 import { ImContactGroupEntity } from './entities/im-contact-group.entity';
 import { ImContactGroupMemberEntity } from './entities/im-contact-group-member.entity';
 import { ChatMessageEntity } from '@core/ai/entities/chat-message.entity';
@@ -29,6 +31,7 @@ import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
 import { ChatSessionDataEntity } from '@core/ai/entities/chat-session-data.entity';
 import { ChatSessionMemberEntity } from '@core/ai/entities/chat-session-member.entity';
 import { ChatSessionSmartEntity } from '@core/ai/entities/chat-session-smart.entity';
+import { AIModelEntity } from '@core/ai/entities/ai-model.entity';
 import { LGCheckpointEntity } from '@core/langgraph/checkpoint/entities/lg-checkpoint.entity';
 import { LGWriteEntity } from '@core/langgraph/checkpoint/entities/lg-write.entity';
 import { LangGraphCheckpointModule } from '@core/langgraph/checkpoint/checkpoint.module';
@@ -64,6 +67,7 @@ import { AuthModule } from '@/core/auth/auth.module';
       ChatSessionDataEntity,
       ChatSessionMemberEntity,
       ChatSessionSmartEntity,
+      AIModelEntity,
       LGCheckpointEntity,
       LGWriteEntity,
       AgentExecutionEntity,
@@ -96,6 +100,8 @@ import { AuthModule } from '@/core/auth/auth.module';
     CurrentSessionHookController,
     SessionHandbookSeederService,
     ChatSessionSmartService,
+    SessionLockService,
+    SmartLlmGeneratorService,
   ],
   exports: [
     ConversationService,

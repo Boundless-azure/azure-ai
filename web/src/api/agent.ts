@@ -313,6 +313,7 @@ export const agentApi = {
     description?: string | null;
     enabled?: boolean;
     thinkingEnabled?: boolean;
+    smartSegmentChars?: number | null;
   }) => {
     const parsed = CreateAiModelSchema.safeParse(data);
     if (!parsed.success) throw new Error('Invalid create ai model payload');
@@ -335,6 +336,7 @@ export const agentApi = {
       description?: string | null;
       enabled?: boolean;
       thinkingEnabled?: boolean;
+      smartSegmentChars?: number | null;
     },
   ) => {
     const parsed = UpdateAiModelSchema.safeParse(data);

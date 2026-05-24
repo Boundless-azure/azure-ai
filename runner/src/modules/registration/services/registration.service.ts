@@ -59,19 +59,17 @@ export class RunnerRegistrationService {
   async testRunnerKey(input?: {
     saasSocketUrl?: string;
     runnerKey?: string;
-    runnerId?: string;
   }): Promise<{ ok: boolean; message: string; runnerId?: string }> {
     const config = getRunnerConfig();
     const saasSocketUrl = input?.saasSocketUrl ?? config.saasSocketUrl;
     const runnerKey = input?.runnerKey ?? config.runnerKey;
-    const runnerId = input?.runnerId ?? config.runnerId;
     if (!saasSocketUrl || !runnerKey) {
       return { ok: false, message: 'runner key or saas socket url is missing' };
     }
+    // 永远不传 runnerId 让 SaaS 按 key 反查 + 返回真实 id; 本地缓存的 runnerId 仅作 reconnect 时的对账, 不参与认证
     const result = await this.connectAndRegister({
       saasSocketUrl,
       runnerKey,
-      runnerId,
       persistRunnerId: true,
     });
     if (!result.ok) return result;
@@ -89,10 +87,10 @@ export class RunnerRegistrationService {
       this.lastError = 'runner key or saas socket url is missing';
       return { ok: false, message: this.lastError };
     }
+    // 同上: key 是唯一凭据, SaaS 返回的 runnerId 覆盖本地 (避免本地缓存 stale)
     const result = await this.connectAndRegister({
       saasSocketUrl: config.saasSocketUrl,
       runnerKey: config.runnerKey,
-      runnerId: config.runnerId,
       persistRunnerId: true,
     });
     if (!result.ok) return { ok: false, message: result.message };
@@ -102,9 +100,14 @@ export class RunnerRegistrationService {
   private async connectAndRegister(input: {
     saasSocketUrl: string;
     runnerKey: string;
+    /**
+     * @deprecated 不再传入; key 是唯一认证凭据, SaaS 按 key 反查后返回 runnerId。
+     * 保留可选签名仅为兼容外部直接调用方; 内部 emit 永远不发该字段。
+     */
     runnerId?: string;
     persistRunnerId?: boolean;
   }): Promise<{ ok: boolean; message: string; runnerId?: string }> {
+    void input.runnerId; // intentionally ignored
     if (this.socket?.connected) {
       this.socket.disconnect();
     }
@@ -128,7 +131,8 @@ export class RunnerRegistrationService {
         }
         socket.emit(
           'runner/register',
-          { runnerId: input.runnerId, key: input.runnerKey },
+          // 不发送 runnerId; 让 SaaS 按 key 反查 + 在 resp 中返回真实 id, 本地 saveConfig 覆盖缓存
+          { key: input.runnerKey },
           async (resp: {
             ok?: boolean;
             error?: string;

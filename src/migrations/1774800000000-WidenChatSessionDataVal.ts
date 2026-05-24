@@ -6,9 +6,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * @keywords-cn 迁移, 会话数据, 调用日志, 大文本
  * @keywords-en migration, session-data, call-log, longtext
  */
-export class WidenChatSessionDataVal1774800000000
-  implements MigrationInterface
-{
+export class WidenChatSessionDataVal1774800000000 implements MigrationInterface {
   name = 'WidenChatSessionDataVal1774800000000';
 
   /**

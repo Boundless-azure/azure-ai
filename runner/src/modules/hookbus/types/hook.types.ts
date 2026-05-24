@@ -124,11 +124,19 @@ export interface HookMetadata {
   requireAuth?: boolean;
   /**
    * 调用方所需能力 (action/subject); 一个或多个 (多个为 AND)。
-   * - Runner 端不本地校验, 仅透传 + LLM 自查暴露
-   * - 由 SaaS 端 HookAbilityMiddleware 在派发 hook:call 前完成校验
+   * - 调用源是 LLM 时由 RunnerHookAbilityMiddleware 在派发前完成校验 (rules 由 SaaS push 到 extras.abilityRules)
+   * - 非 LLM 来源 (runner 内部 / system) 跳过校验
    * @keyword-en required-ability
    */
   requiredAbility?: HookRequiredAbility | HookRequiredAbility[];
+  /**
+   * 显式拒绝 LLM 调用; 用于纯内部 / 系统级 / 底层基座 hook (如 runner.unitcore.mongo.insert/update/delete)。
+   * - RunnerHookAbilityMiddleware 检测到 context.source === 'llm' + denyLlm === true 时直接软错拒绝
+   * - 与 requiredAbility 正交: 即使授权角色齐全, 只要走 LLM 链路就拒
+   * - 业务代码 / runner 内部 / system 调用不受影响
+   * @keyword-en deny-llm, llm-deny-list
+   */
+  denyLlm?: boolean;
 }
 
 export interface HookResult<TResult = unknown> {
@@ -155,6 +163,17 @@ export interface HookDeclaration {
   middlewares?: string[];
   filter?: HookFilter;
   errorMode?: 'capture' | 'throw';
+  /**
+   * runtime 镜像 :: consumeTask 从 reg.metadata.requiredAbility 复制过来,
+   * 让中间件 (如 RunnerHookAbilityMiddleware) 不需要访问 reg 直接读到能力要求。
+   * @keyword-en required-ability-mirror
+   */
+  requiredAbility?: HookRequiredAbility | HookRequiredAbility[];
+  /**
+   * runtime 镜像 :: consumeTask 从 reg.metadata.denyLlm 复制过来。
+   * @keyword-en deny-llm-mirror
+   */
+  denyLlm?: boolean;
 }
 
 export type HookHandler<TPayload = unknown, TResult = unknown> = (

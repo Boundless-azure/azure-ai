@@ -4,9 +4,11 @@
 - 提供 Runner 的增删改查接口。
 - 创建 Runner 时自动创建主体账号（principal）并生成注册 key，同时分配默认域名。
 - 提供 Runner 专用 WebSocket 网关用于注册握手、FRP 分配（含 token 返回）及在线状态维护。
+  - 注册握手只认 runnerKey, runnerId 由 SaaS 反查后回包; runner 本地缓存仅 reconnect 时对账, 不参与认证
 - 提供 Runner 面板代理接口（域名、应用、Solution、统计、FRP 管理）。
 - 提供奖励记录能力，用于记录免费域名等奖励的发放。
 - 提供 frps HTTP 插件回调接口，对 Login/NewProxy 进行二次鉴权（runner_key + port 校验）。
+- **Hook 暴露 (新增)**: `saas.app.runner.list / get` 给 LLM 列/查 runner; LLM 调 target=runner 的 search_hook/get_hook_*/call_hook 前**必须先调 list 拿真实 runnerId** (否则盲填会 softError "runnerId-required"). init_tip directHooks + hook discovery chain ① 已同步提示这点.
 
 文件清单（File List）
 - app/runner/entities/runner.entity.ts

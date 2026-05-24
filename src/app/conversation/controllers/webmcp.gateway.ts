@@ -286,9 +286,7 @@ export class WebMcpGateway implements OnGatewayConnection, OnGatewayDisconnect {
     metadata: { tags: ['webmcp', 'control', 'call'] },
   })
   @CheckAbility('update', 'session')
-  async handleWebControl(
-    payloadInput: WebControlPayload,
-  ): Promise<HookResult> {
+  async handleWebControl(payloadInput: WebControlPayload): Promise<HookResult> {
     const { sessionId, type, payload, timeout } = payloadInput;
     const socketId = await this._resolveSocket(sessionId);
     if (!socketId) {

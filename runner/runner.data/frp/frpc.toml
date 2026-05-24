@@ -8,10 +8,10 @@ token = "frps-default-token-change-in-production"
 
 # metadata 传递 runner key，frps server plugin 用于鉴权
 [metadatas]
-runner_key = "fa6553c69b5cec15ac0e306e9587ca6dee6776665a83ec87"
+runner_key = "590787b6599972a86aa1d96271012f669895e0f429b8dbac"
 
 [log]
-to = "E:/project/azure-ai/runner/runner.data/frp/logs/frpc.log"
+to = "C:/project/azure-ai/runner/runner.data/frp/logs/frpc.log"
 level = "info"
 maxDays = 3
 

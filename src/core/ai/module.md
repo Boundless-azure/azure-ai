@@ -44,6 +44,10 @@
   - id, principalId, agentId, modelId, status, createdAt
 - ChatMessageEntity
   - id, sessionId, role, content, functionCall?, result?
+- AIModelEntity
+  - id, name, displayName, provider, apiProtocol, type, status, apiKey, baseURL, azureConfig?, defaultParams?
+  - thinkingEnabled — 思考模式开关 (think/reasoning) 独立 boolean 列, 便于 SQL 过滤/索引 | keywords: thinking-mode-toggle
+  - smartSegmentChars — chat_session_smart 后台分段写入用的字符阈值 (int nullable, null → 走代码常量 5000); 不同模型上下文承载力差异大, 长上下文模型可设大 (Claude/Gemini 8000+), 容易"歇菜"的设小 (3000); 由 ChatSessionSmartService.resolveModelContext 取 agent.aiModelIds[0] 对应该字段 | keywords: smart-segment-chars, context-budget, model-aware-summary
 - AIProvider
   - openai, anthropic, google, gemini, deepseek, kimi, minimax, nvidia, azure_openai, custom
 - BaseAuditedEntity.ensureId() — 插入前生成 UUID v7 主键 | keywords: id-generation, uuid-v7, before-insert

@@ -1,13 +1,13 @@
 {
   "serverPort": 4310,
   "saasSocketUrl": "http://localhost:3000",
-  "runnerId": "019cd659-1288-75be-b1d6-c10cd2707060",
-  "runnerKey": "fa6553c69b5cec15ac0e306e9587ca6dee6776665a83ec87",
+  "runnerId": "019e5852-7ec2-7844-947b-bbb6d3565525",
+  "runnerKey": "590787b6599972a86aa1d96271012f669895e0f429b8dbac",
   "hookbusDebugEnabled": true,
   "mongoUri": "mongodb://127.0.0.1:27027",
-  "mongoDbName": "",
+  "mongoDbName": "azure_ai_runner",
   "runnerDbName": "runner",
-  "redisUri": "",
+  "redisUri": "redis://127.0.0.1:6389",
   "frpcBinPath": "frpc",
   "frpcLocalPort": 4310
 }

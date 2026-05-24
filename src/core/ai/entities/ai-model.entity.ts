@@ -80,6 +80,16 @@ export class AIModelEntity extends BaseAuditedEntity {
   @Column({ name: 'thinking_enabled', type: 'boolean', default: false })
   thinkingEnabled!: boolean;
 
+  /**
+   * 该模型的 smart 历史分段字符阈值: session 累计可见正文达到该阈值后, 用该模型生成摘要 + 关键词并写一个 smart 段。
+   *   - 不同模型上下文承载力差异大: 一些模型 8k 后输出质量就明显下降, 应设小阈值 (e.g. 3000); 长上下文模型 (Claude / Gemini) 可设大 (e.g. 8000+)
+   *   - null 时走全局兜底 (代码常量 5000)
+   *   - smart 压缩模型 = 该 session 当前 agent 关联的第一个 ai model; 不同 agent 阈值不同时各自跑各自的
+   * @keyword-en smart-segment-chars, context-budget, model-aware-summary
+   */
+  @Column({ name: 'smart_segment_chars', type: 'int', nullable: true })
+  smartSegmentChars!: number | null;
+
   @Column({ type: 'text', nullable: true })
   description!: string;
 

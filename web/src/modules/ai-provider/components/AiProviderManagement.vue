@@ -414,6 +414,42 @@
             </label>
           </div>
 
+          <!-- 质量选择 :: smart 历史分段字符阈值, 段越小摘要越准但 LLM 调用次数越多. 三个互斥档位用按钮式 radio 组渲染 -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              质量 (Smart 历史分段)
+            </label>
+            <div class="grid grid-cols-3 gap-2">
+              <button
+                v-for="opt in smartQualityOptions"
+                :key="opt.value"
+                type="button"
+                class="px-3 py-2 rounded-lg border text-sm transition-colors flex flex-col items-center gap-0.5"
+                :class="
+                  form.smartSegmentChars === opt.value
+                    ? 'border-gray-900 bg-gray-900 text-white'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                "
+                @click="form.smartSegmentChars = opt.value"
+              >
+                <span class="font-medium">{{ opt.label }}</span>
+                <span
+                  class="text-xs"
+                  :class="
+                    form.smartSegmentChars === opt.value
+                      ? 'text-gray-200'
+                      : 'text-gray-400'
+                  "
+                >
+                  {{ opt.hint }}
+                </span>
+              </button>
+            </div>
+            <p v-if="smartQualityHelp" class="mt-1 text-xs text-gray-500 leading-relaxed">
+              {{ smartQualityHelp }}
+            </p>
+          </div>
+
           <div
             v-if="testResult"
             class="px-3 py-2 rounded-lg text-sm"
@@ -465,6 +501,8 @@ import {
   MINIMAX_PROTOCOL_OPTIONS,
   PROVIDER_DEFAULT_BASE_URLS,
   PROVIDER_MODEL_CATALOG,
+  SMART_SEGMENT_QUALITY_DEFAULT,
+  SMART_SEGMENT_QUALITY_OPTIONS,
 } from '../constants/ai-provider.constants';
 
 const { items, loading, list, create, update, remove, testConnection } =
@@ -494,6 +532,8 @@ const form = reactive({
   enabled: true,
   // 思考模式 :: 独立 thinking_enabled 列, 只有开/不开, 后端用合理默认值
   thinkingEnabled: false,
+  // Smart 历史分段字符阈值 :: 默认 5000 (性价比档), 见 SMART_SEGMENT_QUALITY_OPTIONS
+  smartSegmentChars: SMART_SEGMENT_QUALITY_DEFAULT,
 });
 
 const testingConnection = ref(false);
@@ -513,6 +553,12 @@ const protocolOptions = computed(() =>
 );
 const typeOptions = AI_MODEL_TYPE_OPTIONS;
 const statusOptions = AI_MODEL_STATUS_OPTIONS;
+const smartQualityOptions = SMART_SEGMENT_QUALITY_OPTIONS;
+const smartQualityHelp = computed(
+  () =>
+    smartQualityOptions.find((o) => o.value === form.smartSegmentChars)?.help ??
+    '',
+);
 
 const protocolDisabled = computed(
   () => form.provider !== 'custom' && form.provider !== 'minimax',
@@ -721,6 +767,7 @@ function openCreateModal() {
   form.description = '';
   form.enabled = true;
   form.thinkingEnabled = false;
+  form.smartSegmentChars = SMART_SEGMENT_QUALITY_DEFAULT;
   syncProviderDefaults(form.provider);
   testResult.value = null;
   showModal.value = true;
@@ -743,6 +790,11 @@ function openEditModal(item: AiModelItem) {
   form.enabled = item.enabled;
   // 思考模式 :: 直接读独立 thinkingEnabled 列
   form.thinkingEnabled = item.thinkingEnabled === true;
+  // 质量档 :: null/undefined 走默认 5000; 历史值不在三个档位时, 让 select 自然显示首个档位 (用户保存才覆盖)
+  form.smartSegmentChars =
+    typeof item.smartSegmentChars === 'number' && item.smartSegmentChars > 0
+      ? item.smartSegmentChars
+      : SMART_SEGMENT_QUALITY_DEFAULT;
   testResult.value = null;
   showModal.value = true;
 }
@@ -770,6 +822,7 @@ async function handleSubmit() {
       description: form.description || null,
       enabled: form.enabled,
       thinkingEnabled: form.thinkingEnabled,
+      smartSegmentChars: form.smartSegmentChars,
     };
     if (form.apiKey && form.apiKey.trim()) {
       payload.apiKey = form.apiKey.trim();
@@ -788,6 +841,7 @@ async function handleSubmit() {
       description: form.description || null,
       enabled: form.enabled,
       thinkingEnabled: form.thinkingEnabled,
+      smartSegmentChars: form.smartSegmentChars,
     });
   }
   closeModal();

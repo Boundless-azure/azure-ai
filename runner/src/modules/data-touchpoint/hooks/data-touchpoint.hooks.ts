@@ -86,6 +86,7 @@ export function registerDataTouchpointHooks(
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: CreateDataTouchpointSchema,
+        requiredAbility: { action: 'create', subject: 'dataTouchpoint' },
       },
     );
   }
@@ -137,6 +138,7 @@ export function registerDataTouchpointHooks(
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: UpdateDataTouchpointSchema,
+        requiredAbility: { action: 'update', subject: 'dataTouchpoint' },
       },
     );
   }
@@ -183,6 +185,7 @@ export function registerDataTouchpointHooks(
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: DeleteDataTouchpointSchema,
+        requiredAbility: { action: 'delete', subject: 'dataTouchpoint' },
       },
     );
   }
@@ -214,6 +217,7 @@ export function registerDataTouchpointHooks(
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: ListDataTouchpointSchema,
+        requiredAbility: { action: 'read', subject: 'dataTouchpoint' },
       },
     );
   }
@@ -222,15 +226,7 @@ export function registerDataTouchpointHooks(
     hookBus.register(
       'runner.app.dataTouchpoint.trigger',
       async (event) => {
-        // trigger 是业务事件入口, 拒绝 LLM 调用 (防伪造业务事件触发别人的触点)
-        if (event.context?.source === 'llm') {
-          return {
-            status: 'error',
-            error:
-              'permission-denied: trigger is for system/http callers only; LLM cannot fabricate business events. ' +
-              '业务数据变化由对应模块的 hook 调本接口, 不应由 LLM 主动触发',
-          };
-        }
+        // denyLlm:true 已在中间件层兜底拦截 LLM, 此处只处理 system/http/runner 链路
         const payload = event.payload as TriggerTouchpointInput;
         const { jobId } = await triggerService.trigger(payload);
         return { status: 'success', data: { jobId, queued: true } };
@@ -241,6 +237,7 @@ export function registerDataTouchpointHooks(
         tags: HOOK_TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: TriggerTouchpointSchema,
+        denyLlm: true,
       },
     );
   }

@@ -30,6 +30,7 @@ import {
   ChatSessionSmartService,
   type ChatSessionSmartContextDigest,
 } from './chat-session-smart.service';
+import { SessionLockService } from './session-lock.service';
 import type {
   SendMessageDto,
   ImMessageInfo,
@@ -48,8 +49,7 @@ export interface ImMessageSavedPayload {
 }
 
 const LLM_GUIDANCE_ENVELOPE_VERSION = 3;
-const INIT_TIP_FIRST_MUST =
-  'init_tip_first';
+const INIT_TIP_FIRST_MUST = 'init_tip_first';
 
 /**
  * 从未知对象读取 boolean 字段。
@@ -177,6 +177,7 @@ export class ImMessageService {
     private readonly handbookSeeder: SessionHandbookSeederService,
     private readonly currentSession: CurrentSessionService,
     private readonly smartService: ChatSessionSmartService,
+    private readonly sessionLock: SessionLockService,
   ) {}
 
   // ===== agent 触发队列：执行锁（运行中保存最新 pending，完成后 5s 防抖再消费）=====
@@ -322,8 +323,10 @@ export class ImMessageService {
   }
 
   /**
-   * 加锁执行 LLM，结束后若有 pending 则启动 5s 防抖定时器
-   * @keyword-en run-agent-locked sequential-queue
+   * 加锁执行 LLM，结束后若有 pending 则启动 5s 防抖定时器。
+   *   两层锁: 外层 (session, agent) 队列保证同 agent 串行 (这里); 内层 SessionLockService
+   *   再按 sessionId 串行, 让"同 session 不同 agent + smart 压缩"也串行, 避免读到半压缩态。
+   * @keyword-en run-agent-locked sequential-queue session-lock-outer
    */
   private async runAgentLocked(
     key: string,
@@ -338,7 +341,11 @@ export class ImMessageService {
     state.running = true;
     this.logger.log(`[agent-queue] start: ${key}`);
     try {
-      await this.generateAgentReplyAndSave(payload);
+      await this.sessionLock.runExclusive(
+        payload.sessionId,
+        `agent-run:${payload.agentPrincipalId}`,
+        () => this.generateAgentReplyAndSave(payload),
+      );
     } catch (e) {
       this.logger.error(`[agent-queue] error: ${key}`, e);
     } finally {
@@ -959,12 +966,8 @@ export class ImMessageService {
     );
 
     const invocationContext = await this.buildAgentInvocationContext(payload);
-    this.currentSession.beginTurn(
-      payload.sessionId,
-      payload.agentPrincipalId,
-    );
-    const inferredNeed =
-      this.currentSession.inferInitTipFromMessages(messages);
+    this.currentSession.beginTurn(payload.sessionId, payload.agentPrincipalId);
+    const inferredNeed = this.currentSession.inferInitTipFromMessages(messages);
     const gen = this.agentRuntimeService.startDialogue(
       agent.codeDir,
       messages,
@@ -1259,12 +1262,8 @@ export class ImMessageService {
     retryAttempt = 0,
   ): Promise<void> {
     const invocationContext = await this.buildAgentInvocationContext(payload);
-    this.currentSession.beginTurn(
-      payload.sessionId,
-      payload.agentPrincipalId,
-    );
-    const inferredNeed =
-      this.currentSession.inferInitTipFromMessages(messages);
+    this.currentSession.beginTurn(payload.sessionId, payload.agentPrincipalId);
+    const inferredNeed = this.currentSession.inferInitTipFromMessages(messages);
     const gen = this.agentRuntimeService.startDialogue(
       agent.codeDir,
       messages,
@@ -1501,10 +1500,7 @@ export class ImMessageService {
    * 从消息 meta 读取 currentSessionRetry 并拼回 LLM envelope。
    * @keyword-en merge-metadata-lazy-retry
    */
-  private mergeMetadataLazyRetryNudge(
-    content: string,
-    value: unknown,
-  ): string {
+  private mergeMetadataLazyRetryNudge(content: string, value: unknown): string {
     const retry = this.readLazyRetryNudge(value);
     if (!retry) return content;
     return this.mergeLazyRetryNudgeIntoContent(
@@ -2179,8 +2175,7 @@ export class ImMessageService {
     return (
       record.required === true &&
       record.tool === 'call_hook' &&
-      record.hookName ===
-        'saas.app.conversation.initTip' &&
+      record.hookName === 'saas.app.conversation.initTip' &&
       typeof record.payload === 'string' &&
       typeof record.reason === 'string' &&
       typeof record.rule === 'string'
@@ -2206,14 +2201,12 @@ export class ImMessageService {
         envelope.task &&
         typeof envelope.task === 'object' &&
         typeof envelope.task.type === 'string'
-          ? (envelope.task as LlmGuidanceTask)
+          ? envelope.task
           : this.buildGuidanceTask(fallbackContent);
       const envelopeMust = Array.isArray(envelope.must)
         ? envelope.must.filter((it): it is string => typeof it === 'string')
         : [];
-      const hadCurrentSessionMust = envelopeMust.includes(
-        INIT_TIP_FIRST_MUST,
-      );
+      const hadCurrentSessionMust = envelopeMust.includes(INIT_TIP_FIRST_MUST);
       const must = this.ensureCurrentSessionMustCode(
         envelopeMust.length > 0
           ? envelopeMust

@@ -83,20 +83,12 @@ const currentSessionInput = z.object({
     .max(100)
     .optional()
     .describe('返回数量, 默认 20, 上限 100'),
-  offset: z
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .describe('分页偏移, 默认 0'),
+  offset: z.number().int().min(0).optional().describe('分页偏移, 默认 0'),
   category: z
     .enum(['image', 'video', 'document', 'audio', 'archive', 'code', 'other'])
     .optional()
     .describe('按资源类别过滤; 留空表示不过滤'),
-  q: z
-    .string()
-    .optional()
-    .describe('按文件名子串过滤 (大小写不敏感)'),
+  q: z.string().optional().describe('按文件名子串过滤 (大小写不敏感)'),
 });
 
 /**
@@ -455,11 +447,15 @@ export class ResourceController {
     if (entityTenant !== null) {
       // 必须带 sig + tid, 且 tid 必须等于资源租户, sig 必须 HMAC 匹配
       if (!sig || !tid) {
-        res.status(403).json({ message: 'resource access denied: missing sig' });
+        res
+          .status(403)
+          .json({ message: 'resource access denied: missing sig' });
         return;
       }
       if (tid !== entityTenant) {
-        res.status(403).json({ message: 'resource access denied: tenant mismatch' });
+        res
+          .status(403)
+          .json({ message: 'resource access denied: tenant mismatch' });
         return;
       }
       if (!this.sign.verify(id, tid, sig)) {

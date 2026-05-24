@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads';
+import * as path from 'node:path';
 import type { DataTouchpoint } from '../types/data-touchpoint.types';
 import type { HookLog } from '../../hookbus/types/hook.types';
 import {
@@ -19,8 +20,9 @@ import type { NotifyDispatchResult } from './touchpoint-notifier';
  */
 
 // dev (tsx) 下源是 .ts, prod (tsc → dist) 下编译成 .js; 用本模块自身扩展名决定 worker 文件名
-const WORKER_EXT = import.meta.url.endsWith('.ts') ? '.ts' : '.js';
-const WORKER_URL = new URL(`./touchpoint-worker${WORKER_EXT}`, import.meta.url);
+// 注: 用 __filename (CJS 内置, tsx 也兼容) 而非 import.meta.url, 避免 tsconfig module=CommonJS 下 TS1343 报错
+const WORKER_EXT = __filename.endsWith('.ts') ? '.ts' : '.js';
+const WORKER_URL = path.join(__dirname, `touchpoint-worker${WORKER_EXT}`);
 
 /**
  * 主线程 sandboxedCallHook 协议: 任一错误返回 RunLogError, 成功返回 data

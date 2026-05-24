@@ -43,9 +43,7 @@ export class TimeZoneHookController {
     args: [ToUtcSchema],
     metadata: { tags: ['time-zone', 'utc', 'utility'] },
   })
-  async handleToUtc(
-    payload: ToUtcInput,
-  ): Promise<HookResult<{ utc: string }>> {
+  async handleToUtc(payload: ToUtcInput): Promise<HookResult<{ utc: string }>> {
     try {
       const { localTime, fromTimezone } = payload;
       const utc = this.timeZone.toUtc(localTime, fromTimezone);

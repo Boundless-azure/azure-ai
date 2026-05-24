@@ -52,7 +52,12 @@ export class ResourceEntity extends BaseAuditedEntity {
   @Column({ name: 'storage_path', type: 'text' })
   storagePath!: string;
 
-  @Column({ name: 'copied_from_id', type: 'varchar', length: 36, nullable: true })
+  @Column({
+    name: 'copied_from_id',
+    type: 'varchar',
+    length: 36,
+    nullable: true,
+  })
   copiedFromId!: string | null;
 
   /** 分片上传总片数，0表示不分片 */

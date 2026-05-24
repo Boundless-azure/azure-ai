@@ -156,7 +156,10 @@ export class CurrentSessionHookController {
   ): HookResult {
     const resolved = resolveSessionScope({ payload, context });
     if (!resolved) return missingSessionResult();
-    const data = this.service.snapshot(resolved.sessionId, resolved.principalId);
+    const data = this.service.snapshot(
+      resolved.sessionId,
+      resolved.principalId,
+    );
     return { status: HookResultStatus.Success, data };
   }
 

@@ -63,6 +63,7 @@ export function registerSolutionHooks(
         tags: ['solution', 'runner-local'],
         pluginName: 'runner-solution',
         payloadSchema: ListPayloadSchema,
+        requiredAbility: { action: 'read', subject: 'solution' },
       },
     );
   }
@@ -84,6 +85,7 @@ export function registerSolutionHooks(
         tags: ['solution', 'runner-local'],
         pluginName: 'runner-solution',
         payloadSchema: GetPayloadSchema,
+        requiredAbility: { action: 'read', subject: 'solution' },
       },
     );
   }
@@ -105,6 +107,7 @@ export function registerSolutionHooks(
         tags: ['solution', 'runner-local'],
         pluginName: 'runner-solution',
         payloadSchema: DeletePayloadSchema,
+        requiredAbility: { action: 'delete', subject: 'solution' },
       },
     );
   }
@@ -130,6 +133,7 @@ export function registerSolutionHooks(
         tags: ['solution', 'runner-local'],
         pluginName: 'runner-solution',
         payloadSchema: SearchPayloadSchema,
+        requiredAbility: { action: 'read', subject: 'solution' },
       },
     );
   }

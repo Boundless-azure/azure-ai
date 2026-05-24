@@ -242,9 +242,21 @@ export function buildBaseLlmSystemPrompt(): LlmSystemPromptJson {
         },
         {
           bookId: 'local_runner_hook_skill',
-          name: 'Runner Hook 专用手册',
+          name: 'Runner 手册',
           type: 'skill',
-          tags: ['本地知识', 'Runner', 'Hook', '数据触点', '时区'],
+          tags: [
+            '本地知识',
+            'Runner',
+            'Hook',
+            'Unit Core',
+            'mongo',
+            'terminal',
+            'file',
+            'ability',
+            '数据触点',
+            'Solution',
+            '时区',
+          ],
           aliases: [
             'runner side',
             'Runner侧',

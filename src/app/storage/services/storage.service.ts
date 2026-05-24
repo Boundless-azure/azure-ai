@@ -255,7 +255,10 @@ export class StorageService {
       throw new BadRequestException('Cannot move folder into itself');
     }
 
-    if (data.name !== undefined || (moving && targetParentId !== node.parentId)) {
+    if (
+      data.name !== undefined ||
+      (moving && targetParentId !== node.parentId)
+    ) {
       // 检查同名节点
       const qb = this.nodeRepo
         .createQueryBuilder('node')

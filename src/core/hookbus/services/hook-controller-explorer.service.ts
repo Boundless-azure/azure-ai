@@ -90,7 +90,8 @@ export class HookControllerExplorerService implements OnModuleInit {
     if (!Array.isArray(event.payload)) {
       return {
         status: HookResultStatus.Error,
-        error: 'payload-array-required: hook-controller payload must be an array',
+        error:
+          'payload-array-required: hook-controller payload must be an array',
       };
     }
     const principal = event.context?.principalId

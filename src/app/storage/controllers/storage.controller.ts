@@ -360,10 +360,7 @@ export class StorageController {
     description: 'Storage 根目录节点列表',
     args: [],
   })
-  async getRootNodes(
-    @Req() req: AuthedReq,
-    context?: HookInvocationContext,
-  ) {
+  async getRootNodes(@Req() req: AuthedReq, context?: HookInvocationContext) {
     const tenantId = resolveStorageTenantId(req, context);
     this.logger.log(
       `[storage.getRootNodes] tenant=${tenantId} principal=${context?.principalId ?? req.user?.id ?? 'null'} ` +

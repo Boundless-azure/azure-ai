@@ -50,11 +50,13 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"        # frpc localPort 指向此端口
-      - "2019:2019"    # Caddy admin API    environment:
+      - "2019:2019"    # Caddy admin API
+    environment:
       # Docker 模式： runner-app:4310；宿主机模式： host.docker.internal:4310
       RUNNER_UPSTREAM: ${RUNNER_UPSTREAM:-runner-app:4310}
     extra_hosts:
-      - "host.docker.internal:host-gateway"    volumes:
+      - "host.docker.internal:host-gateway"
+    volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - runner_caddy_data:/data
     networks:

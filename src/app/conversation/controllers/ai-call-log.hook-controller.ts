@@ -28,7 +28,9 @@ const querySchema = z.object({
   id: z
     .string()
     .optional()
-    .describe('精确读取某条 call log 的 id; 常用于默认列表命中 title 后二次取详情'),
+    .describe(
+      '精确读取某条 call log 的 id; 常用于默认列表命中 title 后二次取详情',
+    ),
   search: z
     .string()
     .optional()

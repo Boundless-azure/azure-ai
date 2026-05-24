@@ -10,6 +10,12 @@ import { registerConfigurationRoutes } from './modules/configuration/routes/conf
 import { registerRunnerRegistrationRoutes } from './modules/registration/routes/registration.routes';
 import { RunnerRegistrationService } from './modules/registration/services/registration.service';
 import { RunnerHookBusService } from './modules/hookbus/services/hookbus.service';
+import {
+  createRunnerHookAbilityMiddleware,
+  RunnerAbilityService,
+  RunnerIdentityRepository,
+} from './modules/identity';
+import { registerIdentityAdminHooks } from './modules/identity/hooks/identity.hooks';
 import { registerHookBusRoutes } from './modules/hookbus/routes/hookbus.routes';
 import { registerHookBusGateway } from './modules/hookbus/ws/hookbus.gateway';
 import { attachHookRpc } from './modules/hookbus/ws/hook-rpc.client';
@@ -49,6 +55,9 @@ export async function createRunnerApp() {
       bindingKeyPrefix: 'runner:hookbus:binding',
     },
   });
+  // identity (RBAC + ability) 占位; mongo 起来后真正 init
+  let ability: RunnerAbilityService | null = null;
+  let identityRepo: RunnerIdentityRepository | null = null;
   const webmcpService = new RunnerWebMcpService();
   const unitCore = new UnitCoreService({
     workspacePath: join(process.cwd(), 'workspace'),
@@ -135,6 +144,14 @@ export async function createRunnerApp() {
     await migration.run(db);
     const runnerDb = new RunnerDbService(db);
     await unitCore.persistHooks(runnerDb);
+
+    // identity: seed 内置 principal/role + 注册 hookBus middleware (本地 mongo + push hint fallback)
+    identityRepo = new RunnerIdentityRepository(db);
+    await identityRepo.seedBuiltin();
+    ability = new RunnerAbilityService(identityRepo);
+    hookBus.use(createRunnerHookAbilityMiddleware(ability));
+    registerIdentityAdminHooks(hookBus, identityRepo, ability);
+
     registerSolutionHooks(hookBus, mongoClient);
     registerDataTouchpointHooks(hookBus, mongoClient, touchpointTrigger);
   }

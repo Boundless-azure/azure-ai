@@ -21,6 +21,8 @@ export interface AiModelItem {
   description?: string | null;
   enabled: boolean;
   thinkingEnabled?: boolean;
+  /** Smart 历史分段字符阈值; 由"质量选择"下拉决定 (最优 2000 / 性价比 5000 / 便宜 10000); null/undefined → 走代码常量 5000 */
+  smartSegmentChars?: number | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -64,6 +66,7 @@ export const CreateAiModelSchema = z.object({
   description: z.string().optional().nullable(),
   enabled: z.boolean().optional(),
   thinkingEnabled: z.boolean().optional(),
+  smartSegmentChars: z.number().int().positive().nullable().optional(),
 });
 
 export const UpdateAiModelSchema = z.object({
@@ -80,6 +83,7 @@ export const UpdateAiModelSchema = z.object({
   description: z.string().optional().nullable(),
   enabled: z.boolean().optional(),
   thinkingEnabled: z.boolean().optional(),
+  smartSegmentChars: z.number().int().positive().nullable().optional(),
 });
 
 export const TestAiModelConnectionSchema = z.object({

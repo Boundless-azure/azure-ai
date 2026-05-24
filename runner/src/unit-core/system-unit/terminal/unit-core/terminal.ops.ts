@@ -62,12 +62,15 @@ export async function exec(ctx: UnitExecutionContext, payload: TerminalExecPaylo
     ).catch(() => { /* 回调失败不影响主流程 */ });
   };
 
+  // 持久化策略: sync 默认不落盘 (race 已返回); async 默认落盘
+  // sync 超时转 async 时通过 pool.promoteToAsync 提升落盘 + 注入 onComplete
   const result = pool.spawn(payload.command, {
     sessionId: payload.sessionId,
     mode,
     timeout,
     maxBuffer,
-    invocationContext: (ctx as Record<string, unknown>).invocationContext as Record<string, unknown> | undefined,
+    invocationContext: (ctx as unknown as Record<string, unknown>).invocationContext as Record<string, unknown> | undefined,
+    persistRecord: mode === 'async',
     onComplete: mode === 'async' ? onComplete : undefined,
   });
 
@@ -83,7 +86,8 @@ export async function exec(ctx: UnitExecutionContext, payload: TerminalExecPaylo
     const race = await Promise.race([result.promise, timeoutPromise]);
 
     if (race === 'timeout') {
-      // 超时自动转 async, 后续通过回调通知
+      // 超时自动转 async: 原 promise 继续跑, 让它完成时落盘 + 触发 sendMsg 通知
+      pool.promoteToAsync(result.handleId, onComplete);
       return {
         ok: true,
         handleId: result.handleId,
@@ -92,6 +96,7 @@ export async function exec(ctx: UnitExecutionContext, payload: TerminalExecPaylo
       };
     }
 
+    // sync 正常完成 — race 已拿到 record, 不落盘 (盘上无文件)
     const record = race as TerminalRecord;
     return {
       ok: true,
@@ -141,6 +146,10 @@ export function getOutput(ctx: UnitExecutionContext, payload: TerminalHandlePayl
   const record = pool.getRecord(payload.handleId);
   if (!record) {
     return { ok: false, error: 'handle not found' };
+  }
+  // LLM 已读取, 5 分钟后批量删盘 (running 状态不删, 必须 finished 后)
+  if (record.finishedAt) {
+    pool.markForDelete(payload.handleId);
   }
   return {
     ok: true,

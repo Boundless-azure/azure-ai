@@ -15,7 +15,6 @@ export function registerRunnerRegistrationRoutes(
   const TestRunnerKeySchema = z.object({
     saasSocketUrl: z.string().optional(),
     runnerKey: z.string().optional(),
-    runnerId: z.string().optional(),
   });
 
   app.get('/registration/status', () => {

@@ -49,7 +49,7 @@ const saveSchema = z.object({
     .min(8)
     .max(255)
     .describe(
-        '⚠ 必填 + 高质量 :: title 是你下次 sessionData.list 时**唯一**的判断依据 (list 不返 value, 只返 key + title)。' +
+      '⚠ 必填 + 高质量 :: title 是你下次 sessionData.list 时**唯一**的判断依据 (list 不返 value, 只返 key + title)。' +
         '必须写成"描述性长标题", 让你下次一眼能判断这条记忆是干什么的。' +
         '反例 :: "memo" / "记录" / "数据" — 全是废 title, 列表里根本认不出来。' +
         '正例 :: "本会话删除前必须先确认" / "本会话默认使用中文回答" / "查用户角色的两步路径 :: membershipList → roleList 按 code 配对"。',

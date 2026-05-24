@@ -28,6 +28,8 @@ export class TodoSessionId1779070500000 implements MigrationInterface {
    */
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX IF EXISTS idx_todos_session_id`);
-    await queryRunner.query(`ALTER TABLE todos DROP COLUMN IF EXISTS session_id`);
+    await queryRunner.query(
+      `ALTER TABLE todos DROP COLUMN IF EXISTS session_id`,
+    );
   }
 }

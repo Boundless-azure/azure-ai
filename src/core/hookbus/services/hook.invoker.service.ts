@@ -208,9 +208,9 @@ export class HookInvokerService {
    */
   private previewValue(value: unknown): string {
     if (value === undefined) return 'undefined';
-    const raw =
-      typeof value === 'string' ? JSON.stringify(value) : JSON.stringify(value);
-    if (!raw) return String(value);
+    const raw = JSON.stringify(value);
+    // JSON.stringify 对 function / symbol / 含循环引用的对象返回 undefined; 用 typeof 兜底, 避免 [object Object]
+    if (!raw) return `<${typeof value}>`;
     return raw.length > 160 ? `${raw.slice(0, 157)}...` : raw;
   }
 

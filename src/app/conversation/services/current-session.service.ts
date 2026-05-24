@@ -458,7 +458,8 @@ export class CurrentSessionService {
         .limit(1)
         .getOne();
       const ipFromMeta =
-        lastPeerMsg?.metadata && typeof lastPeerMsg.metadata.senderIp === 'string'
+        lastPeerMsg?.metadata &&
+        typeof lastPeerMsg.metadata.senderIp === 'string'
           ? lastPeerMsg.metadata.senderIp
           : null;
       peer = {
@@ -646,10 +647,10 @@ function isPendingActionGuardExit(
   if (input.stage === 'not_found') {
     return Boolean(
       input.reason?.trim() ||
-        input.question?.trim() ||
-        input.hookName?.trim() ||
-        input.domain?.trim() ||
-        input.action?.trim(),
+      input.question?.trim() ||
+      input.hookName?.trim() ||
+      input.domain?.trim() ||
+      input.action?.trim(),
     );
   }
   return false;
@@ -698,7 +699,9 @@ function findLastUserContent(messages: ChatMessage[]): string {
  * 尝试解析 IM guidance envelope (历史 v3 envelope 兼容; 新链路 user 直发原话, 这里多数命中 null).
  * @keyword-en parse-guidance-envelope
  */
-function parseGuidanceEnvelope(content: string): Record<string, unknown> | null {
+function parseGuidanceEnvelope(
+  content: string,
+): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(content);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -748,7 +751,8 @@ function inferInitTipFromText(text: string): CurrentSessionInitTip {
  * @keyword-en is-evidence-hook
  */
 function isEvidenceHook(hookName: string): boolean {
-  if (hookName.startsWith('saas.app.conversation.currentSession.')) return false;
+  if (hookName.startsWith('saas.app.conversation.currentSession.'))
+    return false;
   if (hookName === 'saas.app.conversation.sendMsg') return false;
   return true;
 }
@@ -780,10 +784,11 @@ function buildDiscoveryChains(): {
       '⑤ 收尾 :: 审阅完即 call_hook saas.app.conversation.sendMsg 把权威说法回复给用户; turn 完成',
     ],
     hook: [
-      '① 拿 hook tag 全景 :: tool get_hook_tag → tag 频次榜 (上限 400)',
-      '② 按 tag 缩范围 :: tool search_hook [{ tags:["<挑出来的 tag>"] }] → 命中的 hook 列表; ⚠ tags 必须来自 ① 的真实结果, 不要自创',
-      '③ 拿 description + schema :: tool get_hook_info [{ hookNames:["<挑出来的 hook>"] }] → 描述 + JSON Schema, 写 payload 必看',
-      '④ 调用业务 hook :: call_hook saas.app.<domain>.<action> [{...按 schema 写...}] → 执行业务',
+      '⚠ target 选择 :: 默认 target="saas" 走 SaaS HookBus. 想用 runner 端能力 (本地文件 / mongo / terminal / runner app 业务) → **必须先调 call_hook saas.app.runner.list [{status:"mounted"}]** 拿真实 runnerId, 之后 tool/call_hook 的 target="runner" 参数都必须带 runnerId. 不知道 runnerId 时盲填会 softError "runnerId-required". **强烈建议同时读 Runner 手册** (bookId="local_runner_hook_skill"): LM必读章节含调用约定 + errorMsg 字典 (自动加载); 用 unit-core / identity / solution / 数据触点时按需读对应子章节 (local_runner_hook_skill_unitcore / _identity / _solution / _data_touchpoint), 不读容易在 UUID / 4 段名 / array payload / denyLlm 上踩坑.',
+      '① 拿 hook tag 全景 :: tool get_hook_tag [{target}] → tag 频次榜 (上限 400). target="runner" 时 runnerId 必填',
+      '② 按 tag 缩范围 :: tool search_hook [{ target, runnerId?, tags:["<挑出来的 tag>"] }] → 命中的 hook 列表; ⚠ tags 必须来自 ① 的真实结果, 不要自创',
+      '③ 拿 description + schema :: tool get_hook_info [{ target, runnerId?, hookNames:["<挑出来的 hook>"] }] → 描述 + JSON Schema, 写 payload 必看',
+      '④ 调用业务 hook :: call_hook <fullHookName> [{...按 schema 写...}], saas.* 前缀走 saas / runner.* 走 runner (runnerId 必填) → 执行业务',
       '⑤ 收尾 :: call_hook saas.app.conversation.sendMsg 把结果反馈给用户; turn 完成',
     ],
     history: [
@@ -810,6 +815,7 @@ function buildDirectHooks(): string[] {
     'call_hook saas.app.conversation.currentSession.get [{}] :: 拿本轮临时态快照 (fields / initTip / pendingAction / hookCalls), 调试 / 检查自己本轮状态时用',
     'call_hook saas.app.conversation.currentSession.setPendingAction [{stage, hookName?, missingFields?, question?, reason?}] :: 业务 hook 缺必填参数 → stage="missing_args" + missingFields + question; 平台无对应能力 → stage="not_found" + reason. 之后必发 sendMsg 把 question/reason 交给用户, 这是合法非执行出口.',
     'call_hook saas.app.conversation.callHistory.query [{}] / [{id, includeDetail:true}] :: 见 discoveryChains.callLog, 复用最近 50 条成功 hook 调用',
+    'call_hook saas.app.runner.list [{status:"mounted"}] :: **想用 runner 端能力 (search_hook/get_hook_tag/get_hook_info/call_hook target=runner) 必须先调这个**拿真实 runnerId; status="mounted" 过滤当前在线可派发的 runner. **配套读 Runner 手册** (bookId="local_runner_hook_skill"): LM必读自动加载; 按场景读子章节 — Unit Core (mongo/terminal/file/ast) 走 _unitcore; permission-denied / 自建 principal / 数据权限走 _identity; solution 装载/查询走 _solution; 长期监控/触点走 _data_touchpoint.',
   ];
 }
 

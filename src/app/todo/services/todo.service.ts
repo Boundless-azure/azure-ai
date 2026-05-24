@@ -162,7 +162,7 @@ export class TodoService {
     }
     if (query.q) {
       qb.andWhere(
-        '(LOWER(todo.title) LIKE :q OR LOWER(COALESCE(todo.content, \'\')) LIKE :q)',
+        "(LOWER(todo.title) LIKE :q OR LOWER(COALESCE(todo.content, '')) LIKE :q)",
         { q: `%${query.q.toLowerCase()}%` },
       );
     }

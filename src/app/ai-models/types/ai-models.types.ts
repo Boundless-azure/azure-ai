@@ -1,6 +1,7 @@
 import {
   IsBoolean,
   IsEnum,
+  IsInt,
   IsObject,
   IsOptional,
   IsString,
@@ -90,6 +91,15 @@ export class CreateAiModelDto {
   @IsOptional()
   @IsBoolean()
   thinkingEnabled?: boolean;
+
+  /**
+   * Smart 历史分段字符阈值 (前端"质量选择" → 2000/5000/10000): null 走代码常量 5000;
+   * 数值越小, 同段消息 LLM 摘要质量越好但调用次数多 (贵); 数值越大, 调用次数少但容易超出弱模型上下文承载力。
+   * @keyword-en smart-segment-chars-dto
+   */
+  @IsOptional()
+  @IsInt()
+  smartSegmentChars?: number | null;
 }
 
 /**
@@ -150,6 +160,11 @@ export class UpdateAiModelDto {
   @IsOptional()
   @IsBoolean()
   thinkingEnabled?: boolean;
+
+  /** Smart 历史分段字符阈值 (前端"质量选择" 2000/5000/10000); 同 Create. @keyword-en smart-segment-chars-dto-update */
+  @IsOptional()
+  @IsInt()
+  smartSegmentChars?: number | null;
 }
 
 /**

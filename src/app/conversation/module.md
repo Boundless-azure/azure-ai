@@ -24,7 +24,9 @@
 - controllers/ai-call-log.hook-controller.ts：saas.app.conversation.callHistory.query HookController
 - services/current-session.service.ts：currentSession 单进程临时态 + initTip 工具判定 + pendingAction 参数追问挂起 + lazy guard 标签
 - controllers/current-session.hook-controller.ts：currentSession.set/get/setPendingAction/clearPendingAction HookController; init_tip 已从 hook 提升为 **top-level tool** (见 core/agent-runtime/tools/init-tip.tool.ts), 不再走 HookController
-- services/chat-session-smart.service.ts：chat_session_smart 后台分段写入, 按可配置阈值累计可见正文生成 summary/keywords (默认 5000, env CHAT_SESSION_SMART_SEGMENT_CHARS)
+- services/chat-session-smart.service.ts：chat_session_smart 后台分段写入, 阈值来自 session 内首个 agent.aiModelIds[0] 对应模型的 ai_models.smart_segment_chars 字段 (null/无 agent → 默认 5000); 摘要+关键词优先用 LLM (SmartLlmGeneratorService), 失败回退规则算法 (中文 bigram + 英文词频); 外层套 SessionLockService 按 sessionId 串行, 避免重复压缩 + 对话/压缩读写竞态
+- services/session-lock.service.ts：sessionId 级 in-memory promise queue, runExclusive(sessionId, label, fn) 让"smart 压缩 + 各 agent 对话"严格 FIFO 排队, 任务完成后清空 tail 防内存泄漏
+- services/smart-llm-generator.service.ts：让指定 modelId 读会话段正文输出严格 JSON `{summary, keywords:{zh,en}}`, 含 parseJsonLoose 兜底 (剥 markdown fence / 找首尾大括号), 任何失败 throw 由调用方回退规则算法
 - services/session-handbook-seeder.service.ts：按 agent 角色 seed 必读手册到 handbook.* 槽位 (主体身份过滤靠 ownerPrincipalId)
 
 Hook 注册（由 HookControllerExplorerService 自动发现, 全部通过 `@HookRoute(args)` 声明数组形参 schema, 命名遵循 platform.app.module.action）
@@ -38,8 +40,8 @@ Hook 注册（由 HookControllerExplorerService 自动发现, 全部通过 `@Hoo
   · payload schema 走 zod, handler 签名通过 z.infer 复用类型 (SSOT)
 - **history 链路引导 (init_tip discoveryChains.history)** :: smart 三步检索现在被 init_tip 显式列为第四条标准链路, LLM 声明 `needHistory:true` 时 tipNote 强调走 smartTags → smartSearch → smartMessages; sessionId 必须显式传 (smart hook 不从 ctx 注入), 通常从 directHooks.currentSession.context 拿 | keywords: history-chain, smart-recall, need-history
 - saas.app.conversation.smartTags         — 三步历史检索 ①: 拉取 smart 段 keywords 全景 (sessionId)
-- saas.app.conversation.smartSearch       — 三步历史检索 ②: 按 keywords 命中 smart 段 summary (sessionId / keywords / limit?); smart 段由后台按配置阈值累计可见正文生成 (默认 5000, env CHAT_SESSION_SMART_SEGMENT_CHARS)
-- saas.app.conversation.smartMessages     — 三步历史检索 ③: 按 smartIds 展开对应全消息 (sessionId / smartIds); 单段按配置阈值累计可见正文生成
+- saas.app.conversation.smartSearch       — 三步历史检索 ②: 按 keywords 命中 smart 段 summary (sessionId / keywords / limit?); smart 段由后台按"session 内首个 agent 关联模型的 ai_models.smart_segment_chars"阈值累计可见正文生成 (无 agent/无字段 → 默认 5000)
+- saas.app.conversation.smartMessages     — 三步历史检索 ③: 按 smartIds 展开对应全消息 (sessionId / smartIds); 单段按 model.smart_segment_chars 阈值生成, 摘要/关键词优先 LLM 失败回退规则
 - saas.app.conversation.sessionData.save   — AI 自管 session_data: 写入/覆盖跨轮键值 (sessionId / key / value / **title 必填且必须描述性强, ≥8 字符**); ownerPrincipalId 自动从 ctx.principalId 取, 落 createdUser; 仅用于 handbook seed、用户明确偏好/约束 (directive/preference) 或显式 recipe
 - saas.app.conversation.sessionData.get    — 读单条完整 value (sessionId / key); 返回 { key, title, value, category, updatedAt, ownerPrincipalId }
 - saas.app.conversation.sessionData.list   — 列出本会话所有记忆的轻量元数据 (sessionId), 返回 { count, listing }; listing 按 category 分组的分段 markdown (handbook / directive / preference / recipe / legacy / general), **不含 value**, 凭 title 命中后调 get 取完整内容
@@ -168,7 +170,9 @@ Summary 接口
 - WebMCP Hook ↔ webmcp hook ↔ controllers/webmcp.gateway.ts
 - 主动发消息 Hook ↔ send message hook ↔ controllers/im.controller.ts
 - Smart历史检索 Hook ↔ smart history hook ↔ controllers/conversation.controller.ts
-- Smart历史分段写入 ↔ smart history segment writer ↔ services/chat-session-smart.service.ts (scheduleAnalyze / analyzeSession)
+- Smart历史分段写入 ↔ smart history segment writer ↔ services/chat-session-smart.service.ts (scheduleAnalyze / analyzeSession; 按模型阈值 + LLM 摘要回退规则)
+- 会话级互斥锁 ↔ session-level mutex ↔ services/session-lock.service.ts (runExclusive)
+- LLM 摘要生成 ↔ llm summary keyword generator ↔ services/smart-llm-generator.service.ts (generate)
 - 必读手册 seed ↔ handbook seeder ↔ services/session-handbook-seeder.service.ts (ensureForAgent)
 - session_data 分类 ↔ session-data category ↔ services/ai-session-data.service.ts (deriveCategory)
 - 调用日志硬记录 ↔ call_hook log hard-record ↔ services/ai-call-log.service.ts (append, evictOld, query)
@@ -250,19 +254,25 @@ Summary 接口
 - ConversationController.handleSmartTags -> conv_hook_smart_tags_033
 - ConversationController.handleSmartSearch -> conv_hook_smart_search_034
 - ConversationController.handleSmartMessages -> conv_hook_smart_messages_035
-- ChatSessionSmartService() — 按配置阈值累计可见正文生成 chat_session_smart 分段索引, 默认 5000 字 | keywords: session-smart, history-index, segment-summary, keywords -> chat_session_smart_service_001
+- ChatSessionSmartService() — 按模型阈值累计可见正文生成 chat_session_smart 分段索引, 优先 LLM 摘要+关键词, 失败回退规则; sessionLock 串行 | keywords: session-smart, history-index, segment-summary, keywords, model-threshold, session-serial -> chat_session_smart_service_001
 - ChatSessionSmartService.scheduleAnalyze(sessionId) — 延迟触发会话 smart 分段分析, 多条消息会被 debounce 合并 | keywords: schedule-smart-analysis, debounce, session-index -> chat_session_smart_schedule_002
-- ChatSessionSmartService.analyzeSession(sessionId) — 分析指定会话的未索引消息, 每累计到配置阈值写入一个 smart 段 | keywords: analyze-smart-session, segment-write, session-index -> chat_session_smart_analyze_003
+- ChatSessionSmartService.analyzeSession(sessionId) — 分析指定会话的未索引消息, 每累计到阈值写入一个 smart 段; 外层 sessionLock.runExclusive 串行 | keywords: analyze-smart-session, segment-write, session-index, session-serial -> chat_session_smart_analyze_003
+- ChatSessionSmartService.analyzeSessionInner(sessionId) — analyzeSession 实际工作体, 假设外层已持锁; 内部循环 build → llm-enrich → save | keywords: analyze-session-inner -> chat_session_smart_analyze_inner_003b
 - ChatSessionSmartService.getContextDigest(sessionId, beforeMessageId) — 读取 LLM 上下文用的 smart 历史摘要索引, 不展开原消息 | keywords: smart-context-digest, history-summary, context-compression -> chat_session_smart_context_004
+- ChatSessionSmartService.resolveModelContext(pending) — 从 pending 消息 senderIds 反查 agents, 取首个有 aiModelIds 的 agent, 读 ai_models.smart_segment_chars 决定阈值 + 后续 LLM enrich 用的 modelId; 无匹配 → 默认 5000 + modelId=null | keywords: resolve-model-context, segment-threshold, agent-model -> chat_session_smart_resolve_model_004b
+- ChatSessionSmartService.tryLlmEnrich(modelId, seg) — 调 SmartLlmGeneratorService 生 summary+keywords, 失败 (含 modelId=null) 回退 segment 自带 ruleSummary/ruleKeywords | keywords: llm-enrich-fallback, smart-generate, rule-fallback -> chat_session_smart_llm_enrich_004c
 - ChatSessionSmartService.loadPendingMessages(sessionId) — 读取最后一个 smart 段之后尚未索引的可见文本消息 | keywords: pending-smart-messages, smart-cursor, visible-text -> chat_session_smart_pending_005
-- ChatSessionSmartService.buildSegmentFromMessages(messages) — 从待分析消息中截取一个达到配置字数阈值的 smart 段 | keywords: build-smart-segment, char-threshold, history-index -> chat_session_smart_segment_006
+- ChatSessionSmartService.buildSegmentFromMessages(messages, targetChars) — 从待分析消息中截取一个达到 targetChars 阈值的 smart 段, 同时生成兜底规则 summary/keywords + 原始拼接 text 供 LLM enrich | keywords: build-smart-segment, char-threshold, history-index, fallback-summary -> chat_session_smart_segment_006
 - isSegmentableMessage(msg) — 判断消息是否适合进入 smart 分段索引 | keywords: segmentable-message, smart-segment -> chat_session_smart_filter_007
 - visibleMessageText(msg) — 读取消息可见正文, 不使用 metadata.llmContent 等隐藏提示 | keywords: visible-message-text, hidden-prompt-isolation -> chat_session_smart_visible_008
-- resolveSmartSegmentTargetChars() — 读取 smart 分段字数阈值配置 CHAT_SESSION_SMART_SEGMENT_CHARS, 无效时回退 5000 | keywords: smart-config, segment-threshold -> chat_session_smart_config_009
 - countTextChars(text) — 统计文本长度, 作为配置分段阈值依据 | keywords: text-char-count, segment-threshold -> chat_session_smart_count_010
-- flattenSegmentText(messages) — 拼接 smart 段内所有可见消息正文 | keywords: smart-text, message-flatten -> chat_session_smart_flatten_011
-- summarizeSegment(messages) — 生成轻量规则摘要, 后续可替换为模型摘要 | keywords: rule-summary, smart-summary -> chat_session_smart_summary_012
-- extractKeywords(text) — 从 smart 段文本中提取中英文关键词 | keywords: keyword-extraction, smart-tags -> chat_session_smart_keywords_013
+- flattenSegmentText(messages) — 拼接 smart 段内所有可见消息正文, 带 sender 前缀供 LLM 识别角色 | keywords: smart-text, message-flatten -> chat_session_smart_flatten_011
+- summarizeSegment(messages) — 规则兜底摘要 (LLM 不可用时使用), 直接截断 sender 前缀拼接文本 | keywords: rule-summary, smart-summary-fallback -> chat_session_smart_summary_012
+- extractKeywords(text) — 从 smart 段文本中提取中英文关键词 (规则算法, LLM 失败兜底) | keywords: keyword-extraction, smart-tags -> chat_session_smart_keywords_013
+- SessionLockService.runExclusive(sessionId, label, fn) — 同 sessionId 多次调用严格 FIFO 串行, fn 异常不污染后续任务, 跑完自动清空 tail 防内存泄漏; 用于 smart 压缩 + 各 agent 对话相互排队 | keywords: run-exclusive, session-mutex, serial-execution, compress-dialogue-sync -> session_lock_run_exclusive_001
+- SessionLockService.isBusy(sessionId) — debug 判断当前 session 是否有任务在排队/跑 | keywords: session-lock-busy -> session_lock_is_busy_002
+- SmartLlmGeneratorService.generate(modelId, text) — 让 modelId 模型读会话段正文输出严格 JSON `{summary, keywords:{zh,en}}`, 失败 (LLM 不可用 / JSON 解析错 / 字段格式不对) throw 由调用方回退规则算法 | keywords: generate-summary-keywords -> smart_llm_generate_001
+- parseJsonLoose(raw) — 容错解析 JSON: 直接 parse 失败时剥 ```json fence 再 parse, 仍失败找首尾大括号子串 | keywords: parse-json-loose, strip-code-fence -> smart_llm_parse_json_002
 - flattenSmartKeywords(keywords) — 展平 smart keywords, 用于 LLM 上下文摘要索引 | keywords: smart-keywords, context-digest -> chat_session_smart_flatten_keywords_014
 - truncateSmartSummary(summary) — 截断 smart summary, 避免摘要索引重新撑爆上下文 | keywords: smart-summary, context-truncate -> chat_session_smart_truncate_015
 - tokenizeChineseKeywords(text, limit) — 基于中文二字词频提取关键词 | keywords: chinese-keywords, bigram-frequency -> chat_session_smart_zh_016

@@ -104,7 +104,10 @@ function flattenKeywords(
  * @keywords Conversation, Stream, SSE, FunctionCall, Orchestrator, Mysql, KeywordWindow, SmartHistory
  * 关键词: 会话, 流式, SSE, 函数调用, 编排器, MySQL, 关键词窗口, Smart检索
  */
-@HookController({ pluginName: 'conversation', tags: ['conversation', 'history'] })
+@HookController({
+  pluginName: 'conversation',
+  tags: ['conversation', 'history'],
+})
 @Controller('conversation')
 export class ConversationController {
   private readonly logger = new Logger(ConversationController.name);

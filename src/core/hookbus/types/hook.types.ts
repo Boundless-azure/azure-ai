@@ -129,6 +129,14 @@ export interface HookMetadata {
    * @keyword-en required-ability
    */
   requiredAbility?: HookRequiredAbility | HookRequiredAbility[];
+  /**
+   * 显式拒绝 LLM 调用; 用于纯内部 / 系统级 / 底层基座 hook (如 runner.unitcore.mongo.insert/update/delete)。
+   * - HookAbilityMiddleware 检测到 context.source === 'llm' + denyLlm === true 时直接软错拒绝
+   * - 该字段独立于 requiredAbility: 一个 hook 可以同时 requiredAbility=admin + denyLlm=true (admin 用户也不能让 LLM 直接调)
+   * - 业务代码 / HTTP / runner 内部调用不受影响
+   * @keyword-en deny-llm, llm-deny-list
+   */
+  denyLlm?: boolean;
 }
 
 export interface HookResult<R = unknown> {

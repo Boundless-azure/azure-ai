@@ -74,6 +74,38 @@ export const AI_MODEL_STATUS_OPTIONS = [
   { value: 'maintenance', label: '维护中' },
 ];
 
+/**
+ * Smart 历史分段"质量"档位 → smartSegmentChars 字符阈值映射。
+ *  - 最优 (2000): 段小, LLM 摘要质量好但调用次数多 (贵), 适合上下文短/质量敏感的模型
+ *  - 性价比 (5000): 默认档, 平衡质量与调用次数
+ *  - 便宜 (10000): 段大, 调用次数少, 适合长上下文模型 (Claude / Gemini); 弱模型容易在长输入下"歇菜"
+ * @keyword-cn 质量选择, smart分段阈值, 模型档位
+ * @keyword-en smart-quality-options, segment-chars-tier
+ */
+export const SMART_SEGMENT_QUALITY_OPTIONS = [
+  {
+    value: 2000,
+    label: '最优',
+    hint: '2000 字/段',
+    help: '段最短 → 单次只压缩少量轮次, 上下文保持最短 → 摘要最精准; 代价是压缩触发更频繁, 单位字数的 LLM 调用成本最高。适合上下文承载力弱 / 在长输入下容易降质的模型。',
+  },
+  {
+    value: 5000,
+    label: '性价比',
+    hint: '5000 字/段',
+    help: '中间档, 摘要质量与 LLM 调用次数平衡, 通用默认值; 多数模型在这个长度下都能稳定输出, 不挑模型。',
+  },
+  {
+    value: 10000,
+    label: '便宜',
+    hint: '10000 字/段',
+    help: '段最长 → 单次压缩较多轮次, 触发频率最低, 相同总字数下 LLM 调用次数最少, 单价最划算。**推荐配长上下文模型 (Claude / Gemini 2.5 等)**, 弱模型在 10k 输入下摘要质量会明显下降。',
+  },
+];
+
+/** 未设置时的默认档位 (= 后端 SMART_SEGMENT_TARGET_CHARS_DEFAULT) @keyword-en smart-quality-default */
+export const SMART_SEGMENT_QUALITY_DEFAULT = 5000;
+
 export const PROVIDER_MODEL_CATALOG: Record<string, string[]> = {
   openai: [
     'gpt-4o',

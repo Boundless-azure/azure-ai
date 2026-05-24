@@ -56,7 +56,8 @@ function resolveClientIp(req: {
   headers?: Record<string, string | string[] | undefined>;
 }): string | null {
   const fwd = req.headers?.['x-forwarded-for'];
-  const firstFwd = typeof fwd === 'string' ? fwd : Array.isArray(fwd) ? fwd[0] : '';
+  const firstFwd =
+    typeof fwd === 'string' ? fwd : Array.isArray(fwd) ? fwd[0] : '';
   const parsed = firstFwd ? firstFwd.split(',')[0]?.trim() : '';
   if (parsed) return parsed;
   return req.ip?.trim() || null;
@@ -384,7 +385,12 @@ export class ImController {
   async sendMessage(
     @Param('id') id: string,
     @Body() dto: Omit<SendMessageDto, 'sessionId'>,
-    @Req() req: { user?: { id?: string }; ip?: string; headers?: Record<string, string | string[] | undefined> },
+    @Req()
+    req: {
+      user?: { id?: string };
+      ip?: string;
+      headers?: Record<string, string | string[] | undefined>;
+    },
   ): Promise<ImMessageInfo> {
     const senderId = req.user?.id ?? 'anonymous';
     const senderIp = resolveClientIp(req);

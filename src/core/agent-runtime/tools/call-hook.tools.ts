@@ -68,11 +68,28 @@ const TAG_PAGE_LIMIT = 400;
 const CALL_HOOK_BATCH_LIMIT = 20;
 
 /**
+ * runnerId 是 UUID 格式 (uuid v7), 不是 alias / 名字。
+ * - 必须来自 saas.app.runner.list 返回的 items[].id 字段
+ * - 不要传 alias (如 "测试Runner"), 不要传任何人类可读字符串
+ * - schema 层强校验, 错格式直接 schema 拒绝, 避免派发到不存在 runner 拿 runner-offline 误导错
+ * 复用在 hookCallEntrySchema / searchHookSchema / getHookTagSchema / getHookInfoSchema 的 runnerId 字段。
+ * @keyword-en runner-id-regex-shared
+ */
+const RUNNER_ID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
  * 单次 hook 调用条目 (call_hook / call_hook_async 共用 entry)
  * @keyword-en hook-call-entry-schema
  */
 const hookCallEntrySchema = z.object({
-  hookName: z.string().describe('要调用的 hook 名称'),
+  hookName: z
+    .string()
+    .describe(
+      '要调用的 hook 完整名 (platform.app.module.action 4 段, 例 saas.app.runner.list / runner.unitcore.terminal.exec); ' +
+        '禁止短名 (如 terminal.exec, mongo.find), 也禁止 saas.app.<arbitrary> 编造; ' +
+        '名称必须来自 search_hook / get_hook_info 返回的真实 hook',
+    ),
   payload: z
     .array(z.unknown())
     .optional()
@@ -87,8 +104,14 @@ const hookCallEntrySchema = z.object({
     ),
   runnerId: z
     .string()
+    .regex(
+      RUNNER_ID_REGEX,
+      'runnerId 必须是 UUID 格式 (saas.app.runner.list 返回的 items[].id), 不要传 alias / 名字',
+    )
     .optional()
-    .describe('target=runner 必填; 指定要调用的 Runner'),
+    .describe(
+      'target=runner 必填; **必须是 saas.app.runner.list 返回的 items[].id (UUID 形如 019e5852-7ec2-7844-...), 不是 alias / 名字**',
+    ),
   debug: z
     .boolean()
     .optional()
@@ -124,9 +147,24 @@ interface HookCallResultEntry extends HookCallReply {
   hookName: string;
 }
 
+/**
+ * 复用 runnerId schema, 给 searchHook / getHookTag / getHookInfo 用 (跟 hookCallEntrySchema 同语义)。
+ * @keyword-en runner-id-schema, uuid-strict
+ */
+const runnerIdSchema = z
+  .string()
+  .regex(
+    RUNNER_ID_REGEX,
+    'runnerId 必须是 UUID 格式 (saas.app.runner.list 返回的 items[].id), 不要传 alias / 名字',
+  )
+  .optional()
+  .describe(
+    'target=runner 必填; **必须是 saas.app.runner.list 返回的 items[].id (UUID 形如 019e5852-7ec2-7844-...), 不是 alias 名字**',
+  );
+
 const searchHookSchema = z.object({
   target: z.enum([SAAS, RUNNER]).default(SAAS),
-  runnerId: z.string().optional().describe('target=runner 必填'),
+  runnerId: runnerIdSchema,
   tags: z
     .array(z.string())
     .optional()
@@ -139,7 +177,7 @@ type SearchHookInput = z.infer<typeof searchHookSchema>;
 
 const getHookTagSchema = z.object({
   target: z.enum([SAAS, RUNNER]).default(SAAS),
-  runnerId: z.string().optional().describe('target=runner 必填'),
+  runnerId: runnerIdSchema,
   pluginName: z.string().optional(),
   cursor: z.number().int().nonnegative().optional(),
   limit: z
@@ -156,7 +194,7 @@ type GetHookTagInput = z.infer<typeof getHookTagSchema>;
 
 const getHookInfoSchema = z.object({
   target: z.enum([SAAS, RUNNER]).default(SAAS),
-  runnerId: z.string().optional().describe('target=runner 必填'),
+  runnerId: runnerIdSchema,
   hookNames: z
     .array(z.string())
     .optional()
@@ -567,12 +605,8 @@ export function buildSearchHookTool(
   return tool(
     async (input: SearchHookInput): Promise<string> => {
       const start = Date.now();
-      const filterPreview = preview({
-        tags: input.tags,
-        pluginName: input.pluginName,
-        cursor: input.cursor,
-        limit: input.limit,
-      });
+      // 完整 input payload (含 target/runnerId), 比 filter-only 更便于调试 LLM 实际传值
+      const payloadPreview = preview(input);
       if (input.target === SAAS) {
         const all = projectSaasRegistrations(
           hookBus.listRegistrations(),
@@ -598,7 +632,7 @@ export function buildSearchHookTool(
         const nextCursor =
           cursor + slice.length < all.length ? cursor + slice.length : null;
         toolLogger.log(
-          `[search_hook] ${targetTag(input.target)} filter=${filterPreview} ` +
+          `[search_hook] ${targetTag(input.target)} payload=${payloadPreview} ` +
             `total=${all.length} returned=${slice.length} duration=${Date.now() - start}ms`,
         );
         return JSON.stringify({
@@ -625,7 +659,7 @@ export function buildSearchHookTool(
       });
       const { ok, err } = countReply(reply);
       toolLogger.log(
-        `[search_hook] ${targetTag(input.target, input.runnerId)} filter=${filterPreview} ` +
+        `[search_hook] ${targetTag(input.target, input.runnerId)} payload=${payloadPreview} ` +
           `ok=${ok} err=${err} duration=${Date.now() - start}ms` +
           (err > 0 ? ` errMsg=${preview(reply.errorMsg, 200)}` : ''),
       );
@@ -656,11 +690,7 @@ export function buildGetHookTagTool(
   return tool(
     async (input: GetHookTagInput): Promise<string> => {
       const start = Date.now();
-      const filterPreview = preview({
-        pluginName: input.pluginName,
-        cursor: input.cursor,
-        limit: input.limit,
-      });
+      const payloadPreview = preview(input);
       if (input.target === SAAS) {
         const projected = projectSaasRegistrations(hookBus.listRegistrations());
         const tagCount = new Map<string, number>();
@@ -683,7 +713,7 @@ export function buildGetHookTagTool(
         const nextCursor =
           cursor + slice.length < sorted.length ? cursor + slice.length : null;
         toolLogger.log(
-          `[get_hook_tag] ${targetTag(input.target)} filter=${filterPreview} ` +
+          `[get_hook_tag] ${targetTag(input.target)} payload=${payloadPreview} ` +
             `total=${sorted.length} returned=${slice.length} duration=${Date.now() - start}ms`,
         );
         return JSON.stringify({
@@ -709,7 +739,7 @@ export function buildGetHookTagTool(
       });
       const { ok, err } = countReply(reply);
       toolLogger.log(
-        `[get_hook_tag] ${targetTag(input.target, input.runnerId)} filter=${filterPreview} ` +
+        `[get_hook_tag] ${targetTag(input.target, input.runnerId)} payload=${payloadPreview} ` +
           `ok=${ok} err=${err} duration=${Date.now() - start}ms` +
           (err > 0 ? ` errMsg=${preview(reply.errorMsg, 200)}` : ''),
       );
@@ -792,7 +822,7 @@ export function buildGetHookInfoTool(
           });
         }
         toolLogger.log(
-          `[get_hook_info] ${targetTag(input.target)} ask=${askCount || 'all'} ` +
+          `[get_hook_info] ${targetTag(input.target)} payload=${preview(input)} ask=${askCount || 'all'} ` +
             `returned=${items.length} duration=${Date.now() - start}ms`,
         );
         return JSON.stringify({
@@ -812,7 +842,7 @@ export function buildGetHookInfoTool(
       });
       const { ok, err } = countReply(reply);
       toolLogger.log(
-        `[get_hook_info] ${targetTag(input.target, input.runnerId)} ask=${askCount || 'all'} ` +
+        `[get_hook_info] ${targetTag(input.target, input.runnerId)} payload=${preview(input)} ask=${askCount || 'all'} ` +
           `ok=${ok} err=${err} duration=${Date.now() - start}ms` +
           (err > 0 ? ` errMsg=${preview(reply.errorMsg, 200)}` : ''),
       );

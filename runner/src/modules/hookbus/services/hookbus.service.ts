@@ -241,14 +241,54 @@ export class RunnerHookBusService {
     const selected = list.filter((item) =>
       this.matchFilter(item.metadata, task.event.filter),
     );
+    // fail-fast :: hook 名未注册 → 明确软错, 避免 LLM 看到 data=[] 误以为"成功 0 项"
+    // 与 SaaS HookBus dispatchSaasHook 同语义 (errorMsg 含 Correction order),
+    // 额外补 runner 特有提示: 完整 4 段名约束 (常见错误是 LLM 传短名 terminal.exec 而非 runner.unitcore.terminal.exec)
+    if (selected.length === 0) {
+      const result: HookResult<unknown> = {
+        status: 'error',
+        error:
+          `hook-not-found:${task.event.name} :: This hook is not registered on this runner. ` +
+          '⚠ Correction order: call tool init_tip first to receive discoveryChains, ' +
+          'then walk the hook chain (get_hook_tag → search_hook → get_hook_info → call_hook) ' +
+          'with target=runner + runnerId to find the right hook. Do not guess hook names. ' +
+          '⚠ Runner hook 必须用完整 4 段名 platform.app.module.action ' +
+          '(例 "runner.unitcore.terminal.exec" 而非 "terminal.exec"); ' +
+          'runnerId 必须是 saas.app.runner.list 返回的 items[].id (UUID), 不是 alias.',
+      };
+      this.emitDebug({
+        type: 'result',
+        name: task.event.name,
+        results: [result],
+        ts: Date.now(),
+      });
+      task.resolve([result]);
+      return;
+    }
     const results: Array<HookResult<unknown>> = [];
     for (const item of selected) {
       const session = this.buildLogSession(task.event);
+      // 镜像 reg.metadata.requiredAbility / denyLlm 到 event.declaration, 跟 SaaS HookInvoker 同构,
+      // 让 ability middleware 不需要访问 reg 即可读到能力要求 + 拒 LLM 标记
+      const decoratedDeclaration =
+        item.metadata?.requiredAbility !== undefined ||
+        item.metadata?.denyLlm !== undefined
+          ? {
+              ...task.event.declaration,
+              ...(item.metadata?.requiredAbility !== undefined
+                ? { requiredAbility: item.metadata.requiredAbility }
+                : {}),
+              ...(item.metadata?.denyLlm !== undefined
+                ? { denyLlm: item.metadata.denyLlm }
+                : {}),
+            }
+          : task.event.declaration;
       const decoratedEvent: HookEvent<unknown> = {
         ...task.event,
         log: session.log,
+        ...(decoratedDeclaration ? { declaration: decoratedDeclaration } : {}),
       };
-      const named = (task.event.declaration?.middlewares ?? [])
+      const named = (decoratedEvent.declaration?.middlewares ?? [])
         .map((name) => this.namedMiddlewares.get(name))
         .filter((mw): mw is HookMiddleware<unknown, unknown> => Boolean(mw));
       const chain = this.compose([...named, ...this.middlewares], async () =>
@@ -295,8 +335,24 @@ export class RunnerHookBusService {
   }
 
   /**
-   * 紧贴 handler 的 zod payload 校验; metadata.payloadSchema 缺省时跳过 (兼容存量 hook)
-   * @keyword-en run-handler-with-schema
+   * 紧贴 handler 的 zod payload 校验; metadata.payloadSchema 缺省时跳过 (兼容存量 hook)。
+   *
+   * **智能 array unwrap (args 形参约定适配)**:
+   * SaaS 端 call_hook / search_hook 等工具都按 "args 数组形参" 约定把 payload 包成 `[{...}]` 数组,
+   * 这是因为 SaaS @HookRoute({args:[...]}) 装饰器自动用 z.tuple(...) 包了一层 schema。
+   * Runner 端 unit hook (terminal/mongo/file 等) 直接传 z.object(...) 单对象 schema, 没有 tuple 包装,
+   * 直接 safeParse 数组 payload 会得到 `expected object, received array` 失败。
+   *
+   * 兼容策略:
+   *   1. 先按 schema 直接 safeParse 原 payload (跟 SaaS HookInvoker 行为对齐)
+   *   2. 失败且 payload 是数组 → 取 payload[0] 再 safeParse (适配 SaaS 包 array 调过来的业务 hook)
+   *   3. 仍失败 → 返回原 error (包含字段路径), 让 LLM 看到具体哪里错
+   *
+   * 这样:
+   *   - meta hook (payloadSchema=z.tuple([...])) 直接 array 校验通过, 不进 unwrap
+   *   - 业务 hook (payloadSchema=z.object({...})) 通过 unwrap 兼容 SaaS 调用
+   *   - runner 内部直传 object 的调用 (source=system/runner) 直接通过, 不受影响
+   * @keyword-en run-handler-with-schema, array-unwrap-fallback
    */
   private async runHandlerWithSchema(
     reg: HookRegistration,
@@ -304,17 +360,30 @@ export class RunnerHookBusService {
   ): Promise<HookResult<unknown>> {
     const schema = reg.metadata?.payloadSchema;
     if (!schema) return await reg.handler(event);
-    const parsed = schema.safeParse(event.payload);
-    if (!parsed.success) {
-      const detail = parsed.error.issues
-        .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
-        .join('; ');
-      return {
-        status: 'error',
-        error: `payload-schema-invalid: ${detail}`,
-      };
+
+    // 第一遍: 直接按原 payload 校验
+    const direct = schema.safeParse(event.payload);
+    if (direct.success) {
+      return await reg.handler({ ...event, payload: direct.data });
     }
-    return await reg.handler({ ...event, payload: parsed.data });
+
+    // 第二遍 fallback: array 包装 → 取 [0] 再试
+    if (Array.isArray(event.payload)) {
+      const unwrapped = (event.payload as unknown[])[0];
+      const second = schema.safeParse(unwrapped);
+      if (second.success) {
+        return await reg.handler({ ...event, payload: second.data });
+      }
+    }
+
+    // 两次都失败, 返回第一次的 (原 payload) 错误描述
+    const detail = direct.error.issues
+      .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('; ');
+    return {
+      status: 'error',
+      error: `payload-schema-invalid: ${detail}`,
+    };
   }
 
   private compose<TPayload, TResult>(
