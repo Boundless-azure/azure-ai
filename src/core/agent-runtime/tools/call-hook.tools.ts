@@ -172,6 +172,15 @@ const searchHookSchema = z.object({
   pluginName: z.string().optional(),
   cursor: z.number().int().nonnegative().optional(),
   limit: z.number().int().positive().max(DEFAULT_PAGE_SIZE).optional(),
+  isWeb: z
+    .boolean()
+    .optional()
+    .describe(
+      '是否只搜索 Web Component Hook (isComponent=true); ' +
+        'false (默认) = 只返回普通 hook (排除组件); ' +
+        'true = 只返回 Web Component Hook. ' +
+        '不传等同于 false。',
+    ),
 });
 type SearchHookInput = z.infer<typeof searchHookSchema>;
 
@@ -188,6 +197,14 @@ const getHookTagSchema = z.object({
     .optional()
     .describe(
       `默认 ${TAG_PAGE_LIMIT}, 一次性拿全景以便 LLM 决策; 上限 ${TAG_PAGE_LIMIT}`,
+    ),
+  isWeb: z
+    .boolean()
+    .optional()
+    .describe(
+      '是否只统计 Web Component Hook 的 tag (isComponent=true); ' +
+        'false (默认) = 只统计普通 hook 的 tag (排除组件); ' +
+        'true = 只统计 Web Component Hook 的 tag.',
     ),
 });
 type GetHookTagInput = z.infer<typeof getHookTagSchema>;
@@ -327,7 +344,7 @@ async function dispatchOne(
 }
 
 /**
- * SaaS 侧本地走 registry, 投影成与 runner meta hook 同形的列表
+ * SaaS 侧本地走 registry, 投影成与 runner meta hook 同形的列表（含 isComponent）
  * @keyword-en project-saas-registrations
  */
 function projectSaasRegistrations(regs: HookRegistration[]): Array<{
@@ -335,6 +352,7 @@ function projectSaasRegistrations(regs: HookRegistration[]): Array<{
   tags: string[];
   description: string | null;
   pluginName: string | null;
+  isComponent: boolean;
 }> {
   const seen = new Set<string>();
   const list: Array<{
@@ -342,6 +360,7 @@ function projectSaasRegistrations(regs: HookRegistration[]): Array<{
     tags: string[];
     description: string | null;
     pluginName: string | null;
+    isComponent: boolean;
   }> = [];
   for (const item of regs) {
     const key = `${item.name}::${item.metadata?.pluginName ?? ''}`;
@@ -352,6 +371,7 @@ function projectSaasRegistrations(regs: HookRegistration[]): Array<{
       tags: item.metadata?.tags ?? [],
       description: item.metadata?.description ?? null,
       pluginName: item.metadata?.pluginName ?? null,
+      isComponent: item.metadata?.isComponent === true,
     });
   }
   return list;
@@ -607,10 +627,13 @@ export function buildSearchHookTool(
       const start = Date.now();
       // 完整 input payload (含 target/runnerId), 比 filter-only 更便于调试 LLM 实际传值
       const payloadPreview = preview(input);
+      const wantWeb = input.isWeb === true;
       if (input.target === SAAS) {
         const all = projectSaasRegistrations(
           hookBus.listRegistrations(),
         ).filter((item) => {
+          // isWeb 分离: 默认只返回普通 hook, isWeb=true 只返回组件
+          if (item.isComponent !== wantWeb) return false;
           const wantTags = (input.tags ?? []).filter(Boolean);
           if (
             wantTags.length > 0 &&
@@ -635,9 +658,22 @@ export function buildSearchHookTool(
           `[search_hook] ${targetTag(input.target)} payload=${payloadPreview} ` +
             `total=${all.length} returned=${slice.length} duration=${Date.now() - start}ms`,
         );
+        const resultBody: Record<string, unknown> = {
+          items: slice,
+          total: all.length,
+          cursor,
+          nextCursor,
+        };
+        if (wantWeb && slice.length > 0) {
+          resultBody['_instruction'] =
+            'These are Web Component Hooks. ' +
+            'NEXT STEP: call get_hook_info to get payloadSchema, then output a hook fence in your reply message: ' +
+            '```hook\\n{"actionHook":"<hookName>","payload":{...按 payloadSchema 填筛选条件}}\\n``` ' +
+            'Then call sendMsg. DO NOT call these hooks via call_hook — the component fetches its own data. Turn complete after sendMsg.';
+        }
         return JSON.stringify({
           errorMsg: [],
-          result: { items: slice, total: all.length, cursor, nextCursor },
+          result: resultBody,
           debugLog: [],
         });
       }
@@ -653,6 +689,7 @@ export function buildSearchHookTool(
             pluginName: input.pluginName,
             cursor: input.cursor,
             limit: input.limit,
+            isWeb: input.isWeb,
           },
         ],
         context: getCtx(),
@@ -669,7 +706,9 @@ export function buildSearchHookTool(
       name: 'search_hook',
       description:
         '搜索 hook 注册表, 默认每页 100 条, 通过 cursor 翻页。tags 任一命中即返回。' +
-        'target=saas 直接走平台 HookBus; target=runner 必填 runnerId。',
+        'target=saas 直接走平台 HookBus; target=runner 必填 runnerId。' +
+        'isWeb=false (默认) 只返回普通 hook; isWeb=true 只返回 Web Component Hook。' +
+        '两类严格分离，不传 isWeb 永远不会返回组件，避免搜索混淆。',
       schema: searchHookSchema,
     },
   );
@@ -692,7 +731,10 @@ export function buildGetHookTagTool(
       const start = Date.now();
       const payloadPreview = preview(input);
       if (input.target === SAAS) {
-        const projected = projectSaasRegistrations(hookBus.listRegistrations());
+        const wantWeb = input.isWeb === true;
+        const projected = projectSaasRegistrations(
+          hookBus.listRegistrations(),
+        ).filter((item) => item.isComponent === wantWeb);
         const tagCount = new Map<string, number>();
         for (const item of projected) {
           if (input.pluginName && item.pluginName !== input.pluginName)
@@ -733,6 +775,7 @@ export function buildGetHookTagTool(
             pluginName: input.pluginName,
             cursor: input.cursor,
             limit: input.limit,
+            isWeb: input.isWeb,
           },
         ],
         context: getCtx(),
@@ -750,7 +793,8 @@ export function buildGetHookTagTool(
       description:
         `获取已注册 hook 的 tag 频次榜, 默认/上限 ${TAG_PAGE_LIMIT} 条 (一次拿全景便于决策); 超过用 cursor 翻页. ` +
         'target=saas 走平台; target=runner 必填 runnerId. ' +
-        '推荐作为 hook 发现链路的起点 - 先看 tag 全景, 再据此 search_hook 缩范围.',
+        '推荐作为 hook 发现链路的起点 - 先看 tag 全景, 再据此 search_hook 缩范围. ' +
+        'isWeb=false (默认) 只统计普通 hook 的 tag; isWeb=true 只统计 Web Component Hook 的 tag，两类严格分离。',
       schema: getHookTagSchema,
     },
   );
@@ -801,6 +845,8 @@ export function buildGetHookInfoTool(
           tags: string[];
           pluginName: string | null;
           payloadSchema: unknown;
+          isComponent?: true;
+          _usage?: string;
         }> = [];
         for (const item of all) {
           if (want.size > 0 && !want.has(item.name)) continue;
@@ -813,12 +859,23 @@ export function buildGetHookInfoTool(
               schema = null;
             }
           }
+          const isComponent = item.metadata?.isComponent === true;
           items.push({
             name: item.name,
             description: item.metadata?.description ?? null,
             tags: item.metadata?.tags ?? [],
             pluginName: item.metadata?.pluginName ?? null,
             payloadSchema: schema,
+            ...(isComponent
+              ? {
+                  isComponent: true as const,
+                  _usage:
+                    `Web Component Hook — DO NOT call via call_hook. ` +
+                    `Output a hook fence in your reply message instead: ` +
+                    `\`\`\`hook\\n{"actionHook":"${item.name}","payload":{...按 payloadSchema 填筛选条件}}\\n\`\`\` ` +
+                    `Then call sendMsg. The component fetches its own data. Turn complete after sendMsg.`,
+                }
+              : {}),
           });
         }
         toolLogger.log(

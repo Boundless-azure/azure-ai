@@ -93,6 +93,26 @@ export class RoleService {
     return items;
   }
 
+  /**
+   * 统计角色总数，支持按 organizationId 过滤。
+   * @keyword-cn 角色总数, 统计
+   * @keyword-en count-roles, role-count
+   */
+  async count(query: { organizationId?: string } = {}): Promise<{ count: number }> {
+    const qb = this.roleRepo
+      .createQueryBuilder('r')
+      .where('r.is_delete = false');
+    if (query.organizationId !== undefined) {
+      if (query.organizationId === '' || query.organizationId === 'null') {
+        qb.andWhere('r.organization_id IS NULL');
+      } else {
+        qb.andWhere('r.organization_id = :oid', { oid: query.organizationId });
+      }
+    }
+    const count = await qb.getCount();
+    return { count };
+  }
+
   async create(dto: CreateRoleDto): Promise<RoleEntity> {
     this.logger.log(`[create:start] payload=${JSON.stringify(dto)}`);
     const entity = this.roleRepo.create({

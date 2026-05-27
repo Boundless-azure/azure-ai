@@ -8,6 +8,7 @@ import { RewardRecordEntity } from './entities/reward-record.entity';
 import { FrpNodeEntity } from './entities/frp-node.entity';
 import { RunnerController } from './controllers/runner.controller';
 import { RunnerProxyController } from './controllers/runner.proxy.controller';
+import { HookComponentController } from './controllers/hook-component.controller';
 import { RewardRecordController } from './controllers/reward-record.controller';
 import { FrpPluginController } from './controllers/frp-plugin.controller';
 import { RunnerGateway } from './controllers/runner.gateway';
@@ -44,6 +45,7 @@ import { RunnerHookRpcService } from './services/runner-hook-rpc.service';
     RunnerProxyController,
     RewardRecordController,
     FrpPluginController,
+    HookComponentController,
   ],
   providers: [
     RunnerService,

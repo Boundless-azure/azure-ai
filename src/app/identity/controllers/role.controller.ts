@@ -44,6 +44,13 @@ const onRbacRoleListInput = z.object({
     ),
 });
 
+const onRbacRoleCountInput = z.object({
+  organizationId: z
+    .string()
+    .optional()
+    .describe('按组织 ID 过滤; 不传返回全部'),
+});
+
 const onRbacRoleCreateInput = z.object({
   name: z.string().describe('角色显示名'),
   code: z
@@ -105,6 +112,17 @@ const onRbacRolePermissionUpsertInput = z.object({
 @Controller('identity/roles')
 export class RoleController {
   constructor(private readonly roleService: RoleService) {}
+
+  @Get('count')
+  @CheckAbility('read', 'role')
+  @HookRoute({
+    hook: 'saas.app.identity.roleCount',
+    description: '角色总数统计 :: 返回 { count: number }，支持按 organizationId 过滤',
+    args: [onRbacRoleCountInput],
+  })
+  async count(@Query() query: { organizationId?: string }) {
+    return await this.roleService.count(query);
+  }
 
   @Get()
   @CheckAbility('read', 'role')

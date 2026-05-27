@@ -10,14 +10,18 @@
 - core/hookbus/enums/hook.enums.ts
 - core/hookbus/types/hook.types.ts
 - core/hookbus/decorators/hook-controller.decorator.ts
+- core/hookbus/decorators/hook-component.decorator.ts
 - core/hookbus/controllers/hookbus-debug.controller.ts
 - core/hookbus/controllers/hookbus-debug.gateway.ts
+- core/hookbus/controllers/hook-invoke.controller.ts
 - core/hookbus/services/hook.registry.service.ts
 - core/hookbus/services/hook.invoker.service.ts
 - core/hookbus/services/hook.bus.service.ts
 - core/hookbus/services/hook.debug-state.service.ts
 - core/hookbus/services/hook.auth-middleware.service.ts
 - core/hookbus/services/hook-controller-explorer.service.ts
+- core/hookbus/services/hook-component.registry.service.ts
+- core/hookbus/services/hook-component.explorer.service.ts
 - core/hookbus/hookbus.module.ts
 - core/hookbus/cache/hook.cache.ts
 
@@ -28,6 +32,7 @@
 - HookInvokerService.invoke(event, regs)
 - HookInvokerService.use(mw)
 - HookInvokerService.useNamed(name, mw)
+- HookInvokeController.invoke(body, req) — POST /hook-invoke :: 按 hookName 调用已注册 Hook，JWT 鉴权，返回 { ok, data } 或 { ok: false, errorMsg }；主要用于前端 Web Component 动态调用 Hook | keywords: hook-invoke-endpoint, frontend-component-call, invoke-hook-by-name
 - HookBusService.register(name, handler, metadata)
 - HookBusService.emit(event)  -- 注入 ts/callSite, 透传 context
 - HookBusService.select(name, filter)
@@ -43,6 +48,12 @@
 - HookbusDebugGateway.onEmit(socket, payload)
 - HookCacheService.recordStatus(hook, status)
 - HookCacheService.getStatus(hook)
+- HookComponent(hookName, meta?) — 属性装饰器，标记字符串属性为 SaaS 侧 hook 组件 JS；meta 提供 description/tags/payloadSchema | keywords: hook-component-decorator, saas-component-declaration, predefined-component
+- HookComponentRegistryService.register(hookName, js, meta?) — 注册 SaaS 侧 hook 组件（含元数据） | keywords: hook-component-registry, register-hook-component, component-metadata
+- HookComponentRegistryService.get(hookName) — 按 hookName 查询组件 JS | keywords: get-hook-component-js
+- HookComponentRegistryService.getEntry(hookName) — 按 hookName 查询完整条目（含 description/tags/payloadSchemaJson） | keywords: get-hook-component-metadata
+- HookComponentRegistryService.list() — 列出已注册 hookName | keywords: list-hook-component-names
+- HookComponentExplorerService.onModuleInit() — 扫描所有 Provider，注册 @HookComponent 属性到注册表并在 HookBus 注册 isComponent 占位 hook | keywords: hook-component-explorer, startup-scan, hookbus-registration
 
 关键词索引（中文 / English Keyword Index）
 Hook枚举 -> core/hookbus/enums/hook.enums.ts
@@ -72,6 +83,9 @@ Hook缓存服务 -> core/hookbus/cache/hook.cache.ts
 - HookLogSession         -- { log, finalize({ ok?, error? }) => HookLogEntry[] }
 - HookRegistration / HookMetadata / HookResult / HookFilter / HookDeclaration
                             HookResult.debugLog?: HookLogEntry[]; debug=true 时由 invoker drain 注入
+                            HookMetadata.isComponent=true 标记 Web Component Hook; denyLlm=true 阻止 call_hook 直接调用
+- HookComponentMeta         -- { description?, tags?, payloadSchema? }; @HookComponent 第二参数形状
+- HookComponentEntry        -- { js, description?, tags, payloadSchemaJson? }; 注册表存储单元
 
 快速检索映射（Keywords -> Files）
 - "hook.bus.service" / "HookBusService" -> src/core/hookbus/services/hook.bus.service.ts

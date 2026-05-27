@@ -9,6 +9,9 @@ import { HookDebugStateService } from './services/hook.debug-state.service';
 import { HookAuthMiddlewareService } from './services/hook.auth-middleware.service';
 import { HookbusDebugGateway } from './controllers/hookbus-debug.gateway';
 import { HookbusDebugController } from './controllers/hookbus-debug.controller';
+import { HookInvokeController } from './controllers/hook-invoke.controller';
+import { HookComponentRegistryService } from './services/hook-component.registry.service';
+import { HookComponentExplorerService } from './services/hook-component.explorer.service';
 import type { HookBusOptions } from './types/hook.types';
 
 /**
@@ -33,14 +36,17 @@ export class HookBusModule {
         HookDebugStateService,
         HookAuthMiddlewareService,
         HookbusDebugGateway,
+        HookComponentRegistryService,
+        HookComponentExplorerService,
       ],
-      controllers: [HookbusDebugController],
+      controllers: [HookbusDebugController, HookInvokeController],
       exports: [
         HookRegistryService,
         HookInvokerService,
         HookBusService,
         HookCacheService,
         HookDebugStateService,
+        HookComponentRegistryService,
       ],
     };
   }

@@ -367,4 +367,30 @@ export class RunnerProxyService {
 
     return savedDomain;
   }
+
+  /**
+   * @title 从任意在线 Runner 获取 Hook 组件 JS
+   * @description 遍历所有在线 Runner，向第一个持有该 hookName 组件的 runner 请求 JS 文件内容。
+   *              无需显式传 runnerId，由 gateway 广播。
+   * @param io Socket.IO Server 实例
+   * @param onlineRunnerIds 当前在线 Runner ID 列表（由 RunnerGateway 提供）
+   * @param hookName hook 地址，如 runner.app.todo.card
+   * @returns JS 文件内容字符串，所有 runner 均无该组件时返回 null
+   * @keywords-cn hook组件JS, 自动路由, 广播查找, solution组件
+   * @keywords-en get-hook-component-js, auto-route, broadcast-lookup, solution-component
+   */
+  async getHookComponentFromAnyRunner(
+    io: Server,
+    onlineRunnerIds: string[],
+    hookName: string,
+  ): Promise<string | null> {
+    for (const runnerId of onlineRunnerIds) {
+      const result = await this.tokenService.requestFromRunner<{
+        js: string;
+        error?: string;
+      }>(io, runnerId, 'hook-component:get', { hookName });
+      if (result && !result.error && result.js) return result.js;
+    }
+    return null;
+  }
 }

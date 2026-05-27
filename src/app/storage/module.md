@@ -9,10 +9,13 @@
 - app/storage/entities/storage-node.entity.ts
 - app/storage/types/storage.types.ts
 - app/storage/services/storage.service.ts
+- app/storage/services/storage-components.service.ts
 - app/storage/controllers/storage.controller.ts
 - app/storage/storage.module.ts
 
 函数清单（Function Index）
+- StorageComponentsService
+  - fileList (@HookComponent) — Web Component Hook: 列表展示文件与文件夹，支持 path/q/type 过滤；点击文件新标签打开 resourcePath；点击文件夹派发 hookComponent:navigate 事件跳转右侧文件库 | keywords: file-list-web-component, storage-components, web-component-hook-declaration, hook-component-navigate
 - StorageService
   - createNode() - 创建存储节点（文件夹/文件）
   - getNode() - 获取节点详情

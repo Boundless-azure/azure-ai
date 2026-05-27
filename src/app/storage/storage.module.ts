@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { StorageNodeEntity } from './entities/storage-node.entity';
 import { StorageService } from './services/storage.service';
 import { StorageController } from './controllers/storage.controller';
+import { StorageComponentsService } from './services/storage-components.service';
 import { ResourceModule } from '../resource/resource.module';
 
 /**
@@ -13,7 +14,7 @@ import { ResourceModule } from '../resource/resource.module';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([StorageNodeEntity]), ResourceModule],
-  providers: [StorageService],
+  providers: [StorageService, StorageComponentsService],
   controllers: [StorageController],
   exports: [StorageService],
 })

@@ -31,6 +31,7 @@ src/modules/agent/
 │       ├── ChatMessageList.vue     # 消息列表
 │       ├── ChatSessionHeader.vue   # 会话头部
 │       ├── ChatThreadList.vue      # 会话列表
+│       ├── HookComponentRenderer.vue # Hook 组件动态渲染器
 │       └── InputArea.vue          # 输入区域
 ├── config/
 │   └── tab.registry.ts            # 右侧面板 Tab 注册表
@@ -94,6 +95,7 @@ src/modules/agent/
 | `setupObserver` | 初始化 IntersectionObserver 监听顶部哨兵 |
 | `renderMarkdown` | 渲染 markdown（带 LRU 缓存，最多200条） |
 | `renderLazyGuardTags` | 渲染后端固定 lazy guard 标签为本地化状态卡 |
+| `mountHookComponents` | 扫描 DOM 中 .hook-component-slot 占位，动态挂载 HookComponentRenderer Vue 实例 | keywords: mount-hook-components, dynamic-vue-mount, hook-component-slot |
 | `markNewMessage` | 标记新消息以触发进场动画 |
 | `handleAvatarClick` | 点击头像打开用户信息抽屉 |
 | `renderUserMarkdown` | 用户消息 markdown 渲染 (html=false 防 XSS), 让 `![]()` 出图、`[]()` 出链接 |
@@ -196,6 +198,13 @@ src/modules/agent/
 | 函数名 | 关键词描述 |
 |--------|-----------|
 | `toggleSidebarMenu` | 从聊天首页左上角菜单按钮切换后台菜单抽屉 |
+
+### components/chat/HookComponentRenderer.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `fetchAndMount` | 根据 actionHook 拉取组件 JS（Bearer token 鉴权，Blob URL 缓存），动态 import 并调用 render(container, payload) | keywords: hook-component-renderer, dynamic-component, offline-state, solution-component |
+| `onNavigate` | 监听 window `hookComponent:navigate` CustomEvent，调用 useRightPanelStore().openTab() 跳转右侧面板 Tab；由文件列表等组件点击时派发 | keywords: hook-component-navigate-handler, right-panel-navigate |
 
 ### components/chat/ChatHomeHeader.vue
 

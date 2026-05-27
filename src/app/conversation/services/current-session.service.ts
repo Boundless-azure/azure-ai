@@ -154,7 +154,8 @@ export interface CurrentSessionContextSnapshot {
 /**
  * init_tip tool 返回给 LLM 的 turn 使用手册.
  *  - directHooks :: 已知常用 hook 的快捷入口, 不需要走发现链路 (例如 currentSession.context 一次拿双方身份/IP/时间)
- *  - discoveryChains :: 三大标准发现链路 (callLog / knowledge / hook), 每条按 tag → search → detail 顺序走, 末尾收 sendMsg
+ *  - discoveryChains :: 四大标准发现链路 (component / callLog / knowledge / hook), 每条按 tag → search → detail 顺序走, 末尾收 sendMsg
+ *    · component 是优先级最高的链路: 凡是有对应组件的任务, 组件自带数据获取, 无需自己拼 payload / 处理返回值
  *  - usageRules :: cross-cutting 行为约束 (commit early / no loops / no skip / must sendMsg)
  *  - tipNote :: 一句话本轮总览, 按 declared 强调走哪条
  * @keyword-en init-tip-suggestions, direct-hooks, discovery-chains, usage-rules
@@ -162,6 +163,8 @@ export interface CurrentSessionContextSnapshot {
 export interface CurrentSessionInitTipSuggestions {
   directHooks: string[];
   discoveryChains: {
+    /** Web Component Hook 链路 — 优先级最高，有对应组件时直接输出 fence，无需走 callLog/hook 链路 */
+    component: string[];
     callLog: string[];
     knowledge: string[];
     hook: string[];
@@ -758,18 +761,29 @@ function isEvidenceHook(hookName: string): boolean {
 }
 
 /**
- * 构造三大标准发现链路 (callLog / knowledge / hook); 静态内容, 总是返回完整三条.
- *  - 上下文找不到数据时, LLM 按这些链路自底向上发现 (tag → search → detail)
+ * 构造四大标准发现链路 (component / callLog / knowledge / hook); 静态内容, 总是返回完整四条.
+ *  - component 是优先级最高的链路: 有对应 Web Component Hook 时直接输出 fence, 无需数据处理
+ *  - 上下文找不到数据时, LLM 按 component → callLog → hook 链路自底向上发现
  *  - 每条链路是 "标准操作流程" (SOP), 步骤之间有明确依赖顺序
- * @keyword-en build-discovery-chains, tag-search-detail
+ * @keyword-en build-discovery-chains, tag-search-detail, component-first
  */
 function buildDiscoveryChains(): {
+  component: string[];
   callLog: string[];
   knowledge: string[];
   hook: string[];
   history: string[];
 } {
   return {
+    component: [
+      '⚠ 这是 needHook=true 时的强制第一步, 无论任务类型 (查询/列表/统计/分析均适用).',
+      '⚠ Web Component Hook 是数据获取简化器: 有对应组件时, 组件自带数据查询逻辑, 你无需自己调数据 hook / 处理返回值 / 拼文字输出. 直接输出 fence 即可完成任务.',
+      '① 拿组件 tag 全景 :: tool get_hook_tag [{ isWeb: true }] → 组件 tag 频次榜 (isWeb=true 专用, 与普通 hook tag 严格分离)',
+      '② 按 tag 搜组件 :: tool search_hook [{ isWeb: true, tags:["<相关 tag>"] }] → 命中的组件列表 (含 name / description / payloadSchema); ⚠ tags 必须来自 ① 的真实结果, 不要自创',
+      '③ 输出 fence + sendMsg :: 找到匹配组件 → 按其 payloadSchema 填写 payload (通常是筛选条件, 如 id / type / q / status 等) → 在消息正文里嵌入 hook fence; 调 sendMsg 发送. **turn 完成, 不再走 callLog / hook 链路**.',
+      '⓪ fence 格式 (放在消息正文里, 不是额外调用) :: ```hook\\n{"actionHook":"<hookName>","payload":{...}}\\n```',
+      '→ 若 ① ② 均无命中, 才继续走 callLog / hook 链路.',
+    ],
     callLog: [
       '① 拿全景 :: call_hook saas.app.conversation.callHistory.query [{}] → 返最近 50 条成功 hook 调用的轻量列表 ({id, hookName, title, ts})',
       '② 匹配命中 :: 在 title / hookName 里找跟本轮意图相关项; 也可加 search 关键词收窄: [{ search: "<keyword>" }]',
@@ -785,7 +799,7 @@ function buildDiscoveryChains(): {
     ],
     hook: [
       '⚠ target 选择 :: 默认 target="saas" 走 SaaS HookBus. 想用 runner 端能力 (本地文件 / mongo / terminal / runner app 业务) → **必须先调 call_hook saas.app.runner.list [{status:"mounted"}]** 拿真实 runnerId, 之后 tool/call_hook 的 target="runner" 参数都必须带 runnerId. 不知道 runnerId 时盲填会 softError "runnerId-required". **强烈建议同时读 Runner 手册** (bookId="local_runner_hook_skill"): LM必读章节含调用约定 + errorMsg 字典 (自动加载); 用 unit-core / identity / solution / 数据触点时按需读对应子章节 (local_runner_hook_skill_unitcore / _identity / _solution / _data_touchpoint), 不读容易在 UUID / 4 段名 / array payload / denyLlm 上踩坑.',
-      '① 拿 hook tag 全景 :: tool get_hook_tag [{target}] → tag 频次榜 (上限 400). target="runner" 时 runnerId 必填',
+      '① 拿 hook tag 全景 :: tool get_hook_tag [{ target }] → tag 频次榜 (上限 400, isWeb 默认 false 已排除组件). target="runner" 时 runnerId 必填',
       '② 按 tag 缩范围 :: tool search_hook [{ target, runnerId?, tags:["<挑出来的 tag>"] }] → 命中的 hook 列表; ⚠ tags 必须来自 ① 的真实结果, 不要自创',
       '③ 拿 description + schema :: tool get_hook_info [{ target, runnerId?, hookNames:["<挑出来的 hook>"] }] → 描述 + JSON Schema, 写 payload 必看',
       '④ 调用业务 hook :: call_hook <fullHookName> [{...按 schema 写...}], saas.* 前缀走 saas / runner.* 走 runner (runnerId 必填) → 执行业务',
@@ -857,7 +871,10 @@ function buildTipNote(declared: CurrentSessionInitTip): string {
     );
   } else if (declared.needHook) {
     parts.push(
-      'Business hook needed. First reuse via callLog chain (query[{}] → match → includeDetail); if no match, walk the hook chain (get_hook_tag → search_hook → get_hook_info → call_hook).',
+      'Business hook needed. ' +
+        'MANDATORY FIRST STEP → walk discoveryChains.component (get_hook_tag isWeb:true → search_hook isWeb:true): ' +
+        'a Web Component Hook handles data fetching internally — if one matches, output hook fence + sendMsg and you are DONE, no further hook calls needed. ' +
+        'Only fall back to callLog chain then regular hook chain if the component chain finds nothing.',
     );
   }
   if (parts.length === 0) {

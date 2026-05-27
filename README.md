@@ -137,7 +137,7 @@ lang :: [English](/docs/readme/README.en.md) · [中文](/docs/readme/README.zh-
 
 ---
 
-## `# design`  —  八大核心设计
+## `# design`  —  核心设计
 
 ### `[1]  HookBus`  ::  AI 代码的白名单入口
 
@@ -267,6 +267,66 @@ AI 产代码调这些 Unit · 不碰底层 API.
 ```
 
 详见 [`PLAN.md`](PLAN.md).
+
+### `[9]  Web Component Hook`  ::  AI 输出即渲染
+
+AI 不用自己查数据 · 不用手工拼 markdown 表格 — **直接输出一段 fence · 前端自动渲染交互组件**.
+
+```
+ AI 回复里输出:
+ ┌─────────────────────────────────────────────────────┐
+ │  ```hook                                            │
+ │  { "actionHook": "saas.app.identity.userTable",    │
+ │    "payload": { "type": "user" } }                  │
+ │  ```                                                │
+ └─────────────────────────────────────────────────────┘
+        │
+        ▼
+ 前端 ChatMessageList 识别 hook fence
+        │
+        ▼
+ HookComponentRenderer.vue
+   └── GET /api/hook-component?hookName=xxx
+         ├── SaaS 注册表优先 (@HookComponent 装饰器声明的 ESM JS)
+         └── 未命中 → 广播所有在线 Runner (socket hook-component:get ACK)
+               └── workspace/solutions/{name}/components/{hookName}.js
+        │
+        ▼
+ 动态 import() ESM 模块  →  render(container, payload)
+   └── 组件自带数据获取 + 交互逻辑 (调用已有 HTTP 接口)
+```
+
+**SaaS 侧组件声明 (`@HookComponent` 装饰器)**
+
+```typescript
+@Injectable()
+export class MyComponents {
+  @HookComponent('saas.app.identity.userTable', {
+    description: '表格展示用户列表，支持 q/tenantId/type 过滤',
+    tags: ['identity', 'component'],
+    payloadSchema: z.object({ q: z.string().optional() }),
+  })
+  readonly userTable = `export function render(el, payload) { /* ESM */ }`;
+}
+```
+
+**Runner 侧文件声明**
+
+```
+workspace/solutions/{solutionName}/components/{hookName}.js
+```
+
+**LLM 发现 → 输出链路**
+
+```
+search_hook({ tag: "component" })         ← 发现阶段, AI 学习有哪些组件
+  └── 返回 isComponent=true 的 hook 列表 (含 description / payloadSchema)
+
+AI 输出 hook fence + payload 筛选条件    ← 使用阶段, AI 调用次数 = 0
+  └── 前端自动渲染, 组件自带实时查询
+```
+
+`highlight ::` 组件可实时查询 · payload 只是筛选条件 · **AI 调用次数为零** · 离线时前端自动展示灰色 "offline" 徽章.
 
 ---
 

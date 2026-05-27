@@ -256,7 +256,7 @@
  * @keywords-cn 消息列表, 工具调用, 聊天内容, 虚拟滑动
  * @keywords-en message-list, tool-calls, chat-content, virtual-scroll
  */
-import { computed, watch, ref, onUnmounted, onMounted, nextTick } from 'vue';
+import { computed, watch, ref, onUnmounted, onMounted, nextTick, createApp } from 'vue';
 import { storeToRefs } from 'pinia';
 import type { ChatMessage } from '../../types/agent.types';
 import { ChatRole, ToolCallStatus } from '../../enums/agent.enums';
@@ -267,6 +267,7 @@ import { useImStore } from '../../../im/im.module';
 import { AI_AWAITING_EMOJI } from '../../../im/constants/im.constants';
 import MarkdownIt from 'markdown-it';
 import ImageViewer from '../../../resource/components/ImageViewer.vue';
+import HookComponentRenderer from './HookComponentRenderer.vue';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
 
@@ -548,6 +549,31 @@ md.renderer.rules.image = function (tokens, idx, options, env, self) {
 md.renderer.rules.table_open = () => '<div class="md-table-wrapper"><table>';
 md.renderer.rules.table_close = () => '</table></div>';
 
+// hook fence :: ```hook { "actionHook": "...", "payload": {...}, "runnerId": "..." }```
+// 解析后输出占位 div，由 mountHookComponents 动态挂载 HookComponentRenderer Vue 应用。
+// @keyword-en hook-fence-renderer dynamic-hook-component-slot
+const defaultFenceRenderer = md.renderer.rules.fence || function (tokens, idx, options, _env, self) {
+  return self.renderToken(tokens, idx, options);
+};
+md.renderer.rules.fence = function (tokens, idx, options, env, self) {
+  const token = tokens[idx];
+  if (token.info.trim() === 'hook') {
+    try {
+      const raw = JSON.parse(token.content.trim()) as Record<string, unknown>;
+      const actionHook = typeof raw.actionHook === 'string' ? raw.actionHook : '';
+      if (actionHook) {
+        const payload = JSON.stringify(raw.payload ?? null);
+        const escapedHook = actionHook.replace(/"/g, '&quot;');
+        const escapedPayload = payload.replace(/"/g, '&quot;');
+        return `<div class="hook-component-slot" data-action-hook="${escapedHook}" data-payload="${escapedPayload}"></div>`;
+      }
+    } catch {
+      // fall through to default fence render
+    }
+  }
+  return defaultFenceRenderer(tokens, idx, options, env, self);
+};
+
 // 用户消息单独的 markdown 实例: html=false 关闭 raw HTML 注入, 防 XSS
 // 用户输入是不可信源, 不允许走 <agent-lazy-guard> 等系统自定义标签那条路。
 // 仍然支持 markdown 语法生成的 <img> / <a> / <code> / 列表等, 让用户发的图片/链接能正常渲染。
@@ -661,6 +687,7 @@ watch(
         markNewMessage(msg.id);
       }
     }
+    void mountHookComponents();
   },
   { flush: 'post' },
 );
@@ -671,7 +698,47 @@ onUnmounted(() => {
     window.clearTimeout(t);
   }
   newMessageTimeoutById.clear();
+  for (const app of hookApps.values()) {
+    app.unmount();
+  }
+  hookApps.clear();
 });
+
+// ===== hook component dynamic mounting hook-component-mount =====
+/**
+ * Map of slot HTMLElement → mounted Vue app instance，用于生命周期清理。
+ * @keyword-en hook-component-apps-map cleanup-on-unmount
+ */
+const hookApps = new Map<HTMLElement, ReturnType<typeof createApp>>();
+
+/**
+ * 扫描 DOM 中未挂载的 .hook-component-slot，为每个创建并挂载 HookComponentRenderer 实例。
+ * 已标记 data-mounted 的跳过，防止重复挂载。
+ * @keyword-en mount-hook-components dynamic-vue-mount
+ */
+const mountHookComponents = async () => {
+  await nextTick();
+  const container = document.querySelector('.assistant-card, .message-panel');
+  // 搜索当前页面所有未挂载的 slot（不限于某个容器，避免 DOM 结构不确定）
+  const slots = document.querySelectorAll<HTMLElement>(
+    '.hook-component-slot:not([data-mounted])',
+  );
+  for (const slot of slots) {
+    const actionHook = slot.dataset.actionHook;
+    if (!actionHook) continue;
+    let payload: unknown = null;
+    try {
+      payload = JSON.parse(slot.dataset.payload ?? 'null');
+    } catch {
+      payload = null;
+    }
+    slot.dataset.mounted = 'true';
+    const app = createApp(HookComponentRenderer, { actionHook, payload });
+    app.mount(slot);
+    hookApps.set(slot, app);
+  }
+  void container; // suppress unused
+};
 
 const handleAvatarClick = (msg: ChatMessage) => {
   const senderId = (msg.senderId || selfId.value).trim();

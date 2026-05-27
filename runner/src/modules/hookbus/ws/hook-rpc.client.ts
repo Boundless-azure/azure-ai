@@ -69,14 +69,14 @@ function adaptResults(
 }
 
 /**
- * 把已注册的 hook 列表按 (name, tags, description, pluginName) 投影出来
+ * 把已注册的 hook 列表按 (name, tags, description, pluginName, isComponent) 投影出来
  * @keyword-en project-registrations
  */
 function projectRegistrations(
   hookBus: RunnerHookBusService,
-): Array<{ name: string; tags: string[]; description: string | null; pluginName: string | null }> {
+): Array<{ name: string; tags: string[]; description: string | null; pluginName: string | null; isComponent: boolean }> {
   const seen = new Set<string>();
-  const list: Array<{ name: string; tags: string[]; description: string | null; pluginName: string | null }> = [];
+  const list: Array<{ name: string; tags: string[]; description: string | null; pluginName: string | null; isComponent: boolean }> = [];
   for (const item of hookBus.listRegistrations()) {
     const key = `${item.name}::${item.metadata?.pluginName ?? ''}`;
     if (seen.has(key)) continue;
@@ -86,6 +86,7 @@ function projectRegistrations(
       tags: item.metadata?.tags ?? [],
       description: item.metadata?.description ?? null,
       pluginName: item.metadata?.pluginName ?? null,
+      isComponent: item.metadata?.isComponent === true,
     });
   }
   return list;
@@ -109,6 +110,7 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
       pluginName: z.string().optional(),
       cursor: z.number().int().nonnegative().optional(),
       limit: z.number().int().positive().max(DEFAULT_PAGE_SIZE).optional(),
+      isWeb: z.boolean().optional(),
     })
     .optional();
   const getTagInputSchema = z
@@ -116,6 +118,7 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
       pluginName: z.string().optional(),
       cursor: z.number().int().nonnegative().optional(),
       limit: z.number().int().positive().max(TAG_PAGE_LIMIT).optional(),
+      isWeb: z.boolean().optional(),
     })
     .optional();
   const getInfoInputSchema = z
@@ -133,9 +136,12 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
           pluginName?: string;
           cursor?: number;
           limit?: number;
+          isWeb?: boolean;
         }>(event.payload);
+        const wantWeb = payload.isWeb === true;
         const wantTags = (payload.tags ?? []).filter(Boolean);
         const all = projectRegistrations(hookBus).filter((item) => {
+          if (item.isComponent !== wantWeb) return false;
           if (wantTags.length > 0 && !wantTags.some((t) => item.tags.includes(t))) {
             return false;
           }
@@ -153,7 +159,8 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
       },
       {
         description:
-          '搜索已注册 hook, 支持 tags 任一命中 / pluginName 过滤, 默认每页 100 条, 通过 cursor 翻页',
+          '搜索已注册 hook, 支持 tags 任一命中 / pluginName 过滤, 默认每页 100 条, 通过 cursor 翻页. ' +
+          'isWeb=false (默认) 只返回普通 hook; isWeb=true 只返回 Web Component Hook。两类严格分离，不传 isWeb 不会返回组件。',
         tags: ['meta'],
         // args 形参: 跟 SaaS HookLifecycle 一致, payload[0] 是参数对象
         payloadSchema: z.tuple([searchInputSchema]),
@@ -169,9 +176,12 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
           pluginName?: string;
           cursor?: number;
           limit?: number;
+          isWeb?: boolean;
         }>(event.payload);
+        const wantWeb = payload.isWeb === true;
         const tagCount = new Map<string, number>();
         for (const item of projectRegistrations(hookBus)) {
+          if (item.isComponent !== wantWeb) continue;
           if (payload.pluginName && item.pluginName !== payload.pluginName) continue;
           for (const t of item.tags) {
             tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
@@ -190,7 +200,9 @@ export function registerMetaHooks(hookBus: RunnerHookBusService): void {
         };
       },
       {
-        description: `获取已注册 hook 的 tag 频次榜, 支持 pluginName 过滤, 默认/上限 ${TAG_PAGE_LIMIT} 条, 超过用 cursor 翻页`,
+        description:
+          `获取已注册 hook 的 tag 频次榜, 支持 pluginName 过滤, 默认/上限 ${TAG_PAGE_LIMIT} 条, 超过用 cursor 翻页. ` +
+          'isWeb=false (默认) 只统计普通 hook 的 tag; isWeb=true 只统计 Web Component Hook 的 tag。',
         tags: ['meta'],
         payloadSchema: z.tuple([getTagInputSchema]),
       },

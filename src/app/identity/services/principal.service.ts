@@ -173,6 +173,38 @@ export class PrincipalService {
     return rows;
   }
 
+  /**
+   * 统计可登录用户主体总数，支持按 type / tenantId 过滤。
+   * @keyword-cn 用户总数, 统计
+   * @keyword-en count-users, user-count
+   */
+  async countUsers(
+    query: { type?: string; tenantId?: string } = {},
+  ): Promise<{ count: number }> {
+    const qb = this.repo.createQueryBuilder('p');
+    qb.innerJoin(
+      UserEntity,
+      'u',
+      'u.principal_id = p.id AND u.is_delete = false',
+    );
+    qb.where('p.is_delete = false');
+    const dbTypes = ['user', 'consumer', 'system'];
+    if (query.type) {
+      qb.andWhere('p.principal_type = :type', {
+        type: this.toDbPrincipalType(
+          query.type as 'user' | 'user_consumer' | 'system',
+        ),
+      });
+    } else {
+      qb.andWhere('p.principal_type IN (:...types)', { types: dbTypes });
+    }
+    if (query.tenantId) {
+      qb.andWhere('p.tenant_id = :tenantId', { tenantId: query.tenantId });
+    }
+    const count = await qb.getCount();
+    return { count };
+  }
+
   async createUser(dto: CreateUserDto): Promise<PrincipalEntity> {
     const defaultAvatarUrl = '/static/system/avatars/default.svg';
     if (!dto.email || !dto.email.trim()) {

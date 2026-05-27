@@ -15,12 +15,16 @@
 - app/todo/enums/todo.enums.ts
 - app/todo/types/todo.types.ts
 - app/todo/services/todo.service.ts
+- app/todo/services/todo-components.service.ts
 - app/todo/controllers/todo.controller.ts
 - app/todo/todo.module.ts
 
 函数清单（Function Index）
+- TodoComponentsService
+  - todoTable (@HookComponent) — Web Component Hook: 表格展示待办列表，支持 q/status/sessionId 过滤；状态彩色 badge；组件自带 /api/todo 请求 | keywords: todo-table-web-component, todo-components, web-component-hook-declaration
 - TodoService
   - list(query, principal?) — 查询待办列表，管理员跳过默认自己过滤，普通用户只看发起或跟进自己的待办 | keywords: todo-list, admin-bypass, own-filter
+  - count(query) — 统计待办总数，支持 status/sessionId 过滤，返回 { count: number } | keywords: count-todos, todo-count
   - canReadAllTodos(ctx) — 判断当前主体是否拥有待办管理级读取能力 | keywords: todo-admin-bypass, todo-list, management-permission
   - get(id)
   - create(dto)
@@ -49,6 +53,7 @@
   - HookController(pluginName=todo, tags=[todo])
   - HookRoute on CRUD / followup / comment: 全部声明 zod payloadSchema (input 形状), hook-controller 数组形参
     · 命名遵循 platform.app.module.action:
+    · saas.app.todo.todoCount (GET /todo/count) — 返回 { count: number }，支持 status/sessionId 过滤
     · saas.app.todo.list (sessionId?/status?/followerId?/initiatorId?/q?), saas.app.todo.get ({id}),
       saas.app.todo.create (CreateTodoInput), saas.app.todo.update (UpdateTodoInput),
       saas.app.todo.delete ({id})

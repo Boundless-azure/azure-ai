@@ -137,6 +137,14 @@ export interface HookMetadata {
    * @keyword-en deny-llm, llm-deny-list
    */
   denyLlm?: boolean;
+  /**
+   * 标记为 Web Component Hook。
+   * - 此类 hook 不通过 call_hook 调用，而是由 LLM 输出 markdown hook fence 触发前端动态渲染
+   * - denyLlm 应同时为 true；payloadSchema 告知 LLM 该传什么 payload 进 fence
+   * - search / getTag 默认 (isWeb=false) 会排除此类 hook，避免搜索混淆
+   * @keyword-en is-component-hook, web-component-hook
+   */
+  isComponent?: boolean;
 }
 
 export interface HookResult<TResult = unknown> {

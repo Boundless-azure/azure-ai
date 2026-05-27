@@ -53,6 +53,11 @@ const onTodoListInput = z.object({
   q: z.string().optional(),
 });
 
+const onTodoCountInput = z.object({
+  status: todoStatusSchema.optional().describe('按状态过滤; 不传返回全部'),
+  sessionId: z.string().optional().describe('按关联会话 ID 过滤; 不传返回全局'),
+});
+
 const onTodoIdParamInput = z.object({ id: z.string() });
 
 const onTodoCreateInput = z.object({
@@ -109,6 +114,20 @@ const onCommentCreateInput = z.object({
 @Controller('todo')
 export class TodoController {
   constructor(private readonly service: TodoService) {}
+
+  @Get('count')
+  @CheckAbility('read', 'todo')
+  @HookRoute({
+    hook: 'saas.app.todo.todoCount',
+    description: '待办总数统计 :: 返回 { count: number }，支持按 status / sessionId 过滤',
+    args: [onTodoCountInput],
+    metadata: { tags: ['count', 'query'] },
+  })
+  async count(
+    @Query() query: { status?: string; sessionId?: string },
+  ): Promise<{ count: number }> {
+    return await this.service.count(query);
+  }
 
   @Get()
   @CheckAbility('read', 'todo')

@@ -16,6 +16,7 @@
 - app/identity/services/role.service.ts
 - app/identity/services/ability.service.ts
 - app/identity/services/hook.ability-middleware.service.ts
+- app/identity/services/identity-components.service.ts
 - app/identity/controllers/principal.controller.ts
 - app/identity/controllers/organization.controller.ts
 - app/identity/controllers/role.controller.ts
@@ -30,6 +31,7 @@
 - PrincipalService
   - list(query)
   - listUsers(query)
+  - countUsers(query) — 统计可登录用户主体总数，支持 type/tenantId 过滤，返回 { count: number } | keywords: count-users, user-count
   - create(dto)
   - createUser(dto)
   - update(id, dto)
@@ -43,6 +45,7 @@
   - delete(id)
 - RoleService
   - list()
+  - count(query) — 统计角色总数，支持 organizationId 过滤，返回 { count: number } | keywords: count-roles, role-count
   - create(dto)
   - update(id, dto)
   - delete(id)
@@ -54,11 +57,16 @@
   - getHandle()
 - HookAbilityMiddlewareService
   - onModuleInit()  -- 注入 invoker.use, 把 @CheckAbility 语义平移到 Hook 调用链 (仅 source==='llm')
+- IdentityComponentsService
+  - userTable (@HookComponent) — Web Component Hook: 表格展示用户列表，支持 q/tenantId/type 过滤；payload 筛选条件, 组件自带 /api/identity/users 请求 | keywords: user-table-web-component, identity-components, web-component-hook-declaration
+  - roleTable (@HookComponent) — Web Component Hook: 表格展示角色列表，支持 q/organizationId 过滤；内置/自定义类型 badge；组件自带 /api/identity/roles 请求 | keywords: role-table-web-component, identity-components
 - Identity Controllers
   - 每个 RBAC controller 都声明 `@HookController({ pluginName: 'identity', tags: ['identity', <resource>] })`, 方便 `search_hook({ tags:['identity'] })` 发现真实 hook, 避免猜测不存在的 `identity.profile.*`
   - HookRoute on RBAC CRUD: 全部声明 zod payloadSchema (input 形状), 每个字段带 .describe(), hook-controller 数组形参
     · 命名遵循 saas.app.identity.<resource><Action>:
+    · saas.app.identity.userCount (GET /identity/users/count) — 返回 { count: number }，支持 type/tenantId 过滤
     · saas.app.identity.userList/userCreate/userUpdate/userDelete (× 4)  filter :: q / tenantId / type
+    · saas.app.identity.roleCount (GET /identity/roles/count) — 返回 { count: number }，支持 organizationId 过滤
     · saas.app.identity.roleList/roleCreate/roleUpdate/roleDelete + rolePermissionList/rolePermissionUpsert (× 6)  list filter :: q (LIKE name/code) / organizationId ("null"=系统级)
     · saas.app.identity.principalList/principalCreate/principalUpdate/principalDelete (× 4)  list filter :: q / type / tenantId
     · saas.app.identity.permissionDefinitionList/Create/Update/Delete (× 4)  list filter :: permissionType / nodeKey / fid (null=root); extraData 用 catchall schema 替代裸 z.record

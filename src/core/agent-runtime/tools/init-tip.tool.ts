@@ -82,9 +82,9 @@ export function buildInitTipTool(
       toolLogger.log(
         `[init_tip] session=${sessionId} declared=${JSON.stringify(declared)} ` +
           `directHooks=${suggestions.directHooks.length} ` +
-          `chains=callLog:${suggestions.discoveryChains.callLog.length}` +
-          `/knowledge:${suggestions.discoveryChains.knowledge.length}` +
-          `/hook:${suggestions.discoveryChains.hook.length} ` +
+          `chains=${Object.entries(suggestions.discoveryChains)
+            .map(([k, v]) => `${k}:${v.length}`)
+            .join('/')} ` +
           `usageRules=${suggestions.usageRules.length} ` +
           `tipNote="${suggestions.tipNote}"`,
       );
@@ -113,7 +113,16 @@ export function buildInitTipTool(
         '</input>\n\n' +
         '<output>\n' +
         '- directHooks :: **已知常用 hook 快捷入口**, 不需要 search 直接 call_hook 即可. 包括 currentSession.context (双方身份 + IP + 时间), currentSession.get (本轮临时态), setPendingAction (缺参挂起), callHistory.query.\n' +
-        '- discoveryChains :: 四条标准链路, 每条按 ①→②→③→④→⑤ 顺序走 (tag → search → detail → call → sendMsg):\n' +
+        '- discoveryChains :: 五条标准链路 (component 优先级最高, needHook=true 时强制先走):\n' +
+        '    - **component** (🔴 needHook=true 时强制第一步): Web Component Hook 是数据获取简化器 — 有匹配组件时无需调数据 hook, 直接在 sendMsg content 里嵌入 hook fence 即完成. ' +
+        '(get_hook_tag isWeb:true → search_hook isWeb:true → get_hook_info 看 payloadSchema → 把 fence 写入 sendMsg content → 调 sendMsg. 不可用 call_hook 调组件.)\n' +
+        '      hook fence 格式 (嵌在 sendMsg content 文字里):\n' +
+        '      ```hook\n' +
+        '      {"actionHook":"saas.app.xxx.yyy","payload":{...按 payloadSchema 填筛选条件}}\n' +
+        '      ```\n' +
+        '      前端识别此 fence 后自动挂载组件, 组件自行获取数据. 不需要 LLM 处理任何数据.\n' +
+        '      ⚠ 面向用户说话时禁止提及 "payload" / "参数" / "JSON" / "hookName" 等技术细节;\n' +
+        '         用自然语言描述功能, 例如 "以下是用户列表，你可以按类型或关键字筛选".\n' +
         '    - callLog: 复用近期成功 hook (callHistory.query [{}] → 匹配 title → includeDetail 取详情 → 复用业务 hook → sendMsg)\n' +
         '    - knowledge: 查权威知识 (knowledge.getTag → search → getToc → getChapter → sendMsg)\n' +
         '    - hook: 发现业务能力 (get_hook_tag → search_hook → get_hook_info → call_hook → sendMsg)\n' +
@@ -132,6 +141,10 @@ export function buildInitTipTool(
         '查待办: init_tip({needKnowledge:false, needHook:true, reason:"list todos"}) → tipNote 提示先 callLog 复用, 没匹配再走 hook 链路\n' +
         '解释能力: init_tip({needKnowledge:true, needHook:false, reason:"capability"}) → tipNote 提示走 knowledge 链路 (getTag → search → getToc → getChapter)\n' +
         '回看历史: init_tip({needKnowledge:false, needHook:false, needHistory:true, reason:"recall past chat"}) → tipNote 提示走 history 链路 (smartTags → smartSearch → smartMessages)\n' +
+        '查看用户列表: init_tip({needKnowledge:false, needHook:true, reason:"view users"}) → 走 component 链路 → 找到 saas.app.identity.userTable → sendMsg content 嵌入:\n' +
+        '  ```hook\n' +
+        '  {"actionHook":"saas.app.identity.userTable","payload":{}}\n' +
+        '  ```\n' +
         '</example>',
       schema: initTipSchema,
     },

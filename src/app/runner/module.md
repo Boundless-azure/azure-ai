@@ -31,6 +31,7 @@
 - app/runner/controllers/runner.controller.ts
 - app/runner/controllers/runner.gateway.ts        # onRegister 返回 frpsToken
 - app/runner/controllers/runner.proxy.controller.ts
+- app/runner/controllers/hook-component.controller.ts
 - app/runner/controllers/reward-record.controller.ts
 - app/runner/controllers/frp-plugin.controller.ts # NEW: frps HTTP plugin 鉴权
 - app/runner/runner.module.ts
@@ -73,6 +74,9 @@
   - stopFrp(runnerId) - 停止 FRP
   - reloadFrp(runnerId) - 重载 FRP
   - claimFreeDomain(runnerId) - 领取免费域名
+  - getHookComponentFromAnyRunner(io, onlineRunnerIds, hookName) — 广播所有在线 Runner，返回首个持有该 hook 组件 JS 的内容 | keywords: get-hook-component-js, auto-route, solution-component
+- HookComponentController (GET /hook-component?hookName=xxx)
+  - get(hookName) — SaaS 注册表优先，未命中再广播 Runner | keywords: hook-component-controller, saas-first, runner-broadcast
 - RunnerDomainService
   - list(runnerId) - 获取域名绑定列表
   - create(runnerId, tenantId, domain, pathPattern) - 创建域名绑定

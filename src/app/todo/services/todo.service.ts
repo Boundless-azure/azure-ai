@@ -171,6 +171,27 @@ export class TodoService {
   }
 
   /**
+   * 统计待办总数，支持按 status / sessionId 过滤。
+   * @keyword-cn 待办总数, 统计
+   * @keyword-en count-todos, todo-count
+   */
+  async count(
+    query: { status?: string; sessionId?: string } = {},
+  ): Promise<{ count: number }> {
+    const qb = this.todoRepo
+      .createQueryBuilder('todo')
+      .where('todo.isDelete = :isDelete', { isDelete: false });
+    if (query.status)
+      qb.andWhere('todo.status = :status', { status: query.status });
+    if (query.sessionId?.trim())
+      qb.andWhere('todo.sessionId = :sessionId', {
+        sessionId: query.sessionId.trim(),
+      });
+    const count = await qb.getCount();
+    return { count };
+  }
+
+  /**
    * @title 获取待办详情
    */
   async get(id: string): Promise<TodoEntity | null> {

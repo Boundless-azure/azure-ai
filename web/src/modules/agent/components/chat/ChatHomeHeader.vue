@@ -4,7 +4,7 @@
       <div class="flex items-center space-x-2">
         <button
           type="button"
-          class="w-9 h-9 rounded-xl bg-black text-white flex items-center justify-center shadow-sm ring-1 ring-black/5 active:scale-95 transition-transform"
+          class="md:hidden w-9 h-9 rounded-xl bg-black text-white flex items-center justify-center shadow-sm ring-1 ring-black/5 active:scale-95 transition-transform"
           title="打开菜单"
           aria-label="打开菜单"
           @click="openMenu"

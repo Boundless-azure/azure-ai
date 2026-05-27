@@ -31,7 +31,7 @@
 ### tools/init-tip.tool.ts
 init_tip top-level tool (不走 hook 路由, 直接命中 CurrentSessionService)
 
-- `buildInitTipTool(currentSession, getCtx)` — 工厂构造 init_tip tool; schema { needKnowledge, needHook, needHistory?, reason? }; tool 内部直接调 `setInitTip` (内存写 didInitTip=true) + `produceInitTip` (同步聚合); 返回 `{ acknowledged, declared, directHooks, discoveryChains: { callLog, knowledge, hook, history }, usageRules, tipNote }`; directHooks 列已知常用 hook 快捷入口 (currentSession.context 拿双方身份+IP+时间), discoveryChains.**history** 是 smart 三步检索 SOP (smartTags → smartSearch → smartMessages), 用户说"之前/上次/我们聊过"等关键词时 needHistory=true 触发, sessionId 必须显式从 currentSession.context 拿到后填进 smart hook payload (smart hook 不从 ctx 自动注入); usageRules 4 条 cross-cutting 约束 (commit/loop/skip/sendMsg) | keywords: build-init-tip-tool, top-level-tool, direct-hooks, discovery-chains, usage-rules, history-chain, smart-recall
+- `buildInitTipTool(currentSession, getCtx)` — 工厂构造 init_tip tool; schema { needKnowledge, needHook, needHistory?, reason? }; tool 内部直接调 `setInitTip` + `produceInitTip`; description 显式展示 hook fence 字面格式 (` ```hook\n{"actionHook":"...","payload":{...}}\n``` `) 与完整 example (查用户列表→component链路→sendMsg with fence), 避免 LLM 把"hook fence"当抽象词理解; discoveryChains.component 步骤说明包含"不可用 call_hook 调组件"; usageRules 4 条 cross-cutting 约束 | keywords: build-init-tip-tool, top-level-tool, discovery-chains, hook-fence-format, web-component-hook, usage-rules, history-chain
 
 ### tools/call-hook.tools.ts
 LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationContext)
@@ -39,9 +39,9 @@ LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationCont
 - `buildCallHookTool(hookBus, hookRpc, getCtx, sideEffects?, options?)` — 同步批量调用 hook; description 内嵌 `<when_to_call>` / `<routing>` / `<payload>` / `<batching>` / `<errors>` / `<example>` 七段; target 默认 SaaS, hookName 前缀归一化; `options.defaultDebug` 节点级 debug 默认值; **错误 hint 统一指向 init_tip** :: hook-not-found / payload-schema-invalid / N 次连续失败都提示先调 init_tip 拿 discoveryChains, 再按链路走; ⚠ reasoning 强制字段已废除 — LLM 实测不填 (optional 跳过 / required 触发 langchain schema 层拒绝, server 看不到 log), 行为约束改由 init_tip 的 usageRules 承载 | keywords: call-hook-tool, sync, batch, target-routing, target-normalize, default-debug, error-hint-init-tip
 - `buildCallHookAsyncTool(hookBus, hookRpc, getCtx, options?)` — 批量 fire-and-forget; target 默认 SaaS, hookName 前缀归一化; 仅触发不关心结果时使用, 默认走同步 call_hook | keywords: call-hook-async-tool, batch, target-normalize, default-debug
 - `processOneCallAftermath(entry, reply, ctx, sideEffects?)` — per-call 失败 hint 注入 + 副作用回调 | keywords: aftermath, per-call
-- `buildSearchHookTool(hookBus, hookRpc, getCtx)` — 按 tags / pluginName 搜索 hook 注册表 (description 只描述工具能力, 不混入 commit/loop 行为约束 — 那些归 init_tip 的 usageRules) | keywords: search-hook-tool, discovery
-- `buildGetHookTagTool(hookBus, hookRpc, getCtx)` — 获取 tag 频次榜 | keywords: get-hook-tag-tool, tag-leaderboard
-- `buildGetHookInfoTool(hookBus, hookRpc, getCtx)` — 批量获取 hook 描述+tags+payload schema (description 只描述工具能力, 不混入 commit/loop 约束) | keywords: get-hook-info-tool, batch-info
+- `buildSearchHookTool(hookBus, hookRpc, getCtx)` — 按 tags / pluginName / isWeb 搜索 hook 注册表; isWeb=false(默认)排除 Web Component Hook, isWeb=true 只返回组件; 不传 isWeb 永远不会返回组件，避免搜索混淆 | keywords: search-hook-tool, discovery, is-web-filter
+- `buildGetHookTagTool(hookBus, hookRpc, getCtx)` — 获取 tag 频次榜; isWeb=false(默认)排除组件 tag, isWeb=true 只统计组件 tag | keywords: get-hook-tag-tool, tag-leaderboard, is-web-filter
+- `buildGetHookInfoTool(hookBus, hookRpc, getCtx)` — 批量获取 hook 描述+tags+payload schema; 当 item 为 Web Component Hook (isComponent=true) 时额外注入 `_usage` 字段, 告知 LLM 输出 hook fence 并调 sendMsg, 不可用 call_hook 直接调用 | keywords: get-hook-info-tool, batch-info, component-usage-hint
 - `dispatchOne(hookBus, hookRpc, ctx, input, defaultDebug)` — 内部统一路由 (saas/runner); debug 三层优先级 (input.debug ?? defaultDebug ?? false) | keywords: dispatch-one, debug-priority
 - `dispatchSaasHook(hookBus, ctx, input)` — 适配 SaaS HookBus 结果到统一外形 | keywords: adapt-saas-result
 - `normalizeHookCallInput(entry)` — 根据 `saas.*` / `runner.*` hookName 前缀归一化 target, 前缀优先于 target 字段 | keywords: normalize-hook-call-input, target-normalize
@@ -51,7 +51,7 @@ LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationCont
 ### prompts/base-llm.prompt.ts
 基础 LLM 系统提示词
 
-- `buildBaseLlmSystemPrompt()` — 生成 v5 JSON 基础 system prompt: 第一人称 identity (`role.system.iAm/myNature`) + 顶层扁平 examples (2 正 1 反 universal trajectory; trajectory step 用 `{reasoning, action}` 自然语言, action 形如 `tool init_tip(...)` 或 `call_hook saas.xxx [...]`, 让 LLM 一眼区分 top-level tool 与 call_hook 路由) + knowledgeCatalog 4 本 local 书 lazy load 入口; user message envelope (v3) 已弃用 — 直发用户原话, init_tip + examples + reasoning ≥ 20 承担引导 | keywords: base-llm-prompt, first-person-identity, example-driven, knowledge-catalog, init-tip-trajectory, action-natural-language, no-envelope
+- `buildBaseLlmSystemPrompt()` — 生成 v5 JSON 基础 system prompt: `hardConstraints` (顶层硬约束: init_tip 每轮必须第一步 + sendMsg 唯一交付通道) + 第一人称 identity (`myNature` 第一条强化 init_tip 规则) + 3 正 2 反 examples (含纯聊天跳过 init_tip 的反例) + knowledgeCatalog 4 本 local 书 lazy load 入口 | keywords: base-llm-prompt, hard-constraints, init-tip-mandatory, example-driven, web-component-hook-fence, no-envelope
 - `LlmSystemPromptJson` (type) — system prompt JSON 合同, 供基础提示与运行时 `role.{system,agentRuntime,proactiveDialogue,agentDefinition}` 注入共用; role 子字段统一第一人称 (myNature/myContext/myProactiveBehavior/myDefinitionBehavior) | keywords: system-prompt-json, role-json, prompt-contract, first-person-behavior
 
 ### types/agent-runtime.types.ts

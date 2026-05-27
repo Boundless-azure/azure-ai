@@ -1,9 +1,32 @@
 import { io, type Socket } from 'socket.io-client';
+import { join } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { getRunnerConfig, saveRunnerConfig } from '../../../config/store';
 import { FrpcService } from '../../frpc/services/frpc.service';
 import type { FrpcConfig } from '../../frpc/types/frpc.types';
 import { RunnerTokenService } from '../../runner-control/services/token.service';
 import { RunnerStatsService } from '../../runner-control/services/stats.service';
+
+/**
+ * 在所有已安装的 Solution 的 components/ 子目录中查找与 hookName 匹配的 JS 文件。
+ * 约定路径：workspace/solutions/{solutionName}/components/{hookName}.js
+ * @keyword-en find-hook-component-js solution-components
+ */
+function findHookComponentJs(hookName: string): string | null {
+  const solutionsPath = join(process.cwd(), 'workspace', 'solutions');
+  if (!existsSync(solutionsPath)) return null;
+  let entries: string[];
+  try {
+    entries = readdirSync(solutionsPath);
+  } catch {
+    return null;
+  }
+  for (const entry of entries) {
+    const candidate = join(solutionsPath, entry, 'components', `${hookName}.js`);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
 
 /**
  * @title Runner 注册服务
@@ -238,6 +261,21 @@ export class RunnerRegistrationService {
             memoryUsage: sysStats.memoryUsage,
             frpcRunning: this.frpcService.isRunning(),
           });
+        });
+
+        // 监听 SaaS 请求 hook 组件 JS (hook-component-get, 返回 solution 组件文件内容)
+        socket.on('hook-component:get', (payload: { hookName: string }, callback: (data: { js: string; error?: string }) => void) => {
+          const filePath = findHookComponentJs(payload?.hookName ?? '');
+          if (!filePath) {
+            callback({ js: '', error: 'not-found' });
+            return;
+          }
+          try {
+            const js = readFileSync(filePath, 'utf-8');
+            callback({ js });
+          } catch {
+            callback({ js: '', error: 'read-error' });
+          }
         });
       });
       socket.on('connect_error', (error: Error) => {

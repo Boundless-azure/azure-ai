@@ -41,6 +41,7 @@ hook-lifecycle-registry -> modules/hookbus/lifecycle/registry.ts
 - HookMiddleware<T,R>    -- (event, next) => HookResult
 - HookRequiredAbility    -- { action, subject }; metadata.requiredAbility 由 RunnerHookAbilityMiddleware 在 source==='llm' 时校验 (rules 来自 extras.identity.abilityRules)
 - HookMetadata.denyLlm   -- 显式拒绝 LLM 调用; consumeTask 镜像到 declaration.denyLlm, middleware 识别后软错拒
+- HookMetadata.isComponent -- 标记为 Web Component Hook; search/getTag 默认 (isWeb=false) 排除此类, isWeb=true 时才出现
 - HookLog                -- handler 可见的日志接口: trace/debug/info/warn/error/event(name, attrs?)
                             hookbus.service 注入到 event.log; 实现见 modules/observability/hook-log.factory.ts
 - HookLogEntry           -- drain 出来的单条 { ts, level, message, attrs? }; 写到 HookResult.debugLog
@@ -89,7 +90,7 @@ payload schema 校验 (zod, SSOT):
 - 监听 hook:call, emit hook:ack (即刻), 3s 周期合并 push hook:progress (callIds[]), 完成 emit hook:result
 - envelope.context 透传给 hookBus.emit, handler 通过 event.context 读 token / principalId / traceId
 - 自动注册 3 个元 hook (runner.system.hookbus.search / runner.system.hookbus.getTag / runner.system.hookbus.getInfo), 三者均支持 cursor 翻页
-- runner.system.hookbus.search 接受 tags: string[] (任一命中), pluginName 过滤; 默认/上限 100
-- runner.system.hookbus.getTag 默认/上限 400 (一次拿全景, 作为 LLM 发现链路起点)
+- runner.system.hookbus.search 接受 tags: string[] (任一命中), pluginName 过滤, isWeb: bool (默认 false=排除组件); 默认/上限 100
+- runner.system.hookbus.getTag 默认/上限 400 (一次拿全景, 作为 LLM 发现链路起点); isWeb: bool (默认 false=排除组件)
 - runner.system.hookbus.getInfo 通过 zod v4 z.toJSONSchema 从 metadata.payloadSchema 派生 JSON Schema
 - 统一返回外形 { errorMsg: string[], result: unknown, debugLog: unknown[] }, errorMsg 非空即软错

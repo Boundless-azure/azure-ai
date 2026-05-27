@@ -12,6 +12,7 @@ import { OrganizationService } from './services/organization.service';
 import { RoleService } from './services/role.service';
 import { AbilityService } from './services/ability.service';
 import { HookAbilityMiddlewareService } from './services/hook.ability-middleware.service';
+import { IdentityComponentsService } from './services/identity-components.service';
 import { PermissionDefinitionEntity } from './entities/permission-definition.entity';
 import { PermissionDefinitionService } from './services/permission-definition.service';
 import { PermissionDefinitionController } from './controllers/permission-definition.controller';
@@ -48,6 +49,7 @@ import { UsersController } from './controllers/users.controller';
     AbilityService,
     PermissionDefinitionService,
     HookAbilityMiddlewareService,
+    IdentityComponentsService,
   ],
   controllers: [
     PrincipalController,
