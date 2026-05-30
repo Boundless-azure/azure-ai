@@ -22,7 +22,9 @@ const countBoardPayloadSchema = z
       params: z
         .record(z.string(), z.unknown())
         .optional()
-        .describe('传给 Hook 的过滤参数，如 { status: "pending" }；不传则调用无过滤统计'),
+        .describe(
+          '传给 Hook 的过滤参数，如 { status: "pending" }；不传则调用无过滤统计',
+        ),
     }),
   )
   .describe('统计项列表');
@@ -31,7 +33,7 @@ const countBoardPayloadSchema = z
  * @title Common Components Service
  * @description SaaS 侧公共 Web Component Hook 声明。
  *              countBoard 组件读取 payload 数组里每项的 hook 名，
- *              通过 POST /api/hook-invoke 动态调用各 Hook 拿到数量，
+ *              经注入的 ctx.callHook 动态调用各 Hook 拿到数量（SaaS 自动路由 + 注入鉴权），
  *              以网格卡片展示并配数字滚动动画。
  * @keywords-cn 公共组件, 统计看板, 数字滚动, Web组件Hook声明
  * @keywords-en common-components, count-board, number-animation, web-component-hook-declaration
@@ -41,14 +43,14 @@ export class CommonComponentsService {
   /**
    * Web Component Hook: saas.app.common.countBoard
    * 以网格卡片展示多个统计数字，支持指定任意 Hook 获取 count 值，附数字滚动动画。
-   * 通过 POST /api/hook-invoke 调用各 Hook，鉴权方式与其他组件一致（localStorage Bearer token）。
+   * 经 ctx.callHook 调用各 Hook（render 第三参注入，SaaS 自动路由 + 注入鉴权，组件不碰 URL/token）。
    * @keyword-en count-board-web-component, stats-grid
    */
   @HookComponent('saas.app.common.countBoard', {
     description:
       '网格卡片展示多个统计数字，每项对应一个返回 { count: number } 的 Hook。' +
       'payload 为数组，每项格式: { hook: string, title: string, color?: string }。' +
-      '内置数字滚动动画；通过 /api/hook-invoke 动态调用各 Hook 鉴权获取数据，无需 LLM 手动查询。',
+      '内置数字滚动动画；经 ctx.callHook 动态调用各 Hook 鉴权获取数据，无需 LLM 手动查询。',
     tags: ['common', 'stats', 'component'],
     payloadSchema: countBoardPayloadSchema,
   })
@@ -57,19 +59,12 @@ export class CommonComponentsService {
  * saas.app.common.countBoard — 统计看板（极简黑白 + 渐隐位滚动）
  * payload: Array<{ hook: string, title: string, params?: object }>
  */
-export function render(el, payload) {
+export function render(el, payload, ctx) {
   var items = Array.isArray(payload) ? payload : [];
   if (!items.length) {
     el.innerHTML = '<div style="color:#a1a1aa;padding:8px;font-size:12px">—</div>';
     return;
   }
-
-  var API = window.__apiBase ?? '/api';
-  var token = localStorage.getItem('token');
-  var H = Object.assign(
-    { 'Content-Type': 'application/json', Accept: 'application/json' },
-    token ? { Authorization: 'Bearer ' + token } : {}
-  );
 
   /* 字号 / 行高常量 */
   var DH = 54;   /* 每一位槽的高度 (px)，决定动画距离 */
@@ -188,17 +183,12 @@ export function render(el, payload) {
     });
   }
 
-  /* ── 并行拉取数据 ─────────────────────────────────────────────── */
+  /* ── 并行拉取数据（经 ctx.callHook 路由 + 注入鉴权，组件不碰 URL/token）── */
+  /* ctx.callHook 直接返回 hook 数据（已拆 {ok,data} 信封），失败 reject */
   items.forEach(function(item, i) {
     var numWrap = refs[i];
-    fetch(API + '/hook-invoke', {
-      method: 'POST',
-      headers: H,
-      body: JSON.stringify({ hookName: item.hook, payload: item.params ?? {} }),
-    })
-      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); })
-      .then(function(json) {
-        var raw = json && json.data != null ? json.data : json;
+    ctx.callHook(item.hook, item.params ?? {})
+      .then(function(raw) {
         var n = raw && raw.count != null ? Number(raw.count) : 0;
         buildOdometer(numWrap, isNaN(n) ? 0 : n);
       })

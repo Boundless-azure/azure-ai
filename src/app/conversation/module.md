@@ -28,6 +28,8 @@
 - services/session-lock.service.ts：sessionId 级 in-memory promise queue, runExclusive(sessionId, label, fn) 让"smart 压缩 + 各 agent 对话"严格 FIFO 排队, 任务完成后清空 tail 防内存泄漏
 - services/smart-llm-generator.service.ts：让指定 modelId 读会话段正文输出严格 JSON `{summary, keywords:{zh,en}}`, 含 parseJsonLoose 兜底 (剥 markdown fence / 找首尾大括号), 任何失败 throw 由调用方回退规则算法
 - services/session-handbook-seeder.service.ts：按 agent 角色 seed 必读手册到 handbook.* 槽位 (主体身份过滤靠 ownerPrincipalId)
+- services/hook-snapshot.service.ts：Web Component Hook 调用入口, 在 message.metadata.hookSnapshots 做"写一次"cache-aside (首请求即冻结, 命中返冻结快照不再经 HookBus; live/无 messageId/超 8KB 阈值 → 不缓存实时路由); payload 规范化键 fnv1a, 写前再读降低并发双写 | keywords: hook-snapshot, write-once-cache, cache-aside, message-anchored, traceability
+- controllers/hook-snapshot.controller.ts：POST /hook-snapshot {hookName, payload, messageId?, live?} → 前端 Web Component ctx.callHook 入口, 取代组件直连 /hook-invoke; 鉴权与 hook-invoke 同款 (全局 JwtAuthGuard + source=http) | keywords: hook-snapshot-endpoint, frontend-component-call, write-once-cache
 
 Hook 注册（由 HookControllerExplorerService 自动发现, 全部通过 `@HookRoute(args)` 声明数组形参 schema, 命名遵循 platform.app.module.action）
 - HookController tags 覆盖常用发现入口: conversation / im / message / history / webmcp / session-data / call-log

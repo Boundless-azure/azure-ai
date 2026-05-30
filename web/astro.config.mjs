@@ -10,6 +10,7 @@ export default defineConfig({
         appEntrypoint: '/src/entrypoint'
     }), tailwind()],
     server: {
+        host: '0.0.0.0',
         port: 3001
     },
     vite: {

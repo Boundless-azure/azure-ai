@@ -71,6 +71,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import InputArea from '../../components/chat/InputArea.vue';
 import ChatMessageList from '../../components/chat/ChatMessageList.vue';
+import { seedClientSnapshots } from '../../components/chat/hook-component-ctx';
 import { useI18n } from '../../composables/useI18n';
 import { useAgentStore } from '../../store/agent.store';
 import { useAgentSessionStore } from '../../store/session.store';
@@ -113,6 +114,18 @@ const {
   typingBySession,
   awaitingAiByQueue,
 } = storeToRefs(imStore);
+
+watch(
+  activeMessages,
+  (msgs) => {
+    for (const m of msgs) {
+      if (m.hookSnapshots) {
+        seedClientSnapshots(m.id, m.hookSnapshots);
+      }
+    }
+  },
+  { immediate: true },
+);
 
 const chatContainer = ref<HTMLElement | null>(null);
 const bottomAnchor = ref<HTMLElement | null>(null);

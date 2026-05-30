@@ -21,7 +21,7 @@
 
 函数清单（Function Index）
 - TodoComponentsService
-  - todoTable (@HookComponent) — Web Component Hook: 表格展示待办列表，支持 q/status/sessionId 过滤；状态彩色 badge；组件自带 /api/todo 请求 | keywords: todo-table-web-component, todo-components, web-component-hook-declaration
+  - todoTable (@HookComponent) — Web Component Hook: 表格展示待办列表，支持 q/status/sessionId 过滤；状态彩色 badge；经 ctx.callHook('saas.app.todo.list') 获取数据，组件不碰 URL/token | keywords: todo-table-web-component, todo-components, web-component-hook-declaration
 - TodoService
   - list(query, principal?) — 查询待办列表，管理员跳过默认自己过滤，普通用户只看发起或跟进自己的待办 | keywords: todo-list, admin-bypass, own-filter
   - count(query) — 统计待办总数，支持 status/sessionId 过滤，返回 { count: number } | keywords: count-todos, todo-count

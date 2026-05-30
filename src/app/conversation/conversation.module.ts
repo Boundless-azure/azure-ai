@@ -20,6 +20,8 @@ import { AiCallLogService } from './services/ai-call-log.service';
 import { AiCallLogHookController } from './controllers/ai-call-log.hook-controller';
 import { CurrentSessionService } from './services/current-session.service';
 import { CurrentSessionHookController } from './controllers/current-session.hook-controller';
+import { HookSnapshotService } from './services/hook-snapshot.service';
+import { HookSnapshotController } from './controllers/hook-snapshot.controller';
 import { SessionHandbookSeederService } from './services/session-handbook-seeder.service';
 import { ChatSessionSmartService } from './services/chat-session-smart.service';
 import { SessionLockService } from './services/session-lock.service';
@@ -83,7 +85,12 @@ import { AuthModule } from '@/core/auth/auth.module';
     IdentityModule,
     AuthModule,
   ],
-  controllers: [ConversationController, ImController, ImContactGroupController],
+  controllers: [
+    ConversationController,
+    ImController,
+    ImContactGroupController,
+    HookSnapshotController,
+  ],
   providers: [
     ConversationService,
     ImGateway,
@@ -98,6 +105,7 @@ import { AuthModule } from '@/core/auth/auth.module';
     AiCallLogHookController,
     CurrentSessionService,
     CurrentSessionHookController,
+    HookSnapshotService,
     SessionHandbookSeederService,
     ChatSessionSmartService,
     SessionLockService,

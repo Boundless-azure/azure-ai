@@ -1,7 +1,14 @@
 /**
  * @title HookComponent 装饰器
  * @description 标记一个类属性为 SaaS 侧 Hook 组件声明。
- *              属性值必须是 JS 字符串（ESM 模块代码），导出 render(container, payload) 函数。
+ *              属性值必须是 JS 字符串（ESM 模块代码），导出 render(container, payload, ctx) 函数。
+ *              ctx 是前端注入的能力对象（见 web hook-component-ctx）：组件经 ctx.callHook(hookName, payload)
+ *              访问数据（SaaS 自动路由 + 注入鉴权，组件不碰 URL/token），ctx.navigate 跳转右侧面板，
+ *              ctx.refresh 重拉；ctx 全异步 + 可序列化，为未来 iframe 沙箱预留接缝。
+ *              container 是前端为组件创建的 **Shadow DOM root**（open 模式）：宿主页面的
+ *              Tailwind / 全局样式不会穿透进来，组件内的样式也不会泄漏出去；因此组件可自由
+ *              使用 <style> 标签或 class，无需再靠内联 style 规避污染。仅继承属性（font/color）
+ *              跨 shadow 边界。导航跳转仍通过 window.dispatchEvent('hookComponent:navigate') 派发。
  *              HookComponentExplorerService 在启动时扫描所有 Provider，
  *              将被标记的属性值注册到 HookComponentRegistryService，
  *              同时在 HookBus 注册同名 hook（isComponent=true, denyLlm=true），
@@ -15,7 +22,10 @@
  *       tags: ['todo', 'component'],
  *       payloadSchema: z.object({ todoId: z.string() }),
  *     })
- *     readonly todoCard = `export function render(el, p) { el.textContent = p.title; }`;
+ *     readonly todoCard = `export async function render(el, p, ctx) {
+ *       const todo = await ctx.callHook('saas.app.todo.get', { id: p.todoId });
+ *       el.textContent = todo.title;
+ *     }`;
  *   }
  *
  * @keywords-cn hook组件装饰器, SaaS组件声明, 预定义组件

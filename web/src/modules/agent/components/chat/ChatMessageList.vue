@@ -180,7 +180,7 @@
                 <div
                   v-if="msg.role === ChatRole.Assistant"
                   class="markdown-body prose prose-sm max-w-none overflow-x-auto relative z-10 assistant-markdown"
-                  v-html="renderMarkdown(msg.content)"
+                  v-html="renderMarkdown(msg.content, msg.id)"
                   @click="handleMessageClick"
                 ></div>
                 <div
@@ -565,7 +565,10 @@ md.renderer.rules.fence = function (tokens, idx, options, env, self) {
         const payload = JSON.stringify(raw.payload ?? null);
         const escapedHook = actionHook.replace(/"/g, '&quot;');
         const escapedPayload = payload.replace(/"/g, '&quot;');
-        return `<div class="hook-component-slot" data-action-hook="${escapedHook}" data-payload="${escapedPayload}"></div>`;
+        // messageId 由 renderMarkdown 经 md.render(env) 透传，供组件 ctx 锚定快照
+        const messageId =
+          env && typeof env.messageId === 'string' ? env.messageId.replace(/"/g, '&quot;') : '';
+        return `<div class="hook-component-slot" data-action-hook="${escapedHook}" data-payload="${escapedPayload}" data-message-id="${messageId}"></div>`;
       }
     } catch {
       // fall through to default fence render
@@ -723,6 +726,7 @@ const mountHookComponents = async () => {
   const slots = document.querySelectorAll<HTMLElement>(
     '.hook-component-slot:not([data-mounted])',
   );
+  const sessionId = (props.sessionId ?? activeSession.value?.sessionId ?? '').trim();
   for (const slot of slots) {
     const actionHook = slot.dataset.actionHook;
     if (!actionHook) continue;
@@ -732,8 +736,9 @@ const mountHookComponents = async () => {
     } catch {
       payload = null;
     }
+    const messageId = slot.dataset.messageId ?? '';
     slot.dataset.mounted = 'true';
-    const app = createApp(HookComponentRenderer, { actionHook, payload });
+    const app = createApp(HookComponentRenderer, { actionHook, payload, messageId, sessionId });
     app.mount(slot);
     hookApps.set(slot, app);
   }
@@ -774,11 +779,12 @@ const handleAvatarClick = (msg: ChatMessage) => {
  * 渲染 markdown，结果缓存避免重复计算
  * @keyword-en render-markdown markdown-cache
  */
-const renderMarkdown = (content: string): string => {
-  const cacheKey = `${t('chat.lazyToolTitle')}::${t('chat.lazyToolRequired')}::${content}`;
+const renderMarkdown = (content: string, messageId = ''): string => {
+  // cacheKey 必须含 messageId：fence 渲染会把 messageId 烤进 slot，否则同内容消息会复用错的 id
+  const cacheKey = `${messageId}::${t('chat.lazyToolTitle')}::${t('chat.lazyToolRequired')}::${content}`;
   const cached = markdownCache.get(cacheKey);
   if (cached !== undefined) return cached;
-  const result = md.render(renderLazyGuardTags(content));
+  const result = md.render(renderLazyGuardTags(content), { messageId });
   if (markdownCache.size >= MAX_CACHE_SIZE) {
     const firstKey = markdownCache.keys().next().value;
     if (firstKey !== undefined) markdownCache.delete(firstKey);

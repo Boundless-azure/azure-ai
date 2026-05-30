@@ -77,6 +77,8 @@ export interface ImMessageInfo {
     startIndex: number;
     endIndex: number;
   }>;
+  /** Web Component Hook 冻结快照 (key=`${hookName}#${hash}`)，供前端回看时预热客户端缓存、免重复请求 */
+  hookSnapshots?: Record<string, { data: unknown; ts: number; traceId?: string }>;
 }
 
 export type ImMessageListResponse = ImCursorResult<ImMessageInfo>;

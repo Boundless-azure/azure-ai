@@ -58,8 +58,8 @@
 - HookAbilityMiddlewareService
   - onModuleInit()  -- 注入 invoker.use, 把 @CheckAbility 语义平移到 Hook 调用链 (仅 source==='llm')
 - IdentityComponentsService
-  - userTable (@HookComponent) — Web Component Hook: 表格展示用户列表，支持 q/tenantId/type 过滤；payload 筛选条件, 组件自带 /api/identity/users 请求 | keywords: user-table-web-component, identity-components, web-component-hook-declaration
-  - roleTable (@HookComponent) — Web Component Hook: 表格展示角色列表，支持 q/organizationId 过滤；内置/自定义类型 badge；组件自带 /api/identity/roles 请求 | keywords: role-table-web-component, identity-components
+  - userTable (@HookComponent) — Web Component Hook: 表格展示用户列表，支持 q/tenantId/type 过滤；经 ctx.callHook('saas.app.identity.userList') 获取数据，组件不碰 URL/token | keywords: user-table-web-component, identity-components, web-component-hook-declaration
+  - roleTable (@HookComponent) — Web Component Hook: 表格展示角色列表，支持 q/organizationId 过滤；内置/自定义类型 badge；经 ctx.callHook('saas.app.identity.roleList') 获取数据，组件不碰 URL/token | keywords: role-table-web-component, identity-components
 - Identity Controllers
   - 每个 RBAC controller 都声明 `@HookController({ pluginName: 'identity', tags: ['identity', <resource>] })`, 方便 `search_hook({ tags:['identity'] })` 发现真实 hook, 避免猜测不存在的 `identity.profile.*`
   - HookRoute on RBAC CRUD: 全部声明 zod payloadSchema (input 形状), 每个字段带 .describe(), hook-controller 数组形参

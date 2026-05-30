@@ -30,11 +30,22 @@
  * @description 根据 actionHook 动态从 Runner 拉取并渲染 Web Component JS 模块。
  *              SaaS 端自动路由到持有该 hook 的 runner，无需前端显式传 runnerId。
  *              支持 loading / offline / ready 三种状态，组件 JS 通过 Blob URL 动态 import。
- * @keywords-cn hook组件渲染, 动态组件, solution组件, 离线状态
- * @keywords-en hook-component-renderer, dynamic-component, solution-component, offline-state
+ *              组件挂载进 Shadow DOM (mode:'open')：宿主全局样式 (Tailwind preflight / class)
+ *              不会穿透污染组件，组件内样式也不会泄漏到聊天页；仅继承属性 (font/color) 跨边界。
+ * @keywords-cn hook组件渲染, 动态组件, solution组件, 离线状态, 样式隔离, shadowDOM
+ * @keywords-en hook-component-renderer, dynamic-component, solution-component, offline-state, style-isolation, shadow-dom
  */
 import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { useRightPanelStore } from '../../store/right-panel.store';
+import { createHookComponentCtx } from './hook-component-ctx';
+
+/**
+ * 注入每个 shadow root 的最小 base reset。
+ * shadow 边界切断了宿主 Tailwind preflight，组件历史上隐式依赖 box-sizing:border-box，
+ * 这里补齐以保持既有布局；不引入其它全局规则，隔离性由 shadow 边界本身保证。
+ * @keyword-en shadow-base-reset
+ */
+const SHADOW_BASE_RESET = '*,*::before,*::after{box-sizing:border-box}';
 
 interface Props {
   /** actionHook 地址，如 runner.app.todo.card
@@ -45,10 +56,20 @@ interface Props {
    * @keyword-en component-payload
    */
   payload?: unknown;
+  /** 组件所属消息 id，注入 ctx 供快照锚定
+   * @keyword-en renderer-message-id
+   */
+  messageId?: string;
+  /** 组件所属会话 id，注入 ctx
+   * @keyword-en renderer-session-id
+   */
+  sessionId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   payload: () => null,
+  messageId: '',
+  sessionId: '',
 });
 
 type State = 'loading' | 'offline' | 'ready';
@@ -74,8 +95,24 @@ function setCached(key: string, url: string) {
   componentCache.set(key, url);
 }
 
-/** 当前挂载的卸载回调（组件可选导出 unmount） */
-let unmountFn: ((el: HTMLElement) => void) | null = null;
+/** 当前挂载的卸载回调（组件可选导出 unmount），接收的目标与 render 一致（shadow root） */
+let unmountFn: ((root: ShadowRoot) => void) | null = null;
+
+/** 当前组件挂载的 shadow root，复用同一宿主元素上已创建的实例（attachShadow 不可重复调用） */
+let shadowTarget: ShadowRoot | null = null;
+
+/**
+ * 在挂载元素上获取/创建 shadow root 并清空、注入 base reset，返回供组件 render 写入的隔离容器。
+ * @keyword-en ensure-shadow-root
+ */
+function ensureShadowRoot(host: HTMLElement): ShadowRoot {
+  const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
+  root.innerHTML = '';
+  const style = document.createElement('style');
+  style.textContent = SHADOW_BASE_RESET;
+  root.appendChild(style);
+  return root;
+}
 
 /**
  * 监听组件 JS 派发的导航事件，跳转右侧面板对应 Tab。
@@ -96,10 +133,11 @@ onMounted(() => window.addEventListener('hookComponent:navigate', onNavigate));
  */
 const fetchAndMount = async () => {
   state.value = 'loading';
-  if (unmountFn && mountRef.value) {
-    unmountFn(mountRef.value);
+  if (unmountFn && shadowTarget) {
+    unmountFn(shadowTarget);
     unmountFn = null;
   }
+  shadowTarget = null;
 
   try {
     let blobUrl = componentCache.get(props.actionHook);
@@ -127,15 +165,27 @@ const fetchAndMount = async () => {
 
     if (!mountRef.value) return;
 
+    // 组件统一写入 shadow root，宿主与组件样式互不穿透
+    const target = ensureShadowRoot(mountRef.value);
+    shadowTarget = target;
+
+    // 能力注入对象：组件经 ctx 访问数据，不碰 URL / token / 全局事件
+    const ctx = createHookComponentCtx({
+      messageId: props.messageId,
+      sessionId: props.sessionId,
+      openTab: rightPanel.openTab,
+      refresh: () => fetchAndMount(),
+    });
+
     if (typeof mod.default === 'function') {
-      mod.default(mountRef.value, props.payload);
+      mod.default(target, props.payload, ctx);
     } else if (mod.default && typeof mod.default.render === 'function') {
-      mod.default.render(mountRef.value, props.payload);
+      mod.default.render(target, props.payload, ctx);
       if (typeof mod.default.unmount === 'function') {
         unmountFn = mod.default.unmount;
       }
     } else if (typeof mod.render === 'function') {
-      mod.render(mountRef.value, props.payload);
+      mod.render(target, props.payload, ctx);
       if (typeof mod.unmount === 'function') {
         unmountFn = mod.unmount;
       }
@@ -149,8 +199,8 @@ watch(() => props.actionHook, () => { void fetchAndMount(); }, { immediate: true
 
 onUnmounted(() => {
   window.removeEventListener('hookComponent:navigate', onNavigate);
-  if (unmountFn && mountRef.value) {
-    unmountFn(mountRef.value);
+  if (unmountFn && shadowTarget) {
+    unmountFn(shadowTarget);
   }
 });
 </script>

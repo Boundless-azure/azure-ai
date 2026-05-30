@@ -15,7 +15,7 @@
 
 函数清单（Function Index）
 - StorageComponentsService
-  - fileList (@HookComponent) — Web Component Hook: 列表展示文件与文件夹，支持 path/q/type 过滤；点击文件新标签打开 resourcePath；点击文件夹派发 hookComponent:navigate 事件跳转右侧文件库 | keywords: file-list-web-component, storage-components, web-component-hook-declaration, hook-component-navigate
+  - fileList (@HookComponent) — Web Component Hook: 列表展示文件与文件夹，支持 path/q/type 过滤；点击文件新标签打开；点击文件夹经 ctx.navigate 跳转右侧文件库；经 ctx.callHook('saas.app.storage.listNodes') 获取数据，组件不碰 URL/token | keywords: file-list-web-component, storage-components, web-component-hook-declaration, hook-component-navigate
 - StorageService
   - createNode() - 创建存储节点（文件夹/文件）
   - getNode() - 获取节点详情

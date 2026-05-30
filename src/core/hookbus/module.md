@@ -24,6 +24,7 @@
 - core/hookbus/services/hook-component.explorer.service.ts
 - core/hookbus/hookbus.module.ts
 - core/hookbus/cache/hook.cache.ts
+- core/hookbus/hook-component-runtime.design.md（设计文档·draft：ctx 能力注入 + 快照缓存，非逻辑源文件）
 
 函数清单（Function Index）
 - HookRegistryService.register(name, handler, metadata)

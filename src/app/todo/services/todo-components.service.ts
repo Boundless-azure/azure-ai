@@ -39,7 +39,7 @@ export class TodoComponentsService {
   /**
    * Web Component Hook: saas.app.todo.todoTable
    * 以表格形式展示待办列表，支持 q / status / sessionId 过滤。
-   * 组件直接调用 /api/todo 接口，从 localStorage 读取 Bearer token 鉴权。
+   * 经 ctx.callHook('saas.app.todo.list', params) 获取数据（SaaS 自动路由 + 注入鉴权，组件不碰 URL/token）。
    * @keyword-en todo-table-web-component
    */
   @HookComponent('saas.app.todo.todoTable', {
@@ -55,18 +55,15 @@ export class TodoComponentsService {
  * saas.app.todo.todoTable — 待办列表表格组件
  * payload: { q?: string, status?: string, sessionId?: string }
  */
-export function render(el, payload) {
-  const { q = '', status = '', sessionId = '' } = payload ?? {};
+export function render(el, payload, ctx) {
+  var { q = '', status = '', sessionId = '' } = payload ?? {};
 
-  const params = new URLSearchParams();
-  if (q)         params.set('q', q);
-  if (status)    params.set('status', status);
-  if (sessionId) params.set('sessionId', sessionId);
-  const qs = params.toString();
-  const API = (window.__apiBase ?? '/api');
-  const url = API + '/todo' + (qs ? '?' + qs : '');
+  var p = {};
+  if (q)         p.q = q;
+  if (status)    p.status = status;
+  if (sessionId) p.sessionId = sessionId;
 
-  const css = {
+  var css = {
     wrap:    'overflow:auto;border-radius:8px;border:1px solid #e5e7eb;font-family:inherit',
     table:   'width:100%;border-collapse:collapse',
     thead:   'background:#f9fafb',
@@ -77,9 +74,9 @@ export function render(el, payload) {
     err:     'padding:12px;color:#ef4444;font-size:13px',
   };
 
-  el.innerHTML = \`<div style="\${css.loading}">加载中…</div>\`;
+  el.innerHTML = '<div style="' + css.loading + '">加载中…</div>';
 
-  const STATUS_MAP = {
+  var STATUS_MAP = {
     pending:            { label: '未开始',  bg: '#f1f5f9', color: '#64748b' },
     in_progress:        { label: '进行中',  bg: '#eff6ff', color: '#2563eb' },
     failed:             { label: '失败',    bg: '#fef2f2', color: '#dc2626' },
@@ -87,70 +84,59 @@ export function render(el, payload) {
     completed:          { label: '已完成',  bg: '#f0fdf4', color: '#16a34a' },
   };
 
-  const statusBadge = (s, color) => {
-    const info = STATUS_MAP[s];
-    const bg    = info ? info.bg    : (color || '#f1f5f9');
-    const fg    = info ? info.color : '#374151';
-    const label = info ? info.label : (s ?? '-');
-    return \`<span style="display:inline-block;padding:1px 8px;border-radius:9999px;font-size:11px;font-weight:500;background:\${bg};color:\${fg}">\${label}</span>\`;
+  var statusBadge = function(s, color) {
+    var info = STATUS_MAP[s];
+    var bg    = info ? info.bg    : (color || '#f1f5f9');
+    var fg    = info ? info.color : '#374151';
+    var label = info ? info.label : (s ?? '-');
+    return '<span style="display:inline-block;padding:1px 8px;border-radius:9999px;font-size:11px;font-weight:500;background:' + bg + ';color:' + fg + '">' + label + '</span>';
   };
 
-  const timeLabel = t => {
+  var timeLabel = function(t) {
     if (!t) return '-';
     try {
       return new Date(t).toLocaleString('zh-CN', {
         timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit',
         day: '2-digit', hour: '2-digit', minute: '2-digit',
       });
-    } catch { return t; }
+    } catch (e) { return t; }
   };
 
-  const token = localStorage.getItem('token');
-  fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      ...(token ? { Authorization: 'Bearer ' + token } : {}),
-    },
-  })
-    .then(r => {
-      if (!r.ok) return Promise.reject('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(resp => {
-      const rows = Array.isArray(resp) ? resp : (resp?.data ?? resp?.items ?? []);
+  ctx.callHook('saas.app.todo.list', p)
+    .then(function(raw) {
+      var rows = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
       if (!rows.length) {
-        el.innerHTML = \`<div style="\${css.wrap}"><div style="\${css.empty}">暂无匹配待办</div></div>\`;
+        el.innerHTML = '<div style="' + css.wrap + '"><div style="' + css.empty + '">暂无匹配待办</div></div>';
         return;
       }
 
-      const trs = rows.map(t => \`
-        <tr>
-          <td style="\${css.td};font-weight:500;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${t.title ?? '-'}</td>
-          <td style="\${css.td};white-space:nowrap">\${statusBadge(t.status, t.statusColor)}</td>
-          <td style="\${css.td};color:#6b7280;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\${t.description ?? '-'}</td>
-          <td style="\${css.td};color:#9ca3af;font-size:12px;white-space:nowrap">\${timeLabel(t.createdAt)}</td>
-        </tr>
-      \`).join('');
+      var trs = rows.map(function(t) {
+        return '<tr>' +
+          '<td style="' + css.td + ';font-weight:500;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (t.title ?? '-') + '</td>' +
+          '<td style="' + css.td + ';white-space:nowrap">' + statusBadge(t.status, t.statusColor) + '</td>' +
+          '<td style="' + css.td + ';color:#6b7280;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (t.description ?? '-') + '</td>' +
+          '<td style="' + css.td + ';color:#9ca3af;font-size:12px;white-space:nowrap">' + timeLabel(t.createdAt) + '</td>' +
+          '</tr>';
+      }).join('');
 
-      el.innerHTML = \`
-        <div style="\${css.wrap}">
-          <table style="\${css.table}">
-            <thead style="\${css.thead}">
-              <tr>
-                <th style="\${css.th}">标题</th>
-                <th style="\${css.th}">状态</th>
-                <th style="\${css.th}">说明</th>
-                <th style="\${css.th}">创建时间</th>
-              </tr>
-            </thead>
-            <tbody>\${trs}</tbody>
-          </table>
-          <div style="padding:6px 14px;font-size:11px;color:#d1d5db;text-align:right">共 \${rows.length} 条</div>
-        </div>
-      \`;
+      el.innerHTML =
+        '<div style="' + css.wrap + '">' +
+          '<table style="' + css.table + '">' +
+            '<thead style="' + css.thead + '">' +
+              '<tr>' +
+                '<th style="' + css.th + '">标题</th>' +
+                '<th style="' + css.th + '">状态</th>' +
+                '<th style="' + css.th + '">说明</th>' +
+                '<th style="' + css.th + '">创建时间</th>' +
+              '</tr>' +
+            '</thead>' +
+            '<tbody>' + trs + '</tbody>' +
+          '</table>' +
+          '<div style="padding:6px 14px;font-size:11px;color:#d1d5db;text-align:right">共 ' + rows.length + ' 条</div>' +
+        '</div>';
     })
-    .catch(err => {
-      el.innerHTML = \`<div style="\${css.wrap}"><div style="\${css.err}">加载失败：\${err}</div></div>\`;
+    .catch(function(err) {
+      el.innerHTML = '<div style="' + css.wrap + '"><div style="' + css.err + '">加载失败：' + err + '</div></div>';
     });
 }
 `;

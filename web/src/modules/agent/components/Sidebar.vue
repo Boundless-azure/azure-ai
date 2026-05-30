@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex flex-col bg-gray-900 text-white py-4 h-full border-r border-gray-800 flex-shrink-0 transition-all duration-300 z-20"
+    class="flex min-h-0 h-full flex-col overflow-hidden border-r border-gray-800 bg-gray-900 py-4 text-white flex-shrink-0 transition-all duration-300 z-20"
     :class="[isExpanded ? 'w-full px-2' : 'w-[70px] items-center']"
   >
     <!-- Chat Item (Always First) -->
@@ -54,7 +54,7 @@
 
     <!-- Menu Items -->
     <div
-      class="flex flex-col space-y-2 w-full flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar"
+      class="custom-scrollbar flex min-h-0 flex-1 flex-col space-y-2 overflow-y-auto overflow-x-hidden w-full"
       :class="{ 'items-center': !isExpanded }"
     >
       <div
@@ -92,7 +92,7 @@
 
     <!-- Bottom Actions -->
     <div
-      class="mt-auto flex flex-col space-y-4 w-full pb-4 pt-4 border-t border-gray-800 transition-all duration-300"
+      class="mt-auto flex w-full shrink-0 flex-col space-y-4 border-t border-gray-800 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pt-4 transition-all duration-300"
       :class="{ 'items-center': !isExpanded }"
     >
       <!-- Language Switcher -->

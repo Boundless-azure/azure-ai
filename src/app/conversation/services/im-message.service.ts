@@ -824,6 +824,13 @@ export class ImMessageService {
           endIndex: 0,
         }));
       }
+      // 透出 Hook 组件冻结快照，供前端回看时显示生成当时数据（不下发其它内部 metadata）
+      const snaps = m.metadata?.hookSnapshots as
+        | Record<string, { data: unknown; ts: number; traceId?: string }>
+        | undefined;
+      if (snaps && Object.keys(snaps).length > 0) {
+        item.hookSnapshots = snaps;
+      }
       return item;
     });
 

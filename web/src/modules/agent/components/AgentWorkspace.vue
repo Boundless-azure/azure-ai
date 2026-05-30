@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-screen w-full bg-white overflow-hidden relative">
+  <div class="flex h-screen h-[100dvh] w-full bg-white overflow-hidden relative">
     <ToastContainer />
     <!-- Left Area -->
     <!-- Mobile: Full Width, hidden if showing right panel -->

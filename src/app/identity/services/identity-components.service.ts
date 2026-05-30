@@ -44,7 +44,7 @@ export class IdentityComponentsService {
   /**
    * Web Component Hook: saas.app.identity.userTable
    * 以表格形式展示用户列表，支持 q / tenantId / type 三维实时过滤。
-   * 组件直接调用 /api/identity/users 接口，从 localStorage 读取 Bearer token 鉴权。
+   * 经 ctx.callHook('saas.app.identity.userList', params) 获取数据（SaaS 自动路由 + 注入鉴权，组件不碰 URL/token）。
    * @keyword-en user-table-web-component
    */
   @HookComponent('saas.app.identity.userTable', {
@@ -60,18 +60,15 @@ export class IdentityComponentsService {
  * saas.app.identity.userTable — 用户列表表格组件
  * payload: { q?: string, tenantId?: string, type?: 'user'|'user_consumer'|'system' }
  */
-export function render(el, payload) {
-  const { q = '', tenantId = '', type = '' } = payload ?? {};
+export function render(el, payload, ctx) {
+  var { q = '', tenantId = '', type = '' } = payload ?? {};
 
-  const params = new URLSearchParams();
-  if (q)        params.set('q', q);
-  if (tenantId) params.set('tenantId', tenantId);
-  if (type)     params.set('type', type);
-  const qs = params.toString();
-  const API = (window.__apiBase ?? '/api');
-  const url = API + '/identity/users' + (qs ? '?' + qs : '');
+  var p = {};
+  if (q)        p.q = q;
+  if (tenantId) p.tenantId = tenantId;
+  if (type)     p.type = type;
 
-  const css = {
+  var css = {
     wrap:    'overflow:auto;border-radius:8px;border:1px solid #e5e7eb;font-family:inherit',
     table:   'width:100%;border-collapse:collapse',
     thead:   'background:#f9fafb',
@@ -82,78 +79,68 @@ export function render(el, payload) {
     err:     'padding:12px;color:#ef4444;font-size:13px',
   };
 
-  el.innerHTML = \`<div style="\${css.loading}">加载中…</div>\`;
+  el.innerHTML = '<div style="' + css.loading + '">加载中…</div>';
 
-  const typeLabel = t =>
-    ({ user: '企业用户', user_consumer: '消费者', system: '系统账号' }[t] ?? t ?? '-');
+  var typeLabel = function(t) {
+    return ({ user: '企业用户', user_consumer: '消费者', system: '系统账号' }[t] ?? t ?? '-');
+  };
 
-  const statusBadge = active =>
-    active !== false
+  var statusBadge = function(active) {
+    return active !== false
       ? '<span style="color:#16a34a;font-size:12px">● 启用</span>'
       : '<span style="color:#9ca3af;font-size:12px">○ 停用</span>';
+  };
 
-  const timeLabel = t => {
+  var timeLabel = function(t) {
     if (!t) return '-';
     try {
       return new Date(t).toLocaleString('zh-CN', {
         timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit',
         day: '2-digit', hour: '2-digit', minute: '2-digit',
       });
-    } catch { return t; }
+    } catch (e) { return t; }
   };
 
-  const token = localStorage.getItem('token');
-  fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      ...(token ? { Authorization: 'Bearer ' + token } : {}),
-    },
-  })
-    .then(r => {
-      if (!r.ok) return Promise.reject('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(rows => {
-      if (!Array.isArray(rows) || !rows.length) {
-        el.innerHTML = \`<div style="\${css.wrap}"><div style="\${css.empty}">暂无匹配用户</div></div>\`;
+  ctx.callHook('saas.app.identity.userList', p)
+    .then(function(raw) {
+      var rows = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
+      if (!rows.length) {
+        el.innerHTML = '<div style="' + css.wrap + '"><div style="' + css.empty + '">暂无匹配用户</div></div>';
         return;
       }
 
-      const trs = rows.map(u => \`
-        <tr>
-          <td style="\${css.td}">
-            \${u.avatarUrl
-              ? \`<img src="\${u.avatarUrl}" style="width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px">\`
-              : ''}
-            \${u.displayName ?? '-'}
-          </td>
-          <td style="\${css.td};color:#4b5563">\${u.email ?? '-'}</td>
-          <td style="\${css.td}">\${typeLabel(u.principalType)}</td>
-          <td style="\${css.td}">\${statusBadge(u.active)}</td>
-          <td style="\${css.td};color:#9ca3af;font-size:12px">\${timeLabel(u.lastLoginAt)}</td>
-        </tr>
-      \`).join('');
+      var trs = rows.map(function(u) {
+        return '<tr>' +
+          '<td style="' + css.td + '">' +
+            (u.avatarUrl ? '<img src="' + u.avatarUrl + '" style="width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:6px">' : '') +
+            (u.displayName ?? '-') +
+          '</td>' +
+          '<td style="' + css.td + ';color:#4b5563">' + (u.email ?? '-') + '</td>' +
+          '<td style="' + css.td + '">' + typeLabel(u.principalType) + '</td>' +
+          '<td style="' + css.td + '">' + statusBadge(u.active) + '</td>' +
+          '<td style="' + css.td + ';color:#9ca3af;font-size:12px">' + timeLabel(u.lastLoginAt) + '</td>' +
+          '</tr>';
+      }).join('');
 
-      el.innerHTML = \`
-        <div style="\${css.wrap}">
-          <table style="\${css.table}">
-            <thead style="\${css.thead}">
-              <tr>
-                <th style="\${css.th}">用户</th>
-                <th style="\${css.th}">邮箱</th>
-                <th style="\${css.th}">类型</th>
-                <th style="\${css.th}">状态</th>
-                <th style="\${css.th}">最近登录</th>
-              </tr>
-            </thead>
-            <tbody>\${trs}</tbody>
-          </table>
-          <div style="padding:6px 14px;font-size:11px;color:#d1d5db;text-align:right">共 \${rows.length} 条</div>
-        </div>
-      \`;
+      el.innerHTML =
+        '<div style="' + css.wrap + '">' +
+          '<table style="' + css.table + '">' +
+            '<thead style="' + css.thead + '">' +
+              '<tr>' +
+                '<th style="' + css.th + '">用户</th>' +
+                '<th style="' + css.th + '">邮箱</th>' +
+                '<th style="' + css.th + '">类型</th>' +
+                '<th style="' + css.th + '">状态</th>' +
+                '<th style="' + css.th + '">最近登录</th>' +
+              '</tr>' +
+            '</thead>' +
+            '<tbody>' + trs + '</tbody>' +
+          '</table>' +
+          '<div style="padding:6px 14px;font-size:11px;color:#d1d5db;text-align:right">共 ' + rows.length + ' 条</div>' +
+        '</div>';
     })
-    .catch(err => {
-      el.innerHTML = \`<div style="\${css.wrap}"><div style="\${css.err}">加载失败：\${err}</div></div>\`;
+    .catch(function(err) {
+      el.innerHTML = '<div style="' + css.wrap + '"><div style="' + css.err + '">加载失败：' + err + '</div></div>';
     });
 }
 `;
@@ -161,7 +148,7 @@ export function render(el, payload) {
   /**
    * Web Component Hook: saas.app.identity.roleTable
    * 以表格形式展示角色列表，支持 q / organizationId 过滤。
-   * 组件直接调用 /api/identity/roles 接口，从 localStorage 读取 Bearer token 鉴权。
+   * 经 ctx.callHook('saas.app.identity.roleList', params) 获取数据（SaaS 自动路由 + 注入鉴权，组件不碰 URL/token）。
    * @keyword-en role-table-web-component
    */
   @HookComponent('saas.app.identity.roleTable', {
@@ -177,17 +164,14 @@ export function render(el, payload) {
  * saas.app.identity.roleTable — 角色列表表格组件
  * payload: { q?: string, organizationId?: string }
  */
-export function render(el, payload) {
-  const { q = '', organizationId = '' } = payload ?? {};
+export function render(el, payload, ctx) {
+  var { q = '', organizationId = '' } = payload ?? {};
 
-  const params = new URLSearchParams();
-  if (q)             params.set('q', q);
-  if (organizationId) params.set('organizationId', organizationId);
-  const qs = params.toString();
-  const API = (window.__apiBase ?? '/api');
-  const url = API + '/identity/roles' + (qs ? '?' + qs : '');
+  var p = {};
+  if (q)              p.q = q;
+  if (organizationId) p.organizationId = organizationId;
 
-  const css = {
+  var css = {
     wrap:    'overflow:auto;border-radius:8px;border:1px solid #e5e7eb;font-family:inherit',
     table:   'width:100%;border-collapse:collapse',
     thead:   'background:#f9fafb',
@@ -199,71 +183,61 @@ export function render(el, payload) {
     badge:   'display:inline-block;padding:1px 8px;border-radius:9999px;font-size:11px;font-weight:500',
   };
 
-  el.innerHTML = \`<div style="\${css.loading}">加载中…</div>\`;
+  el.innerHTML = '<div style="' + css.loading + '">加载中…</div>';
 
-  const timeLabel = t => {
+  var timeLabel = function(t) {
     if (!t) return '-';
     try {
       return new Date(t).toLocaleString('zh-CN', {
         timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit',
         day: '2-digit', hour: '2-digit', minute: '2-digit',
       });
-    } catch { return t; }
+    } catch (e) { return t; }
   };
 
-  const typeBadge = builtin =>
-    builtin
-      ? \`<span style="\${css.badge};background:#f0fdf4;color:#16a34a">内置</span>\`
-      : \`<span style="\${css.badge};background:#f1f5f9;color:#64748b">自定义</span>\`;
+  var typeBadge = function(builtin) {
+    return builtin
+      ? '<span style="' + css.badge + ';background:#f0fdf4;color:#16a34a">内置</span>'
+      : '<span style="' + css.badge + ';background:#f1f5f9;color:#64748b">自定义</span>';
+  };
 
-  const token = localStorage.getItem('token');
-  fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      ...(token ? { Authorization: 'Bearer ' + token } : {}),
-    },
-  })
-    .then(r => {
-      if (!r.ok) return Promise.reject('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(resp => {
-      const rows = Array.isArray(resp) ? resp : (resp?.data ?? resp?.items ?? []);
+  ctx.callHook('saas.app.identity.roleList', p)
+    .then(function(raw) {
+      var rows = Array.isArray(raw) ? raw : (raw?.data ?? raw?.items ?? []);
       if (!rows.length) {
-        el.innerHTML = \`<div style="\${css.wrap}"><div style="\${css.empty}">暂无匹配角色</div></div>\`;
+        el.innerHTML = '<div style="' + css.wrap + '"><div style="' + css.empty + '">暂无匹配角色</div></div>';
         return;
       }
 
-      const trs = rows.map(r => \`
-        <tr>
-          <td style="\${css.td};font-weight:500">\${r.name ?? '-'}</td>
-          <td style="\${css.td};color:#6b7280;font-family:monospace">\${r.code ?? '-'}</td>
-          <td style="\${css.td};color:#4b5563;max-width:200px;overflow:hidden;text-overflow:ellipsis">\${r.description ?? '-'}</td>
-          <td style="\${css.td}">\${typeBadge(r.builtin)}</td>
-          <td style="\${css.td};color:#9ca3af;font-size:12px">\${timeLabel(r.createdAt)}</td>
-        </tr>
-      \`).join('');
+      var trs = rows.map(function(r) {
+        return '<tr>' +
+          '<td style="' + css.td + ';font-weight:500">' + (r.name ?? '-') + '</td>' +
+          '<td style="' + css.td + ';color:#6b7280;font-family:monospace">' + (r.code ?? '-') + '</td>' +
+          '<td style="' + css.td + ';color:#4b5563;max-width:200px;overflow:hidden;text-overflow:ellipsis">' + (r.description ?? '-') + '</td>' +
+          '<td style="' + css.td + '">' + typeBadge(r.builtin) + '</td>' +
+          '<td style="' + css.td + ';color:#9ca3af;font-size:12px">' + timeLabel(r.createdAt) + '</td>' +
+          '</tr>';
+      }).join('');
 
-      el.innerHTML = \`
-        <div style="\${css.wrap}">
-          <table style="\${css.table}">
-            <thead style="\${css.thead}">
-              <tr>
-                <th style="\${css.th}">角色名称</th>
-                <th style="\${css.th}">标识符</th>
-                <th style="\${css.th}">说明</th>
-                <th style="\${css.th}">类型</th>
-                <th style="\${css.th}">创建时间</th>
-              </tr>
-            </thead>
-            <tbody>\${trs}</tbody>
-          </table>
-          <div style="padding:6px 14px;font-size:11px;color:#d1d5db;text-align:right">共 \${rows.length} 条</div>
-        </div>
-      \`;
+      el.innerHTML =
+        '<div style="' + css.wrap + '">' +
+          '<table style="' + css.table + '">' +
+            '<thead style="' + css.thead + '">' +
+              '<tr>' +
+                '<th style="' + css.th + '">角色名称</th>' +
+                '<th style="' + css.th + '">标识符</th>' +
+                '<th style="' + css.th + '">说明</th>' +
+                '<th style="' + css.th + '">类型</th>' +
+                '<th style="' + css.th + '">创建时间</th>' +
+              '</tr>' +
+            '</thead>' +
+            '<tbody>' + trs + '</tbody>' +
+          '</table>' +
+          '<div style="padding:6px 14px;font-size:11px;color:#d1d5db;text-align:right">共 ' + rows.length + ' 条</div>' +
+        '</div>';
     })
-    .catch(err => {
-      el.innerHTML = \`<div style="\${css.wrap}"><div style="\${css.err}">加载失败：\${err}</div></div>\`;
+    .catch(function(err) {
+      el.innerHTML = '<div style="' + css.wrap + '"><div style="' + css.err + '">加载失败：' + err + '</div></div>';
     });
 }
 `;
