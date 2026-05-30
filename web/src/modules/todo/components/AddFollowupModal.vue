@@ -19,23 +19,6 @@
           </select>
         </div>
 
-        <!-- 状态 -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            {{ t('todo.form.status') }} <span class="text-red-500">*</span>
-          </label>
-          <select
-            v-model="form.status"
-            class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-          >
-            <option value="pending">{{ t('todo.status.pending') }}</option>
-            <option value="in_progress">{{ t('todo.status.inProgress') }}</option>
-            <option value="failed">{{ t('todo.status.failed') }}</option>
-            <option value="waiting_acceptance">{{ t('todo.status.waitingAcceptance') }}</option>
-            <option value="completed">{{ t('todo.status.completed') }}</option>
-          </select>
-        </div>
-
         <!-- 跟进内容 -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -59,7 +42,7 @@
       </button>
       <button
         @click="handleSubmit"
-        :disabled="submitting || !form.followerId || !form.status"
+        :disabled="submitting || !form.followerId"
         class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
       >
         <i v-if="submitting" class="fa-solid fa-spinner fa-spin"></i>
@@ -86,7 +69,7 @@ import { useMemberships } from '../../identity/hooks/useMemberships';
 const { t } = useI18n();
 const props = defineProps<{
   todoId: string;
-  followerIds: string[];
+  followerId: string;
 }>();
 
 const emit = defineEmits<{
@@ -131,7 +114,9 @@ async function loadFollowerOptions() {
 
     // 非管理员只能选择todo指定的跟进人
     if (!isAdmin.value) {
-      followerOptions.value = allOptions.filter(opt => props.followerIds.includes(opt.id));
+      followerOptions.value = props.followerId
+        ? allOptions.filter((opt) => opt.id === props.followerId)
+        : allOptions;
     } else {
       followerOptions.value = allOptions;
     }
@@ -174,12 +159,11 @@ onMounted(async () => {
 
 const form = reactive({
   followerId: '',
-  status: 'in_progress',
   content: '',
 });
 
 const handleSubmit = async () => {
-  if (!form.followerId || !form.status) return;
+  if (!form.followerId) return;
 
   submitting.value = true;
   try {
@@ -187,7 +171,6 @@ const handleSubmit = async () => {
     await createFollowup(props.todoId, {
       followerId: form.followerId,
       followerName: selectedFollower?.label || form.followerId,
-      status: form.status,
       content: form.content || undefined,
     });
     emit('added');

@@ -11,6 +11,8 @@ import { TodoStatus } from '../enums/todo.enums';
 @Entity('todos')
 @Index(['initiatorId'])
 @Index(['sessionId'])
+@Index(['taskId'])
+@Index(['followerId'])
 @Index(['status'])
 export class TodoEntity extends BaseAuditedEntity {
   /** 发起人 ID（用户或系统主体） */
@@ -20,6 +22,10 @@ export class TodoEntity extends BaseAuditedEntity {
   /** 关联聊天会话 ID；为空表示全局待办 */
   @Column({ name: 'session_id', type: 'varchar', length: 100, nullable: true })
   sessionId!: string | null;
+
+  /** 所属任务 ID；为空表示独立待办 */
+  @Column({ name: 'task_id', type: 'varchar', length: 36, nullable: true })
+  taskId!: string | null;
 
   /** 待办名称 */
   @Column({ name: 'title', type: 'varchar', length: 255 })
@@ -33,9 +39,9 @@ export class TodoEntity extends BaseAuditedEntity {
   @Column({ name: 'content', type: 'text', nullable: true })
   content!: string | null;
 
-  /** 跟进人ID列表 (JSON数组) */
-  @Column({ name: 'followerids', type: 'json', nullable: true })
-  followerIds!: string[] | null;
+  /** 跟进人 ID */
+  @Column({ name: 'followerid', type: 'varchar', length: 36, nullable: true })
+  followerId!: string | null;
 
   /** 状态dot颜色 */
   @Column({ name: 'statuscolor', type: 'varchar', length: 16, nullable: true })

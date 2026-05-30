@@ -47,6 +47,7 @@ const todoStatusSchema = z.enum([
 
 const onTodoListInput = z.object({
   sessionId: z.string().optional(),
+  taskId: z.string().optional(),
   status: todoStatusSchema.optional(),
   followerId: z.string().optional(),
   initiatorId: z.string().optional(),
@@ -56,6 +57,7 @@ const onTodoListInput = z.object({
 const onTodoCountInput = z.object({
   status: todoStatusSchema.optional().describe('按状态过滤; 不传返回全部'),
   sessionId: z.string().optional().describe('按关联会话 ID 过滤; 不传返回全局'),
+  taskId: z.string().optional().describe('按所属任务 ID 过滤; 不传返回全部'),
 });
 
 const onTodoIdParamInput = z.object({ id: z.string() });
@@ -63,20 +65,22 @@ const onTodoIdParamInput = z.object({ id: z.string() });
 const onTodoCreateInput = z.object({
   initiatorId: z.string(),
   sessionId: z.string().optional(),
+  taskId: z.string().optional(),
   title: z.string(),
   description: z.string().optional(),
   content: z.string().optional(),
-  followerIds: z.array(z.string()).optional(),
+  followerId: z.string().optional(),
   statusColor: z.string().optional(),
   status: todoStatusSchema.optional(),
 });
 
 const onTodoUpdateInput = z.object({
   sessionId: z.string().nullable().optional(),
+  taskId: z.string().nullable().optional(),
   title: z.string().optional(),
   description: z.string().optional(),
   content: z.string().optional(),
-  followerIds: z.array(z.string()).optional(),
+  followerId: z.string().nullable().optional(),
   statusColor: z.string().optional(),
   status: todoStatusSchema.optional(),
 });
@@ -85,7 +89,6 @@ const onFollowupCreateInput = z.object({
   followerId: z.string(),
   followerName: z.string(),
   followerAvatar: z.string().optional(),
-  status: z.string(),
   content: z.string().optional(),
 });
 
@@ -93,7 +96,6 @@ const onFollowupUpdateInput = z.object({
   followerId: z.string().optional(),
   followerName: z.string().optional(),
   followerAvatar: z.string().optional(),
-  status: z.string().optional(),
   content: z.string().optional(),
 });
 
@@ -119,12 +121,12 @@ export class TodoController {
   @CheckAbility('read', 'todo')
   @HookRoute({
     hook: 'saas.app.todo.todoCount',
-    description: '待办总数统计 :: 返回 { count: number }，支持按 status / sessionId 过滤',
+    description: '待办总数统计 :: 返回 { count: number }，支持按 status / sessionId / taskId 过滤',
     args: [onTodoCountInput],
     metadata: { tags: ['count', 'query'] },
   })
   async count(
-    @Query() query: { status?: string; sessionId?: string },
+    @Query() query: { status?: string; sessionId?: string; taskId?: string },
   ): Promise<{ count: number }> {
     return await this.service.count(query);
   }

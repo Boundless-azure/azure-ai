@@ -1,11 +1,11 @@
 模块名称：app/todo（待办事项模块）
 
 概述
-- 管理待办事项（发起人、待办名、描述、内容、跟进人、状态、状态颜色）
-- 提供待办增删改查接口；支持按状态、跟进人过滤
+- 管理待办事项（发起人、所属任务、待办名、描述、内容、单个跟进人、状态、状态颜色）
+- 提供待办增删改查接口；支持按状态、跟进人、所属任务过滤
 - 支持待办与聊天会话可选关联：todos.session_id 为空表示全局待办，非空可用于对话窗口待办列表。
 - 列表接口对普通用户默认只返回当前登录主体发起或跟进的待办；具备 `todo/*` 或全局 `*` 管理权限的管理员默认可看全量，聊天窗口待办抽屉使用真实 Todo 接口并按 sessionId 过滤。
-- 支持跟进记录管理（创建、列表、删除跟进记录）
+- 支持无状态跟进记录管理（创建、列表、删除跟进记录）
 - 支持评论管理（创建、列表、删除评论）
 
 文件清单（File List）
@@ -23,8 +23,8 @@
 - TodoComponentsService
   - todoTable (@HookComponent) — Web Component Hook: 表格展示待办列表，支持 q/status/sessionId 过滤；状态彩色 badge；经 ctx.callHook('saas.app.todo.list') 获取数据，组件不碰 URL/token | keywords: todo-table-web-component, todo-components, web-component-hook-declaration
 - TodoService
-  - list(query, principal?) — 查询待办列表，管理员跳过默认自己过滤，普通用户只看发起或跟进自己的待办 | keywords: todo-list, admin-bypass, own-filter
-  - count(query) — 统计待办总数，支持 status/sessionId 过滤，返回 { count: number } | keywords: count-todos, todo-count
+  - list(query, principal?) — 查询待办列表，管理员跳过默认自己过滤，普通用户只看发起或跟进自己的待办；支持 taskId 过滤 | keywords: todo-list, admin-bypass, own-filter
+  - count(query) — 统计待办总数，支持 status/sessionId/taskId 过滤，返回 { count: number } | keywords: count-todos, todo-count
   - canReadAllTodos(ctx) — 判断当前主体是否拥有待办管理级读取能力 | keywords: todo-admin-bypass, todo-list, management-permission
   - get(id)
   - create(dto)
@@ -53,11 +53,11 @@
   - HookController(pluginName=todo, tags=[todo])
   - HookRoute on CRUD / followup / comment: 全部声明 zod payloadSchema (input 形状), hook-controller 数组形参
     · 命名遵循 platform.app.module.action:
-    · saas.app.todo.todoCount (GET /todo/count) — 返回 { count: number }，支持 status/sessionId 过滤
-    · saas.app.todo.list (sessionId?/status?/followerId?/initiatorId?/q?), saas.app.todo.get ({id}),
+    · saas.app.todo.todoCount (GET /todo/count) — 返回 { count: number }，支持 status/sessionId/taskId 过滤
+    · saas.app.todo.list (sessionId?/taskId?/status?/followerId?/initiatorId?/q?), saas.app.todo.get ({id}),
       saas.app.todo.create (CreateTodoInput), saas.app.todo.update (UpdateTodoInput),
       saas.app.todo.delete ({id})
-    · saas.app.todo.followup.create/list/update/delete
+    · saas.app.todo.followup.create/list/update/delete（跟进记录不含 status 字段）
     · saas.app.todo.comment.create/list/delete
 
 关键词索引（中文 / English Keyword Index）
@@ -81,6 +81,8 @@
 - "CreateCommentDto" -> app/todo/types/todo.types.ts
 - "QueryTodoDto" -> app/todo/types/todo.types.ts
 - "sessionId" -> app/todo/entities/todo.entity.ts, app/todo/types/todo.types.ts, app/todo/services/todo.service.ts
+- "taskId" -> app/todo/entities/todo.entity.ts, app/todo/types/todo.types.ts, app/todo/services/todo.service.ts
+- "followerId" -> app/todo/entities/todo.entity.ts, app/todo/types/todo.types.ts, app/todo/services/todo.service.ts
 - "TodoService" -> app/todo/services/todo.service.ts
 - "TodoController" -> app/todo/controllers/todo.controller.ts
 - "TodoModule" -> app/todo/todo.module.ts

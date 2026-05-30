@@ -1,7 +1,7 @@
 <template>
   <div class="h-full flex flex-col bg-white">
     <div
-      class="px-4 py-3 border-b border-gray-100 flex items-center justify-between"
+      class="px-4 py-3 border-b border-gray-100 flex items-center"
     >
       <div class="flex items-center">
         <button
@@ -12,12 +12,6 @@
         </button>
         <h3 class="font-bold text-gray-800">待办事项</h3>
       </div>
-      <button
-        class="text-xs text-gray-900 hover:text-black font-medium"
-        @click="createTodo"
-      >
-        <i class="fa-solid fa-plus mr-1"></i>新建
-      </button>
     </div>
 
     <div class="flex-1 overflow-y-auto custom-scrollbar p-4">
@@ -74,7 +68,7 @@
 <script setup lang="ts">
 /**
  * @title Chat Todos
- * @description 对话窗口待办抽屉，读取当前会话绑定的 Todo 并支持创建/完成。
+ * @description 对话窗口待办抽屉，读取当前会话绑定的 Todo 并支持完成状态切换。
  * @keywords-cn 聊天待办, 待办接口, 会话绑定
  * @keywords-en chat-todos, todo-api, session-bound
  */
@@ -127,27 +121,6 @@ async function loadTodos() {
   } finally {
     loading.value = false;
   }
-}
-
-/**
- * 创建待办。
- * @keyword-en create-chat-todo
- */
-async function createTodo() {
-  const principalId = getPrincipalId();
-  if (!principalId) return;
-  const title = window.prompt('请输入待办标题');
-  const normalizedTitle = title?.trim();
-  if (!normalizedTitle) return;
-  await todoApi.create({
-    initiatorId: principalId,
-    sessionId: props.sessionId,
-    title: normalizedTitle,
-    content: `来自会话：${props.sessionId}`,
-    followerIds: [principalId],
-    status: TodoStatus.Pending,
-  });
-  await loadTodos();
 }
 
 /**

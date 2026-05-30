@@ -150,22 +150,14 @@
                     <!-- 简述 -->
                     <span v-if="item.description" class="text-xs text-gray-400 mt-1 block truncate">{{ item.description }}</span>
                     <!-- 跟进人头像 -->
-                    <div v-if="item.followerIds && item.followerIds.length > 0" class="flex items-center -space-x-2 mt-2">
+                    <div v-if="item.followerId" class="flex items-center mt-2">
                       <div
-                        v-for="(followerId, idx) in item.followerIds.slice(0, 3)"
-                        :key="followerId"
                         class="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-600 overflow-hidden"
-                        :title="getFollowerName(followerId)"
+                        :title="getFollowerName(item.followerId)"
                       >
-                        <img v-if="getFollowerAvatar(followerId)" :src="getFollowerAvatar(followerId)" class="w-full h-full object-cover" />
-                        <span v-else>{{ getFollowerInitials(followerId) }}</span>
+                        <img v-if="getFollowerAvatar(item.followerId)" :src="getFollowerAvatar(item.followerId)" class="w-full h-full object-cover" />
+                        <span v-else>{{ getFollowerInitials(item.followerId) }}</span>
                       </div>
-                      <span
-                        v-if="item.followerIds.length > 3"
-                        class="w-6 h-6 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-500"
-                      >
-                        +{{ item.followerIds.length - 3 }}
-                      </span>
                     </div>
                   </div>
                 </div>
@@ -349,21 +341,19 @@
             </div>
 
             <!-- 跟进人 -->
-            <div v-if="selectedTodoDetail.followerIds && selectedTodoDetail.followerIds.length > 0">
+            <div v-if="selectedTodoDetail.followerId">
               <label class="block text-sm font-medium text-gray-500 mb-2">跟进人</label>
               <div class="flex items-center gap-2 flex-wrap">
                 <div
-                  v-for="followerId in selectedTodoDetail.followerIds"
-                  :key="followerId"
                   class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-100"
                 >
                   <div
                     class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium text-gray-600 overflow-hidden flex-shrink-0"
                   >
-                    <img v-if="getFollowerAvatar(followerId)" :src="getFollowerAvatar(followerId)" class="w-full h-full object-cover" />
-                    <span v-else>{{ getFollowerInitials(followerId) }}</span>
+                    <img v-if="getFollowerAvatar(selectedTodoDetail.followerId)" :src="getFollowerAvatar(selectedTodoDetail.followerId)" class="w-full h-full object-cover" />
+                    <span v-else>{{ getFollowerInitials(selectedTodoDetail.followerId) }}</span>
                   </div>
-                  <span class="text-sm text-gray-700">{{ getFollowerName(followerId) }}</span>
+                  <span class="text-sm text-gray-700">{{ getFollowerName(selectedTodoDetail.followerId) }}</span>
                 </div>
               </div>
             </div>
@@ -623,7 +613,7 @@ interface PendingTodo {
   id: string;
   title: string;
   description: string;
-  followerIds: string[];
+  followerId: string | null;
   statusColor: string;
 }
 
@@ -680,7 +670,7 @@ async function fetchDashboardData() {
       id: todo.id,
       title: todo.title || todo.content || '待办事项',
       description: todo.description || todo.content || '',
-      followerIds: todo.followerIds || [],
+      followerId: todo.followerId || null,
       statusColor: todo.statusColor || '#6B7280',
     }));
 

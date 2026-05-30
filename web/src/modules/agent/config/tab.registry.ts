@@ -22,6 +22,11 @@ export const tabRegistry: Record<string, TabRegistryEntry> = {
     file: 'src/modules/todo/components/TodoList.vue',
     loader: () => import('../../todo/components/TodoList.vue'),
   },
+  tasks: {
+    name: '任务',
+    file: 'src/modules/task/components/TaskList.vue',
+    loader: () => import('../../task/components/TaskList.vue'),
+  },
   users: {
     name: '用户管理',
     file: 'src/modules/identity/components/UserManagement.vue',

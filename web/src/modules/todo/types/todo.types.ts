@@ -11,10 +11,11 @@ export interface TodoItem {
   id: string;
   initiatorId: string;
   sessionId: string | null;
+  taskId: string | null;
   title: string;
   description: string | null;
   content: string | null;
-  followerIds: string[] | null;
+  followerId: string | null;
   statusColor: string | null;
   status: TodoStatus;
   createdAt?: string | Date;
@@ -27,10 +28,9 @@ export interface TodoFollowup {
   followerId: string;
   followerName: string | null;
   followerAvatar: string | null;
-  status: string;
   content: string | null;
   createdAt: string | Date;
-  comments: TodoFollowupComment[];
+  comments?: TodoFollowupComment[];
 }
 
 export interface TodoFollowupComment {
@@ -46,20 +46,22 @@ export interface TodoFollowupComment {
 export interface CreateTodoRequest {
   initiatorId: string;
   sessionId?: string;
+  taskId?: string;
   title: string;
   description?: string;
   content?: string;
-  followerIds?: string[];
+  followerId?: string;
   statusColor?: string;
   status?: TodoStatus;
 }
 
 export interface UpdateTodoRequest {
+  taskId?: string | null;
   sessionId?: string | null;
   title?: string;
   description?: string;
   content?: string;
-  followerIds?: string[];
+  followerId?: string | null;
   statusColor?: string;
   status?: TodoStatus;
 }
@@ -68,7 +70,6 @@ export interface CreateFollowupRequest {
   followerId: string;
   followerName: string;
   followerAvatar?: string;
-  status: string;
   content?: string;
 }
 
@@ -83,7 +84,6 @@ export interface UpdateFollowupRequest {
   followerId?: string;
   followerName?: string;
   followerAvatar?: string;
-  status?: string;
   content?: string;
 }
 
@@ -96,20 +96,22 @@ export interface UpdateFollowupRequest {
 export const CreateTodoRequestSchema = z.object({
   initiatorId: z.string().min(1),
   sessionId: z.string().optional(),
+  taskId: z.string().optional(),
   title: z.string().min(1),
   description: z.string().optional(),
   content: z.string().optional(),
-  followerIds: z.array(z.string()).optional(),
+  followerId: z.string().optional(),
   statusColor: z.string().optional(),
   status: z.string().optional(),
 });
 
 export const UpdateTodoRequestSchema = z.object({
   sessionId: z.string().nullable().optional(),
+  taskId: z.string().nullable().optional(),
   title: z.string().optional(),
   description: z.string().optional(),
   content: z.string().optional(),
-  followerIds: z.array(z.string()).optional(),
+  followerId: z.string().nullable().optional(),
   statusColor: z.string().optional(),
   status: z.string().optional(),
 });
@@ -118,7 +120,6 @@ export const CreateFollowupRequestSchema = z.object({
   followerId: z.string().min(1),
   followerName: z.string().min(1),
   followerAvatar: z.string().optional(),
-  status: z.string().min(1),
   content: z.string().optional(),
 });
 
@@ -133,12 +134,12 @@ export const UpdateFollowupRequestSchema = z.object({
   followerId: z.string().optional(),
   followerName: z.string().optional(),
   followerAvatar: z.string().optional(),
-  status: z.string().optional(),
   content: z.string().optional(),
 });
 
 export const ListTodoQuerySchema = z.object({
   sessionId: z.string().optional(),
+  taskId: z.string().optional(),
   status: z.string().optional(),
   followerId: z.string().optional(),
   initiatorId: z.string().optional(),

@@ -178,13 +178,22 @@ src/modules/agent/
 - `chat-panel` - 聊天面板
 - `right-panel` - 右侧面板
 
+补充行为：
+- 右侧面板现支持 `tasks` tab，对应任务列表页面入口
+
 ### components/ChatTodos.vue
 
 | 函数名 | 关键词描述 |
 |--------|-----------|
 | `loadTodos` | 从真实 Todo 接口按 sessionId 加载当前会话待办 |
-| `createTodo` | 在聊天待办抽屉中新建并绑定当前会话待办 |
 | `toggleCompleted` | 切换待办完成状态 |
+
+### components/ChatTasks.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `loadTasks` | 从真实 Task 接口按 sessionId 加载当前会话任务 |
+| `formatAssignees` | 将会话任务关联人数组格式化为展示文案 |
 
 ### components/ChatFiles.vue
 
@@ -225,6 +234,8 @@ src/modules/agent/
 ### components/Sidebar.vue
 
 布局说明：移动端侧栏中间菜单区允许纵向滚动，底部语言、设置、账号与退出操作保留安全区留白，避免小屏设备被挤出可视区。
+
+补充行为：菜单区新增 `tasks` 入口，与 `todos` 并列显示任务列表页面。
 
 | 函数名 | 关键词描述 |
 |--------|-----------|

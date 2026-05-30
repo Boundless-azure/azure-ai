@@ -13,6 +13,7 @@ import { PromptModule } from './core/prompt/prompt.module';
 import { HookBusModule } from './core/hookbus/hookbus.module';
 import { ConversationModule } from '@/app/conversation/conversation.module';
 import { AgentModule } from '@/app/agent/agent.module';
+import { TaskModule } from './app/task/task.module';
 import { TodoModule } from './app/todo/todo.module';
 import { AiModelsModule } from './app/ai-models/ai-models.module';
 import { IdentityModule } from '@/app/identity/identity.module';
@@ -108,6 +109,7 @@ import type { DatabaseConfig } from './config/types';
     ResourceModule,
     ConversationModule,
     AgentModule,
+    TaskModule,
     TodoModule,
     AiModelsModule,
     KnowledgeModule,

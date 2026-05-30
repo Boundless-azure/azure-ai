@@ -41,6 +41,22 @@
           ></textarea>
         </div>
 
+        <!-- 所属任务 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            所属任务
+          </label>
+          <select
+            v-model="form.taskId"
+            class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+          >
+            <option value="">不关联任务</option>
+            <option v-for="task in taskOptions" :key="task.id" :value="task.id">
+              {{ task.title }}
+            </option>
+          </select>
+        </div>
+
         <!-- 跟进人选择 -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -52,7 +68,7 @@
               :key="option.id"
               @click="toggleFollower(option.id)"
               class="px-3 py-1.5 rounded-lg text-sm border transition-colors"
-              :class="form.followerIds.includes(option.id)
+              :class="form.followerId === option.id
                 ? 'bg-gray-900 text-white border-gray-900'
                 : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'"
             >
@@ -117,10 +133,12 @@ import BaseModal from '../../../components/BaseModal.vue';
 import { useI18n } from '../../agent/composables/useI18n';
 import { useTodos } from '../hooks/useTodos';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';
+import { useTasks } from '../../task/hooks/useTasks';
 
 const { t } = useI18n();
 const { create } = useTodos();
 const { list: listPrincipals } = usePrincipals();
+const { list: listTasks } = useTasks();
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -152,9 +170,12 @@ const form = reactive({
   title: '',
   description: '',
   content: '',
-  followerIds: [] as string[],
+  taskId: '',
+  followerId: '',
   statusColor: '#6B7280',
 });
+
+const taskOptions = ref<Array<{ id: string; title: string }>>([]);
 
 // 跟进人选项 - 从API获取
 interface FollowerOption {
@@ -182,6 +203,20 @@ async function loadFollowerOptions() {
 
 loadFollowerOptions();
 
+async function loadTaskOptions() {
+  try {
+    const tasks = await listTasks();
+    taskOptions.value = (tasks || []).map((task) => ({
+      id: task.id,
+      title: task.title,
+    }));
+  } catch {
+    taskOptions.value = [];
+  }
+}
+
+loadTaskOptions();
+
 // 状态颜色选项
 const statusColors = [
   { value: '#6B7280', label: '灰色' },
@@ -192,12 +227,7 @@ const statusColors = [
 ];
 
 const toggleFollower = (id: string) => {
-  const idx = form.followerIds.indexOf(id);
-  if (idx === -1) {
-    form.followerIds.push(id);
-  } else {
-    form.followerIds.splice(idx, 1);
-  }
+  form.followerId = form.followerId === id ? '' : id;
 };
 
 const handleSubmit = async () => {
@@ -207,10 +237,11 @@ const handleSubmit = async () => {
   try {
     await create({
       initiatorId: currentUser.id,
+      taskId: form.taskId || undefined,
       title: form.title,
       description: form.description || undefined,
       content: form.content || undefined,
-      followerIds: form.followerIds.length > 0 ? form.followerIds : undefined,
+      followerId: form.followerId || undefined,
       statusColor: form.statusColor,
       status: 'pending',
     });

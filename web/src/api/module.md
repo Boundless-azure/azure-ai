@@ -10,6 +10,7 @@
   - AI Provider create/update 透传 `thinkingEnabled` 与 Minimax 协议预设映射后的 `apiProtocol/baseURL`。
 - `resource.ts` - resources 表上传、访问与会话文件列表 API 封装。
 - `storage.ts` - 存储资源相关 API 封装。
+- `task.ts` - 任务增删改查 API 封装。
 - `todo.ts` - Todo 增删改查与会话绑定 API 封装。
 
 ## 核心文件与函数
@@ -36,6 +37,18 @@
 
 | 函数名 | 关键词描述 |
 |--------|-----------|
-| `list` | 查询待办列表，支持 sessionId 过滤 |
-| `create` | 创建待办，可写入 sessionId |
-| `update` | 更新待办，可绑定或解绑 sessionId |
+| `list` | 查询待办列表，支持 sessionId / taskId 过滤 |
+| `create` | 创建待办，可写入 sessionId / taskId |
+| `update` | 更新待办，可绑定或解绑 sessionId / taskId |
+| `createFollowup` | 创建无状态跟进记录 |
+| `updateFollowup` | 更新无状态跟进记录 |
+
+### task.ts
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `list` | 查询任务列表，支持 sessionId / pmId / assigneeId / q 过滤 |
+| `get` | 获取任务详情 |
+| `create` | 创建任务 |
+| `update` | 更新任务 |
+| `delete` | 删除任务 |

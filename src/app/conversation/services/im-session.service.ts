@@ -849,10 +849,6 @@ export class ImSessionService {
       throw new NotFoundException(`Session not found: ${sessionId}`);
     }
 
-    if (session.type === ChatSessionType.Private) {
-      throw new BadRequestException('Private session cannot be deleted');
-    }
-
     const membership = await this.memberRepo.findOne({
       where: { sessionId: session.id, principalId, isDelete: false },
     });

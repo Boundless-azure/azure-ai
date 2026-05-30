@@ -18,23 +18,6 @@
           </select>
         </div>
 
-        <!-- 状态 -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            {{ t('todo.form.status') }} <span class="text-red-500">*</span>
-          </label>
-          <select
-            v-model="form.status"
-            class="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-          >
-            <option value="pending">{{ t('todo.status.pending') }}</option>
-            <option value="in_progress">{{ t('todo.status.inProgress') }}</option>
-            <option value="failed">{{ t('todo.status.failed') }}</option>
-            <option value="waiting_acceptance">{{ t('todo.status.waitingAcceptance') }}</option>
-            <option value="completed">{{ t('todo.status.completed') }}</option>
-          </select>
-        </div>
-
         <!-- 跟进内容 -->
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -58,7 +41,7 @@
       </button>
       <button
         @click="handleSubmit"
-        :disabled="submitting || !form.followerId || !form.status"
+        :disabled="submitting || !form.followerId"
         class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
       >
         <i v-if="submitting" class="fa-solid fa-spinner fa-spin"></i>
@@ -124,12 +107,11 @@ loadFollowerOptions();
 
 const form = reactive({
   followerId: props.followup.followerId,
-  status: props.followup.status,
   content: props.followup.content || '',
 });
 
 const handleSubmit = async () => {
-  if (!form.followerId || !form.status) return;
+  if (!form.followerId) return;
 
   submitting.value = true;
   try {
@@ -137,7 +119,6 @@ const handleSubmit = async () => {
     await updateFollowup(props.followup.id, {
       followerId: form.followerId,
       followerName: selectedFollower?.label || form.followerId,
-      status: form.status,
       content: form.content || undefined,
     }, props.followup.todoId);
     emit('updated');

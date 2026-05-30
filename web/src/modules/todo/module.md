@@ -2,7 +2,7 @@
 
 ## 功能描述
 
-The Todo module provides a comprehensive task management system with follow-up records, comments, and timeline visualization. It supports creating, editing, and tracking todos with multiple followers, real-time status updates, and optional IM session binding via `sessionId`.
+The Todo module provides a comprehensive task management system with follow-up records, comments, and timeline visualization. It supports creating, editing, and tracking todos with a single follower, optional task binding via `taskId`, and optional IM session binding via `sessionId`.
 
 ## 目录结构
 
@@ -34,15 +34,15 @@ web/src/modules/todo/
 
 | 函数名 | 关键词描述 |
 |--------|-----------|
-| `list` | 获取待办列表，支持 sessionId 过滤 |
+| `list` | 获取待办列表，支持 sessionId 和 taskId 过滤 |
 | `get` | 获取单个待办 |
-| `create` | 创建待办，可绑定 sessionId |
-| `update` | 更新待办，可绑定或解绑 sessionId |
+| `create` | 创建待办，可绑定 sessionId 与 taskId |
+| `update` | 更新待办，可绑定或解绑 sessionId 与 taskId |
 | `remove` | 删除待办 |
-| `createFollowup` | 创建跟进记录 |
+| `createFollowup` | 创建无状态跟进记录 |
 | `listFollowups` | 获取跟进记录列表 |
 | `removeFollowup` | 删除跟进记录 |
-| `updateFollowup` | 更新跟进记录 |
+| `updateFollowup` | 更新无状态跟进记录 |
 | `createComment` | 创建评论 |
 | `listComments` | 获取评论列表 |
 | `removeComment` | 删除评论 |
@@ -56,6 +56,10 @@ web/src/modules/todo/
 - `create-modal` - 新建待办弹窗
 - `detail-view` - 详情编辑页
 
+补充行为：
+- 新建和编辑支持可选选择所属任务
+- 列表与详情都按单个 follower 展示头像与名称
+
 ### components/TodoDetail.vue
 
 布局结构：
@@ -63,12 +67,19 @@ web/src/modules/todo/
 - `left-card` - 左侧待办信息卡片
 - `right-tabs` - 右侧Tab切换（编辑/跟进记录）
 
+补充行为：
+- 编辑表单支持修改 `taskId`
+- 跟进记录编辑不再包含状态字段
+
 ### components/FollowupTimeline.vue
 
 - `timeline-line` - 时间轴竖线
 - `timeline-nodes` - 时间轴节点
 - `followup-cards` - 跟进内容卡片
 - `comment-section` - 评论区域
+
+补充行为：
+- 时间轴节点不再依赖跟进状态颜色
 
 ## 函数哈希映射
 

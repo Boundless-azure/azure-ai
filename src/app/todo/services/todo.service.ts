@@ -127,14 +127,10 @@ export class TodoService {
         sessionId,
       });
     }
-
-    /**
-     * 生成 followerIds JSON 数组的 PostgreSQL 文本匹配条件。
-     * @keyword-en todo-follower-json-condition
-     */
-    const jsonContainsPrincipal = () =>
-      'todo.followerids::text LIKE :followerText';
-    const followerText = (principalId: string) => `%"${principalId}"%`;
+    const taskId = query.taskId?.trim();
+    if (taskId) {
+      qb.andWhere('todo.taskId = :taskId', { taskId });
+    }
 
     if (query.initiatorId) {
       qb.andWhere('todo.initiatorId = :initiatorId', {
@@ -142,8 +138,8 @@ export class TodoService {
       });
     }
     if (query.followerId) {
-      qb.andWhere(jsonContainsPrincipal(), {
-        followerText: followerText(query.followerId),
+      qb.andWhere('todo.followerId = :followerId', {
+        followerId: query.followerId,
       });
     }
     if (
@@ -153,10 +149,9 @@ export class TodoService {
       principal?.id
     ) {
       qb.andWhere(
-        `(todo.initiatorId = :principalId OR ${jsonContainsPrincipal()})`,
+        '(todo.initiatorId = :principalId OR todo.followerId = :principalId)',
         {
           principalId: principal.id,
-          followerText: followerText(principal.id),
         },
       );
     }
@@ -176,7 +171,7 @@ export class TodoService {
    * @keyword-en count-todos, todo-count
    */
   async count(
-    query: { status?: string; sessionId?: string } = {},
+    query: { status?: string; sessionId?: string; taskId?: string } = {},
   ): Promise<{ count: number }> {
     const qb = this.todoRepo
       .createQueryBuilder('todo')
@@ -186,6 +181,10 @@ export class TodoService {
     if (query.sessionId?.trim())
       qb.andWhere('todo.sessionId = :sessionId', {
         sessionId: query.sessionId.trim(),
+      });
+    if (query.taskId?.trim())
+      qb.andWhere('todo.taskId = :taskId', {
+        taskId: query.taskId.trim(),
       });
     const count = await qb.getCount();
     return { count };
@@ -211,10 +210,11 @@ export class TodoService {
     const payload: DeepPartial<TodoEntity> = {
       initiatorId: dto.initiatorId,
       sessionId: dto.sessionId?.trim() || null,
+      taskId: dto.taskId?.trim() || null,
       title: dto.title,
       description: dto.description ?? null,
       content: dto.content ?? null,
-      followerIds: dto.followerIds ?? (principal?.id ? [principal.id] : null),
+      followerId: dto.followerId?.trim() || principal?.id || null,
       statusColor: dto.statusColor ?? null,
       status: dto.status ?? TodoStatus.Pending,
       active: true,
@@ -238,10 +238,15 @@ export class TodoService {
     if (dto.sessionId !== undefined) {
       entity.sessionId = dto.sessionId?.trim() || null;
     }
+    if (dto.taskId !== undefined) {
+      entity.taskId = dto.taskId?.trim() || null;
+    }
     if (dto.title !== undefined) entity.title = dto.title;
     if (dto.description !== undefined) entity.description = dto.description;
     if (dto.content !== undefined) entity.content = dto.content;
-    if (dto.followerIds !== undefined) entity.followerIds = dto.followerIds;
+    if (dto.followerId !== undefined) {
+      entity.followerId = dto.followerId?.trim() || null;
+    }
     if (dto.statusColor !== undefined) entity.statusColor = dto.statusColor;
     if (dto.status !== undefined) entity.status = dto.status;
     return await this.todoRepo.save(entity);
@@ -272,7 +277,6 @@ export class TodoService {
       followerId: dto.followerId,
       followerName: dto.followerName,
       followerAvatar: dto.followerAvatar ?? null,
-      status: dto.status,
       content: dto.content ?? null,
       createdUser: userId,
       updateUser: userId,
@@ -313,7 +317,6 @@ export class TodoService {
     if (dto.followerName !== undefined) entity.followerName = dto.followerName;
     if (dto.followerAvatar !== undefined)
       entity.followerAvatar = dto.followerAvatar;
-    if (dto.status !== undefined) entity.status = dto.status;
     if (dto.content !== undefined) entity.content = dto.content;
     entity.updateUser = userId;
     return await this.followupRepo.save(entity);

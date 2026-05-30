@@ -83,23 +83,14 @@
               <div class="flex items-center justify-between">
                 <!-- 跟进人头像（仅头像 + tooltip） -->
                 <div class="flex items-center -space-x-2">
-                  <template v-if="item.followerIds && item.followerIds.length > 0">
+                  <template v-if="item.followerId">
                     <div
-                      v-for="(followerId, idx) in item.followerIds.slice(0, 3)"
-                      :key="followerId"
                       class="w-7 h-7 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-600 overflow-hidden cursor-help"
-                      :title="getNickname(followerId)"
+                      :title="getNickname(item.followerId)"
                     >
-                      <img v-if="getAvatarUrl(followerId)" :src="getAvatarUrl(followerId)" class="w-full h-full object-cover" />
-                      <span v-else>{{ getInitials(getNickname(followerId)) }}</span>
+                      <img v-if="getAvatarUrl(item.followerId)" :src="getAvatarUrl(item.followerId)" class="w-full h-full object-cover" />
+                      <span v-else>{{ getInitials(getNickname(item.followerId)) }}</span>
                     </div>
-                    <span
-                      v-if="item.followerIds.length > 3"
-                      class="w-7 h-7 rounded-full bg-gray-100 border-2 border-white flex items-center justify-center text-xs font-medium text-gray-500"
-                      :title="item.followerIds.slice(3).map(id => getNickname(id)).join(', ')"
-                    >
-                      +{{ item.followerIds.length - 3 }}
-                    </span>
                   </template>
                   <span v-else class="text-xs text-gray-400">-</span>
                 </div>

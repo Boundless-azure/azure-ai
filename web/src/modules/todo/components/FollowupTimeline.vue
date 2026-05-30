@@ -12,13 +12,8 @@
         class="relative flex gap-4"
       >
         <!-- 时间轴节点 -->
-        <div
-          class="w-10 h-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center flex-shrink-0 z-10"
-        >
-          <div
-            class="w-3 h-3 rounded-full"
-            :style="{ backgroundColor: getStatusColor(followup.status) }"
-          ></div>
+        <div class="w-10 h-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center flex-shrink-0 z-10">
+          <div class="w-3 h-3 rounded-full bg-gray-400"></div>
         </div>
 
         <!-- 跟进内容卡片 -->
@@ -37,12 +32,6 @@
               </div>
             </div>
             <div class="flex items-center gap-2">
-              <span
-                class="px-2 py-0.5 rounded-full text-xs font-medium"
-                :class="statusClass(followup.status)"
-              >
-                {{ t(`todo.status.${followup.status}`) }}
-              </span>
               <!-- 编辑按钮 -->
               <button
                 @click="emit('edit', followup)"
@@ -116,28 +105,6 @@ const toggleComments = (followupId: string) => {
   } else {
     expandedComments.value.add(followupId);
   }
-};
-
-const getStatusColor = (status: string): string => {
-  const colors: Record<string, string> = {
-    pending: '#6B7280',
-    in_progress: '#3B82F6',
-    failed: '#EF4444',
-    waiting_acceptance: '#F59E0B',
-    completed: '#10B981',
-  };
-  return colors[status] || '#6B7280';
-};
-
-const statusClass = (status: string): string => {
-  const classes: Record<string, string> = {
-    pending: 'bg-gray-100 text-gray-600',
-    in_progress: 'bg-blue-50 text-blue-600',
-    failed: 'bg-red-50 text-red-600',
-    waiting_acceptance: 'bg-orange-50 text-orange-600',
-    completed: 'bg-green-50 text-green-600',
-  };
-  return classes[status] || 'bg-gray-100 text-gray-600';
 };
 
 const getInitials = (name: string | null): string => {

@@ -319,6 +319,7 @@ const menuItems = [
   { id: 'solutions', icon: 'box-open' },
   { id: 'agents', icon: 'robot' },
   { id: 'runners', icon: 'play' },
+  { id: 'tasks', icon: 'clipboard-list' },
   { id: 'todos', icon: 'list-check' },
   { id: 'more', icon: 'ellipsis' },
 ];

@@ -81,15 +81,13 @@
                 <span class="text-xs font-medium">{{ t('todo.followers') }}</span>
               </div>
               <div class="flex flex-wrap gap-2 pl-[22px]">
-                <template v-if="todo.followerIds && todo.followerIds.length > 0">
+                <template v-if="todo.followerId">
                   <div
-                    v-for="followerId in todo.followerIds"
-                    :key="followerId"
                     class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden cursor-help hover:bg-gray-300 transition-colors"
-                    :title="getNickname(followerId)"
+                    :title="getNickname(todo.followerId)"
                   >
-                    <img v-if="getAvatarUrl(followerId)" :src="getAvatarUrl(followerId)" class="w-full h-full object-cover" />
-                    <span v-else class="text-[10px] text-gray-600">{{ getInitials(getNickname(followerId)) }}</span>
+                    <img v-if="getAvatarUrl(todo.followerId)" :src="getAvatarUrl(todo.followerId)" class="w-full h-full object-cover" />
+                    <span v-else class="text-[10px] text-gray-600">{{ getInitials(getNickname(todo.followerId)) }}</span>
                   </div>
                 </template>
                 <span v-else class="text-xs text-gray-400">-</span>
@@ -159,6 +157,22 @@
               ></textarea>
             </div>
 
+            <!-- 所属任务 -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">
+                所属任务
+              </label>
+              <select
+                v-model="editForm.taskId"
+                class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              >
+                <option value="">不关联任务</option>
+                <option v-for="taskOption in taskOptions" :key="taskOption.id" :value="taskOption.id">
+                  {{ taskOption.title }}
+                </option>
+              </select>
+            </div>
+
             <!-- 跟进人 -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -170,7 +184,7 @@
                   :key="option.id"
                   @click="toggleFollower(option.id)"
                   class="px-3 py-1.5 rounded-lg text-sm border transition-colors flex items-center gap-2"
-                  :class="editForm.followerIds.includes(option.id)
+                  :class="editForm.followerId === option.id
                     ? 'bg-gray-900 text-white border-gray-900'
                     : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'"
                   :title="option.label"
@@ -274,7 +288,7 @@
             <AddFollowupModal
               v-if="showAddFollowup"
               :todo-id="todo.id"
-              :follower-ids="todo.followerIds || []"
+              :follower-id="todo.followerId || ''"
               @close="showAddFollowup = false"
               @added="handleFollowupAdded"
             />
@@ -306,6 +320,7 @@ import type { TodoItem, TodoFollowup } from '../types/todo.types';
 import { useTodos } from '../hooks/useTodos';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';
 import { resolveImageUrl } from '../../resource/services/resource-url.service';
+import { useTasks } from '../../task/hooks/useTasks';
 import FollowupTimeline from './FollowupTimeline.vue';
 import AddFollowupModal from './AddFollowupModal.vue';
 import EditFollowupModal from './EditFollowupModal.vue';
@@ -322,6 +337,7 @@ const emit = defineEmits<{
 
 const { update, listFollowups, followups, createFollowup } = useTodos();
 const { list: listPrincipals } = usePrincipals();
+const { list: listTasks } = useTasks();
 
 const activeTab = ref('edit');
 const saving = ref(false);
@@ -347,6 +363,7 @@ interface FollowerOption {
 
 const followerOptions = ref<FollowerOption[]>([]);
 const principalMap = ref<Record<string, any>>({});
+const taskOptions = ref<Array<{ id: string; title: string }>>([]);
 
 async function loadFollowerOptions() {
   try {
@@ -362,7 +379,7 @@ async function loadFollowerOptions() {
           icon: p.principalType === 'agent' ? 'fa-solid fa-robot' : 'fa-solid fa-user',
         };
       });
-    
+
     // Fill the rest into map
     (principals || []).forEach((p: any) => {
       pMap[p.id] = p;
@@ -372,6 +389,18 @@ async function loadFollowerOptions() {
     followerOptions.value = options;
   } catch {
     followerOptions.value = [];
+  }
+}
+
+async function loadTaskOptions() {
+  try {
+    const tasks = await listTasks();
+    taskOptions.value = (tasks || []).map((task) => ({
+      id: task.id,
+      title: task.title,
+    }));
+  } catch {
+    taskOptions.value = [];
   }
 }
 
@@ -399,7 +428,8 @@ const editForm = reactive({
   title: props.todo.title,
   description: props.todo.description || '',
   content: props.todo.content || '',
-  followerIds: [...(props.todo.followerIds || [])],
+  taskId: props.todo.taskId || '',
+  followerId: props.todo.followerId || '',
   status: props.todo.status,
   statusColor: props.todo.statusColor || '#6B7280',
 });
@@ -409,18 +439,14 @@ watch(() => props.todo, (newTodo) => {
   editForm.title = newTodo.title;
   editForm.description = newTodo.description || '';
   editForm.content = newTodo.content || '';
-  editForm.followerIds = [...(newTodo.followerIds || [])];
+  editForm.taskId = newTodo.taskId || '';
+  editForm.followerId = newTodo.followerId || '';
   editForm.status = newTodo.status;
   editForm.statusColor = newTodo.statusColor || '#6B7280';
 }, { deep: true });
 
 const toggleFollower = (id: string) => {
-  const idx = editForm.followerIds.indexOf(id);
-  if (idx === -1) {
-    editForm.followerIds.push(id);
-  } else {
-    editForm.followerIds.splice(idx, 1);
-  }
+  editForm.followerId = editForm.followerId === id ? '' : id;
 };
 
 const handleSave = async () => {
@@ -430,7 +456,8 @@ const handleSave = async () => {
       title: editForm.title,
       description: editForm.description || undefined,
       content: editForm.content || undefined,
-      followerIds: editForm.followerIds,
+      taskId: editForm.taskId || null,
+      followerId: editForm.followerId || null,
       status: editForm.status as any,
       statusColor: editForm.statusColor,
     });
@@ -510,6 +537,7 @@ const formatDate = (date: string | Date | undefined): string => {
 onMounted(() => {
   loadFollowups();
   loadFollowerOptions();
+  loadTaskOptions();
 });
 </script>
 
