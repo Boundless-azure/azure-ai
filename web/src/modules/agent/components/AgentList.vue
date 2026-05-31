@@ -174,7 +174,7 @@
         <div class="pt-4 border-t border-gray-100 flex items-center justify-between shrink-0">
           <span class="text-sm text-gray-500">共 {{ filteredAgents.length }} {{ t('common.items') || '项' }}</span>
           <div class="flex items-center gap-2">
-            <button 
+            <button
               class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               :disabled="page <= 1"
               @click="page--"
@@ -182,7 +182,7 @@
               {{ t('common.prev') || '上一页' }}
             </button>
             <span class="text-sm text-gray-700 font-medium px-2">{{ page }} / {{ Math.ceil(filteredAgents.length / limit) || 1 }}</span>
-            <button 
+            <button
               class="px-3 py-1 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               :disabled="page * limit >= filteredAgents.length"
               @click="page++"
