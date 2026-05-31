@@ -34,7 +34,12 @@
                 <i class="fa-solid fa-flag-checkered w-4 text-center text-[13px]"></i>
                 <span class="text-xs font-medium">里程碑</span>
               </div>
-              <p class="pl-[22px] text-[13px] text-gray-900 md:text-sm">{{ task.milestone || '-' }}</p>
+              <div
+                v-if="task.milestone"
+                class="task-markdown-preview pl-[22px] pt-1 text-[13px] text-gray-900 md:text-sm"
+                v-html="renderedMilestone"
+              ></div>
+              <p v-else class="pl-[22px] text-[13px] text-gray-900 md:text-sm">-</p>
             </div>
 
             <div>
@@ -119,15 +124,16 @@
               <textarea v-model="editForm.description" rows="3" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 resize-none"></textarea>
             </div>
 
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">任务里程碑</label>
-                <input v-model="editForm.milestone" type="text" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-              </div>
-              <div>
-                <label class="mb-1 block text-sm font-medium text-gray-700">所属 Session</label>
-                <input v-model="editForm.sessionId" type="text" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
-              </div>
+            <TaskMarkdownEditor
+              v-model="editForm.milestone"
+              label="任务里程碑"
+              placeholder="支持 Markdown，多行描述任务阶段、目标、验收标准等"
+              hint="可用工具栏快速插入 Markdown 语法；保存后左侧摘要区域会按 Markdown 效果展示。"
+            />
+
+            <div>
+              <label class="mb-1 block text-sm font-medium text-gray-700">所属 Session</label>
+              <input v-model="editForm.sessionId" type="text" class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10" />
             </div>
 
             <div>
@@ -274,7 +280,8 @@
  * @keywords-cn 任务详情, Todo列表, 任务资源
  * @keywords-en task-detail, task-todos, task-resources
  */
-import { onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import MarkdownIt from 'markdown-it';
 import { listNodes } from '../../../api/storage';
 import { todoApi } from '../../../api/todo';
 import type { StorageNode } from '../../storage/types/storage.types';
@@ -284,6 +291,7 @@ import type { TodoItem } from '../../todo/types/todo.types';
 import { useTasks } from '../hooks/useTasks';
 import type { TaskItem } from '../types/task.types';
 import TaskFolderPickerModal from './TaskFolderPickerModal.vue';
+import TaskMarkdownEditor from './TaskMarkdownEditor.vue';
 
 const props = defineProps<{
   task: TaskItem;
@@ -297,6 +305,13 @@ const emit = defineEmits<{
 
 const { update, remove } = useTasks();
 const { list: listPrincipals } = usePrincipals();
+
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  typographer: true,
+  breaks: true,
+});
 
 const tabs = [
   { id: 'detail', label: '任务详情', icon: 'fa-solid fa-pen' },
@@ -329,6 +344,15 @@ const resourceLoading = ref(false);
 const resourceError = ref<string | null>(null);
 const resourceItems = ref<StorageNode[]>([]);
 const currentResourcePath = ref(props.task.folderPath || '/');
+
+/**
+ * @title 里程碑 Markdown 渲染
+ * @description 将任务里程碑按 Markdown 渲染为摘要 HTML。
+ * @keyword-en rendered-task-milestone
+ */
+const renderedMilestone = computed(() =>
+  props.task.milestone?.trim() ? md.render(props.task.milestone) : '',
+);
 
 /**
  * @title 加载主体映射
@@ -554,3 +578,99 @@ onMounted(() => {
   void loadResources(props.task.folderPath);
 });
 </script>
+
+<style scoped>
+.task-markdown-preview :deep(h1),
+.task-markdown-preview :deep(h2),
+.task-markdown-preview :deep(h3),
+.task-markdown-preview :deep(h4) {
+  margin: 0 0 0.6rem;
+  color: #111827;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.task-markdown-preview :deep(h1) {
+  font-size: 1.15rem;
+}
+
+.task-markdown-preview :deep(h2) {
+  font-size: 1.05rem;
+}
+
+.task-markdown-preview :deep(h3),
+.task-markdown-preview :deep(h4) {
+  font-size: 0.98rem;
+}
+
+.task-markdown-preview :deep(p) {
+  margin: 0 0 0.6rem;
+  color: #111827;
+  line-height: 1.7;
+}
+
+.task-markdown-preview :deep(ul),
+.task-markdown-preview :deep(ol) {
+  margin: 0 0 0.6rem;
+  padding-left: 1.15rem;
+  color: #111827;
+}
+
+.task-markdown-preview :deep(li) {
+  margin-bottom: 0.2rem;
+}
+
+.task-markdown-preview :deep(blockquote) {
+  margin: 0 0 0.6rem;
+  border-left: 3px solid #d1d5db;
+  padding-left: 0.75rem;
+  color: #4b5563;
+}
+
+.task-markdown-preview :deep(code:not(pre code)) {
+  border-radius: 0.375rem;
+  background: #f3f4f6;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.875em;
+}
+
+.task-markdown-preview :deep(pre) {
+  margin: 0 0 0.75rem;
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  background: #111827;
+  padding: 0.75rem 0.9rem;
+}
+
+.task-markdown-preview :deep(pre code) {
+  color: #f9fafb;
+}
+
+.task-markdown-preview :deep(a) {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.task-markdown-preview :deep(table) {
+  margin: 0 0 0.75rem;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.task-markdown-preview :deep(th),
+.task-markdown-preview :deep(td) {
+  border: 1px solid #e5e7eb;
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+}
+
+.task-markdown-preview :deep(th) {
+  background: #f9fafb;
+}
+
+.task-markdown-preview :deep(hr) {
+  margin: 0.9rem 0;
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+}
+</style>

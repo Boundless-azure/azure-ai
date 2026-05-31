@@ -23,6 +23,8 @@
 | `createUser` | 创建用户并可设置初始密码 |
 | `updateUser` | 更新用户资料并可重置密码 |
 | `deleteUser` | 删除用户 |
+| `getKnowledgeAssignments` | 查询单个 Agent 当前知识分配状态（含本地默认知识） |
+| `updateKnowledgeAssignments` | 更新单个 Agent 的知识分配集合 |
 
 ### resource.ts
 

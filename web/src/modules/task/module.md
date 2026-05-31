@@ -12,6 +12,7 @@ web/src/modules/task/
 │   ├── TaskList.vue
 │   ├── TaskDetail.vue
 │   ├── CreateTaskModal.vue
+│   ├── TaskMarkdownEditor.vue
 │   └── TaskFolderPickerModal.vue
 ├── hooks/
 │   └── useTasks.ts
@@ -37,16 +38,22 @@ web/src/modules/task/
 主要区域：
 - `header` - 标题与新建按钮
 - `filters` - 搜索与 session 过滤
-- `task-table` - 任务表格
+- `task-table` - 任务表格（里程碑列显示 Markdown 文本摘要）
 - `task-detail` - 任务详情页入口
 
 ### components/TaskDetail.vue
 
 布局结构：
 - `summary-card` - 左侧任务摘要
-- `detail-tab` - 任务详情编辑
+- `detail-tab` - 任务详情编辑（里程碑使用 Markdown 编辑器）
 - `todos-tab` - 任务下的 Todo 列表
 - `resources-tab` - 任务资源浏览
+
+### components/TaskMarkdownEditor.vue
+
+主要区域：
+- `toolbar-row` - Markdown 快捷工具栏
+- `editor-pane` - Markdown 文本编辑区
 
 ## 函数哈希映射
 

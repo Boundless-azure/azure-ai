@@ -337,12 +337,22 @@ export class KnowledgeController {
     event?: HookEvent,
   ): Promise<HookResult> {
     const { bookIds } = payload;
-    event?.log?.info('knowledge.getToc:start', { bookIdCount: bookIds.length });
+    const accessibleBookIds = await this.getAgentAccessibleBookIds(event);
+    const scopedBookIds = this.filterBookIdsByScope(
+      bookIds,
+      accessibleBookIds,
+    );
+    event?.log?.info('knowledge.getToc:start', {
+      bookIdCount: bookIds.length,
+      scopedBookIdCount: scopedBookIds.length,
+      restrictedBookCount: Math.max(bookIds.length - scopedBookIds.length, 0),
+      agentScoped: !!accessibleBookIds,
+    });
     try {
       const start = Date.now();
-      const data = await this.knowledgeService.getTocByBookIds(bookIds);
+      const data = await this.knowledgeService.getTocByBookIds(scopedBookIds);
       event?.log?.info('knowledge.getToc:done', {
-        bookIdCount: bookIds.length,
+        bookIdCount: scopedBookIds.length,
         bookCount: Array.isArray(data) ? data.length : 0,
         durationMs: Date.now() - start,
       });
@@ -373,15 +383,23 @@ export class KnowledgeController {
     event?: HookEvent,
   ): Promise<HookResult> {
     const { bookIds, chapterIds } = payload;
+    const accessibleBookIds = await this.getAgentAccessibleBookIds(event);
+    const scopedBookIds = this.filterBookIdsByScope(
+      bookIds,
+      accessibleBookIds,
+    );
     event?.log?.info('knowledge.getChapter:start', {
       bookIdCount: bookIds.length,
+      scopedBookIdCount: scopedBookIds.length,
+      restrictedBookCount: Math.max(bookIds.length - scopedBookIds.length, 0),
       chapterIdCount: chapterIds?.length ?? 0,
       lmRequiredOnly: !chapterIds || chapterIds.length === 0,
+      agentScoped: !!accessibleBookIds,
     });
     try {
       const start = Date.now();
       const data = await this.knowledgeService.getChapterContent(
-        bookIds,
+        scopedBookIds,
         chapterIds,
       );
       event?.log?.info('knowledge.getChapter:done', {
@@ -416,10 +434,12 @@ export class KnowledgeController {
     event?: HookEvent,
   ): Promise<HookResult> {
     const { type, cursor, limit } = payload;
+    const accessibleBookIds = await this.getAgentAccessibleBookIds(event);
     event?.log?.info('knowledge.getTag:start', {
       ...(type ? { type } : {}),
       ...(cursor !== undefined ? { cursor } : {}),
       ...(limit !== undefined ? { limit } : {}),
+      agentScoped: !!accessibleBookIds,
     });
     try {
       const start = Date.now();
@@ -427,6 +447,7 @@ export class KnowledgeController {
         type,
         cursor,
         limit,
+        accessibleBookIds,
       });
       const items = (data as { items?: unknown[] } | null)?.items;
       event?.log?.info('knowledge.getTag:done', {
@@ -462,17 +483,23 @@ export class KnowledgeController {
     event?: HookEvent,
   ): Promise<HookResult> {
     const { tags, type, limit } = payload;
+    const accessibleBookIds = await this.getAgentAccessibleBookIds(event);
     event?.log?.info('knowledge.search:start', {
       tagCount: tags?.length ?? 0,
       ...(type ? { type } : {}),
       ...(limit !== undefined ? { limit } : {}),
+      agentScoped: !!accessibleBookIds,
     });
     try {
       const start = Date.now();
       let known: string[] | undefined;
       let unknown: string[] = [];
       if (tags && tags.length > 0) {
-        const validation = await this.validateTags(tags, type);
+        const validation = await this.validateTags(
+          tags,
+          type,
+          accessibleBookIds,
+        );
         known = validation.known;
         unknown = validation.unknown;
         if (known.length === 0) {
@@ -497,6 +524,7 @@ export class KnowledgeController {
         tags: known,
         type,
         limit,
+        accessibleBookIds,
       });
       event?.log?.info('knowledge.search:done', {
         returned: Array.isArray(data) ? data.length : 0,
@@ -540,12 +568,17 @@ export class KnowledgeController {
   private async validateTags(
     tags: string[],
     type?: KnowledgeBookType,
+    accessibleBookIds?: string[],
   ): Promise<{
     known: string[];
     unknown: string[];
     availableSample: string[];
   }> {
-    const all = await this.knowledgeService.listAllTags({ type, limit: 400 });
+    const all = await this.knowledgeService.listAllTags({
+      type,
+      limit: 400,
+      accessibleBookIds,
+    });
     const realSet = new Set(
       (all?.items ?? []).map((it) => it.name.toLowerCase()),
     );
@@ -557,5 +590,39 @@ export class KnowledgeController {
     }
     const availableSample = (all?.items ?? []).slice(0, 8).map((it) => it.name);
     return { known, unknown, availableSample };
+  }
+
+  /**
+   * 解析当前 Hook 是否需要按 Agent 知识分配做访问收敛
+   * @keyword-cn Agent知识访问范围, Hook上下文, 运行时判定
+   * @keyword-en get-agent-accessible-book-ids, hook-context, runtime-scope
+   */
+  private async getAgentAccessibleBookIds(
+    event?: HookEvent,
+  ): Promise<string[] | undefined> {
+    const principalId = event?.context?.principalId;
+    if (event?.context?.principalType !== 'agent' || !principalId) {
+      return undefined;
+    }
+    return await this.knowledgeService.resolveAgentAccessibleBookIds(
+      principalId,
+    );
+  }
+
+  /**
+   * 按可见书本集合裁剪当前 Hook 请求的 bookIds
+   * @keyword-cn 书本范围裁剪, Agent访问控制, Hook请求过滤
+   * @keyword-en filter-book-ids-by-scope, agent-access-control, hook-request-filter
+   */
+  private filterBookIdsByScope(
+    bookIds: string[],
+    accessibleBookIds?: string[],
+  ): string[] {
+    const dedupedBookIds = Array.from(new Set(bookIds));
+    if (!accessibleBookIds) {
+      return dedupedBookIds;
+    }
+    const allowedBookIds = new Set(accessibleBookIds);
+    return dedupedBookIds.filter((bookId) => allowedBookIds.has(bookId));
   }
 }

@@ -1,12 +1,25 @@
-import { Injectable, Inject, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  Optional,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, In } from 'typeorm';
 import { AgentEntity } from '../entities/agent.entity';
-import type { QueryAgentDto, UpdateAgentDto } from '../types/agent.types';
+import { AgentKnowledgeAssignmentEntity } from '../entities/agent-knowledge-assignment.entity';
+import type {
+  QueryAgentDto,
+  UpdateAgentDto,
+  AgentKnowledgeAssignmentState,
+} from '../types/agent.types';
 import type { Db, Collection } from 'mongodb';
 import type { AgentDoc } from '@/mongo/types/mongo.types';
 import { AIModelService } from '@core/ai/services/ai-model.service';
 import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
+import { KnowledgeBookEntity } from '@/app/knowledge/entities/knowledge-book.entity';
+import { LOCAL_BOOKS } from '@/app/knowledge/local/local-knowledge.seed';
 
 /**
  * @title Agent 服务
@@ -19,6 +32,10 @@ export class AgentService {
   constructor(
     @InjectRepository(AgentEntity)
     private readonly repo: Repository<AgentEntity>,
+    @InjectRepository(AgentKnowledgeAssignmentEntity)
+    private readonly knowledgeAssignmentRepo: Repository<AgentKnowledgeAssignmentEntity>,
+    @InjectRepository(KnowledgeBookEntity)
+    private readonly knowledgeBookRepo: Repository<KnowledgeBookEntity>,
     @Optional() @Inject('MONGO_DB') private readonly mongoDb?: Db,
     private readonly aiModelService?: AIModelService,
   ) {}
@@ -132,6 +149,68 @@ export class AgentService {
     return { updated, errors };
   }
 
+  /**
+   * @title 获取 Agent 知识分配状态
+   * @description 返回 Agent 当前生效的知识绑定结果，本地知识默认包含在 assignedBookIds 内。
+   * @keywords-cn Agent知识分配, 生效知识, 本地默认
+   * @keywords-en get-agent-knowledge-assignments, effective-knowledge, local-default
+   */
+  async getKnowledgeAssignments(
+    agentId: string,
+  ): Promise<AgentKnowledgeAssignmentState> {
+    await this.assertAgentExists(agentId);
+    const localBookIds = this.getLocalKnowledgeBookIds();
+    const customAssignments = await this.knowledgeAssignmentRepo.find({
+      where: { agentId, isDelete: false },
+      order: { createdAt: 'ASC' },
+    });
+    const customBookIds = customAssignments.map((item) => item.bookId);
+    return {
+      agentId,
+      localBookIds,
+      customBookIds,
+      assignedBookIds: [...localBookIds, ...customBookIds],
+    };
+  }
+
+  /**
+   * @title 更新 Agent 知识分配
+   * @description 覆盖 Agent 的自定义知识绑定；本地知识不会落库，但始终自动生效。
+   * @keywords-cn Agent知识分配更新, 自定义知识, 覆盖保存
+   * @keywords-en update-agent-knowledge-assignments, custom-knowledge, replace-save
+   */
+  async updateKnowledgeAssignments(
+    agentId: string,
+    bookIds: string[],
+  ): Promise<AgentKnowledgeAssignmentState> {
+    await this.assertAgentExists(agentId);
+
+    const normalizedIds = this.normalizeKnowledgeBookIds(bookIds);
+    const localBookIds = new Set(this.getLocalKnowledgeBookIds());
+    const customBookIds = normalizedIds.filter((id) => !localBookIds.has(id));
+
+    await this.assertKnowledgeBooksExist(customBookIds);
+
+    await this.knowledgeAssignmentRepo.update(
+      { agentId, isDelete: false },
+      { isDelete: true, deletedAt: new Date() },
+    );
+
+    if (customBookIds.length > 0) {
+      const entities = customBookIds.map((bookId) =>
+        this.knowledgeAssignmentRepo.create({
+          agentId,
+          bookId,
+          isDelete: false,
+          deletedAt: null,
+        }),
+      );
+      await this.knowledgeAssignmentRepo.save(entities);
+    }
+
+    return await this.getKnowledgeAssignments(agentId);
+  }
+
   private composeText(a: AgentEntity): string {
     const parts: string[] = [];
     if (a.nickname) parts.push(a.nickname);
@@ -192,6 +271,68 @@ export class AgentService {
 
   private isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === 'object' && v !== null;
+  }
+
+  /**
+   * @title 断言 Agent 存在
+   * @description 校验目标 Agent 是否存在，不存在时抛出 404。
+   * @keywords-cn Agent存在校验, 404, 前置检查
+   * @keywords-en assert-agent-exists, not-found, precheck
+   */
+  private async assertAgentExists(agentId: string): Promise<void> {
+    const agent = await this.get(agentId);
+    if (!agent) {
+      throw new NotFoundException(`Agent not found: ${agentId}`);
+    }
+  }
+
+  /**
+   * @title 获取本地知识书本 ID
+   * @description 返回所有本地预置知识的 bookId 列表，作为 Agent 默认知识集合。
+   * @keywords-cn 本地知识ID, 默认知识, 预置书本
+   * @keywords-en local-knowledge-ids, default-knowledge, preset-books
+   */
+  private getLocalKnowledgeBookIds(): string[] {
+    return LOCAL_BOOKS.map((book) => book.id);
+  }
+
+  /**
+   * @title 规范化知识书本 ID 列表
+   * @description 去重并移除空字符串，保持提交顺序。
+   * @keywords-cn 知识ID规范化, 去重, 顺序保留
+   * @keywords-en normalize-knowledge-book-ids, dedupe, preserve-order
+   */
+  private normalizeKnowledgeBookIds(bookIds: string[]): string[] {
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+    for (const raw of bookIds ?? []) {
+      const bookId = typeof raw === 'string' ? raw.trim() : '';
+      if (!bookId || seen.has(bookId)) continue;
+      seen.add(bookId);
+      normalized.push(bookId);
+    }
+    return normalized;
+  }
+
+  /**
+   * @title 校验知识书本存在性
+   * @description 仅允许绑定有效且未删除的数据库知识书本；本地知识不经此校验。
+   * @keywords-cn 知识存在校验, 数据库知识, 非法ID
+   * @keywords-en assert-knowledge-books-exist, database-books, invalid-id
+   */
+  private async assertKnowledgeBooksExist(bookIds: string[]): Promise<void> {
+    if (bookIds.length === 0) return;
+    const books = await this.knowledgeBookRepo.find({
+      where: { id: In(bookIds), isDelete: false, active: true },
+      select: ['id'],
+    });
+    const existing = new Set(books.map((item) => item.id));
+    const missing = bookIds.filter((id) => !existing.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Knowledge books not found or inactive: ${missing.join(', ')}`,
+      );
+    }
   }
 
   async update(id: string, dto: UpdateAgentDto): Promise<AgentEntity> {

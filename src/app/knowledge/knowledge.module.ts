@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AICoreModule } from '@core/ai';
+import { AgentEntity } from '@/app/agent/entities/agent.entity';
+import { AgentKnowledgeAssignmentEntity } from '@/app/agent/entities/agent-knowledge-assignment.entity';
 import { KnowledgeBookEntity } from './entities/knowledge-book.entity';
 import { KnowledgeChapterEntity } from './entities/knowledge-chapter.entity';
 import { KnowledgeService } from './services/knowledge.service';
@@ -15,7 +17,12 @@ import { AuthModule } from '@/core/auth/auth.module';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([KnowledgeBookEntity, KnowledgeChapterEntity]),
+    TypeOrmModule.forFeature([
+      KnowledgeBookEntity,
+      KnowledgeChapterEntity,
+      AgentEntity,
+      AgentKnowledgeAssignmentEntity,
+    ]),
     AICoreModule.forRoot({}),
     AuthModule,
   ],

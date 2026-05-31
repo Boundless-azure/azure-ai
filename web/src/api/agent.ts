@@ -19,6 +19,7 @@ import {
   CreateGroupRequestSchema,
   UpdateGroupRequestSchema,
   UpdateAgentRequestSchema,
+  UpdateAgentKnowledgeAssignmentsSchema,
   ListThreadsParamsSchema,
   UpdateEmbeddingsSchema,
 } from '../modules/agent/types/agent.types';
@@ -56,7 +57,9 @@ import type {
   GroupHistoryResponse,
   CheckpointListResponse,
   Agent,
+  AgentKnowledgeAssignmentState,
   UpdateAgentRequest,
+  UpdateAgentKnowledgeAssignmentsRequest,
   IdentityPrincipalItem,
   GroupListQueryDto,
   SessionHistoryResponse,
@@ -237,6 +240,13 @@ export const agentApi = {
   getAgents: () => http.get<Agent[]>('/agent'),
 
   /**
+   * Get Agent Knowledge Assignments
+   * @param id Agent ID
+   */
+  getKnowledgeAssignments: (id: string) =>
+    http.get<AgentKnowledgeAssignmentState>(`/agent/${id}/knowledge-assignments`),
+
+  /**
    * Update Agent
    * @param id Agent ID
    * @param data Update data
@@ -245,6 +255,25 @@ export const agentApi = {
     const parsed = UpdateAgentRequestSchema.safeParse(data);
     if (!parsed.success) throw new Error('Invalid update agent payload');
     return http.put<Agent>(`/agent/${id}`, parsed.data);
+  },
+
+  /**
+   * Update Agent Knowledge Assignments
+   * @param id Agent ID
+   * @param data Knowledge assignment payload
+   */
+  updateKnowledgeAssignments: (
+    id: string,
+    data: UpdateAgentKnowledgeAssignmentsRequest,
+  ) => {
+    const parsed = UpdateAgentKnowledgeAssignmentsSchema.safeParse(data);
+    if (!parsed.success) {
+      throw new Error('Invalid update knowledge assignments payload');
+    }
+    return http.put<AgentKnowledgeAssignmentState>(
+      `/agent/${id}/knowledge-assignments`,
+      parsed.data,
+    );
   },
 
   /**

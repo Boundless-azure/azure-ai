@@ -5,8 +5,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { OpenAIEmbeddings } from '@langchain/openai';
+import { AgentEntity } from '@/app/agent/entities/agent.entity';
+import { AgentKnowledgeAssignmentEntity } from '@/app/agent/entities/agent-knowledge-assignment.entity';
 import { KnowledgeBookEntity } from '../entities/knowledge-book.entity';
 import { KnowledgeChapterEntity } from '../entities/knowledge-chapter.entity';
 import { KnowledgeBookType } from '../enums/knowledge.enums';
@@ -42,6 +44,10 @@ export class KnowledgeService {
     private readonly bookRepo: Repository<KnowledgeBookEntity>,
     @InjectRepository(KnowledgeChapterEntity)
     private readonly chapterRepo: Repository<KnowledgeChapterEntity>,
+    @InjectRepository(AgentEntity)
+    private readonly agentRepo: Repository<AgentEntity>,
+    @InjectRepository(AgentKnowledgeAssignmentEntity)
+    private readonly agentKnowledgeAssignmentRepo: Repository<AgentKnowledgeAssignmentEntity>,
   ) {}
 
   // ========== 书本 CRUD ==========
@@ -368,6 +374,45 @@ export class KnowledgeService {
   // ========== Tag 过滤列表 ==========
 
   /**
+   * 解析 Agent 在知识 Hook 中可见的书本集合
+   * @keyword-cn Agent知识可见范围, 知识分配, 本地知识共享
+   * @keyword-en resolve-agent-accessible-book-ids, knowledge-assignment, local-book-sharing
+   */
+  async resolveAgentAccessibleBookIds(principalId: string): Promise<string[]> {
+    const localBookIds = LOCAL_BOOKS.filter((book) => book.active).map(
+      (book) => book.id,
+    );
+    if (!principalId) return localBookIds;
+
+    const agent = await this.agentRepo.findOne({
+      where: { principalId, isDelete: false },
+      select: ['id'],
+    });
+    if (!agent) return localBookIds;
+
+    const assignments = await this.agentKnowledgeAssignmentRepo.find({
+      where: { agentId: agent.id, isDelete: false },
+      select: ['bookId'],
+    });
+    const assignedDbBookIds = Array.from(
+      new Set(
+        assignments
+          .map((assignment) => assignment.bookId)
+          .filter((bookId) => bookId && !isLocalKnowledgeId(bookId)),
+      ),
+    );
+    if (assignedDbBookIds.length === 0) return localBookIds;
+
+    const activeAssignedBooks = await this.bookRepo.find({
+      where: { id: In(assignedDbBookIds), isDelete: false, active: true },
+      select: ['id'],
+    });
+    return Array.from(
+      new Set([...localBookIds, ...activeAssignedBooks.map((book) => book.id)]),
+    );
+  }
+
+  /**
    * 列举所有 tag 的频次榜 (db 书本 + 本地预置书本聚合)
    * 默认/上限 400, 一次拿全景便于 LLM 决策, 超过用 cursor 翻页
    * @keyword-en list-all-tags
@@ -376,6 +421,7 @@ export class KnowledgeService {
     type?: KnowledgeBookType;
     cursor?: number;
     limit?: number;
+    accessibleBookIds?: string[];
   }): Promise<{
     items: Array<{ name: string; count: number }>;
     total: number;
@@ -388,15 +434,23 @@ export class KnowledgeService {
       Math.min(opts?.limit ?? TAG_PAGE_LIMIT, TAG_PAGE_LIMIT),
     );
     const cursor = Math.max(0, opts?.cursor ?? 0);
+    const accessible = this.splitAccessibleBookIds(opts?.accessibleBookIds);
 
     // db 书本
-    const where: Record<string, unknown> = { isDelete: false, active: true };
-    if (opts?.type) where['type'] = opts.type;
-    const dbBooks = await this.bookRepo.find({ where });
+    let dbBooks: KnowledgeBookEntity[] = [];
+    if (accessible.dbIds === null || accessible.dbIds.length > 0) {
+      const where: Record<string, unknown> = { isDelete: false, active: true };
+      if (opts?.type) where['type'] = opts.type;
+      if (accessible.dbIds !== null) where['id'] = In(accessible.dbIds);
+      dbBooks = await this.bookRepo.find({ where });
+    }
 
     // 本地预置书本 (LOCAL_BOOKS 是 KnowledgeBookInfo 形态, 含 active 字段)
     const localBooks = LOCAL_BOOKS.filter(
-      (b) => b.active && (!opts?.type || b.type === opts.type),
+      (b) =>
+        b.active &&
+        (!opts?.type || b.type === opts.type) &&
+        (accessible.localIds === null || accessible.localIds.has(b.id)),
     );
 
     // 聚合 tag 频次 (db + local 共一套统计)
@@ -432,41 +486,57 @@ export class KnowledgeService {
     tags?: string[];
     type?: KnowledgeBookType;
     limit?: number;
+    accessibleBookIds?: string[];
   }): Promise<KnowledgeBookInfo[]> {
     const limit = Math.min(opts?.limit ?? 100, 100);
+    const accessible = this.splitAccessibleBookIds(opts?.accessibleBookIds);
+    const tags = (opts?.tags ?? []).filter(Boolean);
 
     // ---- db 书本 ----
-    let dbBooks: KnowledgeBookEntity[];
-    if (opts?.tags && opts.tags.length > 0) {
-      // simple-array 以逗号拼接存储，用 ILIKE 做兼容子串匹配
-      const tagConditions = opts.tags
-        .map((_, i) => `tags ILIKE $${i + 1}`)
-        .join(' OR ');
-      const params = opts.tags.map((t) => `%${t}%`);
-      const typeClause = opts?.type ? ` AND type = '${opts.type}'` : '';
-      dbBooks = await this.bookRepo.manager.query(
-        `SELECT * FROM knowledge_books WHERE is_delete = false AND active = true AND (${tagConditions})${typeClause} ORDER BY created_at DESC LIMIT ${limit}`,
-        params,
-      );
-    } else {
-      const where: Record<string, unknown> = { isDelete: false, active: true };
-      if (opts?.type) where['type'] = opts.type;
-      dbBooks = await this.bookRepo.find({
-        where,
-        order: { createdAt: 'DESC' },
-        take: limit,
-      });
+    let dbBooks: KnowledgeBookEntity[] = [];
+    if (accessible.dbIds === null || accessible.dbIds.length > 0) {
+      const query = this.bookRepo
+        .createQueryBuilder('book')
+        .where('book.isDelete = :isDelete', { isDelete: false })
+        .andWhere('book.active = :active', { active: true });
+
+      if (opts?.type) {
+        query.andWhere('book.type = :type', { type: opts.type });
+      }
+      if (accessible.dbIds !== null) {
+        query.andWhere('book.id IN (:...bookIds)', {
+          bookIds: accessible.dbIds,
+        });
+      }
+      if (tags.length > 0) {
+        query.andWhere(
+          new Brackets((tagQuery) => {
+            tags.forEach((tag, index) => {
+              tagQuery.orWhere(`book.tags ILIKE :tag${index}`, {
+                [`tag${index}`]: `%${tag}%`,
+              });
+            });
+          }),
+        );
+      }
+
+      dbBooks = await query
+        .orderBy('book.createdAt', 'DESC')
+        .limit(limit)
+        .getMany();
     }
 
     // ---- 本地预置书本 (同样按 tags / type / active 过滤) ----
-    const wantTags = (opts?.tags ?? []).filter(Boolean);
     const localBooks = LOCAL_BOOKS.filter((b) => {
       if (!b.active) return false;
       if (opts?.type && b.type !== opts.type) return false;
-      if (wantTags.length === 0) return true;
+      if (accessible.localIds !== null && !accessible.localIds.has(b.id)) {
+        return false;
+      }
+      if (tags.length === 0) return true;
       const bookTags = Array.isArray(b.tags) ? b.tags : [];
       // 与 db 侧 ILIKE %want% 同语义: 大小写不敏感子串匹配
-      return wantTags.some((want) => {
+      return tags.some((want) => {
         const w = want.toLowerCase();
         return bookTags.some((t) => t.toLowerCase().includes(w));
       });
@@ -477,6 +547,29 @@ export class KnowledgeService {
       ...localBooks,
     ];
     return merged.slice(0, limit);
+  }
+
+  /**
+   * 拆分知识可见范围中的本地书本与数据库书本 ID
+   * @keyword-cn 可见书本拆分, 本地书本, 数据库书本
+   * @keyword-en split-accessible-book-ids, local-book-scope, db-book-scope
+   */
+  private splitAccessibleBookIds(accessibleBookIds?: string[]): {
+    localIds: Set<string> | null;
+    dbIds: string[] | null;
+  } {
+    if (!accessibleBookIds) {
+      return { localIds: null, dbIds: null };
+    }
+    const dedupedBookIds = Array.from(
+      new Set(accessibleBookIds.filter(Boolean)),
+    );
+    return {
+      localIds: new Set(
+        dedupedBookIds.filter((bookId) => isLocalKnowledgeId(bookId)),
+      ),
+      dbIds: dedupedBookIds.filter((bookId) => !isLocalKnowledgeId(bookId)),
+    };
   }
 
   // ========== 向量搜索 ==========

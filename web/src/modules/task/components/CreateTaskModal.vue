@@ -21,25 +21,21 @@
         ></textarea>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div>
-          <label class="mb-1 block text-sm font-medium text-gray-700">任务里程碑</label>
-          <input
-            v-model="form.milestone"
-            type="text"
-            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-            placeholder="例如：MVP 上线"
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm font-medium text-gray-700">所属 Session</label>
-          <input
-            v-model="form.sessionId"
-            type="text"
-            class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-            placeholder="可选，填写 sessionId"
-          />
-        </div>
+      <TaskMarkdownEditor
+        v-model="form.milestone"
+        label="任务里程碑"
+        placeholder="支持 Markdown，多行描述任务阶段、目标、验收标准等"
+        hint="可用工具栏快速插入标题、列表、引用、代码块和链接等 Markdown 语法。"
+      />
+
+      <div>
+        <label class="mb-1 block text-sm font-medium text-gray-700">所属 Session</label>
+        <input
+          v-model="form.sessionId"
+          type="text"
+          class="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+          placeholder="可选，填写 sessionId"
+        />
       </div>
 
       <div>
@@ -128,6 +124,7 @@ import { onMounted, reactive, ref } from 'vue';
 import BaseModal from '../../../components/BaseModal.vue';
 import { usePrincipals } from '../../identity/hooks/usePrincipals';
 import { useTasks } from '../hooks/useTasks';
+import TaskMarkdownEditor from './TaskMarkdownEditor.vue';
 import TaskFolderPickerModal from './TaskFolderPickerModal.vue';
 
 const emit = defineEmits<{

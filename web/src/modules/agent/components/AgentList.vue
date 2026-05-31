@@ -93,6 +93,13 @@
                 <i class="fa-solid fa-user-tag text-sm"></i>
               </button>
               <button
+                @click="openKnowledgeModal(agent)"
+                class="w-9 h-9 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 flex items-center justify-center text-emerald-600 transition-colors opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto"
+                title="分配知识"
+              >
+                <i class="fa-solid fa-book-open text-sm"></i>
+              </button>
+              <button
                 @click="openEditModal(agent)"
                 class="w-9 h-9 rounded-xl bg-gray-50 hover:bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-600 transition-colors opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto"
                 :title="t('agent.edit')"
@@ -372,6 +379,13 @@
       :agent-name="roleAssignAgent?.nickname ?? null"
       @close="closeRoleModal"
     />
+
+    <AgentKnowledgeAssignModal
+      :open="showKnowledgeModal"
+      :agent-id="knowledgeAssignAgent?.id ?? null"
+      :agent-name="knowledgeAssignAgent?.nickname ?? null"
+      @close="closeKnowledgeModal"
+    />
   </div>
 </template>
 
@@ -394,6 +408,7 @@ import {
 import { resolveImageUrl } from '../../resource/services/resource-url.service';
 import { agentApi } from '../../../api/agent';
 import type { AiModelItem } from '../../ai-provider/types/ai-provider.types';
+import AgentKnowledgeAssignModal from './AgentKnowledgeAssignModal.vue';
 import AgentRoleAssignModal from './AgentRoleAssignModal.vue';
 import BaseModal from '../../../components/BaseModal.vue';
 
@@ -424,6 +439,27 @@ function openRoleModal(agent: Agent) {
 function closeRoleModal() {
   showRoleModal.value = false;
   roleAssignAgent.value = null;
+}
+
+const showKnowledgeModal = ref(false);
+const knowledgeAssignAgent = ref<Agent | null>(null);
+
+/**
+ * 打开知识分配弹窗。
+ * @keyword-en open-knowledge-assign-modal
+ */
+function openKnowledgeModal(agent: Agent) {
+  knowledgeAssignAgent.value = agent;
+  showKnowledgeModal.value = true;
+}
+
+/**
+ * 关闭知识分配弹窗。
+ * @keyword-en close-knowledge-assign-modal
+ */
+function closeKnowledgeModal() {
+  showKnowledgeModal.value = false;
+  knowledgeAssignAgent.value = null;
 }
 const modelOptions = computed(() =>
   aiModels.value.map((item) => ({

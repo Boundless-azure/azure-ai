@@ -444,6 +444,29 @@ export interface UpdateAgentRequest {
   proactiveChatEnabled?: boolean;
 }
 
+/**
+ * @title Agent 知识分配状态
+ * @description Agent 当前生效的知识绑定结果，区分本地默认知识与自定义知识。
+ * @keywords-cn Agent知识状态, 本地知识, 自定义知识
+ * @keywords-en agent-knowledge-state, local-knowledge, custom-knowledge
+ */
+export interface AgentKnowledgeAssignmentState {
+  agentId: string;
+  localBookIds: string[];
+  customBookIds: string[];
+  assignedBookIds: string[];
+}
+
+/**
+ * @title Agent 知识分配更新请求
+ * @description 用于覆盖 Agent 当前知识绑定集合的请求体。
+ * @keywords-cn Agent知识更新, 绑定请求
+ * @keywords-en agent-knowledge-update, binding-request
+ */
+export interface UpdateAgentKnowledgeAssignmentsRequest {
+  bookIds: string[];
+}
+
 export interface ActiveWorkflowCard {
   id: string;
   name: string;
@@ -499,6 +522,10 @@ export const UpdateAgentRequestSchema = z.object({
   avatarUrl: z.string().optional(),
   aiModelIds: z.array(z.string()).optional(),
   proactiveChatEnabled: z.boolean().optional(),
+});
+
+export const UpdateAgentKnowledgeAssignmentsSchema = z.object({
+  bookIds: z.array(z.string()),
 });
 
 export const ListThreadsParamsSchema = z.object({

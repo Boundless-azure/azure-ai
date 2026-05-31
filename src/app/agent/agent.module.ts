@@ -2,12 +2,14 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AgentEntity } from './entities/agent.entity';
 import { AgentExecutionEntity } from './entities/agent-execution.entity';
+import { AgentKnowledgeAssignmentEntity } from './entities/agent-knowledge-assignment.entity';
 import { AgentService } from './services/agent.service';
 import { AgentExecutionService } from './services/execution.service';
 import { AgentController } from './controllers/agent.controller';
 import { AgentExecutionController } from './controllers/execution.controller';
 import { AgentCache } from './cache/agent.cache';
 import { AICoreModule } from '@core/ai/ai-core.module';
+import { KnowledgeBookEntity } from '../knowledge/entities/knowledge-book.entity';
 
 /**
  * @title Agent 模块
@@ -18,7 +20,12 @@ import { AICoreModule } from '@core/ai/ai-core.module';
 @Module({
   imports: [
     AICoreModule.forFeature(),
-    TypeOrmModule.forFeature([AgentEntity, AgentExecutionEntity]),
+    TypeOrmModule.forFeature([
+      AgentEntity,
+      AgentExecutionEntity,
+      AgentKnowledgeAssignmentEntity,
+      KnowledgeBookEntity,
+    ]),
   ],
   providers: [AgentService, AgentExecutionService, AgentCache],
   controllers: [AgentController, AgentExecutionController],

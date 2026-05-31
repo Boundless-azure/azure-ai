@@ -15,6 +15,8 @@ import {
   QueryAgentDto,
   UpdateAgentDto,
   UpdateEmbeddingsDto,
+  UpdateAgentKnowledgeAssignmentsDto,
+  AgentKnowledgeAssignmentState,
 } from '../types/agent.types';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import {
@@ -41,6 +43,10 @@ const onAgentUpdateInput = z.object({
 
 const onAgentEmbeddingsUpdateInput = z.object({
   ids: z.array(z.string()).optional(),
+});
+
+const onAgentKnowledgeAssignmentsUpdateInput = z.object({
+  bookIds: z.array(z.string()),
 });
 
 const idParamInput = z.object({ id: z.string() });
@@ -78,6 +84,19 @@ export class AgentController {
     return await this.service.get(id);
   }
 
+  @Get(':id/knowledge-assignments')
+  @CheckAbility('read', 'agent')
+  @HookRoute({
+    hook: 'saas.app.agent.knowledgeAssignmentList',
+    description: 'Agent知识分配查询',
+    args: [idParamInput.shape.id],
+  })
+  async getKnowledgeAssignments(
+    @Param('id') id: string,
+  ): Promise<AgentKnowledgeAssignmentState> {
+    return await this.service.getKnowledgeAssignments(id);
+  }
+
   @Put(':id')
   @CheckAbility('update', 'agent')
   @HookRoute({
@@ -90,6 +109,20 @@ export class AgentController {
     @Body() dto: UpdateAgentDto,
   ): Promise<AgentEntity> {
     return await this.service.update(id, dto);
+  }
+
+  @Put(':id/knowledge-assignments')
+  @CheckAbility('update', 'agent')
+  @HookRoute({
+    hook: 'saas.app.agent.knowledgeAssignmentUpdate',
+    description: 'Agent知识分配更新',
+    args: [idParamInput.shape.id, onAgentKnowledgeAssignmentsUpdateInput],
+  })
+  async updateKnowledgeAssignments(
+    @Param('id') id: string,
+    @Body() dto: UpdateAgentKnowledgeAssignmentsDto,
+  ): Promise<AgentKnowledgeAssignmentState> {
+    return await this.service.updateKnowledgeAssignments(id, dto.bookIds);
   }
 
   @Delete(':id')

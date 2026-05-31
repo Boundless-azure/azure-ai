@@ -16,6 +16,7 @@ src/modules/agent/
 │   └── im-config.cache.ts         # IM 配置缓存
 ├── components/
 │   ├── AgentList.vue              # Agent 列表组件 (含角色分配入口)
+│   ├── AgentKnowledgeAssignModal.vue # Agent 知识分配弹窗
 │   ├── AgentRoleAssignModal.vue   # Agent 角色分配 Modal (复用 identity membership)
 │   ├── AgentWorkspace.vue          # Agent 工作区
 │   ├── ChatDetail.vue             # 聊天详情
@@ -157,8 +158,18 @@ src/modules/agent/
 | 函数名 | 关键词描述 |
 |--------|-----------|
 | `openRoleModal` | 打开 Agent 角色分配 Modal, 落点为 agent.principalId |
+| `openKnowledgeModal` | 打开 Agent 知识分配 Modal, 落点为 agent.id |
 | `closeRoleModal` | 关闭 Modal 并清理选中 Agent |
 | `getAgentAvatarUrl` | 通过 Resource 模块统一图片路径解析 Agent 头像 |
+
+### components/AgentKnowledgeAssignModal.vue
+
+| 函数名 | 关键词描述 |
+|--------|-----------|
+| `bootstrap` | 并行加载知识书本列表与当前 Agent 的知识分配状态 |
+| `toggleBook` | 切换自定义数据库知识的选中状态，本地知识保持固定选中 |
+| `handlePageChange` | 切换知识分配弹窗当前页码 |
+| `handleSave` | 保存 Agent 当前生效的知识分配 |
 
 ### components/AgentRoleAssignModal.vue
 

@@ -125,8 +125,9 @@
   </BaseModal>
 
   <SquareAvatarCropModal
-    v-if="showAvatarModal"
-    @close="showAvatarModal = false"
+    v-model:open="showAvatarModal"
+    title="裁剪头像"
+    :initial-url="resolveImageUrl(form.avatarUrl) || null"
     @confirm="onAvatarConfirm"
   />
 </template>

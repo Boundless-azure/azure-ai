@@ -107,3 +107,28 @@ export class UpdateEmbeddingsDto {
   @IsString({ each: true })
   ids?: string[];
 }
+
+/**
+ * @title Agent 知识分配更新请求
+ * @description 更新 Agent 绑定的知识书本 ID 列表；本地知识无需显式提交也会自动生效。
+ * @keywords-cn Agent知识分配, 知识绑定, 更新请求
+ * @keywords-en agent-knowledge-assignment, knowledge-binding, update-request
+ */
+export class UpdateAgentKnowledgeAssignmentsDto {
+  @IsArray()
+  @IsString({ each: true })
+  bookIds!: string[];
+}
+
+/**
+ * @title Agent 知识分配状态
+ * @description 返回 Agent 当前生效的知识绑定状态，区分本地默认知识与自定义绑定知识。
+ * @keywords-cn Agent知识状态, 本地知识, 自定义知识
+ * @keywords-en agent-knowledge-state, local-knowledge, custom-knowledge
+ */
+export interface AgentKnowledgeAssignmentState {
+  agentId: string;
+  localBookIds: string[];
+  customBookIds: string[];
+  assignedBookIds: string[];
+}

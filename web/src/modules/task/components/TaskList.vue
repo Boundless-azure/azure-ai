@@ -68,7 +68,9 @@
                   <p class="font-medium text-gray-900">{{ item.title }}</p>
                   <p v-if="item.description" class="mt-1 line-clamp-2 max-w-[280px] text-xs text-gray-500">{{ item.description }}</p>
                 </td>
-                <td class="px-4 py-3 text-gray-600">{{ item.milestone || '-' }}</td>
+                <td class="px-4 py-3 align-top text-gray-600">
+                  <p class="line-clamp-2 max-w-[220px]">{{ formatMilestoneSummary(item.milestone) }}</p>
+                </td>
                 <td class="px-4 py-3 text-gray-600">{{ getPrincipalLabel(item.pmId) || '-' }}</td>
                 <td class="px-4 py-3 text-gray-600">{{ formatAssignees(item.assigneeIds) }}</td>
                 <td class="px-4 py-3 text-gray-600">{{ item.sessionId || '-' }}</td>
@@ -215,6 +217,24 @@ function formatAssignees(ids: string[] | null) {
   const names = ids.map((id) => getPrincipalLabel(id));
   if (names.length <= 2) return names.join('、');
   return `${names.slice(0, 2).join('、')} +${names.length - 2}`;
+}
+
+/**
+ * @title 格式化里程碑摘要
+ * @description 将 Markdown 里程碑压平成适合表格展示的单行摘要。
+ * @keyword-en format-task-milestone-summary
+ */
+function formatMilestoneSummary(value: string | null | undefined) {
+  if (!value?.trim()) return '-';
+  return value
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^[>#\-*+]+\s*/gm, '')
+    .replace(/\r?\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
