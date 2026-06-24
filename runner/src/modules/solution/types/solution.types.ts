@@ -165,6 +165,28 @@ export const InstallSolutionSchema = z.object({
 export type InstallSolution = z.infer<typeof InstallSolutionSchema>;
 
 /**
+ * @title Solution metadata upsert request
+ * @description Creates or updates a Runner-local solution metadata record in the source solutions collection.
+ * @keyword-en solution-upsert, solution-metadata
+ * @keyword-cn Solution更新, Solution元数据
+ */
+export const UpsertSolutionMetadataSchema = z.object({
+  solutionId: z.string().min(1).optional(),
+  name: z.string().min(1),
+  version: z.string().min(1).optional(),
+  source: SolutionSourceEnum.optional(),
+  summary: z.string().optional(),
+  description: z.string().optional(),
+  images: z.array(z.string()).optional(),
+  includes: z.array(SolutionIncludeEnum).optional(),
+  isInitialized: z.boolean().optional(),
+});
+
+export type UpsertSolutionMetadata = z.infer<
+  typeof UpsertSolutionMetadataSchema
+>;
+
+/**
  * @title code-agent 目标确保请求
  * @description SaaS code-agent 通过 Runner hook 确保 Solution/App 元数据存在。
  * @keyword-en ensure-target, solution-create, app-create

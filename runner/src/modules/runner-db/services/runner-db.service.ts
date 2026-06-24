@@ -15,7 +15,6 @@ import type {
   RunnerMcpRecord,
   RunnerResourceLibrary,
   RunnerSkillRecord,
-  RunnerSolutionRecord,
   RunnerWebMcpRecord,
 } from '../types/runner-db.types';
 
@@ -280,61 +279,6 @@ export class RunnerDbService {
     return this.getCollection<RunnerAppDomain>(
       RunnerDbCollection.AppDomains,
     ).findOne({ domain } as Filter<RunnerAppDomain>);
-  }
-
-  /**
-   * @title Upsert Solution
-   * @description 创建或更新 Solution 记录。
-   * @keywords-cn Solution, upsert, 创建更新
-   * @keywords-en solution-upsert, create-update, runner-db
-   */
-  async upsertSolution(
-    payload: OptionalUnlessRequiredId<RunnerSolutionRecord>,
-  ): Promise<void> {
-    const collection = this.getCollection<RunnerSolutionRecord>(
-      RunnerDbCollection.Solution,
-    );
-    await collection.updateOne(
-      { solutionId: payload.solutionId } as Filter<RunnerSolutionRecord>,
-      { $set: payload },
-      { upsert: true },
-    );
-  }
-
-  /**
-   * @title 获取 Solution 列表
-   * @description 查询所有 Solution 记录。
-   * @keywords-cn Solution列表, 查询, runner-db
-   * @keywords-en solution-list, find, runner-db
-   */
-  async findSolutions(): Promise<RunnerSolutionRecord[]> {
-    return this.getCollection<RunnerSolutionRecord>(RunnerDbCollection.Solution)
-      .find({})
-      .toArray();
-  }
-
-  /**
-   * @title 根据 ID 获取 Solution
-   * @description 根据 solutionId 查询 Solution 记录。
-   * @keywords-cn Solution查询, solutionId, runner-db
-   * @keywords-en find-solution-by-id, solutionId, runner-db
-   */
-  async findSolutionById(solutionId: string): Promise<RunnerSolutionRecord | null> {
-    return this.getCollection<RunnerSolutionRecord>(
-      RunnerDbCollection.Solution,
-    ).findOne({ solutionId } as Filter<RunnerSolutionRecord>);
-  }
-
-  /**
-   * @title 删除 Solution
-   * @description 根据 solutionId 删除 Solution 记录。
-   * @keywords-cn 删除Solution, solutionId, runner-db
-   * @keywords-en delete-solution, solutionId, runner-db
-   */
-  async deleteSolution(solutionId: string): Promise<void> {
-    await this.getCollection<RunnerSolutionRecord>(
-      RunnerDbCollection.Solution,
-    ).deleteOne({ solutionId } as Filter<RunnerSolutionRecord>);
   }
 
   /**

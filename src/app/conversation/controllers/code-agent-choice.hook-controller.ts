@@ -32,12 +32,26 @@ const codeAgentChoiceSubmitSchema = z.object({
   interruptId: z.string().nullable().optional(),
   requirement: z.string().optional(),
   chooseSolution: z.string().min(1),
-  chooseAction: z.enum(['solution', 'app', 'view', 'unit']),
+  chooseAction: z.enum(['app', 'unit', 'data-point']),
   selectedSolution: z.record(z.string(), z.unknown()).optional(),
   context: z.record(z.string(), z.unknown()).optional(),
 });
 
+/**
+ * Payload schema for reading a submitted code-agent dependency choice state.
+ * @keyword-cn 代码智能体选择, 状态读取
+ * @keyword-en code-agent-choice-state, session-metadata
+ */
+const codeAgentChoiceStateSchema = z.object({
+  sessionId: z.string().optional(),
+  runnerId: z.string().optional(),
+  threadId: z.string().optional(),
+  checkpointId: z.string().nullable().optional(),
+  interruptId: z.string().nullable().optional(),
+});
+
 type CodeAgentChoiceSubmitPayload = z.infer<typeof codeAgentChoiceSubmitSchema>;
+type CodeAgentChoiceStatePayload = z.infer<typeof codeAgentChoiceStateSchema>;
 
 /**
  * Submitted dependency choice snapshot stored on the chat session metadata.
@@ -53,7 +67,7 @@ type CodeAgentChoiceMetadata = {
   checkpointId: string | null;
   interruptId: string | null;
   chooseSolution: string;
-  chooseAction: 'solution' | 'app' | 'view' | 'unit';
+  chooseAction: 'app' | 'unit' | 'data-point';
   requirement?: string;
   selectedSolution?: Record<string, unknown>;
   context?: Record<string, unknown>;
@@ -64,7 +78,7 @@ type CodeAgentResumeResult = {
   supported: boolean;
   checkpointId: string | null;
   threadId?: string;
-  status: 'skipped' | 'resumed' | 'failed';
+  status: 'skipped' | 'scheduled' | 'failed';
   message?: string;
   result?: unknown;
 };
@@ -130,6 +144,7 @@ export class CodeAgentChoiceHookController {
     const agentPrincipalId =
       payload.agentPrincipalId?.trim() || context?.principalId?.trim() || '';
     const choice = normalizeCodeAgentChoiceMetadata(payload, agentPrincipalId);
+    const metadataChoiceKey = buildCodeAgentChoiceStateKey(choice);
     const metadata = mergeCodeAgentChoiceMetadata(session.metadata, choice);
     await this.sessionRepo.update(session.id, {
       metadata: metadata as ChatSessionEntity['metadata'],
@@ -150,8 +165,62 @@ export class CodeAgentChoiceHookController {
         accepted: true,
         sessionId,
         metadataKey: 'codeAgent.dependencyChoice',
+        metadataChoicesKey: 'codeAgent.dependencyChoices',
+        metadataChoiceKey,
+        choice,
         currentSessionField: 'codeAgentDependencyChoice',
         resume,
+      },
+    };
+  }
+
+  /**
+   * Read whether the dependency choice card has already been submitted.
+   * @keyword-cn 代码智能体选择, 状态读取
+   * @keyword-en code-agent-choice-state, session-metadata
+   */
+  @HookRoute({
+    hook: 'saas.app.conversation.codeAgentChoiceState',
+    description:
+      'Read the stored code-agent dependency-check selection state for a conversation card.',
+    args: [codeAgentChoiceStateSchema],
+    metadata: { tags: ['conversation', 'code-agent', 'selection'] },
+  })
+  @CheckAbility('read', 'session')
+  async handleState(
+    payload: CodeAgentChoiceStatePayload,
+    _principal?: unknown,
+    context?: HookInvocationContext,
+  ): Promise<HookResult> {
+    const sessionId = resolveChoiceSessionId(payload, context);
+    if (!sessionId) {
+      return {
+        status: HookResultStatus.Error,
+        error: 'sessionId missing for code-agent choice state',
+      };
+    }
+
+    const session = await this.sessionRepo.findOne({
+      where: { sessionId, isDelete: false },
+      select: { id: true, sessionId: true, metadata: true },
+    });
+    if (!session) {
+      return {
+        status: HookResultStatus.Error,
+        error: `session not found: ${sessionId}`,
+      };
+    }
+
+    const metadataChoiceKey = buildCodeAgentChoiceStateKey(payload);
+    const choice = findCodeAgentChoiceMetadata(session.metadata, payload);
+    const submitted = Boolean(choice);
+    return {
+      status: HookResultStatus.Success,
+      data: {
+        submitted,
+        sessionId,
+        metadataChoiceKey,
+        choice: submitted ? choice : null,
       },
     };
   }
@@ -237,7 +306,7 @@ export class CodeAgentChoiceHookController {
         supported: true,
         checkpointId: choice.checkpointId,
         threadId: choice.threadId,
-        status: 'resumed',
+        status: 'scheduled',
         result,
       };
     } catch (error) {
@@ -258,7 +327,7 @@ export class CodeAgentChoiceHookController {
  * @keyword-en choice-session-resolve, field-read
  */
 function resolveChoiceSessionId(
-  payload: CodeAgentChoiceSubmitPayload,
+  payload: { sessionId?: string },
   context?: HookInvocationContext,
 ): string {
   const fromPayload = payload.sessionId?.trim();
@@ -268,6 +337,114 @@ function resolveChoiceSessionId(
       ? context.extras.sessionId.trim()
       : '';
   return fromContext;
+}
+
+/**
+ * Read the code-agent metadata bucket from session metadata.
+ * @keyword-cn 代码智能体选择, 会话元数据
+ * @keyword-en code-agent-choice, session-metadata
+ */
+function readCodeAgentMetadataBucket(
+  metadata: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  return metadata?.codeAgent &&
+    typeof metadata.codeAgent === 'object' &&
+    !Array.isArray(metadata.codeAgent)
+    ? (metadata.codeAgent as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * Extract the stored code-agent dependency choice metadata from session metadata.
+ * @keyword-cn 代码智能体选择, 会话元数据
+ * @keyword-en code-agent-choice, session-metadata
+ */
+function extractCodeAgentChoiceMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+): CodeAgentChoiceMetadata | null {
+  const codeAgent = readCodeAgentMetadataBucket(metadata);
+  const choice = codeAgent?.dependencyChoice;
+  return choice && typeof choice === 'object' && !Array.isArray(choice)
+    ? (choice as CodeAgentChoiceMetadata)
+    : null;
+}
+
+/**
+ * Find the stored dependency choice for the currently rendered card.
+ * @keyword-cn 代码智能体选择状态, 依赖选择
+ * @keyword-en code-agent-choice-state, dependency-selection
+ */
+function findCodeAgentChoiceMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  payload: CodeAgentChoiceStatePayload,
+): CodeAgentChoiceMetadata | null {
+  const codeAgent = readCodeAgentMetadataBucket(metadata);
+  const choices = codeAgent?.dependencyChoices;
+  const choiceKey = buildCodeAgentChoiceStateKey(payload);
+  if (choices && typeof choices === 'object' && !Array.isArray(choices)) {
+    const keyed = (choices as Record<string, unknown>)[choiceKey];
+    if (
+      keyed &&
+      typeof keyed === 'object' &&
+      !Array.isArray(keyed) &&
+      isMatchingCodeAgentChoiceState(payload, keyed as CodeAgentChoiceMetadata)
+    ) {
+      return keyed as CodeAgentChoiceMetadata;
+    }
+  }
+
+  const latest = extractCodeAgentChoiceMetadata(metadata);
+  return latest && isMatchingCodeAgentChoiceState(payload, latest)
+    ? latest
+    : null;
+}
+
+/**
+ * Check whether a stored choice belongs to the currently rendered card.
+ * @keyword-cn 代码智能体选择状态, 依赖选择
+ * @keyword-en code-agent-choice-state, dependency-selection
+ */
+function isMatchingCodeAgentChoiceState(
+  payload: CodeAgentChoiceStatePayload,
+  choice: CodeAgentChoiceMetadata,
+): boolean {
+  if (payload.runnerId?.trim() && payload.runnerId.trim() !== choice.runnerId) {
+    return false;
+  }
+  if (payload.threadId?.trim() && payload.threadId.trim() !== choice.threadId) {
+    return false;
+  }
+  const checkpointId = payload.checkpointId?.trim();
+  if (checkpointId && checkpointId !== choice.checkpointId) {
+    return false;
+  }
+  const interruptId = payload.interruptId?.trim();
+  if (interruptId && interruptId !== choice.interruptId) {
+    return false;
+  }
+  return Boolean(
+    payload.threadId?.trim() ||
+    payload.checkpointId?.trim() ||
+    payload.interruptId?.trim(),
+  );
+}
+
+/**
+ * Build a stable metadata key for one dependency choice card.
+ * @keyword-cn 代码智能体选择状态, 会话元数据
+ * @keyword-en code-agent-choice-state, session-metadata
+ */
+function buildCodeAgentChoiceStateKey(input: {
+  runnerId?: string | null;
+  threadId?: string | null;
+  checkpointId?: string | null;
+  interruptId?: string | null;
+}): string {
+  const runnerId = input.runnerId?.trim() || '-';
+  const threadId = input.threadId?.trim() || '-';
+  const checkpointId = input.checkpointId?.trim() || '-';
+  const interruptId = input.interruptId?.trim() || '-';
+  return [runnerId, threadId, checkpointId, interruptId].join('|');
 }
 
 /**
@@ -319,7 +496,14 @@ function mergeCodeAgentChoiceMetadata(
     !Array.isArray(rawCodeAgent)
       ? { ...(rawCodeAgent as Record<string, unknown>) }
       : {};
+  const rawChoices = codeAgent.dependencyChoices;
+  const dependencyChoices =
+    rawChoices && typeof rawChoices === 'object' && !Array.isArray(rawChoices)
+      ? { ...(rawChoices as Record<string, unknown>) }
+      : {};
+  dependencyChoices[buildCodeAgentChoiceStateKey(choice)] = choice;
   codeAgent.dependencyChoice = choice;
+  codeAgent.dependencyChoices = dependencyChoices;
   next.codeAgent = codeAgent;
   return next;
 }

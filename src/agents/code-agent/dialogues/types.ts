@@ -5,7 +5,7 @@
  * @keyword-en target-kind, workflow-refactor
  */
 
-export type CodeAgentTargetKind = 'solution' | 'app' | 'view' | 'unit';
+export type CodeAgentTargetKind = 'app' | 'unit' | 'data-point';
 
 /**
  * @title Code Agent Target Selection

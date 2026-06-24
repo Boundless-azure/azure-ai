@@ -17,6 +17,7 @@ type HandleLoadOptions = {
   pluginService?: unknown;
   solutionService?: unknown;
   runnerHookRpc?: unknown;
+  hookBus?: unknown;
   workflowContext?: unknown;
   checkpointer?: unknown;
   agentConfig?: { aiModelIds?: string[] };
@@ -333,6 +334,7 @@ export class AgentLoaderService {
       'handleRunnerHookRpc',
       options.runnerHookRpc,
     );
+    this.callOptionalMethod(handle, 'handleHookBus', options.hookBus);
     this.callOptionalMethod(
       handle,
       'withWorkflowContext',

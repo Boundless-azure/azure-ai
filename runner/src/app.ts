@@ -145,9 +145,7 @@ export async function createRunnerApp() {
     await migration.run(db);
     const runnerDb = new RunnerDbService(db);
     await unitCore.persistHooks(runnerDb);
-    await new RunnerSolutionService(db).ensureDefaultLightweightSolution(
-      runnerDb,
-    );
+    await new RunnerSolutionService(db).ensureDefaultLightweightSolution();
 
     // identity: seed 内置 principal/role + 注册 hookBus middleware (本地 mongo + push hint fallback)
     identityRepo = new RunnerIdentityRepository(db);

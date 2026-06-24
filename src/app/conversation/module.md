@@ -32,7 +32,7 @@
 - services/session-handbook-seeder.service.ts：按 agent 角色 seed 必读手册到 handbook.\* 槽位 (主体身份过滤靠 ownerPrincipalId)；code-agent 会额外 seed `handbook.code_agent_development`，强化 Runner-only 开发、Runner 数据库元数据优先与 terminal.exec
 - services/hook-snapshot.service.ts：Web Component Hook 调用入口, 在 message.metadata.hookSnapshots 做"写一次"cache-aside (首请求即冻结, 命中返冻结快照不再经 HookBus; live/无 messageId/超 8KB 阈值 → 不缓存实时路由); payload 规范化键 fnv1a, 写前再读降低并发双写 | keywords: hook-snapshot, write-once-cache, cache-aside, message-anchored, traceability
 - controllers/hook-snapshot.controller.ts：POST /hook-snapshot {hookName, payload, messageId?, live?} → 前端 Web Component ctx.callHook 入口, 取代组件直连 /hook-invoke; 鉴权与 hook-invoke 同款 (全局 JwtAuthGuard + source=http) | keywords: hook-snapshot-endpoint, frontend-component-call, write-once-cache
-- controllers/code-agent-choice.hook-controller.ts：code-agent 依赖选择提交 HookController; 写入 chat_sessions.metadata.codeAgent.dependencyChoice, 同步到 agent principal 作用域 currentSession, 并通过 `Command({ resume })` 恢复 LangGraph thread | keywords: code-agent-choice-submit, dependency-selection, session-metadata, checkpoint-resume
+- controllers/code-agent-choice.hook-controller.ts：code-agent 依赖选择提交 HookController; 写入 chat_sessions.metadata.codeAgent.dependencyChoice/latest 与 dependencyChoices keyed map, 同步到 agent principal 作用域 currentSession, 并通过 `Command({ resume })` 恢复 LangGraph thread | keywords: code-agent-choice-submit, dependency-selection, session-metadata, checkpoint-resume
 - services/code-agent-choice-components.service.ts：code-agent 依赖选择卡片 HookComponent; 用户选择 Solution/Action 后经 ctx.callHook 提交选择和 LangGraph thread/checkpoint 引用 | keywords: code-agent-choice-card, dependency-check, web-component-hook-declaration
 
 Hook 注册（由 HookControllerExplorerService 自动发现, 全部通过 `@HookRoute(args)` 声明数组形参 schema, 命名遵循 platform.app.module.action）
@@ -43,8 +43,9 @@ Hook 注册（由 HookControllerExplorerService 自动发现, 全部通过 `@Hoo
 - saas.app.conversation.webControlData — 请求前端实时返回指定 data key 值 (sessionId / dataKey)
 - saas.app.conversation.webControlStatus — 查询 MCP 连接状态 (sessionId)
 - saas.app.conversation.sendMsg — 主动对话: LLM 通过 call_hook 发消息. **sessionId / senderPrincipalId 均 optional, 服务端从 ctx 强制覆盖** :: LLM 链路下 senderPrincipalId 永远等于 ctx.principalId (禁止冒充其他主体), sessionId 永远等于 ctx.extras.sessionId; LLM 填了不一致的值 → log warn 并忽略, payload 字段保留仅供外部 curl 调用; replyToId 由 ctx.extras.triggerMessageId 优先覆盖 (LLM 填错也忽略)
-- saas.app.conversation.codeAgentChoiceSubmit — code-agent 依赖选择卡片提交: 写入 session metadata 与 agent currentSession, 并加载 code-agent 工具用 `Command({ resume })` 恢复对应 LangGraph thread
-- saas.app.conversation.codeAgentDependencyChoice (@HookComponent) — code-agent dependency-check interrupt 暂停时渲染 Solution/Action 选择卡片, 携带 threadId/checkpointId/interruptId 并提交到 codeAgentChoiceSubmit
+- saas.app.conversation.codeAgentChoiceSubmit — code-agent 依赖选择卡片提交: 写入 session metadata 与 agent currentSession, 并加载 code-agent 工具异步调度 `Command({ resume })` 恢复对应 LangGraph thread
+- saas.app.conversation.codeAgentChoiceState — code-agent 依赖选择卡片状态读取: 根据 session metadata 中的 dependencyChoices keyed map 回填同 runner/thread/checkpoint/interrupt 的已提交状态, 并兼容 latest dependencyChoice
+- saas.app.conversation.codeAgentDependencyChoice (@HookComponent) — code-agent dependency-check interrupt 暂停时渲染 Solution、newSolutionOption 与 app/unit/data-point Action 选择卡片, 消费 payload.uiText 按常用语种展示语义化说明, 携带 threadId/checkpointId/interruptId 并提交到 codeAgentChoiceSubmit
 - **附件 LLM 可见性 (toDialogueMessage)** :: 消息有 attachments 时, content 末尾追加 `<im_attachments>` 标签, 暴露 resourceId/name/type/size (不暴露签名 URL); LLM 拿 resourceId 后可直接调 saas.app.storage.createNode 入库, 或调 saas.app.resource.currentSession 查全量会话文件 (含历史); 历史 attachment 无 resourceId 的跳过, 不污染 prompt | keywords: attachments-llm-visible, resource-id, im-attachments-tag, build-attachment-block-for-llm
   · payload schema 走 zod, handler 签名通过 z.infer 复用类型 (SSOT)
 - **history 链路引导 (init_tip discoveryChains.history)** :: smart 三步检索现在被 init_tip 显式列为第四条标准链路, LLM 声明 `needHistory:true` 时 tipNote 强调走 smartTags → smartSearch → smartMessages; sessionId 必须显式传 (smart hook 不从 ctx 注入), 通常从 directHooks.currentSession.context 拿 | keywords: history-chain, smart-recall, need-history
@@ -273,17 +274,23 @@ Summary 接口
 - ImContactGroupService.listGroups -> im_cg_svc_list_026
 - ImContactGroupService.addMembers -> im_cg_svc_add_027
 - ImController.handleSendMsg(payload, \_principal, context) — 主动对话 sendMsg hook; LLM context.extras.triggerMessageId 优先绑定 replyToId, 无 LLM context 时沿用 payload.replyToId | keywords: send-msg, proactive, reply-to-id -> im_hook_send_msg_028
-- CodeAgentChoiceHookController() — code-agent 选择提交 HookController, 负责 session metadata/currentSession 写入和 LangGraph resume 触发 | keywords: code-agent-choice, session-metadata, hook-controller -> code_agent_choice_controller_000
-- CodeAgentChoiceHookController.handleSubmit(payload, \_principal, context) — code-agent 依赖选择提交 hook, 写入 session metadata/currentSession 并恢复 graph | keywords: code-agent-choice-submit, dependency-selection -> code_agent_choice_submit_001
-- CodeAgentChoiceHookController.resumeCodeAgentGraph(sessionId, choice) — 在用户提交选择后加载 code-agent 工具并恢复 LangGraph checkpoint | keywords: checkpoint-resume, code-agent-choice -> code_agent_choice_resume_006
+- CodeAgentChoiceHookController() — code-agent 选择提交 HookController, 负责 session metadata/currentSession 写入和 LangGraph resume 异步调度 | keywords: code-agent-choice, session-metadata, hook-controller -> code_agent_choice_controller_000
+- CodeAgentChoiceHookController.handleSubmit(payload, \_principal, context) — code-agent 依赖选择提交 hook, 写入 session metadata/currentSession 并异步调度恢复 graph | keywords: code-agent-choice-submit, dependency-selection -> code_agent_choice_submit_001
+- CodeAgentChoiceHookController.handleState(payload, \_principal, context) — code-agent 依赖选择卡片刷新时读取 metadata 中的已提交状态 | keywords: code-agent-choice-state, session-metadata -> code_agent_choice_state_010
+- CodeAgentChoiceHookController.resumeCodeAgentGraph(sessionId, choice) — 在用户提交选择后加载 code-agent 工具并调度恢复 LangGraph checkpoint | keywords: checkpoint-resume, code-agent-choice -> code_agent_choice_resume_006
 - resolveChoiceSessionId(payload, context?) — 解析 code-agent 选择提交的目标 sessionId | keywords: choice-session-resolve, field-read -> code_agent_choice_session_002
+- readCodeAgentMetadataBucket(metadata) — 读取 session metadata 中的 codeAgent bucket | keywords: code-agent-choice, session-metadata -> code_agent_choice_bucket_013
+- extractCodeAgentChoiceMetadata(metadata) — 从 session metadata 提取 code-agent latest dependencyChoice | keywords: code-agent-choice, session-metadata -> code_agent_choice_extract_011
+- findCodeAgentChoiceMetadata(metadata, payload) — 按 runner/thread/checkpoint/interrupt 查找当前卡片提交状态, 并兼容 latest dependencyChoice | keywords: code-agent-choice-state, dependency-selection -> code_agent_choice_find_014
+- isMatchingCodeAgentChoiceState(payload, choice) — 判断 metadata 中的选择是否属于当前卡片 | keywords: code-agent-choice-state, dependency-selection -> code_agent_choice_match_012
+- buildCodeAgentChoiceStateKey(input) — 构造选择卡片 metadata 索引 key | keywords: code-agent-choice-state, session-metadata -> code_agent_choice_state_key_015
 - normalizeCodeAgentChoiceMetadata(payload, agentPrincipalId) — 归一化提交选择为 dependencyChoice 元数据 | keywords: code-agent-choice, choice-normalize -> code_agent_choice_normalize_003
-- mergeCodeAgentChoiceMetadata(metadata, choice) — 合并 code-agent dependencyChoice 到 session metadata | keywords: session-metadata, code-agent-choice -> code_agent_choice_merge_004
+- mergeCodeAgentChoiceMetadata(metadata, choice) — 合并 code-agent choice 到 session metadata 的 latest dependencyChoice 与 keyed dependencyChoices | keywords: session-metadata, code-agent-choice -> code_agent_choice_merge_004
 - findAgentToolByName(tools, name) — 从动态加载的 agent 工具列表中按名称查找工具 | keywords: tool-lookup, code-agent-resume -> code_agent_choice_tool_lookup_007
 - invokeAgentTool(tool, input) — 调用 LangChain 风格工具而不依赖具体类 | keywords: tool-invoke, code-agent-resume -> code_agent_choice_tool_invoke_008
 - normalizeStringArray(values) — 归一化可选模型 ID 数组 | keywords: field-normalize, model-ids -> code_agent_choice_model_ids_009
 - CodeAgentChoiceComponentsService() — code-agent 选择卡片 HookComponent 声明服务 | keywords: code-agent-components, choice-card, web-component-hook -> code_agent_choice_components_000
-- CodeAgentChoiceComponentsService.dependencyChoice (@HookComponent) — 渲染 code-agent Solution/Action 选择卡片并提交到 codeAgentChoiceSubmit | keywords: code-agent-choice-card, dependency-check -> code_agent_choice_component_005
+- CodeAgentChoiceComponentsService.dependencyChoice (@HookComponent) — 渲染 code-agent Solution/newSolutionOption 与 app/unit/data-point Action 选择卡片, 使用 payload.uiText 展示承载位置、目标类型与选项含义, 刷新时通过 codeAgentChoiceState 回填已提交状态并提交到 codeAgentChoiceSubmit | keywords: code-agent-choice-card, dependency-check -> code_agent_choice_component_005
 - WebMcpGateway.handleWebControl -> webmcp_hook_control_029
 - WebMcpGateway.handleWebControlPageInfo -> webmcp_hook_page_info_030
 - WebMcpGateway.handleWebControlData -> webmcp_hook_data_031

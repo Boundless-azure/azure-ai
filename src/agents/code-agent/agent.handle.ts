@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import {
   Annotation,
@@ -22,6 +24,7 @@ import type {
 import type { CodeAgentTargetKind } from './dialogues/types';
 
 const logger = new Logger('CodeAgentHandle');
+const DEFAULT_CODE_AGENT_LOG_DIR = 'logs/code-agent';
 
 /**
  * @title Code Agent workflow context
@@ -53,6 +56,22 @@ type HookCallContextLike = {
   extras?: Record<string, unknown>;
 };
 
+type HookResultLike = {
+  status?: string;
+  data?: unknown;
+  error?: string;
+  debugLog?: unknown[];
+};
+
+type HookBusLike = {
+  select(name: string): unknown[];
+  emit(event: {
+    name: string;
+    payload?: unknown;
+    context?: HookCallContextLike;
+  }): Promise<HookResultLike[]>;
+};
+
 type HookCaller = {
   callHook(
     runnerId: string,
@@ -82,17 +101,17 @@ type CodeGenOrchestrateInput = {
   logicModelIndex?: number;
   frontendModelIndex?: number;
   runnerId?: string;
-  allowCreateSolution?: boolean;
-  solutionName?: string;
-  solutionVersion?: string;
-  solutionSummary?: string;
   appName?: string;
   appVersion?: string;
   appDescription?: string;
   unitName?: string;
 };
 
-type CodeGraphActionKind = 'solution' | 'app' | 'view' | 'unit';
+const CODE_GRAPH_ACTION_VALUES = ['app', 'unit', 'data-point'] as const;
+
+type CodeGraphActionKind = (typeof CODE_GRAPH_ACTION_VALUES)[number];
+
+const NEW_SOLUTION_CHOICE_ID = '__new_solution__';
 
 type RunnerSolutionSummary = {
   id: string;
@@ -106,20 +125,35 @@ type RunnerSolutionSummary = {
   isInitialized?: boolean;
 };
 
+type CodeGraphNewSolutionOption = {
+  id: typeof NEW_SOLUTION_CHOICE_ID;
+  kind: 'new-solution';
+  name: string;
+  version?: string;
+  summary: string;
+  reason?: string;
+  targetKind: CodeAgentTargetKind;
+};
+
 type CodeGraphDependencyDecision = {
   waitChoose: RunnerSolutionSummary[];
   useSolution: RunnerSolutionSummary | null;
   waitChooseAction: CodeGraphActionKind[];
   useAction: CodeGraphActionKind | null;
+  requiresNewSolution: boolean;
+  newSolutionOption?: CodeGraphNewSolutionOption;
+  newSolutionReason?: string;
   reason?: string;
 };
 
 type CodeGraphRuntimeContext = {
   chooseSolution: string;
   chooseAction: CodeGraphActionKind | '';
-  selectedSolution?: RunnerSolutionSummary;
+  selectedSolution?: RunnerSolutionSummary | CodeGraphNewSolutionOption;
+  newSolutionOption?: CodeGraphNewSolutionOption;
   selectedApps?: unknown[];
   selectedUnits?: unknown[];
+  selectedDataPoints?: unknown[];
   code_graph_log: CodeGraphLogEntry[];
 };
 
@@ -203,6 +237,14 @@ type LlmDependencyDecisionPayload = {
   } | null;
   waitChooseAction?: CodeGraphActionKind[];
   useAction?: CodeGraphActionKind | null;
+  requiresNewSolution?: boolean;
+  newSolutionOption?: {
+    name?: string;
+    version?: string;
+    summary?: string;
+    reason?: string;
+  } | null;
+  newSolutionReason?: string;
   reason?: string;
 };
 
@@ -211,6 +253,7 @@ const REQUIRED_RUNNER_SOLUTION_HOOKS = [
   'runner.app.solution.get',
   'runner.app.solution.listApps',
   'runner.app.solution.listUnits',
+  'runner.app.dataTouchpoint.list',
 ] as const;
 const CONVERSATION_SEND_MSG_HOOK = 'saas.app.conversation.sendMsg';
 const CODE_AGENT_DEPENDENCY_CHOICE_COMPONENT_HOOK =
@@ -262,6 +305,7 @@ export type CodeGraphRequest = {
 export default class AgentHandleClass {
   #aiAdapter: AgentAiServer | null = null;
   #hookCaller: HookCaller | null = null;
+  #hookBus: HookBusLike | null = null;
   #workflowContext: WorkflowContext | null = null;
   #checkpointer: BaseCheckpointSaver | null = null;
 
@@ -282,6 +326,16 @@ export default class AgentHandleClass {
    */
   handleRunnerHookRpc(hookCaller: HookCaller) {
     this.#hookCaller = hookCaller;
+    return this;
+  }
+
+  /**
+   * Inject the SaaS HookBus used by preflight runner status checks.
+   * @keyword-cn Hook调用接口, Runner状态
+   * @keyword-en hook-caller, runner-status
+   */
+  handleHookBus(hookBus: HookBusLike) {
+    this.#hookBus = hookBus;
     return this;
   }
 
@@ -327,7 +381,7 @@ export default class AgentHandleClass {
       })
       .passthrough();
     const schema = z
-      .object({
+      .strictObject({
         full_requirement: z
           .string()
           .min(1)
@@ -356,15 +410,11 @@ export default class AgentHandleClass {
           .describe(
             'LangGraph resume reference from a dependency choice card.',
           ),
-        targetKind: z.enum(['solution', 'app', 'view', 'unit']).optional(),
+        targetKind: z.enum(CODE_GRAPH_ACTION_VALUES).optional(),
         logicModelId: z.string().optional(),
         frontendModelId: z.string().optional(),
         logicModelIndex: z.number().int().min(0).optional(),
         frontendModelIndex: z.number().int().min(0).optional(),
-        allowCreateSolution: z.boolean().optional(),
-        solutionName: z.string().optional(),
-        solutionVersion: z.string().optional(),
-        solutionSummary: z.string().optional(),
         appName: z.string().optional(),
         appVersion: z.string().optional(),
         appDescription: z.string().optional(),
@@ -393,6 +443,17 @@ export default class AgentHandleClass {
         if (!runnerId) {
           return buildRunnerAssignmentRequiredMessage(sessionId);
         }
+        const runnerStatus = await checkRunnerMountedByHook(
+          this.#hookBus,
+          runnerId,
+          this.#workflowContext,
+        );
+        if (!runnerStatus.ok) {
+          logger.warn(
+            `code_gen_orchestrate blocked before graph runner_id=${runnerId}: ${runnerStatus.reason}`,
+          );
+          return runnerStatus.message;
+        }
 
         const request = buildCodeGraphRequest(
           fullRequirement,
@@ -404,12 +465,18 @@ export default class AgentHandleClass {
           ...input,
           requirement: fullRequirement,
         });
+        const threadId =
+          input.resume?.threadId?.trim() ||
+          buildCodeGraphThreadId(request, this.#workflowContext);
+        const graphRequest = input.resume?.threadId
+          ? request
+          : withCodeGraphThreadId(request, threadId);
         logger.log(
-          `code_gen_orchestrate accepted graph shell request runner_id=${request.runner_id} session_id=${request.context.session_id ?? ''} targetKind=${targetKind}`,
+          `code_gen_orchestrate accepted async graph request runner_id=${graphRequest.runner_id} session_id=${graphRequest.context.session_id ?? ''} targetKind=${targetKind} thread_id=${threadId}`,
         );
 
-        const dependencyCheck = await runCodeGenGraph({
-          request,
+        launchCodeGenGraphInBackground({
+          request: graphRequest,
           input,
           targetKind,
           aiAdapter: this.#aiAdapter,
@@ -418,7 +485,12 @@ export default class AgentHandleClass {
           checkpointer: this.#checkpointer,
         });
 
-        return buildDependencyCheckResultMessage(request, dependencyCheck);
+        return buildCodeGraphAcceptedMessage({
+          request: graphRequest,
+          targetKind,
+          threadId,
+          isResume: Boolean(input.resume?.threadId),
+        });
       },
       {
         name: 'code_gen_orchestrate',
@@ -485,6 +557,228 @@ function buildCodeGraphRequest(
       ...(sessionId ? { session_id: sessionId } : {}),
     },
   };
+}
+
+type CodeGraphLaunchInput = {
+  request: CodeGraphRequest;
+  input: CodeGenOrchestrateInput;
+  targetKind: CodeAgentTargetKind;
+  aiAdapter: AgentAiServer | null;
+  hookCaller: HookCaller | null;
+  workflowContext: WorkflowContext | null;
+  checkpointer: BaseCheckpointSaver | null;
+};
+
+/**
+ * Attach a stable graph thread id to the request context before async launch.
+ * @keyword-cn 检查点线程, 异步工作流
+ * @keyword-en checkpoint-thread, async-workflow
+ */
+function withCodeGraphThreadId(
+  request: CodeGraphRequest,
+  threadId: string,
+): CodeGraphRequest {
+  return {
+    ...request,
+    context: {
+      ...request.context,
+      codeGraphThreadId: threadId,
+    },
+  };
+}
+
+/**
+ * Launch the LangGraph workflow in the background and persist its final result.
+ * @keyword-cn 异步工作流, 后台执行
+ * @keyword-en async-workflow, background-run
+ */
+function launchCodeGenGraphInBackground(args: CodeGraphLaunchInput): void {
+  void (async () => {
+    let dependencyCheck: CodeGraphDependencyCheckResult;
+    try {
+      dependencyCheck = await runCodeGenGraph(args);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`code_gen_orchestrate async graph failed: ${message}`);
+      dependencyCheck = buildBlockedDependencyCheckResult(
+        args.request,
+        message,
+      );
+    }
+    const dependencyCheckMessage = buildDependencyCheckResultMessage(
+      args.request,
+      dependencyCheck,
+    );
+    const artifact = await persistCodeGraphRunArtifact({
+      request: args.request,
+      input: args.input,
+      targetKind: args.targetKind,
+      result: dependencyCheck,
+      toolMessage: dependencyCheckMessage,
+      workflowContext: args.workflowContext,
+    });
+    logger.log(buildCodeGraphRunSummary(dependencyCheck, artifact));
+  })();
+}
+
+/**
+ * Build the immediate tool response after the async graph has been accepted.
+ * @keyword-cn 工具回包, 异步工作流
+ * @keyword-en tool-result, async-workflow
+ */
+function buildCodeGraphAcceptedMessage(args: {
+  request: CodeGraphRequest;
+  targetKind: CodeAgentTargetKind;
+  threadId: string;
+  isResume: boolean;
+}): string {
+  return [
+    'code graph accepted:',
+    JSON.stringify(
+      {
+        status: args.isResume ? 'resume_scheduled' : 'scheduled',
+        runner_id: args.request.runner_id,
+        session_id: args.request.context.session_id ?? null,
+        targetKind: args.targetKind,
+        threadId: args.threadId,
+        next: 'LangGraph is running asynchronously in the background; continue the dialogue immediately and wait for proactive messages or choice cards.',
+      },
+      null,
+      2,
+    ),
+  ].join('\n');
+}
+
+type CodeGraphRunArtifactInput = {
+  request: CodeGraphRequest;
+  input: CodeGenOrchestrateInput;
+  targetKind: CodeAgentTargetKind;
+  result: CodeGraphDependencyCheckResult;
+  toolMessage: string;
+  workflowContext: WorkflowContext | null;
+};
+
+type CodeGraphRunArtifactRef = {
+  path: string;
+};
+
+/**
+ * Persist the final code graph response and node log as a local JSON artifact.
+ * @keyword-cn 运行产物日志, CodeGraph结果
+ * @keyword-en artifact-log, code-graph-result
+ */
+async function persistCodeGraphRunArtifact(
+  args: CodeGraphRunArtifactInput,
+): Promise<CodeGraphRunArtifactRef | null> {
+  const createdAt = new Date().toISOString();
+  const sessionId =
+    args.request.context.session_id?.trim() ||
+    args.workflowContext?.sessionId?.trim() ||
+    'no-session';
+  const sessionPart = sanitizeLogPathPart(sessionId);
+  const runPart = sanitizeLogPathPart(
+    `${createdAt}-${args.result.status}-${randomUUID().slice(0, 8)}`,
+  );
+  const logRoot = process.env.CODE_AGENT_LOG_DIR || DEFAULT_CODE_AGENT_LOG_DIR;
+  const dir = isAbsolute(logRoot)
+    ? join(logRoot, sessionPart)
+    : join(process.cwd(), logRoot, sessionPart);
+  const filePath = join(dir, `${runPart}.json`);
+  const artifact = {
+    createdAt,
+    runner_id: args.request.runner_id,
+    session_id: args.request.context.session_id ?? null,
+    targetKind: args.targetKind,
+    status: args.result.status,
+    selectedSolution:
+      args.result.context.selectedSolution ??
+      args.result.decision.useSolution ??
+      args.result.decision.newSolutionOption ??
+      null,
+    selectedAction:
+      args.result.context.chooseAction || args.result.decision.useAction,
+    request: args.request,
+    input: args.input,
+    result: args.result,
+    log: args.result.log,
+    toolMessage: args.toolMessage,
+  };
+
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(filePath, stringifyCodeGraphArtifact(artifact), 'utf8');
+    return { path: filePath };
+  } catch (error) {
+    logger.warn(
+      `code_gen_orchestrate artifact write failed path=${filePath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Build a compact logger line for the completed code graph tool call.
+ * @keyword-cn 运行产物日志, 结果摘要
+ * @keyword-en artifact-log, result-summary
+ */
+function buildCodeGraphRunSummary(
+  result: CodeGraphDependencyCheckResult,
+  artifact: CodeGraphRunArtifactRef | null,
+): string {
+  const contextSolution = result.context.selectedSolution;
+  const contextSolutionLabel =
+    contextSolution && 'solutionId' in contextSolution
+      ? contextSolution.solutionId
+      : contextSolution?.name;
+  const solution =
+    contextSolutionLabel ??
+    result.decision.useSolution?.solutionId ??
+    result.decision.newSolutionOption?.name ??
+    '';
+  const action = result.context.chooseAction || result.decision.useAction || '';
+  const errors = result.errors.length ? `errors=${result.errors.length}` : '';
+  const file = artifact ? `log_file=${artifact.path}` : '';
+  return [
+    `code_gen_orchestrate finished status=${result.status}`,
+    solution ? `solution=${solution}` : '',
+    action ? `action=${action}` : '',
+    errors,
+    file,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Serialize code graph artifacts while preserving values JSON cannot natively encode.
+ * @keyword-cn 运行产物日志, JSON序列化
+ * @keyword-en artifact-log, json-stringify
+ */
+function stringifyCodeGraphArtifact(value: unknown): string {
+  return (
+    JSON.stringify(
+      value,
+      (_key, item: unknown) =>
+        typeof item === 'bigint' ? item.toString() : item,
+      2,
+    ) ?? 'null'
+  );
+}
+
+/**
+ * Convert session and run identifiers into safe path fragments.
+ * @keyword-cn 运行产物日志, 文件路径
+ * @keyword-en artifact-log, file-path
+ */
+function sanitizeLogPathPart(value: string): string {
+  const safe = value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96);
+  return safe || 'unknown';
 }
 
 /**
@@ -927,6 +1221,7 @@ function buildBlockedDependencyCheckResult(
       useSolution: null,
       waitChooseAction: [],
       useAction: null,
+      requiresNewSolution: false,
       reason,
     },
     errors: [reason],
@@ -967,6 +1262,7 @@ async function runDependencyCheckNode(args: {
     useSolution: null,
     waitChooseAction: [],
     useAction: null,
+    requiresNewSolution: false,
   };
   if (!args.hookCaller) {
     graphLog.error('prepare-hook-caller', 'hook caller is not injected');
@@ -1083,6 +1379,8 @@ async function runDependencyCheckNode(args: {
       waitChooseCount: decision.waitChoose.length,
       useAction: decision.useAction,
       waitChooseAction: decision.waitChooseAction,
+      requiresNewSolution: decision.requiresNewSolution,
+      newSolutionReason: decision.newSolutionReason,
       reason: decision.reason,
     });
     let context = buildDependencyRuntimeContext(decision);
@@ -1101,6 +1399,8 @@ async function runDependencyCheckNode(args: {
         {
           waitChooseCount: decision.waitChoose.length,
           waitChooseAction: decision.waitChooseAction,
+          requiresNewSolution: decision.requiresNewSolution,
+          newSolutionReason: decision.newSolutionReason,
         },
       );
       const resumeChoice = interrupt<
@@ -1129,13 +1429,23 @@ async function runDependencyCheckNode(args: {
       context.code_graph_log = graphLog.entries;
     }
 
-    if (!finalDecision.useSolution || !finalDecision.useAction) {
+    const selectedNewSolution =
+      finalDecision.requiresNewSolution &&
+      Boolean(finalDecision.newSolutionOption) &&
+      !finalDecision.useSolution &&
+      Boolean(finalDecision.useAction);
+
+    if (
+      (!finalDecision.useSolution && !selectedNewSolution) ||
+      !finalDecision.useAction
+    ) {
       graphLog.error(
         'resume:invalid',
         'dependency-check could not resolve resumed selection',
         {
           chooseSolution: finalDecision.useSolution?.solutionId ?? null,
           chooseAction: finalDecision.useAction,
+          requiresNewSolution: finalDecision.requiresNewSolution,
         },
       );
       return {
@@ -1171,12 +1481,23 @@ async function runDependencyCheckNode(args: {
       });
       context.selectedApps = selectedLists.apps;
       context.selectedUnits = selectedLists.units;
+      context.selectedDataPoints = selectedLists.dataPoints;
       graphLog.info(
         'list-selected-action:done',
         'selected action associations listed',
         {
           appsCount: selectedLists.apps.length,
           unitsCount: selectedLists.units.length,
+          dataPointsCount: selectedLists.dataPoints.length,
+        },
+      );
+    } else if (selectedNewSolution) {
+      graphLog.info(
+        'new-solution:selected',
+        'dependency-check selected a new Solution option for downstream creation',
+        {
+          action: finalDecision.useAction,
+          newSolutionOption: finalDecision.newSolutionOption,
         },
       );
     }
@@ -1285,7 +1606,6 @@ async function decideCodeGraphDependencies(args: {
 }): Promise<CodeGraphDependencyDecision> {
   const boundSolution = findContextBoundSolution(
     args.request.context,
-    args.input,
     args.solutions,
   );
   if (boundSolution) {
@@ -1294,22 +1614,40 @@ async function decideCodeGraphDependencies(args: {
       args.input,
       args.targetKind,
     );
-    args.graphLog.info(
-      'decision:context-binding',
-      'using solution from graph context',
+    if (
+      !boundAction ||
+      isSolutionSuitableForAction(boundSolution, boundAction)
+    ) {
+      args.graphLog.info(
+        'decision:context-binding',
+        'using solution from graph context',
+        {
+          solutionId: boundSolution.solutionId,
+          name: boundSolution.name,
+          action: boundAction,
+        },
+      );
+      return {
+        waitChoose: [],
+        useSolution: boundSolution,
+        waitChooseAction: boundAction ? [] : [...CODE_GRAPH_ACTION_VALUES],
+        useAction: boundAction,
+        requiresNewSolution: false,
+        reason: boundAction
+          ? 'session context binds a suitable solution'
+          : 'session context binds a solution; target action still requires confirmation',
+      };
+    }
+    args.graphLog.warn(
+      'decision:context-binding-review',
+      'bound solution does not look suitable for target action; asking dependency decision to review reuse vs new solution',
       {
         solutionId: boundSolution.solutionId,
         name: boundSolution.name,
         action: boundAction,
+        includes: boundSolution.includes,
       },
     );
-    return {
-      waitChoose: [],
-      useSolution: boundSolution,
-      waitChooseAction: boundAction ? [] : ['app', 'unit'],
-      useAction: boundAction,
-      reason: 'session context already binds a solution',
-    };
   }
 
   const fallback = buildFallbackDependencyDecision(
@@ -1403,9 +1741,13 @@ function buildDependencyDecisionPrompt(
   }));
   return [
     '你是 code-agent 的依赖检查节点。只能输出 JSON, 不要 markdown。',
-    '任务: 根据完整需求和 Runner 已有 solution 列表, 选择最合适的 solution, 并判断本次目标动作是 app、unit、view 还是 solution。',
-    '如果无法确定唯一 solution, 返回 waitChoose 数组; 如果无法确定动作, 返回 waitChooseAction 数组。',
-    'JSON 形状: {"waitChoose":[{"solutionId":"...","name":"...","reason":"..."}],"useSolution":{"solutionId":"...","name":"...","reason":"..."}|null,"waitChooseAction":["app","unit"],"useAction":"app"|"unit"|"view"|"solution"|null,"reason":"..."}',
+    '任务: 根据完整需求和 Runner 已有 solution 列表, 选择最合适的既有 solution, 并判断本次目标动作是 app、unit 还是 data-point。',
+    '禁止自动创建新的 solution; solution 只是既有 Runner 记录的承载容器。',
+    '即使 Runner 只有一个 solution, 也必须判断它是否适合承载本需求; 不要因为唯一就默认复用。',
+    '如果现有 solution 明显不适合且本需求需要新的承载容器, 返回 requiresNewSolution=true, useSolution=null, 并用 newSolutionOption 给出 "new" 候选。',
+    '当需要用户确认是复用既有 solution 还是新建 solution 时, 必须同时返回 waitChoose 和 newSolutionOption。',
+    '如果无法确定唯一既有 solution, 返回 waitChoose 数组; 如果无法确定动作, 返回 waitChooseAction 数组。',
+    'JSON 形状: {"waitChoose":[{"solutionId":"...","name":"...","reason":"..."}],"useSolution":{"solutionId":"...","name":"...","reason":"..."}|null,"waitChooseAction":["app","unit","data-point"],"useAction":"app"|"unit"|"data-point"|null,"requiresNewSolution":false,"newSolutionOption":{"name":"new-solution-name","summary":"why new container is better","reason":"..."}|null,"newSolutionReason":"","reason":"..."}',
     `粗目标提示: ${targetKind}`,
     `完整需求: ${requirement}`,
     `Runner solutions: ${JSON.stringify(solutionBrief)}`,
@@ -1435,10 +1777,20 @@ const LlmDependencyDecisionSchema = z.object({
     .passthrough()
     .nullable()
     .optional(),
-  waitChooseAction: z
-    .array(z.enum(['solution', 'app', 'view', 'unit']))
+  waitChooseAction: z.array(z.enum(CODE_GRAPH_ACTION_VALUES)).optional(),
+  useAction: z.enum(CODE_GRAPH_ACTION_VALUES).nullable().optional(),
+  requiresNewSolution: z.boolean().optional(),
+  newSolutionOption: z
+    .object({
+      name: z.string().optional(),
+      version: z.string().optional(),
+      summary: z.string().optional(),
+      reason: z.string().optional(),
+    })
+    .passthrough()
+    .nullable()
     .optional(),
-  useAction: z.enum(['solution', 'app', 'view', 'unit']).nullable().optional(),
+  newSolutionReason: z.string().optional(),
   reason: z.string().optional(),
 });
 
@@ -1462,6 +1814,32 @@ function normalizeLlmDependencyDecision(
   const waitChooseAction = (payload.waitChooseAction ?? [])
     .map((item) => normalizeActionChoice(item))
     .filter((item): item is CodeGraphActionKind => Boolean(item));
+  const requiresNewSolution = payload.requiresNewSolution === true;
+  const reason = payload.newSolutionReason || payload.reason || fallback.reason;
+  const newSolutionOption = normalizeNewSolutionOption(
+    payload.newSolutionOption
+      ? (payload.newSolutionOption as Record<string, unknown>)
+      : undefined,
+    fallback.newSolutionOption,
+    fallback.useAction,
+    reason,
+  );
+
+  if (requiresNewSolution) {
+    return {
+      waitChoose: waitChoose.length > 0 ? waitChoose : solutions.slice(0, 6),
+      useSolution: null,
+      waitChooseAction:
+        useAction || waitChooseAction.length > 0
+          ? waitChooseAction
+          : fallback.waitChooseAction,
+      useAction: useAction ?? fallback.useAction,
+      requiresNewSolution: true,
+      ...(newSolutionOption ? { newSolutionOption } : {}),
+      newSolutionReason: payload.newSolutionReason ?? payload.reason,
+      reason,
+    };
+  }
 
   return {
     waitChoose:
@@ -1472,7 +1850,9 @@ function normalizeLlmDependencyDecision(
         ? waitChooseAction
         : fallback.waitChooseAction,
     useAction: useAction ?? fallback.useAction,
-    reason: payload.reason ?? fallback.reason,
+    requiresNewSolution: false,
+    ...(newSolutionOption ? { newSolutionOption } : {}),
+    reason,
   };
 }
 
@@ -1486,18 +1866,106 @@ function buildFallbackDependencyDecision(
   targetKind: CodeAgentTargetKind,
   solutions: RunnerSolutionSummary[],
 ): CodeGraphDependencyDecision {
-  const explicitSolution = findExplicitSolution(input, solutions);
-  const onlySolution = solutions.length === 1 ? solutions[0] : null;
-  const useSolution = explicitSolution ?? onlySolution;
   const useAction = normalizeActionChoice(input.targetKind ?? targetKind);
+  const hasSolutions = solutions.length > 0;
+  const reason = hasSolutions
+    ? 'LLM decision unavailable; choose an existing solution or create a new one'
+    : 'runner returned no solutions; a new solution must be created or bound before continuing';
+  const newSolutionOption = buildNewSolutionOption({
+    requirement: normalizeCodeGraphRequirement(input),
+    targetKind,
+    reason,
+  });
   return {
-    waitChoose: useSolution ? [] : solutions.slice(0, 6),
-    useSolution,
-    waitChooseAction: useAction ? [] : ['app', 'unit'],
+    waitChoose: solutions.slice(0, 6),
+    useSolution: null,
+    waitChooseAction: useAction ? [] : [...CODE_GRAPH_ACTION_VALUES],
     useAction,
-    reason: useSolution
-      ? 'deterministic fallback selected solution'
-      : 'multiple or zero runner solutions require selection',
+    requiresNewSolution: !hasSolutions,
+    newSolutionOption,
+    newSolutionReason: hasSolutions
+      ? undefined
+      : 'runner returned no existing solutions',
+    reason,
+  };
+}
+
+/**
+ * Normalize a model-produced new Solution option for dependency confirmation.
+ * @keyword-cn 新Solution选项, 依赖判定
+ * @keyword-en new-solution-option, dependency-decision
+ */
+function normalizeNewSolutionOption(
+  raw: Record<string, unknown> | null | undefined,
+  fallback: CodeGraphNewSolutionOption | undefined,
+  targetKind: CodeAgentTargetKind | null,
+  reason: string | undefined,
+): CodeGraphNewSolutionOption | undefined {
+  if (!raw) return fallback;
+  const rawName = readOptionString(raw, 'name');
+  const rawVersion = readOptionString(raw, 'version');
+  const rawSummary = readOptionString(raw, 'summary');
+  const rawReason = readOptionString(raw, 'reason');
+  const name = rawName || fallback?.name || 'new-solution';
+  const summary =
+    rawSummary ||
+    fallback?.summary ||
+    'Create or bind a new Solution for this requirement.';
+  return {
+    id: NEW_SOLUTION_CHOICE_ID,
+    kind: 'new-solution',
+    name,
+    ...(rawVersion
+      ? { version: rawVersion }
+      : fallback?.version
+        ? { version: fallback.version }
+        : {}),
+    summary,
+    reason: rawReason || reason || fallback?.reason,
+    targetKind: targetKind ?? fallback?.targetKind ?? 'app',
+  };
+}
+
+/**
+ * Read one optional string from a model/UI option record.
+ * @keyword-cn 新Solution选项, 字段读取
+ * @keyword-en new-solution-option, field-read
+ */
+function readOptionString(
+  value: Record<string, unknown>,
+  field: string,
+): string {
+  const raw = value[field];
+  return typeof raw === 'string' ? raw.trim() : '';
+}
+
+/**
+ * Build the default "new Solution" option shown beside existing candidates.
+ * @keyword-cn 新Solution选项, 回退策略
+ * @keyword-en new-solution-option, fallback-decision
+ */
+function buildNewSolutionOption(args: {
+  requirement: string;
+  targetKind: CodeAgentTargetKind;
+  reason?: string;
+}): CodeGraphNewSolutionOption {
+  const heading = args.requirement
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#+\s*/, '').trim())
+    .find(Boolean);
+  const baseName = (heading || `${args.targetKind} solution`)
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+    .slice(0, 48);
+  return {
+    id: NEW_SOLUTION_CHOICE_ID,
+    kind: 'new-solution',
+    name: baseName || 'new-solution',
+    version: '1.0.0',
+    summary: 'Create or bind a new Solution for this requirement.',
+    reason: args.reason,
+    targetKind: args.targetKind,
   };
 }
 
@@ -1509,11 +1977,24 @@ function buildFallbackDependencyDecision(
 function buildDependencyRuntimeContext(
   decision: CodeGraphDependencyDecision,
 ): CodeGraphRuntimeContext {
+  const selectedNewSolution =
+    decision.requiresNewSolution &&
+    !decision.useSolution &&
+    Boolean(decision.newSolutionOption);
   return {
-    chooseSolution: decision.useSolution?.solutionId ?? '',
+    chooseSolution:
+      decision.useSolution?.solutionId ??
+      (selectedNewSolution ? NEW_SOLUTION_CHOICE_ID : ''),
     chooseAction: decision.useAction ?? '',
     code_graph_log: [],
-    ...(decision.useSolution ? { selectedSolution: decision.useSolution } : {}),
+    ...(decision.useSolution
+      ? { selectedSolution: decision.useSolution }
+      : selectedNewSolution && decision.newSolutionOption
+        ? { selectedSolution: decision.newSolutionOption }
+        : {}),
+    ...(decision.newSolutionOption
+      ? { newSolutionOption: decision.newSolutionOption }
+      : {}),
   };
 }
 
@@ -1553,6 +2034,32 @@ function applyDependencyResumeChoice(args: {
   solutions: RunnerSolutionSummary[];
   fallback: CodeGraphDependencyDecision;
 }): CodeGraphDependencyDecision {
+  const useAction = normalizeActionChoice(args.selection.chooseAction);
+  if (args.selection.chooseSolution === NEW_SOLUTION_CHOICE_ID) {
+    const selectedNewOption = readContextRecord(
+      { selectedSolution: args.selection.selectedSolution ?? {} },
+      'selectedSolution',
+    );
+    const newSolutionOption = normalizeNewSolutionOption(
+      selectedNewOption,
+      args.fallback.newSolutionOption,
+      useAction,
+      args.fallback.newSolutionReason ?? args.fallback.reason,
+    );
+    return {
+      waitChoose: [],
+      useSolution: null,
+      waitChooseAction: [],
+      useAction,
+      requiresNewSolution: true,
+      ...(newSolutionOption ? { newSolutionOption } : {}),
+      newSolutionReason:
+        newSolutionOption?.reason ??
+        args.fallback.newSolutionReason ??
+        args.fallback.reason,
+      reason: 'dependency selection resumed with new Solution option',
+    };
+  }
   const useSolution =
     resolveSolutionChoice(
       {
@@ -1565,20 +2072,20 @@ function applyDependencyResumeChoice(args: {
       },
       args.solutions,
     ) ?? args.fallback.useSolution;
-  const useAction = normalizeActionChoice(args.selection.chooseAction);
   return {
     waitChoose: [],
     useSolution,
     waitChooseAction: [],
     useAction,
+    requiresNewSolution: false,
     reason: 'dependency selection resumed from LangGraph interrupt',
   };
 }
 
 /**
- * List selected solution apps or units after the dependency node has a target action.
- * @keyword-cn 应用单元列表, Runner数据库
- * @keyword-en app-unit-list, runner-db-hooks
+ * List selected solution associations after the dependency node has a target action.
+ * @keyword-cn 目标关联列表, Runner数据库
+ * @keyword-en action-association-list, runner-db-hooks
  */
 async function listSelectedSolutionActions(args: {
   hookCaller: HookCaller;
@@ -1586,7 +2093,7 @@ async function listSelectedSolutionActions(args: {
   workflowContext: WorkflowContext | null;
   solution: RunnerSolutionSummary;
   action: CodeGraphActionKind;
-}): Promise<{ apps: unknown[]; units: unknown[] }> {
+}): Promise<{ apps: unknown[]; units: unknown[]; dataPoints: unknown[] }> {
   if (args.action === 'app') {
     const data = await callRunnerHookData(
       args.hookCaller,
@@ -1595,7 +2102,7 @@ async function listSelectedSolutionActions(args: {
       { solutionId: args.solution.solutionId },
       args.workflowContext,
     );
-    return { apps: readItems(data), units: [] };
+    return { apps: readItems(data), units: [], dataPoints: [] };
   }
   if (args.action === 'unit') {
     const data = await callRunnerHookData(
@@ -1605,9 +2112,19 @@ async function listSelectedSolutionActions(args: {
       { solutionId: args.solution.solutionId },
       args.workflowContext,
     );
-    return { apps: [], units: readItems(data) };
+    return { apps: [], units: readItems(data), dataPoints: [] };
   }
-  return { apps: [], units: [] };
+  if (args.action === 'data-point') {
+    const data = await callRunnerHookData(
+      args.hookCaller,
+      args.runnerId,
+      'runner.app.dataTouchpoint.list',
+      { solutionId: args.solution.solutionId },
+      args.workflowContext,
+    );
+    return { apps: [], units: [], dataPoints: readItems(data) };
+  }
+  return { apps: [], units: [], dataPoints: [] };
 }
 
 /**
@@ -1674,13 +2191,7 @@ function buildDependencyChoiceCardContent(args: {
     actionHook: CODE_AGENT_DEPENDENCY_CHOICE_COMPONENT_HOOK,
     payload: buildDependencyChoiceCardPayload(args),
   });
-  return [
-    '需要先确认 code-agent 的目标后继续。',
-    '',
-    '```hook',
-    fence,
-    '```',
-  ].join('\n');
+  return ['```hook', fence, '```'].join('\n');
 }
 
 /**
@@ -1693,6 +2204,126 @@ function buildDependencyChoiceCardPayload(args: {
   workflowContext: WorkflowContext | null;
   checkpoint: CodeGraphResumeRef & { threadId: string };
 }): Record<string, unknown> {
+  const languageProbe = [
+    args.interrupt.requirement,
+    args.interrupt.decision.reason,
+    args.interrupt.decision.newSolutionReason,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join('\n');
+  const useChinese = /[\u3400-\u9fff]/.test(languageProbe);
+  const canCreateNew = Boolean(args.interrupt.decision.newSolutionOption);
+  const uiText = useChinese
+    ? {
+        locale: 'zh-CN',
+        title: '确认生成目标',
+        subtitle:
+          '请选择本次需求的承载位置和目标类型，确认后 code-agent 会在后台继续执行。',
+        decisionNote: canCreateNew
+          ? '可以复用已有 Solution，也可以为这次需求新建一个 Solution。'
+          : '请确认后续要复用的 Solution 与目标类型。',
+        solutionTitle: '承载位置',
+        solutionHelp:
+          'Solution 用来归档同一类产物。复用会把本次结果放到已有 Solution 下；新建会先创建新的承载容器。',
+        actionTitle: '目标类型',
+        actionHelp: '目标类型决定下一步 graph 要创建或更新的对象。',
+        existingSolutionBadge: '复用',
+        newSolutionBadge: '新建',
+        existingSolutionHelp:
+          '复用这个 Solution，后续会在它下面继续创建或更新目标。',
+        newSolutionSummary: '为本次需求创建一个新的 Solution。',
+        newSolutionHelp: '后续节点会先创建新的 Solution，再把本次目标放进去。',
+        newSolutionMeta: '将创建新的 Solution',
+        solutionIdLabel: 'id',
+        includesLabel: '可承载',
+        noSolutions: '没有可选择的 Solution',
+        noActions: '没有可选择的目标类型',
+        submit: '确认选择',
+        submitting: '提交中...',
+        submitted: '已提交',
+        submittedMessage: '选择已提交，LangGraph 将在后台继续执行。',
+        failedPrefix: '选择已提交，但 LangGraph 恢复失败：',
+        newSolutionNoticeTitle: '可能需要新的 Solution',
+        newSolutionNoticeBody:
+          '现有 Solution 可能不适合承载当前需求，请确认是否新建。',
+        newSolutionNoticeHelp:
+          '如果确认复用已有 Solution，请选择已有项后继续。',
+        footerRunnerLabel: 'runner',
+        footerThreadLabel: 'thread',
+        footerCheckpointLabel: 'checkpoint',
+        actionLabels: {
+          app: {
+            label: '应用 / 页面',
+            description: '适合单页 HTML、前端页面、可打开的应用界面。',
+          },
+          unit: {
+            label: '执行单元',
+            description: '适合后端能力、脚本任务、可调用的业务单元。',
+          },
+          'data-point': {
+            label: '数据触点',
+            description: '适合把数据源、数据查询或数据展示触点接入系统。',
+          },
+        },
+      }
+    : {
+        locale: 'en-US',
+        title: 'Confirm Generation Target',
+        subtitle:
+          'Choose where this request should live and what kind of target code-agent should continue with.',
+        decisionNote: canCreateNew
+          ? 'Reuse an existing Solution or create a new one for this request.'
+          : 'Confirm the Solution and target type before continuing.',
+        solutionTitle: 'Container',
+        solutionHelp:
+          'A Solution groups related outputs. Reuse an existing one or create a new container for this request.',
+        actionTitle: 'Target Type',
+        actionHelp:
+          'The target type tells the graph what object to create or update next.',
+        existingSolutionBadge: 'Reuse',
+        newSolutionBadge: 'New',
+        existingSolutionHelp:
+          'Continue under this existing Solution and create or update the selected target there.',
+        newSolutionSummary: 'Create a new Solution for this request.',
+        newSolutionHelp:
+          'The next node will create a new Solution before placing the target inside it.',
+        newSolutionMeta: 'Create a new Solution',
+        solutionIdLabel: 'id',
+        includesLabel: 'Supports',
+        noSolutions: 'No selectable Solutions',
+        noActions: 'No selectable target types',
+        submit: 'Confirm',
+        submitting: 'Submitting...',
+        submitted: 'Submitted',
+        submittedMessage:
+          'Selection submitted. LangGraph will continue in the background.',
+        failedPrefix: 'Selection submitted, but LangGraph resume failed: ',
+        newSolutionNoticeTitle: 'A New Solution May Fit Better',
+        newSolutionNoticeBody:
+          'The existing Solution may not be the right container for this request.',
+        newSolutionNoticeHelp:
+          'Choose an existing item if you still want to reuse it.',
+        footerRunnerLabel: 'runner',
+        footerThreadLabel: 'thread',
+        footerCheckpointLabel: 'checkpoint',
+        actionLabels: {
+          app: {
+            label: 'App / Page',
+            description:
+              'For single-file HTML, frontend pages, and usable app screens.',
+          },
+          unit: {
+            label: 'Unit',
+            description:
+              'For backend capabilities, scripts, and callable business units.',
+          },
+          'data-point': {
+            label: 'Data Point',
+            description:
+              'For data sources, queries, or data-facing integration points.',
+          },
+        },
+      };
   return {
     sessionId: args.interrupt.sessionId,
     runnerId: args.interrupt.runnerId,
@@ -1704,7 +2335,11 @@ function buildDependencyChoiceCardPayload(args: {
     interruptId: args.checkpoint.interruptId ?? null,
     requirement: args.interrupt.requirement,
     targetKind: args.interrupt.targetKind,
+    uiText,
     reason: args.interrupt.decision.reason,
+    requiresNewSolution: args.interrupt.decision.requiresNewSolution,
+    newSolutionReason: args.interrupt.decision.newSolutionReason,
+    newSolutionOption: args.interrupt.decision.newSolutionOption,
     waitChoose: args.interrupt.decision.waitChoose.map(
       toDependencyChoiceCardSolution,
     ),
@@ -1768,6 +2403,112 @@ function assertForwardedSaaSHookDataOk(hookName: string, data: unknown): void {
 }
 
 /**
+ * Verify that the assigned runner is currently mounted through a SaaS hook.
+ * @keyword-cn Runner状态, Runner指派
+ * @keyword-en runner-status, runner-assignment
+ */
+async function checkRunnerMountedByHook(
+  hookBus: HookBusLike | null,
+  runnerId: string,
+  workflowContext: WorkflowContext | null,
+): Promise<
+  | { ok: true }
+  | {
+      ok: false;
+      reason: string;
+      message: string;
+    }
+> {
+  try {
+    const data = await callSaasHookData(
+      hookBus,
+      'saas.app.runner.get',
+      [runnerId],
+      workflowContext,
+    );
+    const runner =
+      data && typeof data === 'object' && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : null;
+    if (!runner) {
+      return {
+        ok: false,
+        reason: 'runner-not-found',
+        message: [
+          'Runner 当前不可用，不能启动 code_gen_orchestrate。',
+          `runner_id=${runnerId} 未通过 saas.app.runner.get 查到。`,
+          '请先调用 saas.app.runner.list，筛选 status="mounted"，只把在线 Runner 的 id 传入。',
+        ].join('\n'),
+      };
+    }
+    const status = readStringField(runner, 'status') || 'unknown';
+    if (status === 'mounted') return { ok: true };
+    const alias = readStringField(runner, 'alias');
+    return {
+      ok: false,
+      reason: `runner-status-${status}`,
+      message: [
+        'Runner 当前不可用，不能启动 code_gen_orchestrate。',
+        `runner_id=${runnerId}${alias ? ` (${alias})` : ''} 当前 status=${status}，必须是 mounted。`,
+        '请先调用 saas.app.runner.list，筛选 status="mounted"，只把在线 Runner 的 id 传入。',
+      ].join('\n'),
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      reason,
+      message: [
+        'Runner 在线状态校验失败，不能启动 code_gen_orchestrate。',
+        `runner_id=${runnerId}`,
+        `校验错误: ${reason}`,
+        '请先确认 saas.app.runner.get 可用，并选择 status="mounted" 的 Runner。',
+      ].join('\n'),
+    };
+  }
+}
+
+/**
+ * Call a SaaS hook and unwrap the single-handler data payload.
+ * @keyword-cn SaaSHook调用, Hook数据
+ * @keyword-en saas-hook-call, hook-data
+ */
+async function callSaasHookData(
+  hookBus: HookBusLike | null,
+  hookName: string,
+  payload: unknown,
+  workflowContext: WorkflowContext | null,
+): Promise<unknown> {
+  if (!hookBus) {
+    throw new Error('SaaS HookBus is not injected.');
+  }
+  const regs = hookBus.select(hookName);
+  if (regs.length === 0) {
+    throw new Error(`${hookName} is not registered on saas.`);
+  }
+  const results = await hookBus.emit({
+    name: hookName,
+    payload,
+    context: buildSaasInvocationContext(workflowContext),
+  });
+  const errors: string[] = [];
+  const data: unknown[] = [];
+  for (const result of results) {
+    if (result?.status === 'error' || result?.error) {
+      errors.push(result.error ?? 'hook-error');
+    } else if (result?.status === 'skipped') {
+      errors.push(`${hookName} was skipped by hook middleware.`);
+    } else {
+      data.push(result?.data);
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`${hookName} failed: ${errors.join('; ')}`);
+  }
+  return data.length === 1 ? data[0] : data;
+}
+
+/**
  * Call a runner hook and unwrap the single-handler data payload.
  * @keyword-cn RunnerHook调用, Hook数据
  * @keyword-en runner-hook-call, hook-data
@@ -1797,6 +2538,25 @@ async function callRunnerHookData(
  * @keyword-en invocation-context, runner-hook
  */
 function buildRunnerInvocationContext(workflowContext: WorkflowContext | null) {
+  return {
+    source: 'llm' as const,
+    principalId: workflowContext?.agentPrincipalId,
+    principalType: 'agent',
+    extras: {
+      ...(workflowContext?.sessionId
+        ? { sessionId: workflowContext.sessionId }
+        : {}),
+      ...(workflowContext?.agentId ? { agentId: workflowContext.agentId } : {}),
+    },
+  };
+}
+
+/**
+ * Build the hidden invocation context for SaaS hook calls.
+ * @keyword-cn 调用上下文, SaaSHook
+ * @keyword-en invocation-context, saas-hook
+ */
+function buildSaasInvocationContext(workflowContext: WorkflowContext | null) {
   return {
     source: 'llm' as const,
     principalId: workflowContext?.agentPrincipalId,
@@ -1893,7 +2653,6 @@ function toRunnerSolutionSummary(
  */
 function findContextBoundSolution(
   context: CodeGraphRequest['context'],
-  input: CodeGenOrchestrateInput,
   solutions: RunnerSolutionSummary[],
 ): RunnerSolutionSummary | null {
   const candidates = [
@@ -1903,7 +2662,6 @@ function findContextBoundSolution(
     readContextString(context, 'boundSolutionId'),
     readContextString(context, 'currentSolutionId'),
     readContextString(context, 'solutionName'),
-    input.solutionName,
   ].filter((item): item is string => Boolean(item?.trim()));
   for (const candidate of candidates) {
     const resolved = resolveSolutionChoice(
@@ -1916,10 +2674,17 @@ function findContextBoundSolution(
 }
 
 /**
- * Read a string field from code graph context.
- * @keyword-cn Graph上下文, 字段读取
- * @keyword-en graph-context, field-read
+ * Decide whether a bound solution already declares support for the target action.
+ * @keyword-cn Solution适配, 目标选择
+ * @keyword-en solution-fit, target-selection
  */
+function isSolutionSuitableForAction(
+  solution: RunnerSolutionSummary,
+  action: CodeGraphActionKind,
+): boolean {
+  return solution.includes.includes(action);
+}
+
 /**
  * Resolve an action bound by graph context or tool input.
  * @keyword-cn 动作选择, 会话绑定
@@ -1992,19 +2757,6 @@ function resolveSolutionChoice(
 }
 
 /**
- * Resolve an explicit tool solution field.
- * @keyword-cn Solution选择, 工具入参
- * @keyword-en solution-selection, tool-input
- */
-function findExplicitSolution(
-  input: CodeGenOrchestrateInput,
-  solutions: RunnerSolutionSummary[],
-): RunnerSolutionSummary | null {
-  if (!input.solutionName?.trim()) return null;
-  return resolveSolutionChoice({ name: input.solutionName }, solutions);
-}
-
-/**
  * Normalize action names used by the dependency check node.
  * @keyword-cn 动作选择, 目标类型
  * @keyword-en action-selection, target-kind
@@ -2012,12 +2764,7 @@ function findExplicitSolution(
 function normalizeActionChoice(
   value: string | undefined,
 ): CodeGraphActionKind | null {
-  if (
-    value === 'solution' ||
-    value === 'app' ||
-    value === 'view' ||
-    value === 'unit'
-  ) {
+  if (value === 'app' || value === 'unit' || value === 'data-point') {
     return value;
   }
   return null;
@@ -2109,8 +2856,8 @@ function buildRunnerAssignmentRequiredMessage(sessionId: string | undefined) {
 
 /**
  * Infer the coarse target kind from the compatible tool input.
- * @keyword-cn 目标类型推断, 默认View
- * @keyword-en infer-tool-target-kind, default-view-target
+ * @keyword-cn 目标类型推断, 默认应用目标
+ * @keyword-en infer-tool-target-kind, default-app-target
  */
 function inferToolTargetKind(
   input: CodeGenOrchestrateInput,
@@ -2119,18 +2866,17 @@ function inferToolTargetKind(
   if (input.targetKind) return input.targetKind;
   if (input.appName?.trim()) return 'app';
   if (input.unitName?.trim()) return 'unit';
-  if (looksLikeLightweightViewRequirement(requirement)) return 'view';
-  if (input.solutionName?.trim()) return 'solution';
+  if (looksLikeFrontendAppRequirement(requirement)) return 'app';
   return 'unit';
 }
 
 /**
- * Detect whether a requirement looks like a lightweight view target.
- * @keyword-cn 轻量View, 目标类型推断
- * @keyword-en detect-lightweight-view, default-view-target
+ * Detect whether a requirement looks like a frontend app target.
+ * @keyword-cn 前端应用目标, 目标类型推断
+ * @keyword-en detect-frontend-app, default-app-target
  */
-function looksLikeLightweightViewRequirement(requirement: string): boolean {
-  return /页面|单页|展示|表格|看板|可视化|报表|大屏|仪表盘|dashboard|page|view|html/i.test(
+function looksLikeFrontendAppRequirement(requirement: string): boolean {
+  return /页面|单页|展示|表格|看板|可视化|报表|大屏|仪表盘|dashboard|page|frontend|html/i.test(
     requirement,
   );
 }

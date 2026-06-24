@@ -108,7 +108,8 @@ export default class DialoguesClass {
       '只在目标、范围、验收口径、关键数据或运行位置确实不清楚时追问最少必要问题。',
       '不要把执行层规则、Runner 能力或工具调用细节写成对用户的硬限制；这些由后续 code graph 节点和 hook 结果判断。',
       '当用户明确要求开始生成、修改、初始化或运行项目时，整理完整需求并启动 code_gen_orchestrate；讨论方案、比较方案或单纯问答时只回答需求本身。',
-      '启动 code_gen_orchestrate 时尽量带上已知的 targetKind、solutionName/appName、runner_id 和 context.session_id；缺失信息由工具节点继续检查。',
+      '当任务属于代码生成、代码修改或项目初始化时，不要在对话回复里直接输出任何代码【!import!】,只整理需求并交给 code_gen_orchestrate 执行。',
+      '启动 code_gen_orchestrate 时尽量带上已知的 targetKind、appName、runner_id 和 context.session_id；不要传创建或命名 Solution 的字段，Solution 只能由工具节点从 Runner 已有记录中选择。',
       `当前默认逻辑模型：${logicModelLabel}，前端模型：${frontendModelLabel}`,
     ].join('\n');
 

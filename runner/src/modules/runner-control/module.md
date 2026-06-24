@@ -2,7 +2,7 @@
 
 ## 功能描述
 
-提供 Runner 控制面板的 Fastify 路由，包括 Solution、应用域名、应用、FRPC 管理和性能统计接口。
+提供 Runner 控制面板的 Fastify 路由，包括 Solution、应用域名、应用、FRPC 管理和性能统计接口。Solution 控制面板接口读写 Runner Solution 模块的真实 `solutions` collection，不再使用 `runner_solutions` 投影。
 
 ## 文件路径
 
@@ -20,6 +20,7 @@
 - `POST /runner-control/solutions` - 创建 Solution
 - `PUT /runner-control/solutions/:id` - 更新 Solution
 - `DELETE /runner-control/solutions/:id` - 删除 Solution
+- Solution 接口通过 `RunnerSolutionService` 读写真实 `solutions` collection；`:id` 支持 stable `solutionId`，并兼容按 name 查询。
 
 #### 应用域名接口
 - `GET /runner-control/app-domains` - 获取应用域名列表

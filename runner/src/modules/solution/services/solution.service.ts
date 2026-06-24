@@ -11,12 +11,10 @@ import type {
   SearchSolution,
   SolutionIdentity,
   SolutionInfo,
+  UpsertSolutionMetadata,
 } from '../types/solution.types';
 import type { RunnerDbService } from '../../runner-db/services/runner-db.service';
-import type {
-  RunnerAppManagement,
-  RunnerSolutionRecord,
-} from '../../runner-db/types/runner-db.types';
+import type { RunnerAppManagement } from '../../runner-db/types/runner-db.types';
 
 const DEFAULT_LIGHTWEIGHT_SOLUTION_NAME = 'default-view-solution';
 const DEFAULT_LIGHTWEIGHT_SOLUTION_VERSION = '1.0.0';
@@ -217,13 +215,58 @@ export class RunnerSolutionService {
   }
 
   /**
+   * @title Upsert Solution metadata
+   * @description Creates or updates the canonical Runner-local Solution metadata in the solutions collection.
+   * @keyword-en solution-upsert, solution-metadata
+   * @keyword-cn Solution更新, Solution元数据
+   */
+  async upsertMetadata(
+    params: UpsertSolutionMetadata,
+  ): Promise<SolutionInfo> {
+    const name = params.name.trim();
+    const existing = await this.collection.findOne({ name });
+    const version = params.version?.trim() || existing?.version || '1.0.0';
+    const solutionDir = existing?.location ?? this.getSolutionDir(name);
+    if (!existsSync(solutionDir)) {
+      mkdirSync(solutionDir, { recursive: true });
+    }
+    const solution: SolutionInfo = {
+      solutionId:
+        existing?.solutionId ??
+        params.solutionId?.trim() ??
+        buildStableId('solution', name, version),
+      name,
+      version,
+      source: params.source ?? existing?.source ?? 'self_developed',
+      location: solutionDir,
+      summary: params.summary ?? existing?.summary ?? '',
+      description: params.description ?? existing?.description ?? '',
+      images: params.images ?? existing?.images ?? [],
+      includes: params.includes ?? existing?.includes ?? [],
+      installedAt: existing?.installedAt ?? new Date().toISOString(),
+      isInitialized:
+        params.isInitialized ?? existing?.isInitialized ?? true,
+    };
+
+    writeFileSync(
+      join(solution.location, 'solution.json'),
+      JSON.stringify(solution, null, 2),
+      'utf-8',
+    );
+    await this.collection.updateOne(
+      { name: solution.name },
+      { $set: solution },
+      { upsert: true },
+    );
+    return solution;
+  }
+
+  /**
    * @title 确保默认轻量展示 Solution
    * @description Runner 启动时写入内置 view Solution，用于临时表格、单页展示等轻量目标。
    * @keyword-en default-lightweight-solution, view-solution, runner-bootstrap
    */
-  async ensureDefaultLightweightSolution(
-    runnerDb: RunnerDbService,
-  ): Promise<SolutionInfo> {
+  async ensureDefaultLightweightSolution(): Promise<SolutionInfo> {
     const now = new Date();
     const nowIso = now.toISOString();
     const solutionName = DEFAULT_LIGHTWEIGHT_SOLUTION_NAME;
@@ -263,21 +306,6 @@ export class RunnerSolutionService {
       JSON.stringify(solution, null, 2),
       'utf-8',
     );
-
-    const solutionRecord: RunnerSolutionRecord = {
-      solutionId: solution.solutionId,
-      name: solution.name,
-      version: solution.version,
-      summary: solution.summary,
-      description: solution.description,
-      location: solution.location,
-      includes: solution.includes,
-      status: 'active',
-      isInitialized: true,
-      createdAt: existing?.installedAt ? new Date(existing.installedAt) : now,
-      updatedAt: now,
-    };
-    await runnerDb.upsertSolution(solutionRecord);
 
     return solution;
   }
@@ -350,21 +378,6 @@ export class RunnerSolutionService {
       JSON.stringify(solution, null, 2),
       'utf-8',
     );
-
-    const solutionRecord: RunnerSolutionRecord = {
-      solutionId: solution.solutionId,
-      name: solution.name,
-      version: solution.version,
-      summary: solution.summary,
-      description: solution.description,
-      location: solution.location,
-      includes: solution.includes,
-      status: 'active',
-      isInitialized: solution.isInitialized,
-      createdAt: existing?.installedAt ? new Date(existing.installedAt) : now,
-      updatedAt: now,
-    };
-    await runnerDb.upsertSolution(solutionRecord);
 
     const appName = params.appName?.trim();
     if (!appName) return { solution };

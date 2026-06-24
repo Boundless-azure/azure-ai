@@ -9,6 +9,8 @@ import { RunnerStatsService } from './services/stats.service';
 import { RunnerTokenService } from './services/token.service';
 import { FrpcService } from '../frpc/services/frpc.service';
 import { getRunnerConfig } from '../../config/store';
+import { RunnerSolutionService } from '../solution/services/solution.service';
+import { UpsertSolutionMetadataSchema } from '../solution/types/solution.types';
 
 /**
  * @title 注册 Runner 控制面板路由
@@ -23,6 +25,7 @@ export async function registerRunnerControlRoutes(
   db?: Db,
 ): Promise<void> {
   const runnerDb = db ? new RunnerDbService(db) : null;
+  const solutionService = db ? new RunnerSolutionService(db) : null;
   const cfg = getRunnerConfig();
   const frpcService = FrpcService.getInstance(cfg.frpcBinPath);
   const tokenService = RunnerTokenService.getInstance();
@@ -67,7 +70,7 @@ export async function registerRunnerControlRoutes(
    */
   app.get('/runner-control/solutions', async () => {
     requireDb();
-    const solutions = await runnerDb!.findSolutions();
+    const solutions = await solutionService!.list();
     return { code: 0, data: solutions };
   });
 
@@ -80,7 +83,9 @@ export async function registerRunnerControlRoutes(
     async (req: FastifyRequest<{ Params: { id: string } }>) => {
       requireDb();
       const { id } = req.params;
-      const solution = await runnerDb!.findSolutionById(id);
+      const solution =
+        (await solutionService!.getById(id)) ??
+        (await solutionService!.getByName(id));
       return { code: 0, data: solution };
     },
   );
@@ -92,12 +97,16 @@ export async function registerRunnerControlRoutes(
   app.post(
     '/runner-control/solutions',
     async (
-      req: FastifyRequest<{ Body: { name: string; version: string } }>,
+      req: FastifyRequest,
+      reply: FastifyReply,
     ) => {
       requireDb();
-      const data = req.body;
-      await runnerDb!.upsertSolution(data as any);
-      return { code: 0, data };
+      const body = UpsertSolutionMetadataSchema.safeParse(req.body ?? {});
+      if (!body.success) {
+        return reply.status(400).send({ code: 400, issues: body.error.issues });
+      }
+      const solution = await solutionService!.upsertMetadata(body.data);
+      return { code: 0, data: solution };
     },
   );
 
@@ -110,14 +119,31 @@ export async function registerRunnerControlRoutes(
     async (
       req: FastifyRequest<{
         Params: { id: string };
-        Body: { name?: string; version?: string };
+        Body: unknown;
       }>,
+      reply: FastifyReply,
     ) => {
       requireDb();
       const { id } = req.params;
-      const data = req.body;
-      await runnerDb!.upsertSolution({ _id: id as any, ...data } as any);
-      return { code: 0, data: { id, ...data } };
+      const existing =
+        (await solutionService!.getById(id)) ??
+        (await solutionService!.getByName(id));
+      if (!existing) {
+        return reply.status(404).send({ code: 404, message: 'Solution not found' });
+      }
+      const body = UpsertSolutionMetadataSchema.partial().safeParse(
+        req.body ?? {},
+      );
+      if (!body.success) {
+        return reply.status(400).send({ code: 400, issues: body.error.issues });
+      }
+      const solution = await solutionService!.upsertMetadata({
+        ...body.data,
+        name: existing.name,
+        solutionId: existing.solutionId,
+        version: body.data.version ?? existing.version,
+      });
+      return { code: 0, data: solution };
     },
   );
 
@@ -130,7 +156,13 @@ export async function registerRunnerControlRoutes(
     async (req: FastifyRequest<{ Params: { id: string } }>) => {
       requireDb();
       const { id } = req.params;
-      await runnerDb!.deleteSolution(id);
+      const solution =
+        (await solutionService!.getById(id)) ??
+        (await solutionService!.getByName(id));
+      if (!solution) {
+        return { code: 404, ok: false, message: 'Solution not found' };
+      }
+      await solutionService!.delete(solution.name);
       return { code: 0, ok: true };
     },
   );
@@ -339,7 +371,7 @@ export async function registerRunnerControlRoutes(
   app.get('/runner-control/stats', async () => {
     const statsService = RunnerStatsService.getInstance();
     const sysStats = statsService.getStats();
-    const solutions = runnerDb ? await runnerDb.findSolutions() : [];
+    const solutions = solutionService ? await solutionService.list() : [];
     const domainBindings = runnerDb ? await runnerDb.findAppDomains() : [];
     const apps = runnerDb ? await runnerDb.findApps() : [];
     return {

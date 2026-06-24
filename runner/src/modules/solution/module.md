@@ -24,7 +24,8 @@ Runner Solution 模块
 - `RunnerSolutionService.listAppsBySolutions(identity, runnerDb)` — 列出选中 Solution 的应用 | keywords: solution-app-list, app-association
 - `RunnerSolutionService.listUnitsBySolutions(identity)` — 列出选中 Solution 的本地单元 | keywords: solution-unit-list, unit-association
 - `RunnerSolutionService.install(params)` — 安装 Solution 并写入 Mongo 与 solution.json | keywords: install-solution, solution-install, install
-- `RunnerSolutionService.ensureDefaultLightweightSolution(runnerDb)` — 确保内置默认展示 Solution 存在 | keywords: default-lightweight-solution, view-solution, runner-bootstrap
+- `RunnerSolutionService.upsertMetadata(params)` — 在真实 `solutions` collection 中创建或更新 Solution 元数据 | keywords: solution-upsert, solution-metadata
+- `RunnerSolutionService.ensureDefaultLightweightSolution()` — 确保内置默认展示 Solution 存在 | keywords: default-lightweight-solution, view-solution, runner-bootstrap
 - `RunnerSolutionService.ensureTarget(params, runnerDb)` — 确保 code-agent 目标 Solution/App 元数据存在 | keywords: ensure-target, solution-create, app-create
 - `RunnerSolutionService.delete(name)` — 删除 Solution 目录与 Mongo 记录 | keywords: delete-solution, solution-delete, delete
 - `RunnerSolutionService.upgrade(name, sourceUrl)` — 升级已安装 Solution | keywords: upgrade-solution, solution-upgrade, upgrade
@@ -52,6 +53,8 @@ Runner Solution 模块
 | Solution单元列表 | solution-unit-list |
 | 单元关联 | unit-association |
 | Solution单元扫描 | solution-unit-scan |
+| Solution更新 | solution-upsert |
+| Solution元数据 | solution-metadata |
 | Runner本地数据 | runner-local-data |
 
 ## 类型导出 (Type Exports)
@@ -65,6 +68,7 @@ Runner Solution 模块
 - `RunnerSolutionUnitInfo` — Runner Solution 单元关联类型 | keywords: solution-unit-list, unit-association
 - `RunnerSolutionDetail` — 包含 apps/units 的详情类型 | keywords: solution-detail, app-unit-detail
 - `InstallSolutionSchema` — Solution 安装请求 schema | keywords: solution-install, install-request, install-params
+- `UpsertSolutionMetadataSchema` — Solution 元数据创建或更新 schema | keywords: solution-upsert, solution-metadata
 - `EnsureSolutionTargetSchema` — code-agent 目标确保 schema | keywords: ensure-target, solution-create, app-create
 - `SearchSolutionSchema` — Solution 搜索 schema | keywords: solution-search, search-query, query-params
 - `ListSolutionSchema` — Solution 列表 schema | keywords: solution-list, list-query, pagination
@@ -78,4 +82,5 @@ Runner Solution 模块
 - Runner hook: `runner.app.solution.listUnits`，payload `{ solutionId?, solutionIds?, name?, names? }`，返回 solution-local unit 关联列表。
 - Runner hook: `runner.app.solution.ensureTarget`，payload `{ solutionName, appName?, runnerId? }`，确保 code-agent 目标元数据存在。
 - Runner hook: `runner.app.solution.delete`，payload `{ name }`，删除本地 Solution。
+- Runner 本地 Solution 的唯一源表是 Mongo `solutions` collection；不再向 `runner_solutions` 投影表双写。
 - App 关联来自 `runner_apps`；unit 关联只扫描 Solution 目录下的 `unit/` 或 `units/`，不把全局 `workspace/unit` 默认归属到每个 Solution。

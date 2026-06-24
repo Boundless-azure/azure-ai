@@ -51,7 +51,6 @@ export class RunnerDbMigrationService {
       this.ensureCollection(db, RunnerDbCollection.Mcp),
       this.ensureCollection(db, RunnerDbCollection.Skill),
       this.ensureCollection(db, RunnerDbCollection.AppDomains),
-      this.ensureCollection(db, RunnerDbCollection.Solution),
     ]);
 
     await db
@@ -82,19 +81,12 @@ export class RunnerDbMigrationService {
 
   /**
    * @title 初始化 code-agent 目标索引
-   * @description 为 Runner 侧 Solution/App 元数据增加按 Solution 与名称快速查找的索引。
-   * @keywords-cn code-agent目标, Solution索引, 应用索引
-   * @keywords-en code-agent-target-indexes, solution-index, app-index
+   * @description 为 Runner 侧 App 元数据增加按 Solution 与名称快速查找的索引。
+   * @keywords-cn code-agent目标, 应用索引, 初始化状态
+   * @keywords-en code-agent-target-indexes, app-index, initialization-state
    */
   private async ensureCodeAgentTargetIndexes(db: Db): Promise<void> {
-    await this.ensureCollection(db, RunnerDbCollection.Solution);
     await this.ensureCollection(db, RunnerDbCollection.AppManagement);
-    await db
-      .collection(RunnerDbCollection.Solution)
-      .createIndex({ solutionId: 1 }, { unique: true });
-    await db
-      .collection(RunnerDbCollection.Solution)
-      .createIndex({ name: 1, version: 1 });
     await db
       .collection(RunnerDbCollection.AppManagement)
       .createIndex({ solutionId: 1, name: 1, version: 1 });

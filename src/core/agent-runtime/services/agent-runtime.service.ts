@@ -107,6 +107,7 @@ export class AgentRuntimeService {
       pluginService: this.pluginService,
       solutionService: this.solutionService,
       runnerHookRpc: this.hookRpc,
+      hookBus: this.hookBus,
       checkpointer: this.checkpointer,
       ...(workflowContext ? { workflowContext } : {}),
       agentConfig: { aiModelIds: options?.aiModelIds },
