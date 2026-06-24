@@ -17,6 +17,32 @@ import { ChatSessionEntity } from '@core/ai/entities/chat-session.entity';
 import { CurrentSessionService } from '../services/current-session.service';
 
 /**
+ * Code-agent action enum accepted by dependency choice submit.
+ * @keyword-cn 代码智能体选择, 动作选择
+ * @keyword-en code-agent-choice, action-selection
+ */
+const codeAgentChoiceActionSchema = z.enum(['app', 'unit', 'data-point']);
+
+/**
+ * Route plan accepted from the dependency choice card.
+ * @keyword-cn 代码智能体选择, 路由计划
+ * @keyword-en code-agent-choice, route-plan
+ */
+const codeAgentRoutePlanSchema = z
+  .object({
+    id: z.string().optional(),
+    requirement: z.string().optional(),
+    title: z.string().optional(),
+    summary: z.string().optional(),
+    useAction: codeAgentChoiceActionSchema.nullable().optional(),
+    waitChooseAction: z.array(codeAgentChoiceActionSchema).optional(),
+    useSolution: z.record(z.string(), z.unknown()).nullable().optional(),
+    waitChoose: z.array(z.record(z.string(), z.unknown())).optional(),
+    reason: z.string().optional(),
+  })
+  .passthrough();
+
+/**
  * Payload schema for code-agent dependency choice submit.
  * @keyword-cn 代码智能体选择, 选择提交
  * @keyword-en code-agent-choice-submit, dependency-selection
@@ -31,8 +57,10 @@ const codeAgentChoiceSubmitSchema = z.object({
   checkpointId: z.string().nullable().optional(),
   interruptId: z.string().nullable().optional(),
   requirement: z.string().optional(),
-  chooseSolution: z.string().min(1),
-  chooseAction: z.enum(['app', 'unit', 'data-point']),
+  chooseSolution: z.string().optional(),
+  chooseAction: codeAgentChoiceActionSchema.optional(),
+  chooseActions: z.array(codeAgentChoiceActionSchema).optional(),
+  routePlan: z.array(codeAgentRoutePlanSchema).min(1),
   selectedSolution: z.record(z.string(), z.unknown()).optional(),
   context: z.record(z.string(), z.unknown()).optional(),
 });
@@ -52,6 +80,7 @@ const codeAgentChoiceStateSchema = z.object({
 
 type CodeAgentChoiceSubmitPayload = z.infer<typeof codeAgentChoiceSubmitSchema>;
 type CodeAgentChoiceStatePayload = z.infer<typeof codeAgentChoiceStateSchema>;
+type CodeAgentRoutePlanItem = z.infer<typeof codeAgentRoutePlanSchema>;
 
 /**
  * Submitted dependency choice snapshot stored on the chat session metadata.
@@ -68,6 +97,8 @@ type CodeAgentChoiceMetadata = {
   interruptId: string | null;
   chooseSolution: string;
   chooseAction: 'app' | 'unit' | 'data-point';
+  chooseActions?: Array<'app' | 'unit' | 'data-point'>;
+  routePlan?: Array<Record<string, unknown>>;
   requirement?: string;
   selectedSolution?: Record<string, unknown>;
   context?: Record<string, unknown>;
@@ -85,7 +116,7 @@ type CodeAgentResumeResult = {
 
 /**
  * @title Code Agent Choice Hook Controller
- * @description Accepts selection-card submissions and stores the selected dependency target.
+ * @description Accepts selection-card submissions and stores the selected Solution/action route.
  * @keyword-cn 代码智能体选择, 会话元数据, Hook入口
  * @keyword-en code-agent-choice, session-metadata, hook-controller
  */
@@ -112,7 +143,7 @@ export class CodeAgentChoiceHookController {
     hook: 'saas.app.conversation.codeAgentChoiceSubmit',
     description:
       'Submit a code-agent dependency-check selection from the conversation card. ' +
-      'Stores chooseSolution / chooseAction on chat session metadata and currentSession for later graph resume.',
+      'Stores routePlan and derived compatibility chooseSolution / chooseAction on chat session metadata and currentSession for later graph resume.',
     args: [codeAgentChoiceSubmitSchema],
     metadata: { tags: ['conversation', 'code-agent', 'selection'] },
   })
@@ -143,7 +174,15 @@ export class CodeAgentChoiceHookController {
 
     const agentPrincipalId =
       payload.agentPrincipalId?.trim() || context?.principalId?.trim() || '';
-    const choice = normalizeCodeAgentChoiceMetadata(payload, agentPrincipalId);
+    let choice: CodeAgentChoiceMetadata;
+    try {
+      choice = normalizeCodeAgentChoiceMetadata(payload, agentPrincipalId);
+    } catch (error) {
+      return {
+        status: HookResultStatus.Error,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
     const metadataChoiceKey = buildCodeAgentChoiceStateKey(choice);
     const metadata = mergeCodeAgentChoiceMetadata(session.metadata, choice);
     await this.sessionRepo.update(session.id, {
@@ -292,6 +331,10 @@ export class CodeAgentChoiceHookController {
           session_id: sessionId,
           chooseSolution: choice.chooseSolution,
           chooseAction: choice.chooseAction,
+          ...(choice.chooseActions
+            ? { chooseActions: choice.chooseActions }
+            : {}),
+          ...(choice.routePlan ? { routePlan: choice.routePlan } : {}),
           ...(choice.selectedSolution
             ? { selectedSolution: choice.selectedSolution }
             : {}),
@@ -456,6 +499,24 @@ function normalizeCodeAgentChoiceMetadata(
   payload: CodeAgentChoiceSubmitPayload,
   agentPrincipalId: string,
 ): CodeAgentChoiceMetadata {
+  const chooseSolution =
+    payload.chooseSolution?.trim() ||
+    readPrimarySubmittedRouteSolutionId(payload.routePlan);
+  const chooseAction =
+    payload.chooseAction ?? readPrimarySubmittedRouteAction(payload.routePlan);
+  const chooseActions = normalizeCodeAgentActions([
+    ...(payload.chooseActions ?? []),
+    ...readSubmittedRouteActions(payload.routePlan),
+  ]);
+  const selectedSolution =
+    payload.selectedSolution ??
+    readPrimarySubmittedRouteSolution(payload.routePlan);
+  if (!chooseSolution) {
+    throw new Error('routePlan must include a selected Solution');
+  }
+  if (!chooseAction) {
+    throw new Error('routePlan must include a selected action');
+  }
   return {
     runnerId: payload.runnerId.trim(),
     agentPrincipalId,
@@ -466,17 +527,101 @@ function normalizeCodeAgentChoiceMetadata(
     ...(payload.threadId?.trim() ? { threadId: payload.threadId.trim() } : {}),
     checkpointId: payload.checkpointId?.trim() || null,
     interruptId: payload.interruptId?.trim() || null,
-    chooseSolution: payload.chooseSolution.trim(),
-    chooseAction: payload.chooseAction,
+    chooseSolution,
+    chooseAction,
+    ...(chooseActions.length > 0 ? { chooseActions } : {}),
+    routePlan: payload.routePlan,
     ...(payload.requirement?.trim()
       ? { requirement: payload.requirement.trim() }
       : {}),
-    ...(payload.selectedSolution
-      ? { selectedSolution: payload.selectedSolution }
-      : {}),
-    ...(payload.context ? { context: payload.context } : {}),
+    ...(selectedSolution ? { selectedSolution } : {}),
+    context: {
+      ...(payload.context ?? {}),
+      chooseSolution,
+      chooseAction,
+      ...(chooseActions.length > 0 ? { chooseActions } : {}),
+      routePlan: payload.routePlan,
+      ...(selectedSolution ? { selectedSolution } : {}),
+    },
     submittedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Read the first selected Solution id from submitted routePlan.
+ * @keyword-cn 浠ｇ爜鏅鸿兘浣撻€夋嫨, 璺敱璁″垝
+ * @keyword-en code-agent-choice, route-plan
+ */
+function readPrimarySubmittedRouteSolutionId(
+  routePlan: CodeAgentRoutePlanItem[],
+): string {
+  const solution = readPrimarySubmittedRouteSolution(routePlan);
+  if (!solution) return '';
+  return (
+    readChoiceRecordString(solution, 'solutionId') ||
+    readChoiceRecordString(solution, 'id')
+  );
+}
+
+/**
+ * Read the first selected Solution object from submitted routePlan.
+ * @keyword-cn 浠ｇ爜鏅鸿兘浣撻€夋嫨, Solution閫夋嫨
+ * @keyword-en code-agent-choice, solution-selection
+ */
+function readPrimarySubmittedRouteSolution(
+  routePlan: CodeAgentRoutePlanItem[],
+): Record<string, unknown> | null {
+  for (const route of routePlan) {
+    if (
+      route.useSolution &&
+      typeof route.useSolution === 'object' &&
+      !Array.isArray(route.useSolution)
+    ) {
+      return route.useSolution;
+    }
+  }
+  return null;
+}
+
+/**
+ * Read the first selected action from submitted routePlan.
+ * @keyword-cn 浠ｇ爜鏅鸿兘浣撻€夋嫨, 鍔ㄤ綔閫夋嫨
+ * @keyword-en code-agent-choice, action-selection
+ */
+function readPrimarySubmittedRouteAction(
+  routePlan: CodeAgentRoutePlanItem[],
+): 'app' | 'unit' | 'data-point' | undefined {
+  return routePlan.find((route) => route.useAction)?.useAction ?? undefined;
+}
+
+/**
+ * Read the de-duplicated action list from submitted routePlan.
+ * @keyword-cn 浠ｇ爜鏅鸿兘浣撻€夋嫨, 鍔ㄤ綔閫夋嫨
+ * @keyword-en code-agent-choice, action-selection
+ */
+function readSubmittedRouteActions(
+  routePlan: CodeAgentRoutePlanItem[],
+): Array<'app' | 'unit' | 'data-point'> {
+  return normalizeCodeAgentActions(
+    routePlan
+      .map((route) => route.useAction)
+      .filter((action): action is 'app' | 'unit' | 'data-point' =>
+        Boolean(action),
+      ),
+  );
+}
+
+/**
+ * Read one string field from a submitted choice record.
+ * @keyword-cn 浠ｇ爜鏅鸿兘浣撻€夋嫨, 瀛楁璇诲彇
+ * @keyword-en code-agent-choice, field-read
+ */
+function readChoiceRecordString(
+  value: Record<string, unknown>,
+  field: string,
+): string {
+  const raw = value[field];
+  return typeof raw === 'string' ? raw.trim() : '';
 }
 
 /**
@@ -555,6 +700,17 @@ async function invokeAgentTool(
     return await record.func(input);
   }
   throw new Error('agent tool is not invokable');
+}
+
+/**
+ * Normalize code-agent action arrays from hook payloads.
+ * @keyword-cn 代码智能体选择, 字段归一化
+ * @keyword-en code-agent-choice, field-normalize
+ */
+function normalizeCodeAgentActions(
+  values: Array<'app' | 'unit' | 'data-point'>,
+): Array<'app' | 'unit' | 'data-point'> {
+  return [...new Set(values)];
 }
 
 /**

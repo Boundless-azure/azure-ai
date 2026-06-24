@@ -8,7 +8,7 @@
       "kind": "hook",
       "name": "code_gen_orchestrate",
       "description": "Async code graph entry tool. It requires full_requirement and runner_id, carries context.session_id, and returns a runner-assignment instruction when runner_id is missing.",
-      "payloadShape": "{ full_requirement: string; runner_id?: string; context?: { session_id?: string; chooseSolution?: string; chooseAction?: 'app'|'unit'|'data-point' }; requirement?: string; runnerId?: string; targetKind?: 'app'|'unit'|'data-point'; appName?: string; unitName?: string; logicModelId?: string; frontendModelId?: string; logicModelIndex?: number; frontendModelIndex?: number }",
+      "payloadShape": "{ full_requirement: string; runner_id?: string; context?: { session_id?: string; chooseSolution?: string; chooseAction?: 'app'|'unit'|'data-point'; chooseActions?: Array<'app'|'unit'|'data-point'>; routePlan?: Array<{ id?: string; requirement?: string; useAction?: 'app'|'unit'|'data-point'; useSolution?: unknown }> }; resume?: { threadId?: string; checkpointId?: string; interruptId?: string }; requirement?: string; runnerId?: string; targetKind?: 'app'|'unit'|'data-point'; appName?: string; unitName?: string; logicModelId?: string; frontendModelId?: string; logicModelIndex?: number; frontendModelIndex?: number }. When resume is present after dependency choice, context.routePlan is required and chooseSolution/chooseAction are compatibility fields derived from routePlan.",
       "resultShape": "String. Missing runner_id returns a runner assignment instruction; present runner_id returns scheduled/resume_scheduled while the graph continues in the background.",
       "subject": "code-agent",
       "sourcePath": "agent.handle.ts",
