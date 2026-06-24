@@ -11,12 +11,17 @@ runner-db-migration -> modules/runner-db/services/runner-db.migration.service.ts
 runner-db-enums -> modules/runner-db/enums/runner-db.enums.ts
 runner-db-types -> modules/runner-db/types/runner-db.types.ts
 runner-db-module -> modules/runner-db/runner-db.module.ts
+code-agent-target-indexes -> modules/runner-db/services/runner-db.migration.service.ts
+find-app-by-solution -> modules/runner-db/services/runner-db.service.ts
+initialization-state -> modules/runner-db/types/runner-db.types.ts
 
 关键词到函数哈希映射（Keywords -> Function Hash）
 - RunnerDbService.getCollection -> runner_db_collection_001
 - RunnerDbService.upsertCapabilities -> runner_db_upsert_cap_002
+- RunnerDbService.findAppBySolution -> runner_db_find_app_solution_005
 - RunnerDbMigrationService.run -> runner_db_migration_run_003
 - RunnerDbMigrationService.bootstrapCollections -> runner_db_migration_bootstrap_004
+- RunnerDbMigrationService.ensureCodeAgentTargetIndexes -> runner_db_target_indexes_006
 
 模块功能描述（Description）
-Runner 管理库模块为独立 Mongo 库提供集合访问与迁移初始化能力，覆盖连接历史、Hook 失败、应用/能力/资源/WebMCP/MCP/Skill 等核心数据集合。
+Runner 管理库模块为独立 Mongo 库提供集合访问与迁移初始化能力，覆盖连接历史、Hook 失败、应用/能力/资源/WebMCP/MCP/Skill/Solution 等核心数据集合。code-agent 目标确保链路使用 runner_solutions 与 runner_apps 保存初始化状态。

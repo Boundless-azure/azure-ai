@@ -91,7 +91,8 @@ export class PluginService {
   }
 
   /**
-   * 录入应用：通过目录读取 plugin.conf.ts，生成关键词并入库（upsert by name+version）
+   * 录入应用：通过目录读取 plugin.conf.js/plugin.conf.ts，生成关键词并入库
+   * @keyword-en register-app, plugin-config
    */
   async registerByDir(
     pluginDir: string,
@@ -203,36 +204,49 @@ export class PluginService {
   }
 
   /**
-   * 从目录加载 plugin.conf.ts（TS 文件），使用 TypeScript 在运行时转译并以 data:URL 的方式动态导入
+   * 从目录加载 plugin.conf.js / plugin.conf.ts，JS 直接加载，TS 运行时转译后加载。
    * @param dir 插件目录（相对或绝对路径）
    * @returns 解析后的 PluginConfig
    * @throws 当找不到配置或导出不符合约定时抛出错误
+   * @keyword-cn 插件配置, JS配置, TS兼容
+   * @keyword-en plugin-config, js-config, ts-compat
    */
   private async loadConfig(dir: string): Promise<PluginConfig> {
-    const confPathTs = path.isAbsolute(dir)
-      ? path.join(dir, 'plugin.conf.ts')
-      : path.join(process.cwd(), dir, 'plugin.conf.ts');
-    if (!fs.existsSync(confPathTs)) {
-      throw new Error(`plugin.conf.ts not found in ${dir}`);
-    }
-    const source = fs.readFileSync(confPathTs, 'utf-8');
-    const transpiled = ts.transpileModule(source, {
-      compilerOptions: {
-        target: ts.ScriptTarget.ES2019,
-        // Use CommonJS to allow loading via require() in Jest/Node
-        module: ts.ModuleKind.CommonJS,
-        esModuleInterop: true,
-        moduleResolution: ts.ModuleResolutionKind.NodeJs,
-        skipLibCheck: true,
-        isolatedModules: true,
-      },
-      reportDiagnostics: false,
-    });
+    const baseDir = path.isAbsolute(dir) ? dir : path.join(process.cwd(), dir);
+    const confPathJs = path.join(baseDir, 'plugin.conf.js');
+    const confPathTs = path.join(baseDir, 'plugin.conf.ts');
+    const confPath = fs.existsSync(confPathJs)
+      ? confPathJs
+      : fs.existsSync(confPathTs)
+        ? confPathTs
+        : null;
 
-    const code = transpiled.outputText;
-    // Write transpiled code to a temporary .cjs file to avoid Jest resolver issues with data: URLs
+    if (!confPath) {
+      throw new Error(`plugin.conf.js or plugin.conf.ts not found in ${dir}`);
+    }
+
+    const source = fs.readFileSync(confPath, 'utf-8');
+    let code = source;
+    if (confPath.endsWith('.ts')) {
+      const transpiled = ts.transpileModule(source, {
+        compilerOptions: {
+          target: ts.ScriptTarget.ES2019,
+          // Use CommonJS to allow loading via require() in Jest/Node
+          module: ts.ModuleKind.CommonJS,
+          esModuleInterop: true,
+          moduleResolution: ts.ModuleResolutionKind.NodeJs,
+          skipLibCheck: true,
+          isolatedModules: true,
+        },
+        reportDiagnostics: false,
+      });
+      code = transpiled.outputText;
+    }
+
+    // Write code to a temporary .cjs file to avoid Jest resolver issues with data: URLs
+    // and to keep CommonJS plugin.conf.js loading cache-free between registrations.
     const hash = createHash('sha1')
-      .update(confPathTs + source)
+      .update(confPath + source)
       .digest('hex')
       .slice(0, 8);
     const tempFile = path.join(
@@ -259,7 +273,9 @@ export class PluginService {
       confUnknown = rec['default'] ?? rec['pluginConfig'] ?? mod;
     }
     if (!isPartialPluginConfig(confUnknown)) {
-      throw new Error('plugin.conf.ts must export default PluginConfig');
+      throw new Error(
+        'plugin.conf.js or plugin.conf.ts must export PluginConfig',
+      );
     }
     validatePluginConfig(confUnknown);
     return confUnknown;

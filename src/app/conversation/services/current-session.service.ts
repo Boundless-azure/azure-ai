@@ -176,6 +176,17 @@ export interface CurrentSessionInitTipSuggestions {
 }
 
 /**
+ * init_tip server-side 推荐的额外上下文 (非 LLM declared, 由 tool handler 从运行时探测后传入).
+ *  - hasCallHistory :: 本会话之前轮次是否已有成功 call_hook 记录 (call_log 非空); true 时 tipNote 提示优先走 callLog 复用, 不必每轮重走完整发现链路
+ *  - isProactive :: 当前是否为主动对话模式 (Agent 主动发起, 用户尚未说话); true 时 tipNote 追加主动消息发送提醒
+ * @keyword-en init-tip-context, has-call-history, is-proactive
+ */
+export interface CurrentSessionInitTipContext {
+  hasCallHistory?: boolean;
+  isProactive?: boolean;
+}
+
+/**
  * 保底机制结果 :: 字段填充供监控, lazy 当前禁用 (永远 false).
  * @keyword-en current-session-guard-result, monitor-only
  */
@@ -508,18 +519,20 @@ export class CurrentSessionService {
   /**
    * 生成 init_tip server-side 推荐 :: 返三大标准发现链路 + 一句话本轮总览.
    *  - discoveryChains 始终返回完整三条 (callLog / knowledge / hook), LLM 找不到数据时按链路自底向上发现
-   *  - tipNote 按 declared 强调本轮该走哪条 (纯聊天告诉 LLM 不必走链路)
-   *  - 同步, 不读 DB
+   *  - tipNote 按 declared + context 强调本轮该走哪条 (纯聊天告诉 LLM 不必走链路;
+   *    context.hasCallHistory=true 提示优先 callLog 复用; context.isProactive=true 追加主动消息发送提醒)
+   *  - 同步, 不读 DB (hasCallHistory / isProactive 由 tool handler 探测后传入)
    * @keyword-en produce-init-tip-suggestions, discovery-chains
    */
   produceInitTip(
     declared: CurrentSessionInitTip,
+    context?: CurrentSessionInitTipContext,
   ): CurrentSessionInitTipSuggestions {
     return {
       directHooks: buildDirectHooks(),
       discoveryChains: buildDiscoveryChains(),
       usageRules: buildUsageRules(),
-      tipNote: buildTipNote(declared),
+      tipNote: buildTipNote(declared, context),
     };
   }
 
@@ -851,35 +864,61 @@ function buildUsageRules(): string[] {
 }
 
 /**
- * 构造 tipNote 一句话本轮总览; 按 declared 强调走哪条链路.
- * @keyword-en build-tip-note
+ * 构造 tipNote 一句话本轮总览; 按 declared + context 强调走哪条链路.
+ *  - context.isProactive=true :: 前置主动消息发送提醒 (主动对话用户尚未说话, 不 sendMsg 等于消息丢失)
+ *  - context.hasCallHistory=true 且 needHook :: needHook 链路改提示"先 callLog 复用近期成功调用, 不必每轮重走完整发现链路"
+ * @keyword-en build-tip-note, proactive-reminder, call-log-reuse
  */
-function buildTipNote(declared: CurrentSessionInitTip): string {
-  const parts: string[] = [];
+function buildTipNote(
+  declared: CurrentSessionInitTip,
+  context?: CurrentSessionInitTipContext,
+): string {
+  const prefix: string[] = [];
+  if (context?.isProactive) {
+    prefix.push(
+      '⚠ PROACTIVE TURN :: this dialogue is self-initiated by me — the user has NOT spoken yet. ' +
+        'I MUST finish by calling call_hook saas.app.conversation.sendMsg to actually reach the user; ' +
+        'returning final prose without sendMsg delivers nothing in proactive mode.',
+    );
+  }
+  const chainParts: string[] = [];
   if (declared.needHistory) {
-    parts.push(
+    chainParts.push(
       'Need to recall past conversation in this session → walk the history chain (smartTags → smartSearch → smartMessages). NEVER answer "what we discussed before" from memory or from the last 18 messages alone.',
     );
   }
   if (declared.needKnowledge && declared.needHook) {
-    parts.push(
+    chainParts.push(
       'BOTH knowledge and business hooks needed. Follow the three discovery chains (callLog → knowledge → hook) bottom-up when context is insufficient.',
     );
   } else if (declared.needKnowledge) {
-    parts.push(
+    chainParts.push(
       'Authoritative knowledge needed. Walk the knowledge chain: getTag → search → getToc → getChapter.',
     );
   } else if (declared.needHook) {
-    parts.push(
-      'Business hook needed. ' +
-        'MANDATORY FIRST STEP → walk discoveryChains.component (get_hook_tag isWeb:true → search_hook isWeb:true): ' +
-        'a Web Component Hook handles data fetching internally — if one matches, output hook fence + sendMsg and you are DONE, no further hook calls needed. ' +
-        'Only fall back to callLog chain then regular hook chain if the component chain finds nothing.',
-    );
+    if (context?.hasCallHistory) {
+      chainParts.push(
+        'Business hook needed AND this session already has prior successful hook calls → ' +
+          'FIRST call_hook saas.app.conversation.callHistory.query [{}] to find a recent matching call, ' +
+          'then re-query with { id, includeDetail:true } and reuse its payload shape directly. ' +
+          'Only if nothing matches, fall back to the component chain then the full hook discovery chain — ' +
+          'do NOT re-walk the whole discovery chain every turn when call history can be reused.',
+      );
+    } else {
+      chainParts.push(
+        'Business hook needed. ' +
+          'MANDATORY FIRST STEP → walk discoveryChains.component (get_hook_tag isWeb:true → search_hook isWeb:true): ' +
+          'a Web Component Hook handles data fetching internally — if one matches, output hook fence + sendMsg and you are DONE, no further hook calls needed. ' +
+          'Only fall back to callLog chain then regular hook chain if the component chain finds nothing.',
+      );
+    }
   }
-  if (parts.length === 0) {
-    return 'Pure chat this turn — no discovery needed. Call call_hook saas.app.conversation.sendMsg once and finish.';
+  if (chainParts.length === 0) {
+    return [
+      ...prefix,
+      'Pure chat this turn — no discovery needed. Call call_hook saas.app.conversation.sendMsg once and finish.',
+    ].join(' ');
   }
-  parts.push('Read usageRules before walking any chain.');
-  return parts.join(' ');
+  chainParts.push('Read usageRules before walking any chain.');
+  return [...prefix, ...chainParts].join(' ');
 }

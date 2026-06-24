@@ -28,6 +28,7 @@
   - getKnowledgeAssignments(agentId)
   - updateKnowledgeAssignments(agentId, bookIds)
   - update(id, dto)
+  - validateAiModelIds(modelIds)
   - delete(id)
 - AgentExecutionService
   - list(query)
@@ -64,6 +65,8 @@ Agent知识分配表 -> app/agent/entities/agent-knowledge-assignment.entity.ts
 用途说明 -> app/agent/entities/agent.entity.ts
 拟人昵称 -> app/agent/entities/agent.entity.ts
 头像地址 -> app/agent/entities/agent.entity.ts
+AI模型槽位 -> app/agent/services/agent.service.ts
+模型ID校验 -> app/agent/services/agent.service.ts
 节点状态 -> app/agent/entities/agent-execution.entity.ts
 最新返回 -> app/agent/entities/agent-execution.entity.ts
 上下文关联 -> app/agent/entities/agent-execution.entity.ts
@@ -73,6 +76,7 @@ Agent知识分配表 -> app/agent/entities/agent-knowledge-assignment.entity.ts
 - AgentService.getKnowledgeAssignments -> agent_knowledge_state_003
 - AgentService.updateKnowledgeAssignments -> agent_knowledge_update_004
 - AgentService.update -> 5e9d114f
+- AgentService.validateAiModelIds -> agent_model_slot_id_005
 - AgentService.delete -> 9b4c77a2
 - AgentExecutionService.list -> 3d0c9f21
 - AgentExecutionService.update -> 2b7a8890
@@ -84,3 +88,4 @@ Agent知识分配表 -> app/agent/entities/agent-knowledge-assignment.entity.ts
 
 模块功能描述（Description）
 本模块提供 Agent、Agent 知识分配与其执行记录的持久化与接口，仅支持查询、修改（受限字段）与删除。Agent 修改允许更新"昵称""用途说明""头像地址""AI模型ID列表"；知识分配允许为单个 Agent 绑定数据库知识书本，并自动并入全部本地知识。执行记录允许更新节点状态、最新返回与上下文关联。
+AI模型ID列表必须保存 `ai_models.id`，不接受模型 name；更新时会校验槽位内每个值都能解析为启用模型 ID，运行时只在当前 Agent 已分配模型内按最近槽位回退，Agent 未分配模型时不会兜底到其他供应商。

@@ -3,7 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { ContextService } from './services/context.service';
 import { AIModelService } from './services/ai-model.service';
-import { MessageKeywordsService } from './services/message.keywords.service';
 import {
   AIModelEntity,
   PromptTemplateEntity,
@@ -40,15 +39,8 @@ import {
     },
     ContextService,
     AIModelService,
-    MessageKeywordsService,
   ],
-  exports: [
-    'AI_CORE_OPTIONS',
-    ContextService,
-    AIModelService,
-    MessageKeywordsService,
-    TypeOrmModule,
-  ],
+  exports: ['AI_CORE_OPTIONS', ContextService, AIModelService, TypeOrmModule],
 })
 export class AICoreModule {
   /**

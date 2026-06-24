@@ -1,90 +1,103 @@
-# Solution 模块 (SaaS)
+# 模块名称 (Module Name)
 
-**模块路径**: `src/app/solution/`
+SaaS Solution 模块
 
-## 模块功能描述
+## 概述 (Overview)
 
-Solution 管理模块。CRUD 落本地表 (TypeORM); 列表/标签/Runner 列表通过 RunnerHookRpcService
-跨进程聚合所有 mounted Runner 上的真实数据 (`runner.app.solution.list` hook), 不再依赖 mock。
-市场 (marketplace) 与"我的购买"(purchases) 暂为占位实现, 前端入口已切到"开发中"卡片。
+提供 SaaS 侧 Solution 管理、跨 Runner 聚合检索、批量详情、批量应用列表和批量单元列表能力。HTTP 路由与 Hook 同源声明，外部入口均在注册处同址挂载 `@CheckAbility` 与 `@HookRoute`。
 
-SolutionController 声明 `@HookController({ pluginName: 'solution', tags: ['solution'] })`。
-所有控制器方法同时挂 `@CheckAbility` + `@HookRoute`, ability 元数据由
-`HookControllerExplorerService` 自动镜像进 hook metadata.requiredAbility,
-LLM 调用走 `HookAbilityMiddleware` 兜底鉴权。
+## 文件清单 (File List)
 
-## 关键词索引
+- `entities/solution.entity.ts` — Solution TypeORM 实体。
+- `entities/solution-purchase.entity.ts` — Solution 购买记录实体。
+- `controllers/solution.controller.ts` — Solution HTTP 与 Hook 入口。
+- `services/solution.service.ts` — Solution CRUD、Runner hook 聚合与批量关联查询。
+- `types/solution.types.ts` — Zod schema、请求类型与响应类型。
+- `enums/solution.enums.ts` — Solution 状态、来源、包含内容枚举。
 
-- Solution 跨 Runner 聚合 -> solution.service.ts (aggregateFromRunners)
-- Solution 列表查询 -> solution.controller.ts (GET /solutions, hook saas.app.solution.list)
-- Solution 创建/更新/删除 -> solution.controller.ts
-- Solution 安装 -> solution.controller.ts (POST /solutions/:id/install)
-- Solution 卸载 -> solution.controller.ts (DELETE /solutions/:id/install)
-- Solution 标签频次榜 -> solution.service.ts (getTags)
-- Runner 列表 -> solution.service.ts (getRunners)
-- 占位接口 (市场/购买) -> solution.service.ts (listMarketplace, getPurchases)
+## 函数清单 (Function List)
 
-## 模块文件
+- `SolutionController.create(body, req)` — 创建本地 Solution 记录 | keywords: create-solution
+- `SolutionController.searchRunnerSolutions(body)` — 搜索一个或多个 Runner 上的 Solution 摘要 | keywords: runner-solution-search, batch-runner
+- `SolutionController.getBatchDetails(body)` — 批量获取 Solution 详情并包含 apps/units | keywords: batch-solution-detail, app-unit-detail
+- `SolutionController.listSolutionApps(body)` — 批量列出 Solution 关联应用 | keywords: solution-app-list, batch-solution-association
+- `SolutionController.listSolutionUnits(body)` — 批量列出 Solution 关联单元 | keywords: solution-unit-list, batch-solution-association
+- `SolutionController.getById(id)` — 获取本地 Solution 详情 | keywords: get-solution, Solution详情
+- `SolutionController.update(id, body, req)` — 更新本地 Solution 记录 | keywords: update-solution
+- `SolutionController.delete(id)` — 软删除本地 Solution 记录 | keywords: delete-solution
+- `SolutionController.list(query)` — 跨 Runner 聚合 Solution 列表 | keywords: list-solutions
+- `SolutionController.listMarketplace(query)` — 返回 marketplace 占位列表 | keywords: list-marketplace
+- `SolutionController.install(id, body, req)` — 记录 Solution 安装到指定 Runner | keywords: install-solution
+- `SolutionController.uninstall(id, body, req)` — 从指定 Runner 卸载 Solution | keywords: uninstall-solution
+- `SolutionController.getPurchases(req)` — 返回购买记录占位列表 | keywords: get-purchases
+- `SolutionController.purchase(body, req)` — 创建 Solution 购买记录 | keywords: purchase-solution
+- `SolutionController.getRunners()` — 列出可见 Runner | keywords: get-runners
+- `SolutionController.getTags()` — 聚合 Solution 标签频次 | keywords: get-tags
+- `SolutionService.create(userId, data)` — 创建本地 Solution 实体 | keywords: create-solution
+- `SolutionService.getById(id)` — 按本地 id 获取 Solution 实体 | keywords: get-solution-by-id
+- `SolutionService.update(id, userId, data)` — 更新 Solution 实体 | keywords: update-solution
+- `SolutionService.delete(id)` — 软删除 Solution 实体 | keywords: delete-solution
+- `SolutionService.list(query)` — 按 runnerId/runnerIds 聚合并分页 Solution | keywords: list-solutions, cross-runner-aggregate, hook-dispatch, in-memory-pagination
+- `SolutionService.searchRunnerSolutions(query)` — 搜索一个或多个 Runner 的 Solution 摘要 | keywords: runner-solution-search, batch-runner
+- `SolutionService.getDetailsByIds(ids)` — 批量解析 Solution 详情 | keywords: batch-solution-detail, app-unit-detail
+- `SolutionService.listAppsBySolutionIds(solutionIds)` — 批量列出 Solution 应用 | keywords: solution-app-list, batch-solution-association
+- `SolutionService.listUnitsBySolutionIds(solutionIds)` — 批量列出 Solution 单元 | keywords: solution-unit-list, batch-solution-association
+- `SolutionService.listMarketplace(query)` — 返回 marketplace 占位分页 | keywords: list-marketplace-placeholder
+- `SolutionService.install(id, runnerIds, userId)` — 更新本地安装 Runner 列表 | keywords: install-solution
+- `SolutionService.uninstall(id, runnerIds, userId)` — 卸载本地或 runner 合成 id Solution | keywords: uninstall-solution, dual-id-shape, cross-process-dispatch
+- `SolutionService.getTags()` — 统计聚合结果中的标签频次 | keywords: get-tags
+- `SolutionService.getRunners()` — 返回 Runner 展示列表 | keywords: get-runners
+- `SolutionService.getPurchases(userId)` — 返回购买记录占位数据 | keywords: get-purchases-placeholder
+- `SolutionService.purchase(userId, solutionId, solutionName, solutionVersion)` — 写入购买记录 | keywords: purchase-solution
+- `SolutionService.listAssociationsBySolutionIds(solutionIds, hookName, normalize)` — 批量调用 Runner 关联 hook | keywords: batch-association-hook, runner-solution-association
+- `SolutionService.getOnlineRunners(runnerIds)` — 过滤 mounted Runner | keywords: online-runner-filter, batch-runner
+- `SolutionService.mergeRunnerIds(runnerId, runnerIds)` — 合并单数和复数 Runner id | keywords: merge-runner-ids, batch-runner
+- `SolutionService.splitSolutionRefs(ids)` — 拆分原生 solutionId 与合成 id | keywords: split-solution-refs, synthetic-solution-id
+- `SolutionService.buildAssociationPayload(refs, runnerId)` — 构造 Runner 批量关联 payload | keywords: association-payload, solution-id-list
+- `SolutionService.aggregateFromRunners(runnerId, runnerIds)` — 跨 Runner 聚合 Solution 列表 | keywords: cross-runner-aggregate, batch-runner
+- `SolutionService.extractSolutionItems(rawResult)` — 从 Runner HookResult 提取 items | keywords: extract-solution-items
+- `SolutionService.extractHookData(rawResult)` — 从 Runner HookResult 提取 data | keywords: extract-hook-data, runner-hook-reply
+- `SolutionService.normalizeRunnerSolution(raw, runnerId)` — 标准化 Runner Solution 为 SaaS 列表项 | keywords: normalize-runner-solution
+- `SolutionService.normalizeRunnerSolutionSearchItem(raw, runnerId)` — 标准化搜索返回项 | keywords: normalize-solution-search, runner-solution-search
+- `SolutionService.normalizeRunnerSolutionDetail(raw, runnerId)` — 标准化详情返回项 | keywords: normalize-solution-detail, app-unit-detail
+- `SolutionService.normalizeRunnerApp(raw, runnerId, fallbackSolutionId, fallbackSolutionName)` — 标准化应用关联项 | keywords: normalize-solution-app, app-association
+- `SolutionService.normalizeRunnerUnit(raw, runnerId, fallbackSolutionId, fallbackSolutionName)` — 标准化单元关联项 | keywords: normalize-solution-unit, unit-association
+- `SolutionService.readString(raw, key)` — 安全读取字符串字段 | keywords: read-string-field, payload-normalize
 
-- `entities/solution.entity.ts` - Solution 实体
-- `entities/solution-purchase.entity.ts` - Solution 购买记录实体
-- `controllers/solution.controller.ts` - 控制器 (Hook + CASL 双装饰器)
-- `services/solution.service.ts` - 业务服务 (跨 Runner 聚合 + CRUD)
-- `types/solution.types.ts` - 类型与 Zod schema
-- `enums/solution.enums.ts` - 枚举定义
+## 关键词索引 (Keyword Index)
 
-## API 端点 (与 Hook 同源)
+| 中文关键词 | English Keyword |
+|---|---|
+| Runner方案搜索 | runner-solution-search |
+| 批量Runner | batch-runner |
+| 批量Solution详情 | batch-solution-detail |
+| 应用单元详情 | app-unit-detail |
+| Solution应用列表 | solution-app-list |
+| Solution单元列表 | solution-unit-list |
+| 批量Solution关联 | batch-solution-association |
+| 跨Runner聚合 | cross-runner-aggregate |
+| 合成Solution标识 | synthetic-solution-id |
+| Runner方案关联 | runner-solution-association |
 
-| 方法 | 路径 | Hook | CASL |
-|------|------|------|------|
-| POST | /solutions | saas.app.solution.create | create:solution |
-| GET | /solutions/:id | saas.app.solution.get | read:solution |
-| PUT | /solutions/:id | saas.app.solution.update | update:solution |
-| DELETE | /solutions/:id | saas.app.solution.delete | delete:solution |
-| GET | /solutions | saas.app.solution.list | read:solution |
-| GET | /solutions/marketplace/list | saas.app.solution.marketplaceList | read:solution |
-| POST | /solutions/:id/install | saas.app.solution.install | install:solution |
-| DELETE | /solutions/:id/install | saas.app.solution.uninstall | uninstall:solution |
-| GET | /solutions/purchases/list | saas.app.solution.purchasesList | read:solution |
-| POST | /solutions/purchase | saas.app.solution.purchase | purchase:solution |
-| GET | /solutions/runners | saas.app.solution.getRunners | read:runner |
-| GET | /solutions/tags/list | saas.app.solution.getTags | read:solution |
+## 类型导出 (Type Exports)
 
-## 核心函数
+- `CreateSolutionSchema` — 创建 Solution 请求 schema | keywords: create-solution
+- `UpdateSolutionSchema` — 更新 Solution 请求 schema | keywords: update-solution
+- `ListSolutionsQuerySchema` — Solution 列表查询 schema | keywords: list-solutions
+- `SearchRunnerSolutionsSchema` — Runner Solution 搜索 schema | keywords: runner-solution-search, batch-runner
+- `BatchSolutionIdsSchema` — 批量 Solution 详情 id schema | keywords: batch-solution-detail, solution-id-list
+- `BatchSolutionAssociationsSchema` — 批量 Solution 关联查询 schema | keywords: batch-solution-association, solution-id-list
+- `SolutionResponse` — SaaS Solution 列表响应类型。
+- `SolutionSearchItem` — Runner Solution 搜索返回类型。
+- `SolutionDetailResponse` — Runner Solution 详情返回类型。
+- `SolutionAppListItem` — Solution 应用关联返回类型。
+- `SolutionUnitListItem` — Solution 单元关联返回类型。
 
-### services/solution.service.ts
+## 模块功能描述 (Module Function Description)
 
-| 函数名 | 关键词描述 |
-|--------|-----------|
-| `create` | 创建 Solution (本地表) |
-| `getById` | 取 Solution 详情 (本地表) |
-| `update` | 更新 Solution |
-| `delete` | 软删除 |
-| `list` | 跨 Runner 聚合 + 内存分页/筛选 |
-| `listMarketplace` | 占位, 返回空分页 (前端"开发中") |
-| `install` | 维护本地 SolutionEntity.runnerIds |
-| `uninstall` | 移除指定 runnerIds |
-| `getTags` | 从聚合结果统计 tag 频次 |
-| `getRunners` | 返回可见 Runner 列表 (alias / status) |
-| `getPurchases` | 占位, 返回空数组 |
-| `purchase` | 落购买记录 (前端入口暂关闭) |
-| `aggregateFromRunners` | 拉所有 mounted Runner, 并行 callHook(runner.app.solution.list), 同名合并, 软跳过离线 |
-| `extractSolutionItems` | 从 hook reply 提取 result[0].data.items |
-| `normalizeRunnerSolution` | 把 Runner 端 SolutionInfo 标准化成 SaaS SolutionResponse |
-
-## Solution 信息结构 (前端展示侧)
-
-```typescript
-interface SolutionResponse {
-  id: string;          // 聚合时拼装为 `<runnerId>::<name>@<version>`
-  runnerIds: string[]; // 同一 Solution 在多 Runner 上时累加
-  name: string;
-  version: string;
-  source: 'self_developed' | 'marketplace';
-  location: string | null;
-  summary: string | null;
-  description: string | null;
-  includes: ('app' | 'unit' | 'workflow' | 'agent')[] | null;
-  ...
-}
-```
+- SaaS hook: `saas.app.solution.searchRunner`，payload `{ runnerId?, runnerIds?, q?, source?, include? }`，返回 `items[]`，每项包含 `id/runnerId/solutionId/name/version/summary`。
+- SaaS hook: `saas.app.solution.getBatch`，payload `{ ids }`，支持合成 id 与 runner 原生 `solutionId`，返回详情 `items[]`。
+- SaaS hook: `saas.app.solution.listApps`，payload `{ solutionIds }`，返回 app 关联 `items[]`。
+- SaaS hook: `saas.app.solution.listUnits`，payload `{ solutionIds }`，返回 unit 关联 `items[]`。
+- 旧 SaaS hook: `saas.app.solution.list` 继续可用，并支持 `runnerId` 或 `runnerIds` 过滤 mounted runners。
+- Runner 调用策略: SaaS 只通过 `RunnerHookRpcService.callHook` 调 runner，不直接读 runner 存储。

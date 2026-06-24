@@ -117,7 +117,8 @@ export class RoleController {
   @CheckAbility('read', 'role')
   @HookRoute({
     hook: 'saas.app.identity.roleCount',
-    description: '角色总数统计 :: 返回 { count: number }，支持按 organizationId 过滤',
+    description:
+      '角色总数统计 :: 返回 { count: number }，支持按 organizationId 过滤',
     args: [onRbacRoleCountInput],
   })
   async count(@Query() query: { organizationId?: string }) {

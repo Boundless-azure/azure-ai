@@ -2,6 +2,9 @@ import { forwardRef, Module } from '@nestjs/common';
 import { AICoreModule } from '@core/ai/ai-core.module';
 import { RunnerModule } from '@/app/runner/runner.module';
 import { ConversationModule } from '@/app/conversation/conversation.module';
+import { PluginModule } from '@/core/plugin/plugin.module';
+import { SolutionModule } from '@/app/solution/solution.module';
+import { LangGraphCheckpointModule } from '@/core/langgraph/checkpoint/checkpoint.module';
 import { AgentRuntimeService } from './services/agent-runtime.service';
 import { AgentLoaderService } from './services/agent-loader.service';
 import { AgentRuntimeController } from './controller/agent-runtime.controller';
@@ -18,6 +21,9 @@ import { AgentRuntimeController } from './controller/agent-runtime.controller';
 @Module({
   imports: [
     AICoreModule.forFeature(),
+    PluginModule,
+    SolutionModule,
+    LangGraphCheckpointModule,
     forwardRef(() => RunnerModule),
     forwardRef(() => ConversationModule),
   ],

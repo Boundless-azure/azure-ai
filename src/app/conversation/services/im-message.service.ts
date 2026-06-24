@@ -503,7 +503,9 @@ export class ImMessageService {
       senderId,
       mentions,
     });
-    this.smartService.scheduleAnalyze(session.sessionId);
+    this.smartService.scheduleAnalyze(session.sessionId, {
+      agentPrincipalId: agentTargetIds[0] ?? null,
+    });
 
     // === AI 触发逻辑 ===
     if (!options?.skipAgentTrigger) {
@@ -972,7 +974,9 @@ export class ImMessageService {
       true,
     );
 
-    const invocationContext = await this.buildAgentInvocationContext(payload);
+    const invocationContext = await this.buildAgentInvocationContext(payload, {
+      isProactive: true,
+    });
     this.currentSession.beginTurn(payload.sessionId, payload.agentPrincipalId);
     const inferredNeed = this.currentSession.inferInitTipFromMessages(messages);
     const gen = this.agentRuntimeService.startDialogue(
@@ -1725,11 +1729,14 @@ export class ImMessageService {
    * 构建 Agent 调用 Hook 的运行时上下文; 鉴权主体以 Agent 为准, 业务租户以当前触发用户为准。
    * @keyword-en build-agent-hook-invocation-context
    */
-  private async buildAgentInvocationContext(payload: {
-    sessionId: string;
-    agentPrincipalId: string;
-    triggerMessageId: string;
-  }): Promise<HookInvocationContext> {
+  private async buildAgentInvocationContext(
+    payload: {
+      sessionId: string;
+      agentPrincipalId: string;
+      triggerMessageId: string;
+    },
+    opts?: { isProactive?: boolean },
+  ): Promise<HookInvocationContext> {
     const triggerMessage = await this.messageRepo.findOne({
       where: {
         id: payload.triggerMessageId,
@@ -1773,6 +1780,7 @@ export class ImMessageService {
         sessionId: payload.sessionId,
         triggerMessageId: payload.triggerMessageId,
         ...(tenantId ? { tenantId } : {}),
+        ...(opts?.isProactive ? { isProactive: true } : {}),
       },
     };
   }

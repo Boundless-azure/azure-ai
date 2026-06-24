@@ -12,6 +12,11 @@ import {
   PaginatedSolutionsResponse,
   TagResponse,
   SolutionPurchaseResponse,
+  SearchRunnerSolutionsRequest,
+  SolutionSearchItem,
+  SolutionDetailResponse,
+  SolutionAppListItem,
+  SolutionUnitListItem,
 } from '../types/solution.types';
 import {
   PluginStatus,
@@ -29,6 +34,7 @@ import { RunnerStatus } from '@/app/runner/enums/runner.enums';
  *              不再依赖 mock。市场/购买相关接口暂保留占位 (前端"开发中")。
  * @keywords-cn Solution服务, 跨Runner聚合, hook调度, 真实数据
  * @keywords-en solution-service, cross-runner-aggregate, hook-dispatch, real-data
+ * @keyword-en solution-service, cross-runner-aggregate, hook-dispatch, real-data
  */
 @Injectable()
 export class SolutionService {
@@ -144,10 +150,11 @@ export class SolutionService {
    *              没有 runner 在线则返回空, 不再走 mock。
    * @keywords-cn 列出solution, 跨runner聚合, hook调度, 内存分页
    * @keywords-en list-solutions, cross-runner-aggregate, hook-dispatch, in-memory-pagination
+   * @keyword-en list-solutions, cross-runner-aggregate, hook-dispatch, in-memory-pagination
    */
   async list(query: ListSolutionsQuery): Promise<PaginatedSolutionsResponse> {
-    const { page, pageSize, tag, q, source, runnerId } = query;
-    const aggregated = await this.aggregateFromRunners(runnerId);
+    const { page, pageSize, tag, q, source, runnerId, runnerIds } = query;
+    const aggregated = await this.aggregateFromRunners(runnerId, runnerIds);
 
     let filtered = aggregated;
     if (source !== undefined) {
@@ -180,10 +187,124 @@ export class SolutionService {
   }
 
   /**
-   * @title 列出市场 Solution (占位)
-   * @description 市场功能"开发中", 直接返回空分页, 不再访问 mock。
-   *              前端 marketplace tab 已切到占位卡片, 此处保留是为了 API 兼容性。
+   * @title Search runner solutions
+   * @description Searches mounted runners for solutions and returns id/name/summary records.
+   * @keyword-en runner-solution-search, batch-runner
+   * @keyword-cn Runner方案搜索, 批量Runner
+   */
+  async searchRunnerSolutions(
+    query: SearchRunnerSolutionsRequest,
+  ): Promise<SolutionSearchItem[]> {
+    const runners = await this.getOnlineRunners(
+      this.mergeRunnerIds(query.runnerId, query.runnerIds),
+    );
+    if (runners.length === 0) return [];
+    const payload = {
+      ...(query.q ? { q: query.q } : {}),
+      ...(query.source ? { source: query.source } : {}),
+      ...(query.include ? { include: query.include } : {}),
+    };
+    const hookName =
+      query.q || query.source || query.include
+        ? 'runner.app.solution.search'
+        : 'runner.app.solution.list';
+    const replies = await Promise.all(
+      runners.map((runner) =>
+        this.runnerHookRpc.callHook(runner.id, {
+          hookName,
+          payload: [payload],
+        }),
+      ),
+    );
+    return runners.flatMap((runner, index) => {
+      const reply = replies[index];
+      if (!reply || (reply.errorMsg ?? []).length > 0) return [];
+      return this.extractSolutionItems(reply.result).map((raw) =>
+        this.normalizeRunnerSolutionSearchItem(raw, runner.id),
+      );
+    });
+  }
+
+  /**
+   * @title Get batch solution details
+   * @description Resolves one or more solution ids into runner details with apps and units.
+   * @keyword-en batch-solution-detail, app-unit-detail
+   * @keyword-cn 批量Solution详情, 应用单元详情
+   */
+  async getDetailsByIds(ids: string[]): Promise<SolutionDetailResponse[]> {
+    const refs = this.splitSolutionRefs(ids);
+    const runners = await this.getOnlineRunners(
+      refs.rawIds.length > 0 ? undefined : Array.from(refs.runnerIds),
+    );
+    if (runners.length === 0) return [];
+
+    const tasks = runners.flatMap((runner) => {
+      const names = Array.from(refs.namesByRunner.get(runner.id) ?? []);
+      const rawTasks = refs.rawIds.map((solutionId) => ({
+        runnerId: runner.id,
+        payload: { solutionId },
+      }));
+      const nameTasks = names.map((name) => ({
+        runnerId: runner.id,
+        payload: { name },
+      }));
+      return [...rawTasks, ...nameTasks];
+    });
+
+    const replies = await Promise.all(
+      tasks.map((task) =>
+        this.runnerHookRpc.callHook(task.runnerId, {
+          hookName: 'runner.app.solution.get',
+          payload: [task.payload],
+        }),
+      ),
+    );
+
+    return replies.flatMap((reply, index) => {
+      if (!reply || (reply.errorMsg ?? []).length > 0) return [];
+      const raw = this.extractHookData(reply.result);
+      if (!raw) return [];
+      return [this.normalizeRunnerSolutionDetail(raw, tasks[index].runnerId)];
+    });
+  }
+
+  /**
+   * @title List solution apps
+   * @description Lists apps associated with one or more solution ids.
+   * @keyword-en solution-app-list, batch-solution-association
+   * @keyword-cn Solution应用列表, 批量Solution关联
+   */
+  async listAppsBySolutionIds(
+    solutionIds: string[],
+  ): Promise<SolutionAppListItem[]> {
+    return this.listAssociationsBySolutionIds(
+      solutionIds,
+      'runner.app.solution.listApps',
+      (raw, runnerId) => this.normalizeRunnerApp(raw, runnerId),
+    );
+  }
+
+  /**
+   * @title List solution units
+   * @description Lists units associated with one or more solution ids.
+   * @keyword-en solution-unit-list, batch-solution-association
+   * @keyword-cn Solution单元列表, 批量Solution关联
+   */
+  async listUnitsBySolutionIds(
+    solutionIds: string[],
+  ): Promise<SolutionUnitListItem[]> {
+    return this.listAssociationsBySolutionIds(
+      solutionIds,
+      'runner.app.solution.listUnits',
+      (raw, runnerId) => this.normalizeRunnerUnit(raw, runnerId),
+    );
+  }
+
+  /**
+   * @title List marketplace placeholder
+   * @description Returns an empty page while marketplace is disabled.
    * @keyword-en list-marketplace-placeholder
+   * @keyword-cn 市场占位
    */
   listMarketplace(query: ListSolutionsQuery): PaginatedSolutionsResponse {
     return {
@@ -221,6 +342,7 @@ export class SolutionService {
    *              在每个 runnerId 对应 Runner 上物理卸载。任一 Runner 软错不打断其他 Runner 调用。
    * @keywords-cn 卸载solution, 双形态id, 跨进程派发
    * @keywords-en uninstall-solution, dual-id-shape, cross-process-dispatch
+   * @keyword-en uninstall-solution, dual-id-shape, cross-process-dispatch
    */
   async uninstall(
     id: string,
@@ -343,20 +465,146 @@ export class SolutionService {
   }
 
   /**
-   * @title 跨 Runner 聚合 Solution
-   * @description 拿全部 mounted Runner, 并行 callHook(runner.app.solution.list),
-   *              错误/离线 Runner 软跳过, 命中即合并。同名 Solution 以最新 version 为准, 累加 runnerIds。
-   *              runnerId 过滤可仅查单台。
-   * @keywords-cn 跨runner聚合, 并行调度, 软错跳过, 同名合并
-   * @keywords-en cross-runner-aggregate, parallel-dispatch, soft-skip, name-merge
+   * @title List association records by solution ids
+   * @description Calls a runner association hook in batch and normalizes each returned item.
+   * @keyword-en batch-association-hook, runner-solution-association
+   * @keyword-cn 批量关联Hook, Runner方案关联
+   */
+  private async listAssociationsBySolutionIds<T>(
+    solutionIds: string[],
+    hookName: 'runner.app.solution.listApps' | 'runner.app.solution.listUnits',
+    normalize: (raw: Record<string, unknown>, runnerId: string) => T,
+  ): Promise<T[]> {
+    const refs = this.splitSolutionRefs(solutionIds);
+    const runners = await this.getOnlineRunners(
+      refs.rawIds.length > 0 ? undefined : Array.from(refs.runnerIds),
+    );
+    if (runners.length === 0) return [];
+    const tasks = runners
+      .map((runner) => {
+        const payload = this.buildAssociationPayload(refs, runner.id);
+        if (!payload) return null;
+        return { runnerId: runner.id, payload };
+      })
+      .filter(
+        (
+          task,
+        ): task is { runnerId: string; payload: Record<string, string[]> } =>
+          task !== null,
+      );
+
+    const replies = await Promise.all(
+      tasks.map((task) =>
+        this.runnerHookRpc.callHook(task.runnerId, {
+          hookName,
+          payload: [task.payload],
+        }),
+      ),
+    );
+
+    return replies.flatMap((reply, index) => {
+      if (!reply || (reply.errorMsg ?? []).length > 0) return [];
+      return this.extractSolutionItems(reply.result).map((raw) =>
+        normalize(raw, tasks[index].runnerId),
+      );
+    });
+  }
+
+  /**
+   * @title Get online runners
+   * @description Filters mounted runners, optionally constrained by runner ids.
+   * @keyword-en online-runner-filter, batch-runner
+   * @keyword-cn 在线Runner过滤, 批量Runner
+   */
+  private async getOnlineRunners(
+    runnerIds?: string[],
+  ): Promise<Array<{ id: string; alias: string; status: RunnerStatus }>> {
+    const allowed = new Set((runnerIds ?? []).filter(Boolean));
+    const allRunners = await this.runnerService.list({});
+    return allRunners.filter(
+      (runner) =>
+        runner.status === RunnerStatus.Mounted &&
+        (allowed.size === 0 || allowed.has(runner.id)),
+    );
+  }
+
+  /**
+   * @title Merge runner ids
+   * @description Merges singular and plural runner id inputs into a unique list.
+   * @keyword-en merge-runner-ids, batch-runner
+   * @keyword-cn 合并Runner标识, 批量Runner
+   */
+  private mergeRunnerIds(
+    runnerId?: string,
+    runnerIds?: string[],
+  ): string[] | undefined {
+    const merged = Array.from(
+      new Set([...(runnerId ? [runnerId] : []), ...(runnerIds ?? [])]),
+    ).filter(Boolean);
+    return merged.length > 0 ? merged : undefined;
+  }
+
+  /**
+   * @title Split solution refs
+   * @description Separates raw solution ids from synthetic runner/name ids.
+   * @keyword-en split-solution-refs, synthetic-solution-id
+   * @keyword-cn 拆分Solution引用, 合成Solution标识
+   */
+  private splitSolutionRefs(ids: string[]): {
+    rawIds: string[];
+    runnerIds: Set<string>;
+    namesByRunner: Map<string, Set<string>>;
+  } {
+    const rawIds: string[] = [];
+    const runnerIds = new Set<string>();
+    const namesByRunner = new Map<string, Set<string>>();
+    for (const id of ids) {
+      const synthetic = this.parseSyntheticId(id);
+      if (!synthetic) {
+        rawIds.push(id);
+        continue;
+      }
+      runnerIds.add(synthetic.runnerId);
+      const names = namesByRunner.get(synthetic.runnerId) ?? new Set<string>();
+      names.add(synthetic.name);
+      namesByRunner.set(synthetic.runnerId, names);
+    }
+    return { rawIds: Array.from(new Set(rawIds)), runnerIds, namesByRunner };
+  }
+
+  /**
+   * @title Build association payload
+   * @description Builds one runner payload from raw ids and synthetic names.
+   * @keyword-en association-payload, solution-id-list
+   * @keyword-cn 关联Payload, Solution标识列表
+   */
+  private buildAssociationPayload(
+    refs: {
+      rawIds: string[];
+      namesByRunner: Map<string, Set<string>>;
+    },
+    runnerId: string,
+  ): Record<string, string[]> | null {
+    const names = Array.from(refs.namesByRunner.get(runnerId) ?? []);
+    if (refs.rawIds.length === 0 && names.length === 0) return null;
+    return {
+      ...(refs.rawIds.length > 0 ? { solutionIds: refs.rawIds } : {}),
+      ...(names.length > 0 ? { names } : {}),
+    };
+  }
+
+  /**
+   * @title Aggregate from runners
+   * @description Calls runner.app.solution.list across mounted runners and merges same-name results.
+   * @keyword-en cross-runner-aggregate, batch-runner
+   * @keyword-cn 跨Runner聚合, 批量Runner
    */
   private async aggregateFromRunners(
     runnerId?: string,
+    runnerIds?: string[],
   ): Promise<SolutionResponse[]> {
-    const allRunners = await this.runnerService.list({});
-    const onlineRunners = allRunners.filter(
-      (r) =>
-        r.status === RunnerStatus.Mounted && (!runnerId || r.id === runnerId),
+    const onlineRunners = await this.getOnlineRunners(
+      this.mergeRunnerIds(runnerId, runnerIds),
     );
     if (onlineRunners.length === 0) return [];
 
@@ -402,11 +650,23 @@ export class SolutionService {
   private extractSolutionItems(
     rawResult: unknown,
   ): Array<Record<string, unknown>> {
-    if (!Array.isArray(rawResult)) return [];
-    const first = rawResult[0] as { data?: { items?: unknown } } | undefined;
-    const items = first?.data?.items;
+    const data = this.extractHookData(rawResult);
+    const items = data?.items;
     if (!Array.isArray(items)) return [];
     return items as Array<Record<string, unknown>>;
+  }
+
+  /**
+   * @title Extract hook data
+   * @description Reads the first HookResult data object from a RunnerHookRpc reply.
+   * @keyword-en extract-hook-data, runner-hook-reply
+   * @keyword-cn 提取Hook数据, RunnerHook响应
+   */
+  private extractHookData(rawResult: unknown): Record<string, unknown> | null {
+    if (!Array.isArray(rawResult)) return null;
+    const first = rawResult[0] as { data?: unknown } | undefined;
+    if (!first?.data || typeof first.data !== 'object') return null;
+    return first.data as Record<string, unknown>;
   }
 
   /**
@@ -427,7 +687,7 @@ export class SolutionService {
         : SolutionSource.SELF_DEVELOPED;
     const includes = Array.isArray(raw.includes)
       ? (raw.includes.filter((v) =>
-          ['app', 'unit', 'workflow', 'agent'].includes(String(v)),
+          ['app', 'unit', 'workflow', 'agent', 'view'].includes(String(v)),
         ) as SolutionInclude[])
       : [];
     const installedAt =
@@ -453,6 +713,7 @@ export class SolutionService {
       status: PluginStatus.ACTIVE,
       isPublished: false,
       isInstalled: true,
+      isInitialized: Boolean(raw.isInitialized),
       source: sourceVal,
       location: typeof raw.location === 'string' ? raw.location : null,
       images: Array.isArray(raw.images)
@@ -462,5 +723,140 @@ export class SolutionService {
       createdAt: installedAt,
       updatedAt: installedAt,
     };
+  }
+
+  /**
+   * @title Normalize runner solution search item
+   * @description Converts runner solution metadata into the SaaS search item shape.
+   * @keyword-en normalize-solution-search, runner-solution-search
+   * @keyword-cn Solution搜索标准化, Runner方案搜索
+   */
+  private normalizeRunnerSolutionSearchItem(
+    raw: Record<string, unknown>,
+    runnerId: string,
+  ): SolutionSearchItem {
+    const base = this.normalizeRunnerSolution(raw, runnerId);
+    return {
+      id: base.id,
+      runnerId,
+      solutionId: this.readString(raw, 'solutionId') ?? base.id,
+      name: base.name,
+      version: base.version,
+      summary: base.summary,
+    };
+  }
+
+  /**
+   * @title Normalize runner solution detail
+   * @description Converts runner detail metadata into the SaaS detail response shape.
+   * @keyword-en normalize-solution-detail, app-unit-detail
+   * @keyword-cn Solution详情标准化, 应用单元详情
+   */
+  private normalizeRunnerSolutionDetail(
+    raw: Record<string, unknown>,
+    runnerId: string,
+  ): SolutionDetailResponse {
+    const base = this.normalizeRunnerSolution(raw, runnerId);
+    const solutionId = this.readString(raw, 'solutionId') ?? base.id;
+    const apps = Array.isArray(raw.apps)
+      ? raw.apps
+          .filter((item): item is Record<string, unknown> =>
+            Boolean(item && typeof item === 'object'),
+          )
+          .map((item) =>
+            this.normalizeRunnerApp(item, runnerId, solutionId, base.name),
+          )
+      : [];
+    const units = Array.isArray(raw.units)
+      ? raw.units
+          .filter((item): item is Record<string, unknown> =>
+            Boolean(item && typeof item === 'object'),
+          )
+          .map((item) =>
+            this.normalizeRunnerUnit(item, runnerId, solutionId, base.name),
+          )
+      : [];
+    return { ...base, runnerId, solutionId, apps, units };
+  }
+
+  /**
+   * @title Normalize runner app
+   * @description Converts runner app association payload into a SaaS app list item.
+   * @keyword-en normalize-solution-app, app-association
+   * @keyword-cn Solution应用标准化, 应用关联
+   */
+  private normalizeRunnerApp(
+    raw: Record<string, unknown>,
+    runnerId: string,
+    fallbackSolutionId?: string,
+    fallbackSolutionName?: string,
+  ): SolutionAppListItem {
+    const solutionId =
+      this.readString(raw, 'solutionId') ?? fallbackSolutionId ?? '';
+    const solutionName =
+      this.readString(raw, 'solutionName') ?? fallbackSolutionName ?? '';
+    const appId =
+      this.readString(raw, 'appId') ??
+      `${solutionId}::${this.readString(raw, 'name') ?? 'app'}`;
+    return {
+      id: `${runnerId}::${solutionId}::app::${appId}`,
+      runnerId,
+      solutionId,
+      solutionName,
+      appId,
+      name: this.readString(raw, 'name') ?? 'unknown',
+      version: this.readString(raw, 'version') ?? '0.0.0',
+      description: this.readString(raw, 'description') ?? '',
+      status: this.readString(raw, 'status') ?? 'unknown',
+      isInitialized: Boolean(raw.isInitialized),
+      ...(this.readString(raw, 'location')
+        ? { location: this.readString(raw, 'location') }
+        : {}),
+    };
+  }
+
+  /**
+   * @title Normalize runner unit
+   * @description Converts runner unit association payload into a SaaS unit list item.
+   * @keyword-en normalize-solution-unit, unit-association
+   * @keyword-cn Solution单元标准化, 单元关联
+   */
+  private normalizeRunnerUnit(
+    raw: Record<string, unknown>,
+    runnerId: string,
+    fallbackSolutionId?: string,
+    fallbackSolutionName?: string,
+  ): SolutionUnitListItem {
+    const solutionId =
+      this.readString(raw, 'solutionId') ?? fallbackSolutionId ?? '';
+    const solutionName =
+      this.readString(raw, 'solutionName') ?? fallbackSolutionName ?? '';
+    const unitId =
+      this.readString(raw, 'unitId') ??
+      `${solutionId}::${this.readString(raw, 'unitName') ?? 'unit'}`;
+    return {
+      id: `${runnerId}::${solutionId}::unit::${unitId}`,
+      runnerId,
+      solutionId,
+      solutionName,
+      unitId,
+      unitName: this.readString(raw, 'unitName') ?? 'unknown',
+      source: this.readString(raw, 'source') ?? 'unknown',
+      sourcePath: this.readString(raw, 'sourcePath') ?? '',
+    };
+  }
+
+  /**
+   * @title Read string field
+   * @description Safely reads a string property from an unknown record.
+   * @keyword-en read-string-field, payload-normalize
+   * @keyword-cn 读取字符串字段, Payload标准化
+   */
+  private readString(
+    raw: Record<string, unknown>,
+    key: string,
+  ): string | undefined {
+    const value = raw[key];
+    return typeof value === 'string' ? value : undefined;
   }
 }

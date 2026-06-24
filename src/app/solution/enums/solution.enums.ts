@@ -42,4 +42,5 @@ export enum SolutionInclude {
   UNIT = 'unit',
   WORKFLOW = 'workflow',
   AGENT = 'agent',
+  VIEW = 'view',
 }

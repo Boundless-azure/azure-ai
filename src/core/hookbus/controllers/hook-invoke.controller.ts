@@ -36,8 +36,7 @@ export class HookInvokeController {
       return { ok: false, errorMsg: 'invalid body: ' + parsed.error.message };
     }
     const { hookName, payload } = parsed.data;
-    const authHeader =
-      (req.headers['authorization'] as string | undefined) ?? '';
+    const authHeader = req.headers['authorization'] ?? '';
     const token = authHeader.replace(/^Bearer\s+/i, '');
     // @HookRoute handlers expect payload to be a positional-args array: [arg0, arg1, ...].
     // Normalise so callers can pass a plain object or omit entirely:

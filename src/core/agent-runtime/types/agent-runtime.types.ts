@@ -1,4 +1,56 @@
-import type { ChatMessage } from '@core/ai/types';
+import type {
+  AIModelResponse,
+  ChatMessage,
+  ModelSseEvent,
+} from '@core/ai/types';
+
+/**
+ * @title Agent AI 请求
+ * @description Agent 侧可见的统一 AI 调用入参，不暴露底层模型配置细节
+ * @keywords-cn AI请求, 模型调用, agent适配
+ * @keywords-en ai-request, model-invoke, agent-adapter
+ */
+export interface AgentAiRequest {
+  source?: string;
+  messages: ChatMessage[];
+  systemPrompt?: string;
+  sessionId?: string;
+  conversationGroupId?: string;
+  checkpointer?: unknown;
+  params?: Record<string, unknown>;
+}
+
+/**
+ * @title Agent 模型作用域客户端
+ * @description 已绑定某个槽位或显式模型 ID 的 AI 客户端，支持链式 useModel(index).chatStream 调用
+ * @keywords-cn 模型作用域, 槽位模型, 链式调用
+ * @keywords-en scoped-model, ordered-slot, chained-call
+ * @keyword-cn 模型作用域, 模型ID, 槽位模型
+ * @keyword-en scoped-model, model-id, ordered-slot
+ */
+export interface AgentAiModelClient {
+  /** Returns the resolved ai_models.id. */
+  getModelId(): Promise<string | null>;
+  chat(request: AgentAiRequest): Promise<AIModelResponse>;
+  chatStream(
+    request: AgentAiRequest,
+  ): AsyncGenerator<ModelSseEvent, AIModelResponse, unknown>;
+}
+
+/**
+ * @title Agent AI 适配器
+ * @description 对 Agent 暴露显式模型与槽位模型两种入口，屏蔽 aiModelIds 的解析细节
+ * @keywords-cn AI适配器, 模型槽位, 显式模型
+ * @keywords-en ai-adapter, model-slot, explicit-model
+ */
+export interface AgentAiServer {
+  chat(request: AgentAiRequest & { modelId: string }): Promise<AIModelResponse>;
+  chatStream(
+    request: AgentAiRequest & { modelId: string },
+  ): AsyncGenerator<ModelSseEvent, AIModelResponse, unknown>;
+  useModel(preferredIndex: number): AgentAiModelClient;
+  withModel(modelId: string): AgentAiModelClient;
+}
 
 /**
  * @title Agent 描述信息
@@ -27,18 +79,7 @@ export interface AgentDescriptor {
  * @keywords-en dialogues, handle, ai-inject
  */
 export interface AgentDialoguesContract {
-  handleAiServer(aiServer: {
-    chatStream: (req: {
-      modelId: string;
-      messages: ChatMessage[];
-      systemPrompt?: string;
-      sessionId?: string;
-      conversationGroupId?: string;
-      checkpointer?: unknown;
-      params?: Record<string, unknown>;
-    }) => AsyncGenerator<unknown>;
-    resolveModelNameByIds: (modelIds: string[]) => Promise<string | null>;
-  }): void;
+  handleAiServer(aiServer: AgentAiServer): void;
   setAgentConfig?: (config: { aiModelIds?: string[] }) => void;
   handle(messages: ChatMessage[]): AsyncGenerator<unknown> | Promise<unknown>;
 }

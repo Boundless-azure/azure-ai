@@ -193,6 +193,26 @@ export class RunnerDbService {
   }
 
   /**
+   * @title 根据 Solution 和名称获取应用
+   * @description 根据 solutionId/name/version 查询应用记录。
+   * @keywords-cn 应用查询, solutionId, 名称版本
+   * @keywords-en find-app-by-solution, solutionId, app-name
+   */
+  async findAppBySolution(
+    solutionId: string,
+    name: string,
+    version?: string,
+  ): Promise<RunnerAppManagement | null> {
+    return this.getCollection<RunnerAppManagement>(
+      RunnerDbCollection.AppManagement,
+    ).findOne({
+      solutionId,
+      name,
+      ...(version ? { version } : {}),
+    } as Filter<RunnerAppManagement>);
+  }
+
+  /**
    * @title 删除应用
    * @description 根据 appId 删除应用记录。
    * @keywords-cn 删除应用, appId, runner-db

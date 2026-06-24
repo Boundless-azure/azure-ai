@@ -235,7 +235,10 @@ export interface ImMessageInfo {
   /** @mention 信息数组 */
   mentions?: MentionInfo[];
   /** Web Component Hook 冻结快照 (key=`${hookName}#${hash}`)，供前端回看时显示生成当时数据 */
-  hookSnapshots?: Record<string, { data: unknown; ts: number; traceId?: string }>;
+  hookSnapshots?: Record<
+    string,
+    { data: unknown; ts: number; traceId?: string }
+  >;
 }
 
 export type ImMessageListResponse = ImCursorResult<ImMessageInfo>;

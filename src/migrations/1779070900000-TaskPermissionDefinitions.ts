@@ -6,9 +6,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * @keywords-cn 迁移, 任务, 权限定义, 管理权限
  * @keywords-en migration, task, permission-definition, management-permission
  */
-export class TaskPermissionDefinitions1779070900000
-  implements MigrationInterface
-{
+export class TaskPermissionDefinitions1779070900000 implements MigrationInterface {
   name = 'TaskPermissionDefinitions1779070900000';
 
   private readonly rootDescription = 'Task module management permission root';
@@ -65,7 +63,9 @@ export class TaskPermissionDefinitions1779070900000
     const rootId = roots[0]?.id as string | undefined;
     if (!rootId) return;
 
-    for (const [action, description] of Object.entries(this.actionDescriptions)) {
+    for (const [action, description] of Object.entries(
+      this.actionDescriptions,
+    )) {
       await queryRunner.query(
         `
           INSERT INTO permission_definitions (

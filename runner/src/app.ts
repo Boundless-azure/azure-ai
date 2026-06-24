@@ -28,6 +28,7 @@ import { UnitCoreService } from './unit-core/services/unit-core.service';
 import { registerWebMcpRoutes } from './modules/webmcp/routes/webmcp.routes';
 import { registerSolutionRoutes } from './modules/solution/routes/solution.routes';
 import { registerSolutionHooks } from './modules/solution/hooks/solution.hooks';
+import { RunnerSolutionService } from './modules/solution/services/solution.service';
 import { registerDataTouchpointHooks } from './modules/data-touchpoint/hooks/data-touchpoint.hooks';
 import { RunnerTouchpointTriggerService } from './modules/data-touchpoint/services/touchpoint-trigger.service';
 import { registerProxyRoutes } from './modules/proxy/proxy.routes';
@@ -144,6 +145,9 @@ export async function createRunnerApp() {
     await migration.run(db);
     const runnerDb = new RunnerDbService(db);
     await unitCore.persistHooks(runnerDb);
+    await new RunnerSolutionService(db).ensureDefaultLightweightSolution(
+      runnerDb,
+    );
 
     // identity: seed 内置 principal/role + 注册 hookBus middleware (本地 mongo + push hint fallback)
     identityRepo = new RunnerIdentityRepository(db);
@@ -152,7 +156,7 @@ export async function createRunnerApp() {
     hookBus.use(createRunnerHookAbilityMiddleware(ability));
     registerIdentityAdminHooks(hookBus, identityRepo, ability);
 
-    registerSolutionHooks(hookBus, mongoClient);
+    registerSolutionHooks(hookBus, mongoClient, runnerDb);
     registerDataTouchpointHooks(hookBus, mongoClient, touchpointTrigger);
   }
   if (cfg.redisUri) {

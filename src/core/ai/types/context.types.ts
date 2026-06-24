@@ -10,8 +10,6 @@ export interface ChatMessage {
   timestamp?: Date;
   /** 消息元数据 */
   metadata?: Record<string, any>;
-  /** 关键词分析结果（可选） */
-  keywords?: { zh: string[]; en: string[] };
 }
 
 /**

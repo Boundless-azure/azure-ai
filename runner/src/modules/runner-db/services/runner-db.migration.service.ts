@@ -22,7 +22,10 @@ export class RunnerDbMigrationService {
     const applied = new Set(
       (await migrationCollection.find({}).toArray()).map((item) => item.id),
     );
-    const migrations = [this.bootstrapCollections.bind(this)];
+    const migrations = [
+      this.bootstrapCollections.bind(this),
+      this.ensureCodeAgentTargetIndexes.bind(this),
+    ];
     for (const migration of migrations) {
       const id = migration.name;
       if (applied.has(id)) continue;
@@ -48,6 +51,7 @@ export class RunnerDbMigrationService {
       this.ensureCollection(db, RunnerDbCollection.Mcp),
       this.ensureCollection(db, RunnerDbCollection.Skill),
       this.ensureCollection(db, RunnerDbCollection.AppDomains),
+      this.ensureCollection(db, RunnerDbCollection.Solution),
     ]);
 
     await db
@@ -74,6 +78,29 @@ export class RunnerDbMigrationService {
       .collection(RunnerDbCollection.AppDomains)
       .createIndex({ appId: 1, domain: 1 }, { unique: true });
     await db.collection(RunnerDbCollection.AppDomains).createIndex({ domain: 1 });
+  }
+
+  /**
+   * @title 初始化 code-agent 目标索引
+   * @description 为 Runner 侧 Solution/App 元数据增加按 Solution 与名称快速查找的索引。
+   * @keywords-cn code-agent目标, Solution索引, 应用索引
+   * @keywords-en code-agent-target-indexes, solution-index, app-index
+   */
+  private async ensureCodeAgentTargetIndexes(db: Db): Promise<void> {
+    await this.ensureCollection(db, RunnerDbCollection.Solution);
+    await this.ensureCollection(db, RunnerDbCollection.AppManagement);
+    await db
+      .collection(RunnerDbCollection.Solution)
+      .createIndex({ solutionId: 1 }, { unique: true });
+    await db
+      .collection(RunnerDbCollection.Solution)
+      .createIndex({ name: 1, version: 1 });
+    await db
+      .collection(RunnerDbCollection.AppManagement)
+      .createIndex({ solutionId: 1, name: 1, version: 1 });
+    await db
+      .collection(RunnerDbCollection.AppManagement)
+      .createIndex({ isInitialized: 1 });
   }
 
   /**

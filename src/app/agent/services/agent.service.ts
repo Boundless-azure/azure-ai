@@ -336,6 +336,10 @@ export class AgentService {
   }
 
   async update(id: string, dto: UpdateAgentDto): Promise<AgentEntity> {
+    const nextAiModelIds = Array.isArray(dto.aiModelIds)
+      ? await this.validateAiModelIds(dto.aiModelIds)
+      : undefined;
+
     if (this.useMongo()) {
       const col = this.agentCollection();
       if (!col) throw new Error('MongoDB not available');
@@ -343,8 +347,8 @@ export class AgentService {
       if (typeof dto.nickname === 'string') patch['nickname'] = dto.nickname;
       if (typeof dto.purpose === 'string') patch['purpose'] = dto.purpose;
       if (typeof dto.avatarUrl === 'string') patch['avatarUrl'] = dto.avatarUrl;
-      if (Array.isArray(dto.aiModelIds)) {
-        patch['aiModelIds'] = dto.aiModelIds.map((item) => item.trim());
+      if (nextAiModelIds) {
+        patch['aiModelIds'] = nextAiModelIds;
       }
       await col.updateOne({ _id: id }, { $set: patch });
       const saved = await col.findOne({ _id: id });
@@ -356,13 +360,37 @@ export class AgentService {
     if (typeof dto.nickname === 'string') current.nickname = dto.nickname;
     if (typeof dto.purpose === 'string') current.purpose = dto.purpose;
     if (typeof dto.avatarUrl === 'string') current.avatarUrl = dto.avatarUrl;
-    if (Array.isArray(dto.aiModelIds)) {
-      current.aiModelIds = dto.aiModelIds.map((item) => item.trim());
+    if (nextAiModelIds) {
+      current.aiModelIds = nextAiModelIds;
     }
     if (typeof dto.proactiveChatEnabled === 'boolean') {
       current.proactiveChatEnabled = dto.proactiveChatEnabled;
     }
     return await this.repo.save(current);
+  }
+
+  /**
+   * 校验 Agent 模型槽位必须保存 ai_models.id，不接受模型 name。
+   * @keyword-en validate-agent-model-ids, model-slot-id
+   */
+  private async validateAiModelIds(modelIds: string[]): Promise<string[]> {
+    const normalized = modelIds.map((item) => item.trim()).filter(Boolean);
+    if (!normalized.length) return [];
+    if (!this.aiModelService) return normalized;
+
+    const invalid: string[] = [];
+    for (const modelId of normalized) {
+      const resolved = await this.aiModelService.resolveModelIdByIds([modelId]);
+      if (!resolved) invalid.push(modelId);
+    }
+
+    if (invalid.length > 0) {
+      throw new BadRequestException(
+        `Agent aiModelIds must be active ai_models.id values: ${invalid.join(', ')}`,
+      );
+    }
+
+    return normalized;
   }
 
   async delete(id: string): Promise<void> {

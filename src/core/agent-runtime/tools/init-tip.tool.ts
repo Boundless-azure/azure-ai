@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { tool } from 'langchain';
 import { z } from 'zod';
+import type { AiCallLogService } from '@/app/conversation/services/ai-call-log.service';
 import type { CurrentSessionService } from '@/app/conversation/services/current-session.service';
 import type { InvocationContextProvider } from './call-hook.tools';
 
@@ -9,6 +10,7 @@ import type { InvocationContextProvider } from './call-hook.tools';
  * @description 本轮 turn 第一步必备 tool, 声明 needKnowledge/needHook 并接收**三大标准发现链路** (callLog / knowledge / hook);
  *              不走 call_hook 路由, 直接命中 CurrentSessionService 写状态.
  *              返回 discoveryChains (三条 tag → search → detail 自底向上 SOP, 静态完整) + tipNote (一句话本轮总览, 按 declared 强调走哪条);
+ *              needHook 且本会话已有成功调用历史 → tipNote 提示先 callLog 复用; 主动对话模式 (ctx.extras.isProactive) → tipNote 前置主动消息发送提醒;
  *              不返回 callHistory/handbook 具体数据 — LLM 想看按链路自己调对应 hook.
  * @keywords-cn 初始化提示, 发现链路, top-level tool, 标准操作流程
  * @keywords-en init-tip, discovery-chains, top-level-tool, tag-search-detail
@@ -45,18 +47,21 @@ const initTipSchema = z.object({
 type InitTipInput = z.infer<typeof initTipSchema>;
 
 /**
- * 构建 init_tip top-level tool; 注入 CurrentSessionService 闭包.
- *  - 直接调 setInitTip + produceInitTip (同步聚合)
- *  - 返回 { acknowledged, declared, discoveryChains: { callLog, knowledge, hook }, usageRules, tipNote }
+ * 构建 init_tip top-level tool; 注入 CurrentSessionService + AiCallLogService 闭包.
+ *  - 直接调 setInitTip + produceInitTip (聚合)
+ *  - needHook 时探测 call_log 是否非空 (hasCallHistory): 本会话之前轮次已有成功调用 → tipNote 提示优先 callLog 复用, 不必每轮重走完整发现链路
+ *  - 从 ctx.extras.isProactive 读主动对话标记: true → tipNote 前置主动消息发送提醒
+ *  - 返回 { acknowledged, declared, proactive?, hasCallHistory?, directHooks, discoveryChains, usageRules, tipNote }
  *  - discoveryChains 是步骤明细 (按 tag → search → detail), usageRules 是 cross-cutting 行为约束 (commit / no-loop / no-skip / must-sendMsg)
- * @keyword-en build-init-tip-tool
+ * @keyword-en build-init-tip-tool, call-log-reuse-probe, proactive-reminder
  */
 export function buildInitTipTool(
   currentSession: CurrentSessionService,
   getCtx: InvocationContextProvider,
+  callLog: Pick<AiCallLogService, 'query'>,
 ) {
   return tool(
-    (input: InitTipInput): string => {
+    async (input: InitTipInput): Promise<string> => {
       const ctx = getCtx();
       const sessionId = (
         typeof ctx.extras?.sessionId === 'string' ? ctx.extras.sessionId : ''
@@ -71,6 +76,20 @@ export function buildInitTipTool(
             'sessionId/principalId 缺失, 无法记录 init_tip 状态. 请检查 invocationContext.',
         });
       }
+      const isProactive = ctx.extras?.isProactive === true;
+      // 仅 needHook 时探测 call_log: 本会话之前轮次有成功调用即可复用, 省去每轮重走完整发现链路
+      let hasCallHistory = false;
+      if (input.needHook) {
+        try {
+          const recent = await callLog.query(sessionId, { limit: 1 });
+          hasCallHistory = recent.length > 0;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          toolLogger.warn(
+            `[init_tip] callLog probe failed session=${sessionId}: ${msg}`,
+          );
+        }
+      }
       const declared = {
         needKnowledge: input.needKnowledge,
         needHook: input.needHook,
@@ -78,9 +97,13 @@ export function buildInitTipTool(
         ...(input.reason ? { reason: input.reason } : {}),
       };
       currentSession.setInitTip(sessionId, principalId, declared);
-      const suggestions = currentSession.produceInitTip(declared);
+      const suggestions = currentSession.produceInitTip(declared, {
+        hasCallHistory,
+        isProactive,
+      });
       toolLogger.log(
         `[init_tip] session=${sessionId} declared=${JSON.stringify(declared)} ` +
+          `proactive=${isProactive} hasCallHistory=${hasCallHistory} ` +
           `directHooks=${suggestions.directHooks.length} ` +
           `chains=${Object.entries(suggestions.discoveryChains)
             .map(([k, v]) => `${k}:${v.length}`)
@@ -91,6 +114,8 @@ export function buildInitTipTool(
       return JSON.stringify({
         acknowledged: true,
         declared,
+        ...(isProactive ? { proactive: true } : {}),
+        ...(hasCallHistory ? { hasCallHistory: true } : {}),
         directHooks: suggestions.directHooks,
         discoveryChains: suggestions.discoveryChains,
         usageRules: suggestions.usageRules,
@@ -132,7 +157,9 @@ export function buildInitTipTool(
         '    · no loops: 整 turn search + info 合计 ≤ 3 次, 超过强行 commit\n' +
         '    · no skip: ①→②→③→④→⑤ 顺序, 不跳步\n' +
         '    · must sendMsg: 业务/知识完成后必发 sendMsg, 否则消息丢失\n' +
-        '- tipNote :: 一句话本轮总览, 按 declared 强调走哪条\n' +
+        '- tipNote :: 一句话本轮总览, 按 declared 强调走哪条; 两种情境会改写它:\n' +
+        '    · **callLog 复用** :: needHook 且本会话之前轮次已有成功调用 (返回带 hasCallHistory:true) → tipNote 改提示"先 call_hook callHistory.query [{}] 复用近期成功调用, 不必每轮重走完整发现链路". 命中后 { id, includeDetail:true } 取详情复用 payload.\n' +
+        '    · **主动消息发送提醒** :: 主动对话模式 (返回带 proactive:true, 用户尚未说话) → tipNote 前置提醒: 本轮必须 call_hook saas.app.conversation.sendMsg 主动发消息, 否则用户收不到任何内容.\n' +
         '⚠ **先看 directHooks**: 想知道对方身份 / IP / 时间, 直接调 currentSession.context, 不要走 hook 发现链路 (它注册在 conversation 命名空间, search 按 identity/user 标签找不到).\n' +
         '⚠ **回看历史走 history 链路**: 不要从 18 条窗口外硬猜, 也不要凭训练记忆瞎答 "我们之前聊到...". 走 smartTags → smartSearch → smartMessages 三步拿真实的过往对话。\n' +
         '</output>\n\n' +

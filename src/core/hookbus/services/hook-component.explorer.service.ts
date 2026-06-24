@@ -1,8 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DiscoveryService } from '@nestjs/core';
-import {
-  HOOK_COMPONENT_METADATA,
-} from '../decorators/hook-component.decorator';
+import { HOOK_COMPONENT_METADATA } from '../decorators/hook-component.decorator';
 import { HookComponentRegistryService } from './hook-component.registry.service';
 import { HookBusService } from './hook.bus.service';
 import type { HookResult } from '../types/hook.types';
@@ -46,7 +44,11 @@ export class HookComponentExplorerService implements OnModuleInit {
       const registrations: Array<{
         hookName: string;
         propertyKey: string | symbol;
-        meta?: { description?: string; tags?: string[]; payloadSchema?: import('zod').ZodTypeAny };
+        meta?: {
+          description?: string;
+          tags?: string[];
+          payloadSchema?: import('zod').ZodTypeAny;
+        };
       }> = Reflect.getMetadata(HOOK_COMPONENT_METADATA, metatype) ?? [];
 
       for (const { hookName, propertyKey, meta } of registrations) {

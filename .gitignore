@@ -6,3 +6,4 @@ tmp-tip-write
 .agent
 /runner/runner.data/frp/
 /storage
+/plugins

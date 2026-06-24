@@ -338,10 +338,7 @@ export class KnowledgeController {
   ): Promise<HookResult> {
     const { bookIds } = payload;
     const accessibleBookIds = await this.getAgentAccessibleBookIds(event);
-    const scopedBookIds = this.filterBookIdsByScope(
-      bookIds,
-      accessibleBookIds,
-    );
+    const scopedBookIds = this.filterBookIdsByScope(bookIds, accessibleBookIds);
     event?.log?.info('knowledge.getToc:start', {
       bookIdCount: bookIds.length,
       scopedBookIdCount: scopedBookIds.length,
@@ -384,10 +381,7 @@ export class KnowledgeController {
   ): Promise<HookResult> {
     const { bookIds, chapterIds } = payload;
     const accessibleBookIds = await this.getAgentAccessibleBookIds(event);
-    const scopedBookIds = this.filterBookIdsByScope(
-      bookIds,
-      accessibleBookIds,
-    );
+    const scopedBookIds = this.filterBookIdsByScope(bookIds, accessibleBookIds);
     event?.log?.info('knowledge.getChapter:start', {
       bookIdCount: bookIds.length,
       scopedBookIdCount: scopedBookIds.length,

@@ -463,7 +463,7 @@ function closeKnowledgeModal() {
 }
 const modelOptions = computed(() =>
   aiModels.value.map((item) => ({
-    value: item.name,
+    value: item.id,
     label: `${item.provider} / ${item.name}`,
   })),
 );

@@ -30,6 +30,7 @@ export const SOLUTION_INCLUDE = {
   UNIT: 'unit',
   WORKFLOW: 'workflow',
   AGENT: 'agent',
+  VIEW: 'view',
 } as const;
 
 export const SOLUTION_INCLUDE_LABEL = {
@@ -37,6 +38,7 @@ export const SOLUTION_INCLUDE_LABEL = {
   [SOLUTION_INCLUDE.UNIT]: '单元',
   [SOLUTION_INCLUDE.WORKFLOW]: '工作流',
   [SOLUTION_INCLUDE.AGENT]: '智能体',
+  [SOLUTION_INCLUDE.VIEW]: '视图',
 } as const;
 
 export const DEFAULT_SOLUTION_ICON = 'fa-solid fa-box-open';

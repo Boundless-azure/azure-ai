@@ -44,6 +44,6 @@
   "ts-node": {
     "require": ["tsconfig-paths/register"]
   },
-  "include": ["src/**/*", "test/**/*.ts", "plugins/**/*"],
-  "exclude": ["node_modules", "dist", "web"]
+  "include": ["src/**/*", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist", "web", "plugins"]
 }

@@ -5,7 +5,12 @@ import {
   SolutionInclude,
 } from '../enums/solution.enums';
 
-// 创建 Solution 请求
+/**
+ * @title Create solution schema
+ * @description Validates create Solution requests.
+ * @keyword-en create-solution
+ * @keyword-cn Solution创建
+ */
 export const CreateSolutionSchema = z.object({
   runnerIds: z.array(z.string()).optional().nullable(),
   name: z.string().min(1).max(255),
@@ -29,7 +34,12 @@ export const CreateSolutionSchema = z.object({
 
 export type CreateSolutionRequest = z.infer<typeof CreateSolutionSchema>;
 
-// 更新 Solution 请求
+/**
+ * @title Update solution schema
+ * @description Validates update Solution requests.
+ * @keyword-en update-solution
+ * @keyword-cn Solution更新
+ */
 export const UpdateSolutionSchema = z.object({
   summary: z.string().max(500).optional().nullable(),
   description: z.string().optional().nullable(),
@@ -46,7 +56,12 @@ export const UpdateSolutionSchema = z.object({
 
 export type UpdateSolutionRequest = z.infer<typeof UpdateSolutionSchema>;
 
-// Solution 列表查询
+/**
+ * @title List solutions query schema
+ * @description Validates Solution list filters and pagination.
+ * @keyword-en list-solutions
+ * @keyword-cn Solution列表
+ */
 export const ListSolutionsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   pageSize: z.coerce.number().int().min(1).max(100).optional().default(20),
@@ -56,9 +71,88 @@ export const ListSolutionsQuerySchema = z.object({
   isPublished: z.boolean().optional(),
   source: z.nativeEnum(SolutionSource).optional(),
   runnerId: z.string().optional(),
+  runnerIds: z.array(z.string()).optional(),
 });
 
 export type ListSolutionsQuery = z.infer<typeof ListSolutionsQuerySchema>;
+
+/**
+ * @title Runner solution search schema
+ * @description Searches runner-owned solutions across one or more runner ids.
+ * @keyword-en runner-solution-search, batch-runner
+ * @keyword-cn Runner方案搜索, 批量Runner
+ */
+export const SearchRunnerSolutionsSchema = z.object({
+  runnerId: z.string().optional(),
+  runnerIds: z.array(z.string()).optional(),
+  q: z.string().optional(),
+  source: z.nativeEnum(SolutionSource).optional(),
+  include: z.nativeEnum(SolutionInclude).optional(),
+});
+
+export type SearchRunnerSolutionsRequest = z.infer<
+  typeof SearchRunnerSolutionsSchema
+>;
+
+/**
+ * @title Batch solution ids schema
+ * @description Accepts one or more solution ids for batch detail lookup.
+ * @keyword-en batch-solution-detail, solution-id-list
+ * @keyword-cn 批量Solution详情, Solution标识列表
+ */
+export const BatchSolutionIdsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+});
+
+export type BatchSolutionIdsRequest = z.infer<typeof BatchSolutionIdsSchema>;
+
+/**
+ * @title Batch solution association schema
+ * @description Accepts one or more solution ids for associated app or unit listing.
+ * @keyword-en batch-solution-association, solution-id-list
+ * @keyword-cn 批量Solution关联, Solution标识列表
+ */
+export const BatchSolutionAssociationsSchema = z.object({
+  solutionIds: z.array(z.string().min(1)).min(1),
+});
+
+export type BatchSolutionAssociationsRequest = z.infer<
+  typeof BatchSolutionAssociationsSchema
+>;
+
+export interface SolutionSearchItem {
+  id: string;
+  runnerId: string;
+  solutionId: string;
+  name: string;
+  version: string;
+  summary: string | null;
+}
+
+export interface SolutionAppListItem {
+  id: string;
+  runnerId: string;
+  solutionId: string;
+  solutionName: string;
+  appId: string;
+  name: string;
+  version: string;
+  description: string;
+  status: string;
+  isInitialized: boolean;
+  location?: string;
+}
+
+export interface SolutionUnitListItem {
+  id: string;
+  runnerId: string;
+  solutionId: string;
+  solutionName: string;
+  unitId: string;
+  unitName: string;
+  source: string;
+  sourcePath: string;
+}
 
 // Solution 响应
 export interface SolutionResponse {
@@ -80,6 +174,7 @@ export interface SolutionResponse {
   status: PluginStatus;
   isPublished: boolean;
   isInstalled: boolean;
+  isInitialized: boolean;
   source: SolutionSource;
   location: string | null;
   images: string[] | null;
@@ -89,6 +184,13 @@ export interface SolutionResponse {
 }
 
 // 分页响应
+export interface SolutionDetailResponse extends SolutionResponse {
+  runnerId: string;
+  solutionId: string;
+  apps: SolutionAppListItem[];
+  units: SolutionUnitListItem[];
+}
+
 export interface PaginatedSolutionsResponse {
   items: SolutionResponse[];
   total: number;

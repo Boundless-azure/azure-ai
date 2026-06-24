@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import type { RunnerHookBusService } from '../../hookbus/services/hookbus.service';
 import type { RunnerMongoClient } from '../../mongo/mongo.client';
+import type { RunnerDbService } from '../../runner-db/services/runner-db.service';
 import { RunnerSolutionService } from '../services/solution.service';
+import {
+  BatchSolutionIdentitySchema,
+  EnsureSolutionTargetSchema,
+  SolutionIdentitySchema,
+} from '../types/solution.types';
 
 /**
  * @title Runner Solution Hook 注册
@@ -9,6 +15,7 @@ import { RunnerSolutionService } from '../services/solution.service';
  *              供 SaaS 通过双向 RPC 跨进程聚合多 Runner 的真实数据。
  * @keywords-cn solution-hook注册, 跨进程聚合, runner本地数据
  * @keywords-en solution-hook-register, cross-process-aggregate, runner-local-data
+ * @keyword-en solution-hook-register, cross-process-aggregate, runner-local-data
  */
 const ListPayloadSchema = z
   .object({
@@ -16,14 +23,16 @@ const ListPayloadSchema = z
   })
   .optional();
 
-const GetPayloadSchema = z.object({ name: z.string().min(1) });
+const GetPayloadSchema = SolutionIdentitySchema;
 
 const DeletePayloadSchema = z.object({ name: z.string().min(1) });
+
+const ListAssociationPayloadSchema = BatchSolutionIdentitySchema;
 
 const SearchPayloadSchema = z.object({
   q: z.string().optional(),
   source: z.enum(['self_developed', 'marketplace']).optional(),
-  include: z.enum(['app', 'unit', 'workflow', 'agent']).optional(),
+  include: z.enum(['app', 'unit', 'workflow', 'agent', 'view']).optional(),
 });
 
 /**
@@ -35,6 +44,7 @@ const SearchPayloadSchema = z.object({
 export function registerSolutionHooks(
   hookBus: RunnerHookBusService,
   mongoClient: RunnerMongoClient,
+  runnerDb?: RunnerDbService,
 ): void {
   const existing = new Set(hookBus.listRegistrations().map((i) => i.name));
   const getService = (): RunnerSolutionService | null => {
@@ -42,6 +52,32 @@ export function registerSolutionHooks(
     if (!db) return null;
     return new RunnerSolutionService(db);
   };
+
+  if (!existing.has('runner.app.solution.ensureTarget')) {
+    hookBus.register(
+      'runner.app.solution.ensureTarget',
+      async (event) => {
+        const svc = getService();
+        if (!svc || !runnerDb) {
+          return {
+            status: 'error',
+            error: 'runner solution database is unavailable',
+          };
+        }
+        const payload = EnsureSolutionTargetSchema.parse(event.payload ?? {});
+        const target = await svc.ensureTarget(payload, runnerDb);
+        return { status: 'success', data: target };
+      },
+      {
+        description:
+          '确保当前 Runner 上的 Solution/App 元数据存在；创建时默认标记为未初始化',
+        tags: ['solution', 'runner-local', 'code-agent', 'target-resolution'],
+        pluginName: 'runner-solution',
+        payloadSchema: EnsureSolutionTargetSchema,
+        requiredAbility: { action: 'create', subject: 'solution' },
+      },
+    );
+  }
 
   if (!existing.has('runner.app.solution.list')) {
     hookBus.register(
@@ -76,15 +112,59 @@ export function registerSolutionHooks(
         if (!svc) {
           return { status: 'success', data: null };
         }
-        const payload = event.payload as { name: string };
-        const item = await svc.getByName(payload.name);
+        const payload = GetPayloadSchema.parse(event.payload ?? {});
+        const item = await svc.getDetail(payload, runnerDb);
         return { status: 'success', data: item };
       },
       {
-        description: '获取当前 Runner 上指定名称 Solution 的详情',
+        description: 'Get one runner solution detail with associated apps and units',
         tags: ['solution', 'runner-local'],
         pluginName: 'runner-solution',
         payloadSchema: GetPayloadSchema,
+        requiredAbility: { action: 'read', subject: 'solution' },
+      },
+    );
+  }
+
+  if (!existing.has('runner.app.solution.listApps')) {
+    hookBus.register(
+      'runner.app.solution.listApps',
+      async (event) => {
+        const svc = getService();
+        if (!svc) {
+          return { status: 'success', data: { items: [] } };
+        }
+        const payload = ListAssociationPayloadSchema.parse(event.payload ?? {});
+        const items = await svc.listAppsBySolutions(payload, runnerDb);
+        return { status: 'success', data: { items } };
+      },
+      {
+        description: 'List apps associated with one or more runner solutions',
+        tags: ['solution', 'runner-local', 'app-association'],
+        pluginName: 'runner-solution',
+        payloadSchema: ListAssociationPayloadSchema,
+        requiredAbility: { action: 'read', subject: 'solution' },
+      },
+    );
+  }
+
+  if (!existing.has('runner.app.solution.listUnits')) {
+    hookBus.register(
+      'runner.app.solution.listUnits',
+      async (event) => {
+        const svc = getService();
+        if (!svc) {
+          return { status: 'success', data: { items: [] } };
+        }
+        const payload = ListAssociationPayloadSchema.parse(event.payload ?? {});
+        const items = await svc.listUnitsBySolutions(payload);
+        return { status: 'success', data: { items } };
+      },
+      {
+        description: 'List units associated with one or more runner solutions',
+        tags: ['solution', 'runner-local', 'unit-association'],
+        pluginName: 'runner-solution',
+        payloadSchema: ListAssociationPayloadSchema,
         requiredAbility: { action: 'read', subject: 'solution' },
       },
     );
@@ -123,7 +203,7 @@ export function registerSolutionHooks(
         const payload = (event.payload ?? {}) as {
           q?: string;
           source?: 'self_developed' | 'marketplace';
-          include?: 'app' | 'unit' | 'workflow' | 'agent';
+          include?: 'app' | 'unit' | 'workflow' | 'agent' | 'view';
         };
         const items = await svc.search(payload);
         return { status: 'success', data: { items } };

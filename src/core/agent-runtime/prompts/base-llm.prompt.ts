@@ -72,7 +72,7 @@ export interface LlmSystemPromptJson {
  * 生成注入到所有 LLM 层的基础系统提示 JSON.
  *  - role.system :: 第一人称 identity, 不写命令式 directives
  *  - examples :: 2 正 1 反 universal trajectory, 顶层扁平, 不嵌套
- *  - knowledgeCatalog :: 4 本 local 书的入口, LLM 主动查 saas.app.knowledge.* 拿真内容
+ *  - knowledgeCatalog :: 5 本 local 书的入口, LLM 主动查 saas.app.knowledge.* 拿真内容
  *  - user message envelope (v3) 已弃用 :: 直发用户原话, init_tip + examples + reasoning ≥ 20 承担引导
  * @keyword-en build-base-llm-system-prompt
  */
@@ -330,6 +330,40 @@ export function buildBaseLlmSystemPrompt(): LlmSystemPromptJson {
           sessionDataKeys: [],
           useWhen:
             'User asks about Runner-side hooks, data touchpoints, or long-running automation.',
+        },
+        {
+          bookId: 'local_code_agent_development_handbook',
+          name: 'Code Agent 开发手册',
+          type: 'skill',
+          tags: [
+            '本地知识',
+            'CodeAgent',
+            '开发工作流',
+            'Solution',
+            'App',
+            'Unit',
+            '模板',
+            'Runner数据库',
+            '目标选择',
+            '终端指令',
+          ],
+          aliases: [
+            'code agent',
+            '代码智能体',
+            '代码生成',
+            '代码修改',
+            '项目初始化',
+            'Runner-only',
+            'Runner DB metadata',
+            'Solution/App/Unit metadata',
+            'target selection',
+            'terminal exec',
+            '终端命令',
+            'npx template',
+          ],
+          sessionDataKeys: ['handbook.code_agent_development'],
+          useWhen:
+            'Current agent is code-agent, or the user asks for code generation, code editing, project initialization, Runner workspace commands, templates, App/Unit/View development, or terminal command execution.',
         },
       ],
     },

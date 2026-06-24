@@ -3,7 +3,7 @@
 概述
 - apps：负责应用信息的入库（session_id、name、version、description、hooks、embedding、keywords）、关键词生成（AI）、以及基础的增删改查接口。
 - app_units：负责应用子单元（CRM 子模块等）的入库（session_id、app_id、name、description、embedding、keywords）与 CRUD。
-- apps 录入流程通过读取指定目录的 plugin.conf.ts（纯数据对象，默认导出），生成关键词并 upsert 至数据库。
+- apps 录入流程优先读取指定目录的 plugin.conf.js（CommonJS 纯数据对象），兼容旧 plugin.conf.ts，生成关键词并 upsert 至数据库。
 
 文件清单（File List）
 - core/plugin/types.ts
@@ -28,9 +28,9 @@
   - method: list
   - method: get
   - method: delete
-  - method: registerByDir
+  - method: registerByDir(pluginDir, opts)：读取 plugin.conf.js/plugin.conf.ts 并录入 App。 | keywords: register-app, plugin-config
   - method: update
-  - method: loadConfig (private)
+  - method: loadConfig (private)：加载 plugin.conf.js，兼容旧 plugin.conf.ts。 | keywords: plugin-config, js-config, ts-compat
 - AppUnitService
   - method: list
   - method: get
@@ -55,7 +55,7 @@
 - entities/plugin.entity.ts：apps 实体（兼容导出 PluginEntity），包含 session_id/embedding/keywords。
 - entities/app-unit.entity.ts：app_units 实体，包含 session_id/app_id/embedding/keywords。
 - plugin.keywords.service.ts：关键词生成服务，依赖 AIModelService。
-- plugin.service.ts：apps 录入流程与 CRUD（兼容保留 PluginService 名称）。
+- plugin.service.ts：apps 录入流程与 CRUD（兼容保留 PluginService 名称），支持 plugin.conf.js 并兼容 plugin.conf.ts。
 - app-unit.service.ts：app_units CRUD。
 - plugin.controller.ts：apps（兼容保留 /plugin 路由）接口。
 - app-unit.controller.ts：app_units 接口。
@@ -88,7 +88,7 @@ PluginModule
 - "PluginModule" -> core/plugin/plugin.module.ts
 
 #problems_and_diagnostics
-- [info] 录入时请确保 plugin.conf.ts 默认导出纯数据对象（export default），避免运行时转译失败。
+- [info] 录入时优先使用 plugin.conf.js，并以 module.exports 导出纯数据对象；旧 plugin.conf.ts 仍兼容读取。
 - [warning] 若关键词为空或较少，请补充 description 与 hook 的 payloadDescription；同时确认至少有一个启用的 AI 模型。
 - [info] 数据库存储：hooks 为 JSON 字符串；keywords_zh/keywords_en 为逗号分隔文本，便于 FULLTEXT 检索。
 - [warning] 目录传参必须为相对项目根的有效路径（例如 plugins/<plugin-name>），否则 /plugin/register 会失败。

@@ -28,10 +28,7 @@ export class HookComponentController {
    * @keyword-en get-hook-component serve-component-js
    */
   @Get()
-  async get(
-    @Query('hookName') hookName: string,
-    @Res() res: Response,
-  ) {
+  async get(@Query('hookName') hookName: string, @Res() res: Response) {
     if (!hookName) throw new NotFoundException('hookName is required');
 
     // 1. SaaS 本地注册表优先

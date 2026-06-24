@@ -31,6 +31,8 @@ hook-lifecycle-registry -> modules/hookbus/lifecycle/registry.ts
 - HookLifecycleRegistry.list -> runner_hookbus_lifecycle_list_015
 - RunnerHookBusService.setForwardToSaaS -> runner_hookbus_set_forward_saas_016
 - RunnerHookBusService.forwardSaaSHook -> runner_hookbus_forward_saas_017
+- RunnerHookBusService.describePayloadSchema(schema) — 把当前 runner hook 的 zod payload schema 投影为紧凑 JSON Schema, 随 payload 校验错误返回 | keywords: payload模式描述, zod校验, payload-schema-description, zod-validation -> runner_hookbus_payload_schema_description_018
+- RunnerHookBusService.previewSchemaValue(value) — 压缩展示 JSON Schema, 避免单条 hook 错误响应过长 | keywords: schema预览, payload校验, schema-preview, payload-validation -> runner_hookbus_schema_preview_019
 
 类型导出（Types, 与 SaaS 端语义对齐）
 - HookEvent<T>           -- name + payload + context + filter + declaration + log
@@ -71,7 +73,7 @@ hook-lifecycle-registry -> modules/hookbus/lifecycle/registry.ts
 
 payload schema 校验 (zod, SSOT):
 - 注册时通过 metadata.payloadSchema 声明 zod schema; consumeTask -> runHandlerWithSchema 在 handler 执行前自动 safeParse
-- 校验失败返回 `payload-schema-invalid: <field>: <message>`, 不进入 handler
+- 校验失败返回 `payload-schema-invalid: <field>: <message>; expectedPayloadSchema={...}`, 不进入 handler; schema 错误直接按返回的 schema 修 payload, 不触发 init_tip / hook discovery 补救提示
 - 与 SaaS 端 HookInvokerService.runHandlerWithSchema 行为对齐
 
 声明式 lifecycle 注册中心 (lifecycle/registry.ts):

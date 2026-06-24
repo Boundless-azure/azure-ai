@@ -161,6 +161,8 @@ src/modules/agent/
 | `openKnowledgeModal` | 打开 Agent 知识分配 Modal, 落点为 agent.id |
 | `closeRoleModal` | 关闭 Modal 并清理选中 Agent |
 | `getAgentAvatarUrl` | 通过 Resource 模块统一图片路径解析 Agent 头像 |
+| `modelOptions` | Agent 模型槽位下拉选项，展示 provider/name 但 value 固定使用 ai_models.id |
+| `addSelectedModel` | 将选中的 ai_models.id 追加到 Agent aiModelIds 槽位列表 |
 
 ### components/AgentKnowledgeAssignModal.vue
 

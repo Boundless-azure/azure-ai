@@ -121,7 +121,8 @@ export class TodoController {
   @CheckAbility('read', 'todo')
   @HookRoute({
     hook: 'saas.app.todo.todoCount',
-    description: '待办总数统计 :: 返回 { count: number }，支持按 status / sessionId / taskId 过滤',
+    description:
+      '待办总数统计 :: 返回 { count: number }，支持按 status / sessionId / taskId 过滤',
     args: [onTodoCountInput],
     metadata: { tags: ['count', 'query'] },
   })

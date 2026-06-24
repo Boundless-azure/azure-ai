@@ -156,7 +156,7 @@ export class QueryTodoDto {
   q?: string;
 
   /**
-  * 数据权限节点 :: 查询时 query 中若指定 initiatorId / followerId, 必须是自己
+   * 数据权限节点 :: 查询时 query 中若指定 initiatorId / followerId, 必须是自己
    *                 不指定 → 表示"看自己的", service 层会自动补 principalId 作为 initiator/follower OR 条件
    *                 这里 handler 仅做一致性校验, payload 不被改写
    * @keyword-en todo-read-only-myself

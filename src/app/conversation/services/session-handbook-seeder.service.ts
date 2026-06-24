@@ -37,6 +37,15 @@ const PROACTIVE_HANDBOOK: HandbookSeed = {
     '对话 Hook 技能手册 :: 主动对话发消息必读, 含 saas.app.conversation.sendMsg payload + 历史检索 smart 三段式. bookId=local_conversation_hook_skill, getToc + getChapter 取章节',
 };
 
+/** code-agent 专用开发手册 :: 代码/终端/Runner 开发每轮强化 */
+const CODE_AGENT_HANDBOOK: HandbookSeed = {
+  key: 'handbook.code_agent_development',
+  bookId: 'local_code_agent_development_handbook',
+  bookName: 'Code Agent 开发手册',
+  title:
+    'Code Agent 开发手册 :: code-agent 每轮开发必读, 强化 Runner-only 开发、Runner 数据库元数据优先、终端指令走 runner.unitcore.terminal.exec. bookId=local_code_agent_development_handbook, 先读 LM必读章节',
+};
+
 /**
  * @title 会话手册 seed 服务
  * @description Agent 首次在某 session 发言前, 把该 agent 需要的必读手册种进 session_data 的 handbook.* 槽位.
@@ -57,6 +66,7 @@ export class SessionHandbookSeederService {
    * 根据 agent 配置 seed 必读手册集合
    *  - 默认手册 :: 所有 agent 都种
    *  - 主动对话手册 :: agent.proactiveChatEnabled !== false 才种
+   *  - Code Agent 开发手册 :: code-agent 专用, 每轮强化 Runner-only 与 Runner 数据库元数据优先链路
    * @keyword-en seed-for-agent
    */
   async ensureForAgent(
@@ -67,6 +77,9 @@ export class SessionHandbookSeederService {
     const handbooks: HandbookSeed[] = [DEFAULT_HANDBOOK];
     if (agent.proactiveChatEnabled !== false) {
       handbooks.push(PROACTIVE_HANDBOOK);
+    }
+    if (isCodeAgent(agent)) {
+      handbooks.push(CODE_AGENT_HANDBOOK);
     }
 
     for (const hb of handbooks) {
@@ -114,4 +127,14 @@ export class SessionHandbookSeederService {
       );
     }
   }
+}
+
+/**
+ * 判断当前 agent 是否为 code-agent。
+ * @keyword-cn CodeAgent识别, 必读手册
+ * @keyword-en detect-code-agent, handbook-seed
+ */
+function isCodeAgent(agent: AgentEntity): boolean {
+  const codeDir = (agent.codeDir ?? '').replace(/\\/g, '/');
+  return codeDir.endsWith('/code-agent') || codeDir === 'src/agents/code-agent';
 }

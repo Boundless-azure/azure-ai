@@ -110,6 +110,35 @@ export const LOCAL_BOOK_RUNNER_HOOK: KnowledgeBookInfo = {
   updatedAt: new Date('2025-01-01T00:00:00.000Z'),
 };
 
+/**
+ * Code Agent 开发手册
+ * @keyword-en code-agent-development-handbook-book
+ */
+export const LOCAL_BOOK_CODE_AGENT_DEVELOPMENT: KnowledgeBookInfo = {
+  id: 'local_code_agent_development_handbook',
+  type: KnowledgeBookType.SKILL,
+  name: 'Code Agent 开发手册',
+  description:
+    'code-agent 专用开发前置手册，说明 Solution/App/Unit 的 Runner 数据库检索方法、轻量 view solution、应用开发前工作、npx 模板查询约定和 Unit 开发前工作。',
+  creatorId: null,
+  isEmbedded: false,
+  active: true,
+  tags: [
+    '本地知识',
+    'CodeAgent',
+    '开发工作流',
+    'Solution',
+    'App',
+    'Unit',
+    '模板',
+    'Runner数据库',
+    '目标选择',
+    '终端指令',
+  ],
+  createdAt: new Date('2025-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+};
+
 // ----------------------------------------------------------------
 // 本地章节定义
 // ----------------------------------------------------------------
@@ -2068,6 +2097,264 @@ LLM 使用 SaaS solution 市场的标准序列:
 `,
 };
 
+/**
+ * Code Agent 开发手册 — LM必读
+ * @keyword-en code-agent-handbook-lm-required-chapter
+ */
+export const LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_LM: KnowledgeChapterInfo = {
+  id: 'local_code_agent_development_handbook_lm',
+  bookId: 'local_code_agent_development_handbook',
+  title: 'LM必读',
+  sortOrder: 0,
+  isLmRequired: true,
+  content: `# Code Agent 开发手册 — LM必读
+
+本书是 code-agent 在每轮开发对话中的硬前置知识。只要用户请求涉及代码、项目、Runner、终端指令、应用/Unit/页面开发, 就必须优先按本章执行。
+
+硬规则:
+
+1. 代码相关输出不直接给用户完整文件或 index.html。生成、编辑、写入、项目初始化只能通过 Runner 受控 hook/模板/文件能力执行。
+2. 依赖判定优先读取 Runner 数据库里的 Solution/App/Unit 元数据；先确定 runnerId、solutionId、appId 或 unit 能力, 再进入后续代码生成/编辑流程。旧的 Runner code-agent 文件搜索/写入 hook 已移除, 不要再调用。
+3. 终端指令也必须在 Runner 中执行。需要运行 npm/npx/test/build/dev server/脚本时, 使用 \`runner.unitcore.terminal.exec\`，并带 target=runner 与已确定 runnerId；不要让用户复制命令到本地跑, 不要在 SaaS 侧执行本地终端。
+4. 真实 Solution/App/Unit 元数据以 Runner 为准, SaaS 侧只做会话、聚合与 RPC 调度。
+5. Solution 是长期复用的业务解决方案边界, 不是每次任务随手创建的临时容器；开发前必须优先复用已有 solutionName, 未命中时先让用户选择已有 Solution 或明确确认新建。
+6. 应用开发再确定 appName；runnerId 只在用户已给出、已有 Solution 绑定多台 Runner，或用户已确认新建 Solution 且存在多台在线 Runner 时才要求。
+7. 不要凭记忆猜目录、模板、hook 名。先走 Runner 数据库/Solution/App/Unit 元数据检索, 再读 schema 或进入后续执行节点。
+8. 应用初始化前必须先查模板列表, 不允许直接猜模板包或模板名。
+9. 没有在线 Runner 或 Runner 目标不可用时, 停止开发流程, 告诉用户等待 Runner 上线或连接 Runner 后再继续；不要提供绕过 Runner 的交付方式。
+10. Unit 是小型工具能力, App 是完整底座应用。能用 Unit 解决的, 不要扩成 App；临时表格/单页展示/轻量页面默认使用 Runner 内置 default-view-solution, 不询问是否新建 default-view-solution, 不强制创建 App。
+11. 规则不要靠长提示词硬塞。先判定本次是 view/app/unit/solution 哪类结构工程, 再按本书对应章节和 Runner 模块索引执行。普通 view 的标准范式是 multi-file：root 使用候选 \`entryFile\` 作为入口, 用 \`view-compose:start/end\` 注释记录每个 section 的 module/src 来源, 并把 section DOM 静态内联到入口以保证 SEO；\`index.html\` 只是默认入口名, 不是唯一入口。
+`,
+};
+
+/**
+ * Code Agent 开发手册 — 搜索相关依赖
+ * @keyword-en code-agent-search-dependencies-chapter
+ */
+export const LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_SEARCH: KnowledgeChapterInfo =
+  {
+    id: 'local_code_agent_development_handbook_search',
+    bookId: 'local_code_agent_development_handbook',
+    title: '搜索相关依赖',
+    sortOrder: 10,
+    isLmRequired: false,
+    content: `# 搜索相关依赖
+
+## 总入口
+
+搜索顺序固定:
+
+1. 先查 Solution。SaaS 的 \`saas.app.solution.list\` 不传 runnerId 时会跨 mounted Runner 聚合, 返回 \`runnerIds\` 作为绑定来源。
+2. 如果命中唯一绑定 Runner, 后续 Runner hook 使用该 runnerId；如果未命中, 先让用户选择已有 Solution 或明确确认新建, 不要直接创建；轻量 view 的 default-view-solution 例外, 它是 Runner 内置目标。
+3. 再查 App, 最后查 Unit/Hook。
+4. 搜索命中后再读详情或 schema, 不要直接猜路径或 payload。
+
+## Solution 的搜索方法
+
+Runner 本地 Solution 是真实数据源。
+
+优先链路:
+
+1. \`saas.app.solution.list\`：跨 Runner 聚合 Solution, 优先用 q/name 找候选并读取 \`runnerIds\`。
+2. \`runner.app.solution.list/search/get\`：在已确定 runnerId 后读取 Runner 本地详情, 获取 location/includes/isInitialized。
+3. 只有用户明确确认新建业务 Solution 时, 才允许用 \`runner.app.solution.ensureTarget\` 创建 Solution；code_gen_orchestrate 必须传 \`allowCreateSolution=true\`。
+4. 临时表格、单页展示、轻量页面默认使用 Runner 内置 \`default-view-solution\`；调用 code_gen_orchestrate 时传 \`targetKind="view"\`, 不要询问用户是否创建这个默认 Solution。
+
+注意:
+
+- \`runner.app.solution.*\` 必须带 target=runner 和 runnerId；runnerId 来自已命中 Solution 的 \`runnerIds\`, 或新建时的 Runner 选择。
+- SaaS 的 \`saas.app.solution.*\` 是跨 Runner 聚合/市场视角, 不是 Runner 本地落库入口。
+- code-agent 确保目标必须走 \`runner.app.solution.ensureTarget\`, 不要在 SaaS 数据库里直接创建 Solution/App；但 Solution 默认只复用, 未命中不得自动新建。
+- 如果没有在线 Runner, 不允许直接返回代码或 index.html 作为替代交付；必须提示等待 Runner 上线。
+
+## App 的搜索方法
+
+App 元数据保存在 Runner 管理库 \`runner_apps\`。
+
+优先链路:
+
+1. 先拿 Solution 的 \`solutionId\`。
+2. 用 \`runner.unitcore.mongo.find\` 只读查询 runner 管理库:
+   - collection: \`runner_apps\`
+   - filter: \`{ solutionId }\` 或 \`{ solutionId, name }\`
+3. 如果 Solution 已命中、App 未命中且用户要新建应用, 用 \`runner.app.solution.ensureTarget\` 传入 appName/appVersion/appDescription；这只是在已有 Solution 下创建 App。
+4. 命中 App 后读取 \`location\`, \`isInitialized\`, \`keywords\`。未初始化时先走应用开发前工作。
+
+注意:
+
+- App 不在 SaaS \`apps\` 表里确定归属；SaaS \`apps\` 仅是旧插件/本地录入兼容层。
+- App 搜索不应全文扫 workspace 起步, 除非 metadata 缺失。
+
+## 后续代码图入口
+
+确定 runnerId、solutionId 以及目标是 app 还是 unit 后, 本章只负责依赖判定和目标选择。旧的 Runner code-agent 文件搜索/写入 hook 已移除；新代码图的文件级检索、编辑、checkpoint 和人工选择流程由后续结构重新定义。
+
+当前可依赖的稳定信息:
+
+1. Solution: Runner 本地 Solution 记录, 包含 solutionId/name/summary/description/location/includes/isInitialized。
+2. App: Runner 管理库 \`runner_apps\` 中关联到 solutionId/solutionName 的 App 记录, 包含 appId/name/location/isInitialized/keywords。
+3. Unit: 先通过 HookBus 查在线 hook, 需要离线索引时再查 \`runner_capabilities\`。
+4. Terminal: 仍通过 Runner 终端能力执行测试、构建或模板查询。
+
+## 终端指令执行:
+
+\`\`\`json
+{
+  "hookName": "runner.unitcore.terminal.exec",
+  "target": "runner",
+  "runnerId": "<uuid>",
+  "payload": [{
+    "sessionId": "<sessionId>",
+    "command": "npm test",
+    "mode": "sync",
+    "timeout": 30000
+  }]
+}
+\`\`\`
+
+终端指令只在 Runner workspace 中运行。短命令优先 \`mode=sync\`；构建、dev server、长任务用 async，再通过 \`runner.unitcore.terminal.getStatus\` / \`runner.unitcore.terminal.getOutput\` 查询。不要让用户复制命令到本地执行；不要从 SaaS 侧本地 shell 执行用户项目命令。
+
+## Unit 的搜索方法
+
+Unit 是 Runner Unit Core 或业务扩展 hook 能力。
+
+优先链路:
+
+1. \`runner.system.hookbus.getTag\`：拿当前 Runner hook tag 全景。
+2. \`runner.system.hookbus.search\`：按 tags/pluginName 检索候选 hook。
+3. \`runner.system.hookbus.getInfo\`：拿候选 hook 的 description、requiredAbility、payloadSchema。
+4. 需要更稳定的离线索引时, 用 \`runner.unitcore.mongo.find\` 查 runner 管理库:
+   - collection: \`runner_capabilities\`
+   - filter 可按 \`unitName\`, \`hookName\`, \`keywordsCn\`, \`keywordsEn\`, \`source\` 收敛。
+
+注意:
+
+- Unit hook 名必须保持四段命名, 典型形态: \`runner.unitcore.<unitName>.<action>\`。
+- 先确认是否已有 Unit 能力, 再决定新增。
+- 新增 Unit 前要读 Runner 手册的 Unit Core 章节: bookId=\`local_runner_hook_skill\`, chapterId=\`local_runner_hook_skill_unitcore\`。
+`,
+  };
+
+/**
+ * Code Agent 开发手册 — 应用开发前工作
+ * @keyword-en code-agent-app-preflight-chapter
+ */
+export const LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_APP_PREFLIGHT: KnowledgeChapterInfo =
+  {
+    id: 'local_code_agent_development_handbook_app_preflight',
+    bookId: 'local_code_agent_development_handbook',
+    title: '应用开发前工作',
+    sortOrder: 20,
+    isLmRequired: false,
+    content: `# 应用开发前工作
+
+应用开发是完整底座项目开发, 不是单个工具函数开发。
+
+## 前置确认
+
+开始前必须确认:
+
+1. solutionName / solutionId: 目标业务边界, 默认必须复用已有 Solution。
+2. runnerId: 优先从 Solution 的 \`runnerIds\` 推断；只有确认新建 Solution 且多 Runner 时要求用户指定。
+3. appName / appId: 目标应用。
+4. app 是否已初始化: \`isInitialized\`。
+5. 用户是否要新建应用、基于模板初始化、还是修改已有应用。
+
+## 元数据确保
+
+使用 \`runner.app.solution.ensureTarget\`:
+
+- 只传 solutionName: 仅确保已存在 Solution；未命中时默认停止, 不自动新建。default-view-solution 是内置 view 目标例外。
+- 同时传 appName: 在已存在 Solution 下确保 App。
+- 只有用户明确确认新建 Solution 时, code_gen_orchestrate 才传 \`allowCreateSolution=true\`。
+- 轻量 view 需求不要传 appName, 使用 \`default-view-solution\` 和 \`targetKind="view"\`。
+- 页面/单页/表格/展示类需求默认按 view 处理, 不要升级成 App, 也不要追问用户是否创建 default-view-solution。
+- 新建记录默认 \`isInitialized=false\`。
+- App 初始化完成后, 由模板初始化 hook 或后续注册流程更新初始化状态。
+
+## 使用 npx list 查询模板
+
+初始化 App 前必须先查询 Runner 镜像里可用模板。
+
+约定:
+
+1. 模板 CLI 由 Runner 镜像预制, 通过本地 npx 调用。
+2. 不允许直接猜模板名。
+3. 先执行模板列表查询, 典型命令形态:
+   - \`npx <template-cli> list\`
+   - 或 \`npx <template-cli> list --json\`
+4. 拿到模板列表后, 根据用户需求选择模板。首个目标模板是 Astro 应用底座。
+5. 模板选择必须记录到 App 元数据或初始化日志, 方便后续追踪。
+
+## 模板初始化后必须读取
+
+模板生成完成后, 先读取这些信息再规划代码:
+
+1. 文件夹地图: 确认 pages、vueComponent、reactComponent、接口对接层、配置目录等相对路径。
+2. tag 预定义库: 只使用模板声明过的受控 tag。
+3. module.md 或模板等价说明: 确认模块边界。
+4. package.json / scripts: 确认构建、检查、启动命令。
+
+## 规划约束
+
+- 不要把应用业务逻辑写到顶层 utils/lib/helpers/common。
+- 先用 tag/目录地图定位大概目录, 再用 grep/AST 精确定位。
+- 修改已有文件时优先用小范围 patch, 不做无关重构。
+`,
+  };
+
+/**
+ * Code Agent 开发手册 — UNIT开发前工作
+ * @keyword-en code-agent-unit-preflight-chapter
+ */
+export const LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_UNIT_PREFLIGHT: KnowledgeChapterInfo =
+  {
+    id: 'local_code_agent_development_handbook_unit_preflight',
+    bookId: 'local_code_agent_development_handbook',
+    title: 'UNIT开发前工作',
+    sortOrder: 30,
+    isLmRequired: false,
+    content: `# UNIT开发前工作
+
+Unit 是一段小的工具代码能力, 通常暴露为 Runner hook。它不承担完整应用底座、页面路由或复杂 UI。
+
+## 先判断是否应该做 Unit
+
+适合 Unit:
+
+- 文件/AST/终端/Mongo 等小工具能力。
+- 可被多个 App 复用的单点能力。
+- 明确输入 payload, 明确输出结果, 无完整页面生命周期。
+
+不适合 Unit:
+
+- 需要完整路由、页面、布局、接口对接层。
+- 需要多目录、多页面、多状态管理的应用底座。
+- 需要用户长期直接访问的前端应用。
+
+## 开发前检索
+
+1. 先用 \`runner.system.hookbus.getTag\` 看能力标签。
+2. 再用 \`runner.system.hookbus.search\` 搜相关 tag。
+3. 对候选 hook 用 \`runner.system.hookbus.getInfo\` 获取 payloadSchema。
+4. 必要时查 \`runner_capabilities\`, 避免重复造 Unit。
+
+## 新增 Unit 前必须确定
+
+1. unitName: 必须稳定, 英文小写或项目约定命名。
+2. hookName: 必须四段, 形态 \`runner.unitcore.<unitName>.<action>\`。
+3. requiredAbility / denyLlm: 外部可调用就声明权限, 危险写操作默认 denyLlm。
+4. payloadSchema: 必须用 Zod 声明, 让 getInfo 可导出 schema。
+5. keywordsCn / keywordsEn: 方便后续搜索。
+
+## 文件与注册
+
+- 读取 Runner 手册 Unit Core 章节后再写文件。
+- 新 Unit 应遵循已有 unit 目录结构, 不发明个人风格。
+- 写完后确认 HookBus 可搜索到, 再进行调用测试。
+`,
+  };
+
 // ----------------------------------------------------------------
 // 聚合导出（便于服务层统一访问）
 // ----------------------------------------------------------------
@@ -2081,6 +2368,7 @@ export const LOCAL_BOOKS: readonly KnowledgeBookInfo[] = [
   LOCAL_BOOK_WEB_CONTROL,
   LOCAL_BOOK_SAAS_SYSTEM_HOOK,
   LOCAL_BOOK_RUNNER_HOOK,
+  LOCAL_BOOK_CODE_AGENT_DEVELOPMENT,
 ];
 
 /**
@@ -2121,6 +2409,15 @@ export const LOCAL_CHAPTERS_BY_BOOK: ReadonlyMap<
       LOCAL_CHAPTER_RUNNER_HOOK_DATA_TOUCHPOINT,
     ],
   ],
+  [
+    'local_code_agent_development_handbook',
+    [
+      LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_LM,
+      LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_SEARCH,
+      LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_APP_PREFLIGHT,
+      LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_UNIT_PREFLIGHT,
+    ],
+  ],
 ]);
 
 /**
@@ -2145,6 +2442,10 @@ export const LOCAL_CHAPTERS_BY_ID: ReadonlyMap<string, KnowledgeChapterInfo> =
       LOCAL_CHAPTER_RUNNER_HOOK_IDENTITY,
       LOCAL_CHAPTER_RUNNER_HOOK_SOLUTION,
       LOCAL_CHAPTER_RUNNER_HOOK_DATA_TOUCHPOINT,
+      LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_LM,
+      LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_SEARCH,
+      LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_APP_PREFLIGHT,
+      LOCAL_CHAPTER_CODE_AGENT_DEVELOPMENT_UNIT_PREFLIGHT,
     ].map((c) => [c.id, c]),
   );
 

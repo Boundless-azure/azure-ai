@@ -6,7 +6,6 @@ import { ChatSessionSmartEntity } from '@core/ai/entities/chat-session-smart.ent
 import { AIModelEntity } from '@core/ai/entities/ai-model.entity';
 import { ChatMessageType } from '@core/ai/enums/chat.enums';
 import { AgentEntity } from '@/app/agent/entities/agent.entity';
-import { SessionLockService } from './session-lock.service';
 import { SmartLlmGeneratorService } from './smart-llm-generator.service';
 
 const SMART_SEGMENT_TARGET_CHARS_DEFAULT = 5000;
@@ -49,12 +48,21 @@ interface ModelContext {
 }
 
 /**
+ * smart 分析模型 hint, 用于把后台摘要绑定到本轮 agent 首个模型。
+ * @keyword-en smart-analyze-hint, agent-model
+ */
+export interface ChatSessionSmartAnalyzeHint {
+  agentPrincipalId?: string | null;
+  modelId?: string | null;
+}
+
+/**
  * @title 会话 smart 分段写入服务
  * @description 按可见消息正文累计到阈值生成 chat_session_smart 分段索引。
- *   阈值来自当前 session 内首个 agent 的 aiModelIds[0] 对应模型的 smartSegmentChars 字段;
+ *   优先使用本轮触发 agent 的 aiModelIds[0] 对应模型的 smartSegmentChars 字段;
  *   找不到模型时回退到 5000 默认值。摘要 + 关键词优先用 LLM 生成 (SmartLlmGeneratorService),
  *   LLM 失败回退规则算法 (中文 bigram + 英文词频)。
- *   并发: 通过 SessionLockService 按 sessionId 串行, 避免重复压缩与"对话/压缩"读写竞态。
+ *   并发: smart 自己按 sessionId 去重串行, 不占用 agent-run 的回复队列。
  * @keywords-cn 会话smart, 历史索引, 分段摘要, 关键词, 模型阈值, 会话串行
  * @keywords-en session-smart, history-index, segment-summary, keywords, model-threshold, session-serial
  */
@@ -62,6 +70,12 @@ interface ModelContext {
 export class ChatSessionSmartService {
   private readonly logger = new Logger(ChatSessionSmartService.name);
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly analyzeHints = new Map<
+    string,
+    ChatSessionSmartAnalyzeHint
+  >();
+  private readonly runningSessions = new Set<string>();
+  private readonly rerunSessions = new Set<string>();
 
   constructor(
     @InjectRepository(ChatMessageEntity)
@@ -72,23 +86,24 @@ export class ChatSessionSmartService {
     private readonly modelRepo: Repository<AIModelEntity>,
     @InjectRepository(AgentEntity)
     private readonly agentRepo: Repository<AgentEntity>,
-    private readonly sessionLock: SessionLockService,
     private readonly llmGen: SmartLlmGeneratorService,
   ) {}
 
   /**
-   * 延迟触发会话 smart 分段分析, 多条消息会被 debounce 合并。
+   * 延迟触发会话 smart 分段分析, 多条消息会被 debounce 合并; hint 用于锁定本轮 agent 模型。
    * @keyword-cn smart分析, 防抖, 会话索引
    * @keyword-en schedule-smart-analysis, debounce, session-index
    */
-  scheduleAnalyze(sessionId: string): void {
+  scheduleAnalyze(sessionId: string, hint?: ChatSessionSmartAnalyzeHint): void {
     const sid = sessionId.trim();
     if (!sid) return;
+    this.rememberAnalyzeHint(sid, hint);
     const oldTimer = this.timers.get(sid);
     if (oldTimer) clearTimeout(oldTimer);
     const timer = setTimeout(() => {
       this.timers.delete(sid);
-      void this.analyzeSession(sid).catch((err: unknown) => {
+      const runHint = this.consumeAnalyzeHint(sid);
+      void this.analyzeSession(sid, runHint).catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.warn(
           `[session-smart] analyze failed session=${sid}: ${msg}`,
@@ -100,29 +115,49 @@ export class ChatSessionSmartService {
 
   /**
    * 分析指定会话的未索引消息, 每累计到阈值写入一个 smart 段。
-   *   外层套 SessionLockService 串行: 同 sessionId 的 analyze + agent-run 严格 FIFO,
-   *   保证不会出现"压缩中又起一次压缩"或"对话读到半压缩态"。
+   *   smart 自身同 sessionId 串行; 若运行中又收到调度, 本轮结束后重新 debounce。
    * @keyword-cn smart分析, 分段写入, 会话索引, 会话串行
    * @keyword-en analyze-smart-session, segment-write, session-index, session-serial
    */
-  async analyzeSession(sessionId: string): Promise<number> {
-    return this.sessionLock.runExclusive(sessionId, 'smart-analyze', async () =>
-      this.analyzeSessionInner(sessionId),
-    );
+  async analyzeSession(
+    sessionId: string,
+    hint?: ChatSessionSmartAnalyzeHint,
+  ): Promise<number> {
+    const sid = sessionId.trim();
+    if (!sid) return 0;
+    if (this.runningSessions.has(sid)) {
+      this.rememberAnalyzeHint(sid, hint);
+      this.rerunSessions.add(sid);
+      return 0;
+    }
+
+    const runHint = this.consumeAnalyzeHint(sid, hint);
+    this.runningSessions.add(sid);
+    try {
+      return await this.analyzeSessionInner(sid, runHint);
+    } finally {
+      this.runningSessions.delete(sid);
+      if (this.rerunSessions.delete(sid) || this.analyzeHints.has(sid)) {
+        this.scheduleAnalyze(sid);
+      }
+    }
   }
 
   /**
-   * analyzeSession 的实际工作体, 假设外层已持锁。
+   * analyzeSession 的实际工作体, 假设同 session smart 分析已由 runningSessions 串行。
    * @keyword-en analyze-session-inner
    */
-  private async analyzeSessionInner(sessionId: string): Promise<number> {
+  private async analyzeSessionInner(
+    sessionId: string,
+    hint?: ChatSessionSmartAnalyzeHint,
+  ): Promise<number> {
     let created = 0;
     let cachedCtx: ModelContext | null = null;
     while (true) {
       const pending = await this.loadPendingMessages(sessionId);
-      // 模型上下文按 session 解析一次, 避免每个段重复查 agent / model
+      // 模型上下文按本轮分析解析一次, 避免每个段重复查 agent / model
       if (cachedCtx === null) {
-        cachedCtx = await this.resolveModelContext(pending);
+        cachedCtx = await this.resolveModelContext(pending, hint);
       }
       const seg = this.buildSegmentFromMessages(pending, cachedCtx.targetChars);
       if (!seg) break;
@@ -135,7 +170,12 @@ export class ChatSessionSmartService {
         },
         select: ['id'],
       });
-      if (exists) continue;
+      if (exists) {
+        this.logger.debug(
+          `[session-smart] segment already exists session=${sessionId} start=${seg.startMessageId} end=${seg.endMessageId}`,
+        );
+        break;
+      }
 
       const enriched = await this.tryLlmEnrich(cachedCtx.modelId, seg);
       await this.smartRepo.save(
@@ -157,6 +197,37 @@ export class ChatSessionSmartService {
       );
     }
     return created;
+  }
+
+  /**
+   * 记住 smart 分析 hint, debounce 期间后来的本轮 agent/model 会覆盖旧值。
+   * @keyword-en remember-analyze-hint, agent-model
+   */
+  private rememberAnalyzeHint(
+    sessionId: string,
+    hint?: ChatSessionSmartAnalyzeHint,
+  ): void {
+    const normalized = normalizeAnalyzeHint(hint);
+    if (!normalized) return;
+    const old = this.analyzeHints.get(sessionId) ?? {};
+    this.analyzeHints.set(sessionId, {
+      agentPrincipalId: normalized.agentPrincipalId ?? old.agentPrincipalId,
+      modelId: normalized.modelId ?? old.modelId,
+    });
+  }
+
+  /**
+   * 取出本次 smart 分析 hint; 显式传入的 hint 会先合并到缓存。
+   * @keyword-en consume-analyze-hint, debounce-hint
+   */
+  private consumeAnalyzeHint(
+    sessionId: string,
+    hint?: ChatSessionSmartAnalyzeHint,
+  ): ChatSessionSmartAnalyzeHint | undefined {
+    this.rememberAnalyzeHint(sessionId, hint);
+    const stored = this.analyzeHints.get(sessionId);
+    this.analyzeHints.delete(sessionId);
+    return stored;
   }
 
   /**
@@ -201,17 +272,26 @@ export class ChatSessionSmartService {
   }
 
   /**
-   * 解析当前 session 下"应该用哪个模型 + 阈值多少":
-   *  - 从待分析消息的 senderId 集合里反查 agents (principal_id IN ...)
-   *  - 取第一个 agent (按 createdAt 升序, 等同会话内最早出现的 agent)
-   *  - 取该 agent.aiModelIds[0] 对应 ai_models.smartSegmentChars
+   * 解析当前 smart 分析应该用哪个模型 + 阈值:
+   *  - 优先 hint.modelId
+   *  - 其次 hint.agentPrincipalId 对应 agent.aiModelIds[0]
+   *  - 最后从待分析消息 senderId 集合里反查 agents
    *  - 没 agent / 没 model / smartSegmentChars 为 null → 走 5000 默认
    * @keyword-cn 模型解析, 分段阈值, agent模型
    * @keyword-en resolve-model-context, segment-threshold, agent-model
    */
   private async resolveModelContext(
     pending: ChatMessageEntity[],
+    hint?: ChatSessionSmartAnalyzeHint,
   ): Promise<ModelContext> {
+    const hintedModel = await this.resolveModelContextByModelId(hint?.modelId);
+    if (hintedModel) return hintedModel;
+
+    const hintedAgent = await this.resolveAgentModelContext(
+      hint?.agentPrincipalId,
+    );
+    if (hintedAgent) return hintedAgent;
+
     const senderIds = Array.from(
       new Set(
         pending.map((m) => m.senderId).filter((id): id is string => !!id),
@@ -232,19 +312,57 @@ export class ChatSessionSmartService {
     if (!firstAgentWithModel || !firstAgentWithModel.aiModelIds) {
       return { modelId: null, targetChars: SMART_SEGMENT_TARGET_CHARS_DEFAULT };
     }
-    const modelId = firstAgentWithModel.aiModelIds[0];
+    const resolved = await this.resolveModelContextByModelId(
+      firstAgentWithModel.aiModelIds[0],
+    );
+    return (
+      resolved ?? {
+        modelId: null,
+        targetChars: SMART_SEGMENT_TARGET_CHARS_DEFAULT,
+      }
+    );
+  }
+
+  /**
+   * 按 agentPrincipalId 读取 agent.aiModelIds[0], 作为 smart LLM 与阈值模型来源。
+   * @keyword-en resolve-agent-model-context, agent-first-model
+   */
+  private async resolveAgentModelContext(
+    agentPrincipalId?: string | null,
+  ): Promise<ModelContext | null> {
+    const pid = agentPrincipalId?.trim();
+    if (!pid) return null;
+    const agent = await this.agentRepo.findOne({
+      where: { principalId: pid, isDelete: false, active: true },
+      select: ['id', 'principalId', 'aiModelIds'],
+    });
+    const modelId = Array.isArray(agent?.aiModelIds)
+      ? agent.aiModelIds[0]
+      : null;
+    return this.resolveModelContextByModelId(modelId);
+  }
+
+  /**
+   * 按 modelId 读取 smartSegmentChars; 模型不可用时返回 null 让调用方继续回退。
+   * @keyword-en resolve-model-context-by-id, smart-threshold
+   */
+  private async resolveModelContextByModelId(
+    modelId?: string | null,
+  ): Promise<ModelContext | null> {
+    const mid = modelId?.trim();
+    if (!mid) return null;
     const model = await this.modelRepo.findOne({
-      where: { id: modelId, isDelete: false, enabled: true },
+      where: { id: mid, isDelete: false, enabled: true },
       select: ['id', 'smartSegmentChars'],
     });
     if (!model) {
-      return { modelId, targetChars: SMART_SEGMENT_TARGET_CHARS_DEFAULT };
+      return null;
     }
     const target =
       typeof model.smartSegmentChars === 'number' && model.smartSegmentChars > 0
         ? model.smartSegmentChars
         : SMART_SEGMENT_TARGET_CHARS_DEFAULT;
-    return { modelId, targetChars: target };
+    return { modelId: model.id, targetChars: target };
   }
 
   /**
@@ -285,7 +403,7 @@ export class ChatSessionSmartService {
   }
 
   /**
-   * 读取最后一个 smart 段之后尚未索引的可见文本消息。
+   * 读取最后一个 smart 段之后尚未索引的可见文本消息; 游标按消息 ID 推进, 避免 Date 毫秒精度重复收录。
    * @keyword-cn 待分析消息, smart游标, 可见正文
    * @keyword-en pending-smart-messages, smart-cursor, visible-text
    */
@@ -305,22 +423,12 @@ export class ChatSessionSmartService {
         messageType: ChatMessageType.Text,
       });
 
-    if (lastSmart) {
-      const endMessage = await this.messageRepo.findOne({
-        where: { id: lastSmart.endMessageId, sessionId },
-        select: ['id', 'createdAt'],
-      });
-      if (endMessage) {
-        qb.andWhere(
-          '(m.created_at > :cursorAt OR (m.created_at = :cursorAt AND m.id > :cursorId))',
-          { cursorAt: endMessage.createdAt, cursorId: endMessage.id },
-        );
-      }
+    if (lastSmart?.endMessageId) {
+      qb.andWhere('m.id > :cursorId', { cursorId: lastSmart.endMessageId });
     }
 
     return qb
-      .orderBy('m.created_at', 'ASC')
-      .addOrderBy('m.id', 'ASC')
+      .orderBy('m.id', 'ASC')
       .limit(SMART_MAX_PENDING_MESSAGES)
       .getMany();
   }
@@ -357,6 +465,20 @@ export class ChatSessionSmartService {
       ruleSummary: summarizeSegment(segment),
     };
   }
+}
+
+/**
+ * 归一化 smart 分析 hint, 空字符串视为未提供。
+ * @keyword-en normalize-analyze-hint, agent-model
+ */
+function normalizeAnalyzeHint(
+  hint?: ChatSessionSmartAnalyzeHint,
+): ChatSessionSmartAnalyzeHint | null {
+  if (!hint) return null;
+  const agentPrincipalId = hint.agentPrincipalId?.trim() || null;
+  const modelId = hint.modelId?.trim() || null;
+  if (!agentPrincipalId && !modelId) return null;
+  return { agentPrincipalId, modelId };
 }
 
 /**

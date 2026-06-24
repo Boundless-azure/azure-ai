@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 // 直接从 types 文件导入以避免模块导出混淆
 import type { AICoreModuleOptions } from '../types/module.types';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import {
   ChatMessage,
   ChatContext,
@@ -17,13 +17,12 @@ import {
   PromptTemplateEntity,
   ChatMessageEntity,
 } from '../entities';
-import { MessageKeywordsService } from './message.keywords.service';
 
 /**
  * 上下文服务
  * 负责管理对话上下文、处理 prompt 模板和消息历史，以数据库为唯一事实来源（无内存缓存）。
  *
- * @keywords context-service, session-management, keyword-extraction, keyword-filtering,
+ * @keywords context-service, session-management, keyword-filtering,
  * sliding-window, prompt-template, analytics, cleanup, non-system-window, system-message
  */
 @Injectable()
@@ -47,7 +46,6 @@ export class ContextService {
     private readonly chatMessageRepository: Repository<ChatMessageEntity>,
     @InjectRepository(PromptTemplateEntity)
     private readonly promptTemplateRepository: Repository<PromptTemplateEntity>,
-    private readonly messageKeywordsService: MessageKeywordsService,
   ) {
     // 在服务构造时优先合并模块传入的上下文配置
     this.applyContextOptionsFromModule();
@@ -153,12 +151,12 @@ export class ContextService {
   }
 
   /**
-   * 添加消息到上下文（持久化到消息表，并进行关键词提取存储）
+   * 添加消息到上下文（仅持久化到消息表，关键词索引由 chat_session_smart 负责）
    *
    * @param sessionId 会话唯一标识
    * @param message 消息内容（不包含 timestamp，内部补齐）
    * @returns void
-   * @keywords message, persistence, keyword-extraction, audit, trimming
+   * @keyword-en message, persistence, audit, trimming
    */
   async addMessage(
     sessionId: string,
@@ -176,7 +174,7 @@ export class ContextService {
     };
 
     // 持久化单条消息
-    const saved = await this.chatMessageRepository.save(
+    await this.chatMessageRepository.save(
       this.chatMessageRepository.create({
         sessionId,
         role: chatMessage.role,
@@ -188,19 +186,6 @@ export class ContextService {
         isDelete: false,
       }),
     );
-
-    // 关键词分析（异步执行，但不阻塞主流程）
-    try {
-      const kw = await this.messageKeywordsService.extractKeywords(
-        chatMessage.content,
-      );
-      await this.chatMessageRepository.update(
-        { id: saved.id },
-        { keywords: kw },
-      );
-    } catch {
-      // 关键词分析失败不影响消息保存
-    }
 
     // 针对非系统消息执行窗口裁剪（只保留最近 maxMessages 条）
     await this.trimContext(sessionId, this.defaultConfig.maxMessages);
@@ -891,7 +876,7 @@ export class ContextService {
    * @param limit 可选，窗口大小
    * @param matchMode 匹配模式（any/all）
    * @returns ChatMessage[] 滑动窗口的消息
-   * @keywords keyword-filtering, sliding-window, mysql-json-search, sqlite-like
+   * @keyword-en keyword-filtering, sliding-window, content-search, sqlite-like
    */
   async getKeywordContext(
     sessionId: string,
@@ -998,7 +983,7 @@ export class ContextService {
    * @param limit 窗口大小（必填）
    * @param matchMode 匹配模式（any/all）默认 any
    * @returns ChatMessage[] 滑动窗口的消息
-   * @keywords user-scope, keyword-filtering, sliding-window, mysql-json-search, sqlite-like
+   * @keyword-en user-scope, keyword-filtering, sliding-window, content-search, sqlite-like
    */
   async getKeywordContextByUser(
     userId: string,
@@ -1151,11 +1136,12 @@ export class ContextService {
   }
 
   /**
-   * 在用户范围内查询包含关键词的消息（MySQL/SQLite 兼容）
+   * 在用户范围内按消息正文查询包含关键词的消息。
    * @param userId 用户唯一标识
    * @param keywords 关键词列表
    * @param limit 初始抓取上限
    * @param matchMode 匹配模式
+   * @keyword-en db-query, text-like, content-search
    */
   private async queryUserMessagesByKeywords(
     userId: string,
@@ -1163,9 +1149,6 @@ export class ContextService {
     limit: number,
     matchMode: 'any' | 'all',
   ): Promise<ChatMessageEntity[]> {
-    const conn: DataSource = this.chatMessageRepository.manager.connection;
-    const dbType: string = conn?.options?.type ?? 'sqlite';
-
     const qb = this.chatMessageRepository
       .createQueryBuilder('m')
       .innerJoin(ChatSessionEntity, 's', 's.session_id = m.session_id')
@@ -1175,24 +1158,12 @@ export class ContextService {
       .andWhere('m.is_delete = false')
       .andWhere('m.role != :role', { role: 'system' });
 
-    if (dbType === 'mysql') {
-      const clauses = keywords.map(
-        (_, i) => `JSON_SEARCH(m.keywords, 'one', :kw${i}) IS NOT NULL`,
-      );
-      const where = clauses.join(matchMode === 'all' ? ' AND ' : ' OR ');
-      qb.andWhere(`(${where})`);
-      keywords.forEach((kw, i) => qb.setParameter(`kw${i}`, kw));
-    } else if (dbType === 'postgres') {
-      const clauses = keywords.map((_, i) => `m.keywords::text ILIKE :kw${i}`);
-      const where = clauses.join(matchMode === 'all' ? ' AND ' : ' OR ');
-      qb.andWhere(`(${where})`);
-      keywords.forEach((kw, i) => qb.setParameter(`kw${i}`, `%"${kw}"%`));
-    } else {
-      const clauses = keywords.map((_, i) => `m.keywords LIKE :kw${i}`);
-      const where = clauses.join(matchMode === 'all' ? ' AND ' : ' OR ');
-      qb.andWhere(`(${where})`);
-      keywords.forEach((kw, i) => qb.setParameter(`kw${i}`, `%"${kw}"%`));
-    }
+    const clauses = keywords.map((_, i) => `LOWER(m.content) LIKE :kw${i}`);
+    const where = clauses.join(matchMode === 'all' ? ' AND ' : ' OR ');
+    qb.andWhere(`(${where})`);
+    keywords.forEach((kw, i) =>
+      qb.setParameter(`kw${i}`, `%${kw.toLowerCase()}%`),
+    );
 
     return qb.orderBy('m.created_at', 'ASC').limit(limit).getMany();
   }
@@ -1310,7 +1281,7 @@ export class ContextService {
   }
 
   /**
-   * 数据库层面关键词筛选（MySQL/SQLite 兼容）
+   * 数据库层面按消息正文进行关键词筛选。
    * - any: 任意命中
    * - all: 必须全部命中
    *
@@ -1319,7 +1290,7 @@ export class ContextService {
    * @param limit 初始抓取上限（用于后续滑动窗口）
    * @param matchMode 匹配模式（any/all）
    * @returns ChatMessageEntity[] 命中的消息实体
-   * @keywords db-query, json-search, text-like, keyword-index
+   * @keyword-en db-query, text-like, content-search
    */
   private async queryMessagesByKeywords(
     sessionId: string,
@@ -1327,30 +1298,18 @@ export class ContextService {
     limit: number,
     matchMode: 'any' | 'all',
   ): Promise<ChatMessageEntity[]> {
-    const conn: DataSource = this.chatMessageRepository.manager.connection;
-    const dbType: string = conn?.options?.type ?? 'sqlite';
-
     const qb = this.chatMessageRepository
       .createQueryBuilder('m')
       .where('m.session_id = :sid', { sid: sessionId })
       .andWhere('m.is_delete = 0')
       .andWhere('m.role != :role', { role: 'system' });
 
-    if (dbType === 'mysql') {
-      // 使用 JSON_SEARCH 查找包含关键词的 JSON 数组
-      const clauses = keywords.map(
-        (_, i) => `JSON_SEARCH(m.keywords, 'one', :kw${i}) IS NOT NULL`,
-      );
-      const where = clauses.join(matchMode === 'all' ? ' AND ' : ' OR ');
-      qb.andWhere(`(${where})`);
-      keywords.forEach((kw, i) => qb.setParameter(`kw${i}`, kw));
-    } else {
-      // SQLite 退化为 LIKE 搜索 JSON 文本
-      const clauses = keywords.map((_, i) => `m.keywords LIKE :kw${i}`);
-      const where = clauses.join(matchMode === 'all' ? ' AND ' : ' OR ');
-      qb.andWhere(`(${where})`);
-      keywords.forEach((kw, i) => qb.setParameter(`kw${i}`, `%"${kw}"%`));
-    }
+    const clauses = keywords.map((_, i) => `LOWER(m.content) LIKE :kw${i}`);
+    const where = clauses.join(matchMode === 'all' ? ' AND ' : ' OR ');
+    qb.andWhere(`(${where})`);
+    keywords.forEach((kw, i) =>
+      qb.setParameter(`kw${i}`, `%${kw.toLowerCase()}%`),
+    );
 
     return qb.orderBy('m.created_at', 'ASC').limit(limit).getMany();
   }

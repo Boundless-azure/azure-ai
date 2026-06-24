@@ -61,7 +61,10 @@ export class PluginController {
   ): Promise<PluginEntity> {
     if (!pluginDir) throw new Error('pluginDir is required');
     if (!sessionId) throw new Error('sessionId is required');
-    return this.service.registerByDir(pluginDir, { sessionId, runnerId });
+    return this.service.registerByDir(pluginDir, {
+      sessionId,
+      runnerId,
+    });
   }
 
   @Put(':id')

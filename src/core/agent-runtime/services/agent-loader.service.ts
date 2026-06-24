@@ -5,11 +5,22 @@ import * as ts from 'typescript';
 import * as os from 'os';
 import { createHash, randomUUID } from 'crypto';
 import { createRequire } from 'module';
+import { pathToFileURL } from 'url';
 import type {
   AgentDescriptor,
   LoadedAgent,
   AgentDialoguesContract,
 } from '../types/agent-runtime.types';
+
+type HandleLoadOptions = {
+  aiServer?: unknown;
+  pluginService?: unknown;
+  solutionService?: unknown;
+  runnerHookRpc?: unknown;
+  workflowContext?: unknown;
+  checkpointer?: unknown;
+  agentConfig?: { aiModelIds?: string[] };
+};
 
 /**
  * @title Agent 动态加载服务
@@ -57,12 +68,35 @@ export class AgentLoaderService {
   }
 
   /**
-   * 将 TS 文件动态转译为 CJS 并以 data:URL 方式导入，返回模块的 default 导出
+   * 加载 agent 源文件的默认导出：dist 运行时优先复用同名 JS 产物，开发态再尝试直接加载源文件，最后回退到临时 transpile。
+   * @keyword-en import-default-from-ts
    */
   private async importDefaultFromTs(filePath: string): Promise<unknown> {
     if (!fs.existsSync(filePath)) {
       throw new Error(`文件不存在：${filePath}`);
     }
+
+    const builtArtifactPath = this.resolveBuiltArtifactPath(filePath);
+    if (builtArtifactPath) {
+      try {
+        return this.pickDefaultExport(
+          await this.loadModuleFromFile(builtArtifactPath),
+        );
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.warn(
+          `加载 dist agent 文件失败 ${builtArtifactPath}: ${msg}`,
+        );
+      }
+    }
+
+    try {
+      return this.pickDefaultExport(await this.loadModuleFromFile(filePath));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`直接加载源 agent 文件失败 ${filePath}: ${msg}`);
+    }
+
     const source = fs.readFileSync(filePath, 'utf-8');
     const transpiled = ts.transpileModule(source, {
       compilerOptions: {
@@ -87,14 +121,13 @@ export class AgentLoaderService {
     );
     fs.writeFileSync(tempFile, code, 'utf-8');
 
-    const requireFn = createRequire(__filename);
     let mod: unknown;
     try {
-      mod = requireFn(tempFile);
+      mod = await this.loadModuleFromFile(tempFile);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`require 临时文件失败 ${tempFile}: ${msg}`);
-      mod = await import(tempFile);
+      this.logger.warn(`加载临时 transpile 文件失败 ${tempFile}: ${msg}`);
+      throw error;
     }
     try {
       fs.unlinkSync(tempFile);
@@ -103,6 +136,53 @@ export class AgentLoaderService {
       this.logger.warn(`删除临时文件失败 ${tempFile}: ${msg}`);
     }
 
+    return this.pickDefaultExport(mod);
+  }
+
+  /**
+   * 从现有文件模块加载导出；Windows 上 import fallback 强制转成 file:// URL。
+   * @keyword-en load-module-from-file
+   */
+  private async loadModuleFromFile(moduleFilePath: string): Promise<unknown> {
+    const requireFn = createRequire(__filename);
+    try {
+      return requireFn(moduleFilePath);
+    } catch {
+      return import(pathToFileURL(moduleFilePath).href);
+    }
+  }
+
+  /**
+   * dist 运行时把 src 下 agent 源文件映射到 dist 下同名 JS 产物，避免 Temp 路径破坏依赖与相对导入解析。
+   * @keyword-en resolve-built-artifact-path
+   */
+  private resolveBuiltArtifactPath(filePath: string): string | null {
+    if (!path.normalize(__filename).includes(`${path.sep}dist${path.sep}`)) {
+      return null;
+    }
+
+    const srcRoot = path.join(process.cwd(), 'src');
+    const normalizedFilePath = path.normalize(filePath);
+    const relativeFromSrc = path.relative(srcRoot, normalizedFilePath);
+    if (
+      relativeFromSrc.startsWith('..') ||
+      path.isAbsolute(relativeFromSrc) ||
+      !relativeFromSrc.endsWith('.ts')
+    ) {
+      return null;
+    }
+
+    const builtArtifactPath = path
+      .join(process.cwd(), 'dist', relativeFromSrc)
+      .replace(/\.ts$/, '.js');
+    return fs.existsSync(builtArtifactPath) ? builtArtifactPath : null;
+  }
+
+  /**
+   * 从模块对象中提取默认导出或约定命名导出。
+   * @keyword-en pick-default-export
+   */
+  private pickDefaultExport(mod: unknown): unknown {
     const rec = this.isObject(mod) ? mod : undefined;
     const def = rec
       ? (rec['default'] ??
@@ -181,22 +261,21 @@ export class AgentLoaderService {
   }
 
   /**
-   * 加载 agent.handle.ts 并返回工具数组
+   * 加载 agent.handle.ts 并返回工具数组；若实例支持可选注入方法，则在导出工具前完成注入。
    */
-  async loadHandleTools(dir: string): Promise<unknown[]> {
+  async loadHandleTools(
+    dir: string,
+    options?: HandleLoadOptions,
+  ): Promise<unknown[]> {
     const handlePath = path.join(dir, 'agent.handle.ts');
     if (!fs.existsSync(handlePath)) return [];
     const def = await this.importDefaultFromTs(handlePath);
 
     if (this.isObject(def)) {
       const rec = def;
-      if (this.hasGetTools(rec)) {
-        const tools = rec.getTools();
-        return Array.isArray(tools) ? tools : [];
-      }
-      if (this.hasHandleTool(rec)) {
-        const toolObj = rec.handleTool();
-        return toolObj ? [toolObj] : [];
+      if (this.hasGetTools(rec) || this.hasHandleTool(rec)) {
+        this.prepareHandle(rec, options);
+        return this.extractHandleTools(rec);
       }
     }
     // 若为类构造器
@@ -204,13 +283,9 @@ export class AgentLoaderService {
       const inst = this.isCtor(def) ? new def() : def;
       if (this.isObject(inst)) {
         const rec = inst;
-        if (this.hasGetTools(rec)) {
-          const tools = rec.getTools();
-          return Array.isArray(tools) ? tools : [];
-        }
-        if (this.hasHandleTool(rec)) {
-          const t = rec.handleTool();
-          return t ? [t] : [];
+        if (this.hasGetTools(rec) || this.hasHandleTool(rec)) {
+          this.prepareHandle(rec, options);
+          return this.extractHandleTools(rec);
         }
       }
     } catch (e) {
@@ -218,6 +293,53 @@ export class AgentLoaderService {
       this.logger.warn(`实例化 agent.handle 失败：${msg}`);
     }
     return [];
+  }
+
+  /**
+   * 提取句柄层导出的工具列表，并统一展平为一维数组。
+   */
+  private extractHandleTools(handle: Record<string, unknown>): unknown[] {
+    if (this.hasGetTools(handle)) {
+      return this.normalizeToolOutput(handle.getTools());
+    }
+    if (this.hasHandleTool(handle)) {
+      return this.normalizeToolOutput(handle.handleTool());
+    }
+    return [];
+  }
+
+  /**
+   * 按实例是否实现对应方法，注入 AI、插件、工作流上下文和模型配置。
+   * @keyword-en handle-duck-typing, workflow-context, checkpoint-injection
+   */
+  private prepareHandle(
+    handle: Record<string, unknown>,
+    options?: HandleLoadOptions,
+  ): void {
+    if (!options) return;
+    this.callOptionalMethod(handle, 'handleAiServer', options.aiServer);
+    this.callOptionalMethod(
+      handle,
+      'handlePluginService',
+      options.pluginService,
+    );
+    this.callOptionalMethod(
+      handle,
+      'handleSolutionService',
+      options.solutionService,
+    );
+    this.callOptionalMethod(
+      handle,
+      'handleRunnerHookRpc',
+      options.runnerHookRpc,
+    );
+    this.callOptionalMethod(
+      handle,
+      'withWorkflowContext',
+      options.workflowContext,
+    );
+    this.callOptionalMethod(handle, 'handleCheckpointer', options.checkpointer);
+    this.callOptionalMethod(handle, 'setAgentConfig', options.agentConfig);
   }
 
   /**
@@ -242,19 +364,57 @@ export class AgentLoaderService {
   /**
    * 综合加载结果：返回描述、工具与对话类实例
    */
-  async loadAll(inputDir: string): Promise<LoadedAgent> {
+  async loadAll(
+    inputDir: string,
+    options?: HandleLoadOptions,
+  ): Promise<LoadedAgent> {
     const dir = this.resolveAgentDir(inputDir);
     const [desc, tools, dialogues] = await Promise.all([
       this.loadDescriptor(dir),
-      this.loadHandleTools(dir),
+      this.loadHandleTools(dir, options),
       this.loadDialogues(dir),
     ]);
+    if (dialogues) {
+      this.prepareDialogues(dialogues, options);
+    }
     return {
       dir,
       descriptor: desc ?? undefined,
       tools,
       dialogues: dialogues ?? undefined,
     };
+  }
+
+  /**
+   * 按对话层是否实现对应方法，注入插件、Solution 服务和模型配置。
+   * @keyword-en dialogue-injection, solution-service, plugin-service
+   */
+  private prepareDialogues(
+    dialogues: AgentDialoguesContract,
+    options?: HandleLoadOptions,
+  ): void {
+    if (!options || !this.isObject(dialogues)) return;
+    this.callOptionalMethod(
+      dialogues,
+      'handlePluginService',
+      options.pluginService,
+    );
+    this.callOptionalMethod(
+      dialogues,
+      'handleSolutionService',
+      options.solutionService,
+    );
+    this.callOptionalMethod(dialogues, 'setAgentConfig', options.agentConfig);
+  }
+
+  /**
+   * 统一把工具导出值压平成一维数组，避免 handleTool 返回数组时被二次包裹。
+   */
+  private normalizeToolOutput(output: unknown[] | unknown): unknown[] {
+    if (Array.isArray(output)) {
+      return output.flatMap((item) => (Array.isArray(item) ? item : [item]));
+    }
+    return output ? [output] : [];
   }
 
   private isCtor(v: unknown): v is new () => unknown {
@@ -267,6 +427,22 @@ export class AgentLoaderService {
 
   private hasHandleTool(v: unknown): v is { handleTool: () => unknown } {
     return this.isObject(v) && typeof v['handleTool'] === 'function';
+  }
+
+  private callOptionalMethod(
+    handle: Record<string, unknown>,
+    methodName: string,
+    arg: unknown,
+  ): void {
+    if (arg === undefined) return;
+    const method = handle[methodName];
+    if (typeof method !== 'function') return;
+    try {
+      (method as (input: unknown) => unknown).call(handle, arg);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`调用 agent.handle.${methodName} 失败：${msg}`);
+    }
   }
 
   private isAgentDialoguesContract(v: unknown): v is AgentDialoguesContract {

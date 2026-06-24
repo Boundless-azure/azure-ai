@@ -37,7 +37,7 @@ export class HookComponentRegistryService {
     if (meta?.payloadSchema) {
       try {
         // zodToJsonSchema 是可选依赖；若不存在则跳过 schema 投影
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+
         const { zodToJsonSchema } = require('zod-to-json-schema') as {
           zodToJsonSchema: (s: unknown) => unknown;
         };

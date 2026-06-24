@@ -1,0 +1,15 @@
+{
+  "solutionId": "solution-default-view-solution-1-0-0",
+  "name": "default-view-solution",
+  "version": "1.0.0",
+  "source": "self_developed",
+  "location": "C:\\project\\azure-ai\\runner\\workspace\\solutions\\default-view-solution",
+  "summary": "Default lightweight display solution",
+  "description": "Built-in Solution for temporary tables, lightweight pages, and one-off visual displays.",
+  "images": [],
+  "includes": [
+    "view"
+  ],
+  "installedAt": "2026-06-06T09:27:56.680Z",
+  "isInitialized": true
+}

@@ -6,9 +6,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * @keywords-cn 迁移, 待办, 任务关联, 单选跟进人
  * @keywords-en migration, todo, task-link, single-follower
  */
-export class AdjustTodoTaskAndFollower1779070800000
-  implements MigrationInterface
-{
+export class AdjustTodoTaskAndFollower1779070800000 implements MigrationInterface {
   name = 'AdjustTodoTaskAndFollower1779070800000';
 
   /**

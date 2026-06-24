@@ -39,7 +39,7 @@ export class HookSnapshotController {
       return { ok: false, errorMsg: 'invalid body: ' + parsed.error.message };
     }
     const { hookName, payload, messageId, live } = parsed.data;
-    const authHeader = (req.headers['authorization'] as string | undefined) ?? '';
+    const authHeader = req.headers['authorization'] ?? '';
     const token = authHeader.replace(/^Bearer\s+/i, '');
 
     const result = await this.snapshotService.callWithSnapshot({

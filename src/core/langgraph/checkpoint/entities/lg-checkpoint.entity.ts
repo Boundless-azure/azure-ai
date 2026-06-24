@@ -6,11 +6,15 @@ import { BaseAuditedEntity } from '@core/ai/entities/base.entity';
  * @description 存储 BaseCheckpointSaver 规范下的检查点快照与元数据。
  * @keywords-cn LangGraph, 检查点, TypeORM, 快照, 元数据
  * @keywords-en langgraph, checkpoint, typeorm, snapshot, metadata
+ * @keyword-cn LangGraph, 检查点, 工作流上下文
+ * @keyword-en langgraph, checkpoint, workflow-context
  */
 @Entity('lg_checkpoints')
 @Unique('UQ_LG_THREAD_NS_ID', ['threadId', 'checkpointNs', 'checkpointId'])
 @Index(['threadId'])
 @Index(['threadId', 'checkpointNs'])
+@Index(['sessionId'])
+@Index(['agentId'])
 export class LGCheckpointEntity extends BaseAuditedEntity {
   @Column({ name: 'thread_id', type: 'varchar', length: 100 })
   threadId!: string;
@@ -25,6 +29,23 @@ export class LGCheckpointEntity extends BaseAuditedEntity {
 
   @Column({ name: 'checkpoint_id', type: 'varchar', length: 128 })
   checkpointId!: string;
+
+  @Column({ name: 'session_id', type: 'varchar', length: 100, nullable: true })
+  sessionId?: string | null;
+
+  @Column({ name: 'agent_id', type: 'varchar', length: 36, nullable: true })
+  agentId?: string | null;
+
+  @Column({
+    name: 'agent_principal_id',
+    type: 'varchar',
+    length: 36,
+    nullable: true,
+  })
+  agentPrincipalId?: string | null;
+
+  @Column({ name: 'ai_model_ids', type: 'json', nullable: true })
+  aiModelIds?: string[] | null;
 
   @Column({ name: 'checkpoint_json', type: 'text' })
   checkpointJson!: string;

@@ -1,60 +1,41 @@
 import type { ChatMessage } from '@core/ai/types';
+import type { AgentAiServer } from '@/core/agent-runtime/types/agent-runtime.types';
 
 /**
  * @title Azure AI 默认对话层
  * @description 基于Agent配置的模型ID列表选择模型并发起流式对话。
  * @keywords-cn 默认Agent, 对话层, 模型选择
  * @keywords-en default-agent, dialogue-layer, model-selection
+ * @keyword-en default-agent, dialogue-layer, model-id
  */
 export default class DialoguesClass {
-  #aiServer: {
-    chatStream: (req: {
-      modelId: string;
-      messages: ChatMessage[];
-      systemPrompt?: string;
-    }) => AsyncGenerator<{
-      type: string;
-      data?: { text?: string };
-      error?: string;
-    }>;
-    resolveModelNameByIds: (modelIds: string[]) => Promise<string | null>;
-  } | null = null;
-  #modelIds: string[] = [];
+  #aiServer: AgentAiServer | null = null;
 
-  handleAiServer(aiServer: {
-    chatStream: (req: {
-      modelId: string;
-      messages: ChatMessage[];
-      systemPrompt?: string;
-    }) => AsyncGenerator<{ type: string; data?: { text?: string } }>;
-    resolveModelNameByIds: (modelIds: string[]) => Promise<string | null>;
-  }) {
+  /**
+   * Injects the runtime AI adapter.
+   * @keyword-en ai-server-inject, dialogue-layer
+   */
+  handleAiServer(aiServer: AgentAiServer) {
     this.#aiServer = aiServer;
   }
 
-  setAgentConfig(config: { aiModelIds?: string[] }) {
-    this.#modelIds = Array.isArray(config.aiModelIds) ? config.aiModelIds : [];
-  }
-
+  /**
+   * Streams the default agent response through the model ID slot.
+   * @keyword-en dialogue-handle, model-id, model-slot-selection
+   */
   async *handle(messages: ChatMessage[]): AsyncGenerator<string> {
     if (!this.#aiServer) {
       yield '❌ AI服务未初始化';
       return;
     }
-    if (!this.#modelIds.length) {
-      yield '❌ 当前Agent未配置任何AI模型ID';
-      return;
-    }
-    const modelName = await this.#aiServer.resolveModelNameByIds(
-      this.#modelIds,
-    );
-    if (!modelName) {
+    const dialogueModel = this.#aiServer.useModel(0);
+    const modelId = await dialogueModel.getModelId();
+    if (!modelId) {
       yield '❌ 未找到可用模型，请先在AI提供商中配置并启用对应模型ID';
       return;
     }
     console.log('消息到达', messages);
-    const stream = this.#aiServer.chatStream({
-      modelId: modelName,
+    const stream = dialogueModel.chatStream({
       messages,
       systemPrompt: [
         'You are the default azure-ai Agent. Answer accurately, concisely, and with actionable steps based on the user request.',

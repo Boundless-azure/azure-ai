@@ -421,21 +421,11 @@ function processOneCallAftermath(
     const hasSchemaError = reply.errorMsg.some((m) =>
       /payload-schema-invalid/i.test(m),
     );
-    if (hasSchemaError) {
-      const runnerHint =
-        entry.target === RUNNER && entry.runnerId
-          ? `, runnerId:"${entry.runnerId}"`
-          : '';
-      // Correction order :: 走 init_tip 拿发现链路, callLog 链路复用历史; 没有再走 hook 链路拿 schema.
-      reply.errorMsg.push(
-        `⚠ Payload schema invalid. Correction order: ` +
-          `(1) Call tool init_tip first to receive discoveryChains. ` +
-          `(2) Walk callLog chain: call_hook saas.app.conversation.callHistory.query [{}] to scan recent calls; ` +
-          `if a matching title exists, call [{ id:"<matched-id>", includeDetail:true }] to reuse that payload shape. ` +
-          `(3) If no usable history, call get_hook_info({ target:"${entry.target}"${runnerHint}, hookNames:["${entry.hookName}"] }) for JSON Schema, ` +
-          `then write payload according to schema. Do not guess field names.`,
-      );
-    } else if (failureCount >= FAILURE_HINT_THRESHOLD && !entry.debug) {
+    if (
+      !hasSchemaError &&
+      failureCount >= FAILURE_HINT_THRESHOLD &&
+      !entry.debug
+    ) {
       reply.errorMsg.push(
         `⚠ 该 hook 在本会话已连续失败 ${failureCount} 次。建议: ` +
           `(1) 调 tool init_tip 重新拿 discoveryChains, 走 callLog / hook 链路重新发现正确用法; ` +
@@ -541,8 +531,8 @@ export function buildCallHookTool(
         '</batching>\n\n' +
         '<errors>\n' +
         '- errorMsg 非空 = 软错, 不影响 batch 其它项. 据此纠正再试.\n' +
-        '- payload-schema-invalid: 先 callHistory.query 复用历史 payload; 没有再 get_hook_info 拿 JSON Schema. 不要凭字段名猜.\n' +
-        '- hook-not-found: 同上, 先查历史; 再不行 search_hook / get_hook_tag.\n' +
+        '- payload-schema-invalid: read expectedPayloadSchema in errorMsg and fix payload directly. Do not call init_tip for this error.\n' +
+        '- hook-not-found: hook name is wrong or undiscovered; call init_tip, then use get_hook_tag / search_hook / get_hook_info.\n' +
         '- 鉴权/数据缺失: 如实告诉用户, 不绕过.\n' +
         '</errors>\n\n' +
         '<example>\n' +

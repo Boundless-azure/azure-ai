@@ -25,6 +25,7 @@ import {
   BaseMessage,
   AIMessageChunk,
 } from '@langchain/core/messages';
+import type { RunnableConfig } from '@langchain/core/runnables';
 import type {
   AIModelType,
   AIModelConfig,
@@ -344,7 +345,7 @@ export class AIModelService implements OnModuleInit {
           );
       }
       this.logger.log(
-        `Created model instance: ${config.id} (${config.provider})`,
+        `Created model instance: ${config.id} (${config.provider})${request.source ? ` source=${request.source}` : ''}`,
       );
       request.openFunction = request.openFunction ?? '*';
       const openFunction = this.getOpenFunction(request);
@@ -398,13 +399,13 @@ export class AIModelService implements OnModuleInit {
       let contentStr: string = '';
       const respAny = response as Record<string, unknown>;
       const directContent = respAny['content'];
-      if (typeof directContent === 'string') {
-        contentStr = directContent;
+      if (directContent !== undefined) {
+        contentStr = this.extractMessageText(directContent);
       } else if ('messages' in respAny) {
         const msgs = respAny['messages'];
         if (Array.isArray(msgs)) {
           const aiMsg = this.handleMessage(msgs, 'assistant');
-          contentStr = typeof aiMsg?.content === 'string' ? aiMsg.content : '';
+          contentStr = this.extractMessageText(aiMsg?.content);
         } else if (typeof msgs === 'string') {
           contentStr = msgs;
         } else {
@@ -432,12 +433,12 @@ export class AIModelService implements OnModuleInit {
       }
 
       this.logger.log(
-        `Chat completed for model ${request.modelId} in ${responseTime}ms`,
+        `Chat completed for model ${request.modelId}${request.source ? ` source=${request.source}` : ''} in ${responseTime}ms`,
       );
       return aiResponse;
     } catch (error) {
       this.logger.error(
-        `Chat failed for model ${request.modelId} after ${Date.now() - startTime}ms`,
+        `Chat failed for model ${request.modelId}${request.source ? ` source=${request.source}` : ''} after ${Date.now() - startTime}ms`,
         error,
       );
 
@@ -454,6 +455,34 @@ export class AIModelService implements OnModuleInit {
     }
     return undefined;
   }
+
+  /**
+   * 从 LangChain 消息 content 中提取可展示正文，兼容 Anthropic/MiniMax 的 block 数组。
+   * @keyword-cn 消息正文, 内容块, 非流式响应
+   * @keyword-en message-text, content-blocks, non-stream-response
+   */
+  private extractMessageText(content: unknown): string {
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+
+    return content
+      .map((block) => {
+        if (typeof block === 'string') return block;
+        if (!block || typeof block !== 'object') return '';
+
+        const item = block as Record<string, unknown>;
+        const text = item.text;
+        if (typeof text === 'string') return text;
+
+        const nestedContent = item.content;
+        if (typeof nestedContent === 'string') return nestedContent;
+
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
   /**
    * 根据传入的 role 返回「最后一个」匹配的消息，并且保持精确类型。
    * - human => HumanMessage | undefined
@@ -732,7 +761,7 @@ export class AIModelService implements OnModuleInit {
       return aiResponse;
     } catch (error) {
       this.logger.error(
-        `Stream chat failed for model ${request.modelId}`,
+        `Stream chat failed for model ${request.modelId}${request.source ? ` source=${request.source}` : ''}`,
         error,
       );
       const errorMessage =
@@ -823,52 +852,76 @@ export class AIModelService implements OnModuleInit {
     });
   }
 
-  async resolveModelNameByIds(modelIds: string[]): Promise<string | null> {
+  /**
+   * 按模型 ID 列表顺序解析首个可用模型 ID。
+   * @keyword-en resolve-model-id-by-ids, model-selection, active-model
+   */
+  async resolveModelIdByIds(modelIds: string[]): Promise<string | null> {
+    return this.resolveModelIdByNearestSlot(modelIds, 0);
+  }
+
+  /**
+   * 按指定槽位解析模型 ID；目标槽位不存在或不可用时只在当前列表内按距离回退。
+   * @keyword-en resolve-model-id-by-nearest-slot, model-selection, active-model
+   */
+  async resolveModelIdByNearestSlot(
+    modelIds: string[],
+    preferredIndex: number,
+  ): Promise<string | null> {
     const normalized = modelIds
       .map((item) => item.trim())
       .filter((item) => item.length > 0);
     if (!normalized.length) return null;
-    for (const modelId of normalized) {
-      const config = await this.aiModelRepository.findOne({
-        where: {
-          name: modelId,
-          enabled: true,
-          status: AIModelStatus.ACTIVE,
-          isDelete: false,
-        },
+
+    const targetIndex =
+      Number.isInteger(preferredIndex) && preferredIndex >= 0
+        ? preferredIndex
+        : 0;
+    const candidateIndexes = normalized
+      .map((_item, index) => index)
+      .sort((left, right) => {
+        const distanceDelta =
+          Math.abs(left - targetIndex) - Math.abs(right - targetIndex);
+        return distanceDelta === 0 ? left - right : distanceDelta;
       });
-      if (config?.name) return config.name;
+
+    for (const index of candidateIndexes) {
+      const config = await this.findActiveModelById(normalized[index]);
+      if (config?.id) return config.id;
     }
-    const fallback = await this.aiModelRepository.findOne({
+    return null;
+  }
+
+  /**
+   * 按数据库 ID 查找启用模型。
+   * @keyword-en find-active-model-by-id, model-selection, active-model
+   */
+  private async findActiveModelById(
+    modelId: string,
+  ): Promise<AIModelEntity | null> {
+    return await this.aiModelRepository.findOne({
       where: {
-        name: normalized[0],
+        id: modelId,
         enabled: true,
         status: AIModelStatus.ACTIVE,
         isDelete: false,
       },
     });
-    return fallback?.name ?? null;
   }
 
   /**
    * 获取模型实例
+   * @keyword-en model-instance, model-selection, active-model
    */
   private async getModelInstance(request: AIModelRequest) {
-    const modelName = request.modelId?.trim();
-    if (!modelName) {
-      throw new Error('model name is required');
+    const modelId = request.modelId?.trim();
+    if (!modelId) {
+      throw new Error('model id is required');
     }
-    const config = await this.aiModelRepository.findOne({
-      where: {
-        name: modelName,
-        enabled: true,
-        status: AIModelStatus.ACTIVE,
-        isDelete: false,
-      },
-    });
+    const config = await this.findActiveModelById(modelId);
 
     if (!config) {
-      throw new Error(`AI model not found or disabled: ${modelName}`);
+      throw new Error(`AI model not found or disabled: ${modelId}`);
     }
 
     return this.createModelInstance(config, request);
@@ -941,7 +994,8 @@ export class AIModelService implements OnModuleInit {
     | (ChatOpenAICompletionsCallOptions &
         ChatOpenAIResponsesCallOptions &
         ChatAnthropicCallOptions &
-        GoogleGenerativeAIChatCallOptions)
+        GoogleGenerativeAIChatCallOptions &
+        RunnableConfig)
     | undefined {
     const callOptions = request.params
       ? this.applyModelParams(
@@ -954,7 +1008,15 @@ export class AIModelService implements OnModuleInit {
     if (!threadId && request.sessionId) {
       threadId = request.sessionId;
     }
-    const cfg = threadId ? { configurable: { thread_id: threadId } } : {};
+    const configurable = threadId
+      ? { thread_id: threadId }
+      : request.isolateCallbacks
+        ? {}
+        : undefined;
+    const cfg: RunnableConfig = {
+      ...(configurable ? { configurable } : {}),
+      ...(request.isolateCallbacks ? { callbacks: [] } : {}),
+    };
     return { ...callOptions, ...cfg };
   }
 

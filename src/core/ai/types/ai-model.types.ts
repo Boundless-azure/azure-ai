@@ -177,6 +177,8 @@ export interface ChatMessage {
 export interface AIModelRequest {
   /** 模型ID */
   modelId: string;
+  /** 调用来源标识，用于日志区分对话、graph节点、smart摘要等调用 */
+  source?: string;
   /** 消息内容 */
   messages: ChatMessage[];
   /** 请求参数 */
@@ -200,6 +202,8 @@ export interface AIModelRequest {
   tools?: unknown[];
   /** LangGraph 检查点保存器 (可选) */
   checkpointer?: import('@langchain/langgraph-checkpoint').BaseCheckpointSaver;
+  /** 后台任务调用时隔离 LangChain callbacks，避免继承已关闭的流式 writer */
+  isolateCallbacks?: boolean;
 }
 
 /**

@@ -45,9 +45,7 @@ const onRbacUserListInput = z.object({
 });
 
 const onRbacUserCountInput = z.object({
-  type: userPrincipalTypeSchema
-    .optional()
-    .describe('按类型过滤; 不传返回全部'),
+  type: userPrincipalTypeSchema.optional().describe('按类型过滤; 不传返回全部'),
   tenantId: z.string().optional().describe('按所属租户/组织 ID 过滤'),
 });
 
@@ -97,7 +95,8 @@ export class UsersController {
   @CheckAbility('read', 'principal')
   @HookRoute({
     hook: 'saas.app.identity.userCount',
-    description: '用户总数统计 :: 返回 { count: number }，支持按 type / tenantId 过滤',
+    description:
+      '用户总数统计 :: 返回 { count: number }，支持按 type / tenantId 过滤',
     args: [onRbacUserCountInput],
   })
   async count(@Query() query: { type?: string; tenantId?: string }) {

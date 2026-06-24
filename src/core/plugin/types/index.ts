@@ -13,7 +13,7 @@ export interface HookDescriptor {
 }
 
 /**
- * 插件配置文件的结构定义(plugins/any/plugin.conf.ts)
+ * 插件配置文件的结构定义(plugins/any/plugin.conf.js，兼容旧 plugin.conf.ts)
  * @example
  * const pluginConfig: PluginConfig = {
  *   name: 'customer-analytics',

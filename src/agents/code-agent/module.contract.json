@@ -1,0 +1,52 @@
+{
+  "moduleName": "code-agent",
+  "moduleType": "agent",
+  "rootPath": "src/agents/code-agent",
+  "description": "Code-agent dialogue and code graph tool shell. code_gen_orchestrate now validates full_requirement, runner_id, and context.session_id before the future graph is connected.",
+  "publicContracts": [
+    {
+      "kind": "hook",
+      "name": "code_gen_orchestrate",
+      "description": "Code graph shell tool. It requires full_requirement and runner_id, carries context.session_id, and returns a runner-assignment instruction when runner_id is missing.",
+      "payloadShape": "{ full_requirement: string; runner_id?: string; context?: { session_id?: string }; requirement?: string; runnerId?: string; targetKind?: 'solution'|'app'|'view'|'unit'; solutionName?: string; appName?: string; unitName?: string; allowCreateSolution?: boolean; logicModelId?: string; frontendModelId?: string; logicModelIndex?: number; frontendModelIndex?: number }",
+      "resultShape": "String. Missing runner_id returns a runner assignment instruction; present runner_id returns an accepted graph-shell summary.",
+      "subject": "code-agent",
+      "sourcePath": "agent.handle.ts",
+      "keywords": [
+        "code-agent",
+        "code-graph-tool",
+        "runner-assignment",
+        "session-callback"
+      ]
+    },
+    {
+      "kind": "type",
+      "name": "CodeAgentTargetKind",
+      "description": "Coarse target kind retained for the next workflow implementation.",
+      "payloadShape": "'solution' | 'app' | 'view' | 'unit'",
+      "sourcePath": "dialogues/types.ts",
+      "keywords": ["target-kind", "workflow-refactor"]
+    },
+    {
+      "kind": "type",
+      "name": "CodeAgentTargetSelection",
+      "description": "Runner-backed Solution/App target metadata retained for the next workflow implementation.",
+      "payloadShape": "{ targetKind: CodeAgentTargetKind; runnerId: string; solutionId: string; solutionName: string; solutionVersion: string; solutionInitialized: boolean; appId?: string; appName?: string; appVersion?: string; appInitialized?: boolean }",
+      "sourcePath": "dialogues/types.ts",
+      "keywords": ["target-selection", "runner-target"]
+    }
+  ],
+  "dependencies": [],
+  "editableScope": ["src/agents/code-agent/**"],
+  "publicOnlyScope": [],
+  "internalScope": [],
+  "tags": [
+    "code-agent",
+    "code-graph-tool",
+    "runner-assignment",
+    "session-callback",
+    "workflow-refactor",
+    "target-kind",
+    "target-selection"
+  ]
+}

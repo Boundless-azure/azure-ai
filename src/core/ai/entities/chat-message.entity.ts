@@ -78,10 +78,4 @@ export class ChatMessageEntity extends BaseAuditedEntity {
     default: 'user',
   })
   role!: 'system' | 'user' | 'assistant';
-
-  /**
-   * @deprecated 关键词已移至 chat_session_smart 表。仅用于向后兼容。
-   */
-  @Column({ name: 'keywords', type: 'json', nullable: true })
-  keywords?: { zh: string[]; en: string[] } | null;
 }

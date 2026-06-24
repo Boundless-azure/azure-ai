@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { z, type ZodTypeAny } from 'zod';
 import { HookResultStatus } from '../enums/hook.enums';
 import type {
   HookEvent,
@@ -131,10 +132,30 @@ export class HookInvokerService {
         .join('; ');
       return {
         status: HookResultStatus.Error,
-        error: `payload-schema-invalid: ${detail}`,
+        error:
+          `payload-schema-invalid: ${detail}; ` +
+          `expectedPayloadSchema=${this.describePayloadSchema(schema)}`,
       } as HookResult<R>;
     }
     return await reg.handler({ ...event, payload: parsed.data as T });
+  }
+
+  /**
+   * 把当前 hook 的 zod payload schema 投影为紧凑 JSON Schema, 直接随 payload 校验错误返回给 LLM。
+   * @keyword-cn payload模式描述, zod校验
+   * @keyword-en payload-schema-description, zod-validation
+   */
+  private describePayloadSchema(schema: ZodTypeAny): string {
+    try {
+      return this.previewSchemaValue(z.toJSONSchema(schema));
+    } catch {
+      const schemaDef = (
+        schema as { _def?: { type?: string; typeName?: string } }
+      )._def;
+      return this.previewSchemaValue({
+        type: schemaDef?.type ?? schemaDef?.typeName ?? 'zod-schema',
+      });
+    }
   }
 
   /**
@@ -212,6 +233,18 @@ export class HookInvokerService {
     // JSON.stringify 对 function / symbol / 含循环引用的对象返回 undefined; 用 typeof 兜底, 避免 [object Object]
     if (!raw) return `<${typeof value}>`;
     return raw.length > 160 ? `${raw.slice(0, 157)}...` : raw;
+  }
+
+  /**
+   * 压缩展示 JSON Schema, 保留比实际字段值更长的上下文供 LLM 修正 payload。
+   * @keyword-cn schema预览, payload校验
+   * @keyword-en schema-preview, payload-validation
+   */
+  private previewSchemaValue(value: unknown): string {
+    if (value === undefined) return 'undefined';
+    const raw = JSON.stringify(value);
+    if (!raw) return `<${typeof value}>`;
+    return raw.length > 1800 ? `${raw.slice(0, 1797)}...` : raw;
   }
 
   private compose<T, R>(

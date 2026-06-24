@@ -60,7 +60,9 @@ export class HookSnapshotService {
    * 按 hook 名调用,带消息锚定的写一次快照缓存。
    * @keyword-en call-with-snapshot
    */
-  async callWithSnapshot(args: CallWithSnapshotArgs): Promise<HookSnapshotResult> {
+  async callWithSnapshot(
+    args: CallWithSnapshotArgs,
+  ): Promise<HookSnapshotResult> {
     const { messageId, hookName, payload, live, context } = args;
     const key = this.snapshotKey(hookName, payload);
 
@@ -75,7 +77,8 @@ export class HookSnapshotService {
 
     // 未命中(或 live / 无 messageId)→ 实时经 HookBus 路由
     const emitted = await this.emitHook(hookName, payload, context);
-    if (!emitted.ok) return { ok: false, errorMsg: emitted.errorMsg, cached: false };
+    if (!emitted.ok)
+      return { ok: false, errorMsg: emitted.errorMsg, cached: false };
 
     // 写一次:仅在可缓存(非 live、有 messageId、未超阈值)时落库
     if (!live && messageId && this.withinSizeLimit(emitted.data)) {
@@ -117,7 +120,10 @@ export class HookSnapshotService {
       },
     });
     if (!results.length) {
-      return { ok: false, errorMsg: `no handler registered for hook: ${hookName}` };
+      return {
+        ok: false,
+        errorMsg: `no handler registered for hook: ${hookName}`,
+      };
     }
     const first = results[0];
     if (first.status === HookResultStatus.Error) {
@@ -158,8 +164,11 @@ export class HookSnapshotService {
       select: { id: true, metadata: true },
     });
     if (!msg) return; // 消息不存在(如未落库的临时消息)→ 不缓存
-    const metadata = (msg.metadata ?? {}) as Record<string, any>;
-    const snaps = (metadata.hookSnapshots ?? {}) as Record<string, HookSnapshotEntry>;
+    const metadata = msg.metadata ?? {};
+    const snaps = (metadata.hookSnapshots ?? {}) as Record<
+      string,
+      HookSnapshotEntry
+    >;
     if (snaps[key]) return; // 写一次:已存在不覆盖
     snaps[key] = entry;
     metadata.hookSnapshots = snaps;

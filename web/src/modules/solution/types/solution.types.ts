@@ -9,7 +9,7 @@
 export type SolutionSource = 'self_developed' | 'marketplace';
 
 // Solution 包含类型
-export type SolutionInclude = 'app' | 'unit' | 'workflow' | 'agent';
+export type SolutionInclude = 'app' | 'unit' | 'workflow' | 'agent' | 'view';
 
 // Solution 状态
 export type SolutionStatus = 'active' | 'inactive';

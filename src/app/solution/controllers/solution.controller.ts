@@ -21,9 +21,15 @@ import {
   CreateSolutionSchema,
   UpdateSolutionSchema,
   ListSolutionsQuerySchema,
+  SearchRunnerSolutionsSchema,
+  BatchSolutionIdsSchema,
+  BatchSolutionAssociationsSchema,
   type CreateSolutionRequest,
   type UpdateSolutionRequest,
   type ListSolutionsQuery,
+  type SearchRunnerSolutionsRequest,
+  type BatchSolutionIdsRequest,
+  type BatchSolutionAssociationsRequest,
   type InstallSolutionRequest,
   type UninstallSolutionRequest,
   type PurchaseSolutionRequest,
@@ -49,6 +55,7 @@ const emptyInput = z.object({}).passthrough();
  *              供 LLM 链路兜底鉴权。
  * @keywords-cn Solution控制器, Hook声明, CASL鉴权
  * @keywords-en solution-controller, hook-route, casl-auth
+ * @keyword-en solution-controller, hook-route, casl-auth
  */
 @HookController({ pluginName: 'solution', tags: ['solution'] })
 @Controller('solutions')
@@ -73,8 +80,86 @@ export class SolutionController {
   }
 
   /**
-   * @title 获取 Solution 详情
+   * @title Search runner solutions
+   * @description Search solutions on one or more mounted runners.
+   * @keyword-en runner-solution-search, batch-runner
+   * @keyword-cn Runner方案搜索, 批量Runner
+   */
+  @Post('runner/search')
+  @CheckAbility('read', 'solution')
+  @HookRoute({
+    hook: 'saas.app.solution.searchRunner',
+    description: 'Search runner solutions by runner ids',
+    args: [SearchRunnerSolutionsSchema],
+  })
+  async searchRunnerSolutions(@Body() body: SearchRunnerSolutionsRequest) {
+    const items = await this.solutionService.searchRunnerSolutions(body);
+    return { success: true, data: { items } };
+  }
+
+  /**
+   * @title Get batch solution details
+   * @description Get details for one or more solutions by id.
+   * @keyword-en batch-solution-detail, app-unit-detail
+   * @keyword-cn 批量Solution详情, 应用单元详情
+   */
+  @Post('details/batch')
+  @CheckAbility('read', 'solution')
+  @HookRoute({
+    hook: 'saas.app.solution.getBatch',
+    description: 'Get batch solution details with apps and units',
+    args: [BatchSolutionIdsSchema],
+  })
+  async getBatchDetails(@Body() body: BatchSolutionIdsRequest) {
+    const items = await this.solutionService.getDetailsByIds(body.ids);
+    return { success: true, data: { items } };
+  }
+
+  /**
+   * @title List solution apps
+   * @description List apps associated with one or more solutions.
+   * @keyword-en solution-app-list, batch-solution-association
+   * @keyword-cn Solution应用列表, 批量Solution关联
+   */
+  @Post('apps/list')
+  @CheckAbility('read', 'solution')
+  @HookRoute({
+    hook: 'saas.app.solution.listApps',
+    description: 'List apps for one or more solutions',
+    args: [BatchSolutionAssociationsSchema],
+  })
+  async listSolutionApps(@Body() body: BatchSolutionAssociationsRequest) {
+    const items = await this.solutionService.listAppsBySolutionIds(
+      body.solutionIds,
+    );
+    return { success: true, data: { items } };
+  }
+
+  /**
+   * @title List solution units
+   * @description List units associated with one or more solutions.
+   * @keyword-en solution-unit-list, batch-solution-association
+   * @keyword-cn Solution单元列表, 批量Solution关联
+   */
+  @Post('units/list')
+  @CheckAbility('read', 'solution')
+  @HookRoute({
+    hook: 'saas.app.solution.listUnits',
+    description: 'List units for one or more solutions',
+    args: [BatchSolutionAssociationsSchema],
+  })
+  async listSolutionUnits(@Body() body: BatchSolutionAssociationsRequest) {
+    const items = await this.solutionService.listUnitsBySolutionIds(
+      body.solutionIds,
+    );
+    return { success: true, data: { items } };
+  }
+
+  /**
+   * @title Get solution
+   * @description Get one local Solution entity by id.
    * @keyword-en get-solution
+   * @keyword-cn Solution详情
    */
   @Get(':id')
   @CheckAbility('read', 'solution')

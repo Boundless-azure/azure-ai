@@ -12,6 +12,8 @@ export type CheckpointModuleOptions = Record<string, never>;
  * @description 提供基于 TypeORM 的 BaseCheckpointSaver 实现与实体注册。
  * @keywords-cn LangGraph, Checkpoint, TypeORM, Saver, 模块
  * @keywords-en langgraph, checkpoint, typeorm, saver, module
+ * @keyword-cn LangGraph, 检查点, 保存器, 模块
+ * @keyword-en langgraph, checkpoint, typeorm, saver, module
  */
 @Module({
   imports: [
@@ -25,6 +27,10 @@ export type CheckpointModuleOptions = Record<string, never>;
   exports: [TypeOrmCheckpointSaver, 'CHECKPOINT_OPTIONS'],
 })
 export class LangGraphCheckpointModule {
+  /**
+   * 注册 checkpoint 实体、saver 与配置 provider。
+   * @keyword-en langgraph, checkpoint, typeorm, saver, module
+   */
   static forRoot(options: CheckpointModuleOptions = {}): DynamicModule {
     return {
       module: LangGraphCheckpointModule,

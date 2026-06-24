@@ -1,10 +1,19 @@
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
-import type { ChatMessage, ModelSseEvent } from '@core/ai/types';
+import type {
+  AIModelResponse,
+  ChatMessage,
+  ModelSseEvent,
+} from '@core/ai/types';
 import type { AIModelRequest } from '@core/ai/types';
 import type { BaseCheckpointSaver } from '@langchain/langgraph-checkpoint';
 import { AIModelService } from '@core/ai/services/ai-model.service';
 import { AgentLoaderService } from './agent-loader.service';
-import type { LoadedAgent } from '../types/agent-runtime.types';
+import type {
+  AgentAiModelClient,
+  AgentAiRequest,
+  AgentAiServer,
+  LoadedAgent,
+} from '../types/agent-runtime.types';
 import { HookBusService } from '@/core/hookbus/services/hook.bus.service';
 import { RunnerHookRpcService } from '@/app/runner/services/runner-hook-rpc.service';
 import type { HookInvocationContext } from '@/core/hookbus/types/hook.types';
@@ -23,6 +32,10 @@ import {
 } from '../prompts/base-llm.prompt';
 import { AiCallLogService } from '@/app/conversation/services/ai-call-log.service';
 import { CurrentSessionService } from '@/app/conversation/services/current-session.service';
+import { ImMessageService } from '@/app/conversation/services/im-message.service';
+import { PluginService } from '@/core/plugin/services/plugin.service';
+import { SolutionService } from '@/app/solution/services/solution.service';
+import { TypeOrmCheckpointSaver } from '@/core/langgraph/checkpoint/services/typeorm-checkpoint.saver';
 
 type AgentRuntimeContext = {
   agentId: string;
@@ -35,7 +48,7 @@ type AgentRuntimeContext = {
 /**
  * @title Agent 运行时服务
  * @description 对外提供两种接入方式:
- * 1) 有对话层 (dialogues) 时, 通过 handleAiServer 注入 AIModelService 并调用 handle(messages)
+ * 1) 有对话层 (dialogues) 时, 通过 handleAiServer 注入带 useModel/withModel 的 AI adapter 并调用 handle(messages)
  * 2) 仅工具 (handle) 时, 返回该 agent 的工具集合, 供上层作为额外工具参与主对话
  *
  * Hook 调用上下文:
@@ -58,6 +71,11 @@ export class AgentRuntimeService {
     private readonly callLog: AiCallLogService,
     @Inject(forwardRef(() => CurrentSessionService))
     private readonly currentSession: CurrentSessionService,
+    @Inject(forwardRef(() => ImMessageService))
+    private readonly imMessageService: ImMessageService,
+    private readonly pluginService: PluginService,
+    private readonly solutionService: SolutionService,
+    private readonly checkpointer: TypeOrmCheckpointSaver,
   ) {}
 
   /**
@@ -68,9 +86,31 @@ export class AgentRuntimeService {
    */
   async load(
     inputDir: string,
-    invocationContext?: HookInvocationContext,
+    options?: {
+      invocationContext?: HookInvocationContext;
+      aiModelIds?: string[];
+      agentContext?: AgentRuntimeContext;
+    },
   ): Promise<LoadedAgent> {
-    const loaded = await this.loader.loadAll(inputDir);
+    const invocationContext = options?.invocationContext;
+    const workflowContext = this.buildHandleWorkflowContext(
+      invocationContext,
+      options?.agentContext,
+      options?.aiModelIds,
+    );
+    const loaded = await this.loader.loadAll(inputDir, {
+      aiServer: this.buildAiAdapter({
+        aiModelIds: options?.aiModelIds,
+        agentContext: options?.agentContext,
+        mergeSystemPrompt: false,
+      }),
+      pluginService: this.pluginService,
+      solutionService: this.solutionService,
+      runnerHookRpc: this.hookRpc,
+      checkpointer: this.checkpointer,
+      ...(workflowContext ? { workflowContext } : {}),
+      agentConfig: { aiModelIds: options?.aiModelIds },
+    });
     const getCtx: InvocationContextProvider = () => invocationContext ?? {};
 
     // 副作用 :: callLog 硬记录仅保存成功项; 失败项只服务当前轮纠错, 不跨轮沉淀.
@@ -131,14 +171,14 @@ export class AgentRuntimeService {
       buildSearchHookTool(this.hookBus, this.hookRpc, getCtx),
       buildGetHookTagTool(this.hookBus, this.hookRpc, getCtx),
       buildGetHookInfoTool(this.hookBus, this.hookRpc, getCtx),
-      buildInitTipTool(this.currentSession, getCtx),
+      buildInitTipTool(this.currentSession, getCtx, this.callLog),
     ];
     loaded.tools = [...hookTools, ...loaded.tools];
     return loaded;
   }
 
   /**
-   * 当存在对话层时, 将 AIModelService 注入并返回可直接调用的句柄
+   * 当存在对话层时, 将 AI adapter 注入并返回可直接调用的句柄
    * @keyword-en attach-dialogue
    */
   attachDialogue(agent: LoadedAgent): void {
@@ -147,7 +187,7 @@ export class AgentRuntimeService {
       agent.dialogues.handleAiServer(this.buildAiAdapter());
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      this.logger.error(`注入 AIModelService 失败: ${msg}`);
+      this.logger.error(`注入 AI adapter 失败: ${msg}`);
     }
   }
 
@@ -172,17 +212,22 @@ export class AgentRuntimeService {
       agentContext?: AgentRuntimeContext;
     },
   ): AsyncGenerator<ModelSseEvent> {
-    const loaded = await this.load(agentDir, options?.invocationContext);
+    const loaded = await this.load(agentDir, {
+      invocationContext: options?.invocationContext,
+      aiModelIds: options?.aiModelIds,
+      agentContext: options?.agentContext,
+    });
     if (!loaded.dialogues) {
       throw new Error('该 Agent 未提供对话层 (dialogues)');
     }
     // session_data 不再自动注入 user message; directive/preference/handbook 通过 saas.app.conversation.initTip 的 suggestions 推过去 (callHistoryHints / handbookInventory / activeDirectives), LLM 自行 sessionData.get 取真内容.
     loaded.dialogues.handleAiServer(
-      this.buildAiAdapter(
-        options?.proactiveContext,
-        loaded.tools,
-        options?.agentContext,
-      ),
+      this.buildAiAdapter({
+        proactiveContext: options?.proactiveContext,
+        tools: loaded.tools,
+        agentContext: options?.agentContext,
+        aiModelIds: options?.aiModelIds,
+      }),
     );
     loaded.dialogues.setAgentConfig?.({ aiModelIds: options?.aiModelIds });
     // user message 直发原话, 不再补 currentSessionGuard; init_tip + examples + reasoning ≥ 20 承担引导
@@ -200,26 +245,74 @@ export class AgentRuntimeService {
     agentDir: string,
     invocationContext?: HookInvocationContext,
   ): Promise<unknown[]> {
-    const loaded = await this.load(agentDir, invocationContext);
+    const loaded = await this.load(agentDir, { invocationContext });
     return loaded.tools;
   }
 
   /**
-   * 构建对话层 AI 适配器，并合并 base prompt、主动对话规则和 Agent 定义。
+   * 从 Hook 调用上下文提取会话回调所需的最小字段，供异步工具回写 IM 消息。
+   * @keyword-en build-handle-workflow-context
+   */
+  private buildHandleWorkflowContext(
+    invocationContext?: HookInvocationContext,
+    agentContext?: AgentRuntimeContext,
+    aiModelIds?: string[],
+  ): {
+    sessionId: string;
+    agentId?: string;
+    agentPrincipalId: string;
+    aiModelIds?: string[];
+    imMessageService: ImMessageService;
+  } | null {
+    const sessionId = invocationContext?.extras?.sessionId;
+    const agentPrincipalId = invocationContext?.principalId;
+    if (typeof sessionId !== 'string' || !sessionId) return null;
+    if (typeof agentPrincipalId !== 'string' || !agentPrincipalId) {
+      return null;
+    }
+    return {
+      sessionId,
+      agentId: agentContext?.agentId,
+      agentPrincipalId,
+      aiModelIds: Array.isArray(aiModelIds)
+        ? aiModelIds.map((item) => item.trim()).filter(Boolean)
+        : undefined,
+      imMessageService: this.imMessageService,
+    };
+  }
+
+  /**
+   * 构建 Agent AI 适配器；可按运行场景选择是否合并 runtime prompt。
    * @keyword-en build-ai-adapter
    */
-  private buildAiAdapter(
+  private buildAiAdapter(options?: {
     proactiveContext?: {
       sessionId: string;
       agentPrincipalId: string;
       triggerMessageId: string;
-    },
-    tools?: unknown[],
-    agentContext?: AgentRuntimeContext,
-  ) {
+    };
+    tools?: unknown[];
+    agentContext?: AgentRuntimeContext;
+    aiModelIds?: string[];
+    mergeSystemPrompt?: boolean;
+  }): AgentAiServer {
+    const proactiveContext = options?.proactiveContext;
+    const tools = options?.tools;
+    const agentContext = options?.agentContext;
+    const mergeSystemPrompt = options?.mergeSystemPrompt ?? true;
+    const configuredModelIds = Array.isArray(options?.aiModelIds)
+      ? options.aiModelIds.map((item) => item.trim()).filter(Boolean)
+      : [];
+    const aiModelService = this.aiModelService;
+
     const buildMergedSystemPrompt = (
       agentDefinitionPrompt?: string,
-    ): string => {
+    ): string | undefined => {
+      const trimmedAgentDefinition = agentDefinitionPrompt?.trim();
+      if (!mergeSystemPrompt) {
+        return trimmedAgentDefinition || undefined;
+      }
+
       const systemPromptJson: LlmSystemPromptJson = buildBaseLlmSystemPrompt();
 
       if (agentContext) {
@@ -253,7 +346,6 @@ export class AgentRuntimeService {
         };
       }
 
-      const trimmedAgentDefinition = agentDefinitionPrompt?.trim();
       if (trimmedAgentDefinition) {
         systemPromptJson.role.agentDefinition = {
           priority: 'high',
@@ -282,34 +374,103 @@ export class AgentRuntimeService {
       x !== null &&
       'put' in (x as Record<string, unknown>);
 
-    return {
-      chatStream: (req: {
-        modelId: string;
-        messages: ChatMessage[];
-        systemPrompt?: string;
-        sessionId?: string;
-        conversationGroupId?: string;
-        checkpointer?: unknown;
-        params?: Record<string, unknown>;
-      }) => {
-        const mergedSystemPrompt = buildMergedSystemPrompt(req.systemPrompt);
+    const buildAiRequest = (
+      modelId: string,
+      req: AgentAiRequest,
+    ): AIModelRequest => ({
+      modelId,
+      source:
+        req.source ??
+        (agentContext?.agentId
+          ? `agent-runtime:${agentContext.agentId}`
+          : undefined),
+      messages: req.messages,
+      systemPrompt: buildMergedSystemPrompt(req.systemPrompt),
+      sessionId: req.sessionId,
+      conversationGroupId: req.conversationGroupId,
+      checkpointer: isCheckpointSaver(req.checkpointer)
+        ? req.checkpointer
+        : undefined,
+      params: req.params as AIModelRequest['params'],
+      tools: tools && tools.length > 0 ? tools : undefined,
+    });
 
-        const aiReq: AIModelRequest = {
-          modelId: req.modelId,
-          messages: req.messages,
-          systemPrompt: mergedSystemPrompt,
-          sessionId: req.sessionId,
-          conversationGroupId: req.conversationGroupId,
-          checkpointer: isCheckpointSaver(req.checkpointer)
-            ? req.checkpointer
-            : undefined,
-          params: req.params as AIModelRequest['params'],
-          tools: tools && tools.length > 0 ? tools : undefined,
-        };
-        return this.aiModelService.chatStream(aiReq);
+    const requireModelId = async (
+      resolveModelId: () => Promise<string | null>,
+    ): Promise<string> => {
+      const modelId = await resolveModelId();
+      if (!modelId) {
+        throw new Error(
+          'No usable model slot is configured for this Agent; AI calls can only use assigned agent.aiModelIds.',
+        );
+      }
+      return modelId;
+    };
+
+    const resolveAssignedModelId = (
+      modelId: string,
+    ): Promise<string | null> => {
+      const trimmedModelId = modelId.trim();
+      if (!trimmedModelId || !configuredModelIds.includes(trimmedModelId)) {
+        return Promise.resolve(null);
+      }
+      return aiModelService.resolveModelIdByIds([trimmedModelId]);
+    };
+
+    const resolveSlotModelId = async (
+      preferredIndex: number,
+    ): Promise<string | null> => {
+      const assignedModelId = await aiModelService.resolveModelIdByNearestSlot(
+        configuredModelIds,
+        preferredIndex,
+      );
+      if (assignedModelId) return assignedModelId;
+      return null;
+    };
+
+    const streamWithModel = (
+      modelId: string,
+      req: AgentAiRequest,
+    ): AsyncGenerator<ModelSseEvent, AIModelResponse, unknown> =>
+      (async function* () {
+        return yield* aiModelService.chatStream(buildAiRequest(modelId, req));
+      })();
+
+    const createModelClient = (
+      resolveModelId: () => Promise<string | null>,
+    ): AgentAiModelClient => ({
+      getModelId: resolveModelId,
+      chat: async (req: AgentAiRequest) => {
+        const modelId = await requireModelId(resolveModelId);
+        return aiModelService.chat(buildAiRequest(modelId, req));
       },
-      resolveModelNameByIds: (modelIds: string[]) =>
-        this.aiModelService.resolveModelNameByIds(modelIds),
+      chatStream: (req: AgentAiRequest) =>
+        (async function* () {
+          const modelId = await requireModelId(resolveModelId);
+          return yield* streamWithModel(modelId, req);
+        })(),
+    });
+
+    return {
+      chat: async (req: AgentAiRequest & { modelId: string }) => {
+        const modelId = await requireModelId(() =>
+          resolveAssignedModelId(req.modelId),
+        );
+        return aiModelService.chat(buildAiRequest(modelId, req));
+      },
+      chatStream: (
+        req: AgentAiRequest & { modelId: string },
+      ): AsyncGenerator<ModelSseEvent, AIModelResponse, unknown> =>
+        (async function* () {
+          const modelId = await requireModelId(() =>
+            resolveAssignedModelId(req.modelId),
+          );
+          return yield* streamWithModel(modelId, req);
+        })(),
+      useModel: (preferredIndex: number) =>
+        createModelClient(() => resolveSlotModelId(preferredIndex)),
+      withModel: (modelId: string) =>
+        createModelClient(() => resolveAssignedModelId(modelId)),
     };
   }
 }

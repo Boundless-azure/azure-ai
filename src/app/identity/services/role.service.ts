@@ -98,7 +98,9 @@ export class RoleService {
    * @keyword-cn 角色总数, 统计
    * @keyword-en count-roles, role-count
    */
-  async count(query: { organizationId?: string } = {}): Promise<{ count: number }> {
+  async count(
+    query: { organizationId?: string } = {},
+  ): Promise<{ count: number }> {
     const qb = this.roleRepo
       .createQueryBuilder('r')
       .where('r.is_delete = false');

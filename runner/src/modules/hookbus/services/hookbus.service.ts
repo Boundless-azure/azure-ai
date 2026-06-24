@@ -1,3 +1,4 @@
+import { z, type ZodTypeAny } from 'zod';
 import type {
   HookEvent,
   HookFilter,
@@ -366,6 +367,7 @@ export class RunnerHookBusService {
     if (direct.success) {
       return await reg.handler({ ...event, payload: direct.data });
     }
+    let issues = direct.error.issues;
 
     // 第二遍 fallback: array 包装 → 取 [0] 再试
     if (Array.isArray(event.payload)) {
@@ -374,16 +376,48 @@ export class RunnerHookBusService {
       if (second.success) {
         return await reg.handler({ ...event, payload: second.data });
       }
+      issues = second.error.issues;
     }
 
-    // 两次都失败, 返回第一次的 (原 payload) 错误描述
-    const detail = direct.error.issues
+    // 两次都失败, 返回最贴近 handler 实际入参的错误描述
+    const detail = issues
       .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
       .join('; ');
     return {
       status: 'error',
-      error: `payload-schema-invalid: ${detail}`,
+      error:
+        `payload-schema-invalid: ${detail}; ` +
+        `expectedPayloadSchema=${this.describePayloadSchema(schema)}`,
     };
+  }
+
+  /**
+   * 把当前 runner hook 的 zod payload schema 投影为紧凑 JSON Schema, 随校验错误直接返回。
+   * @keyword-cn payload模式描述, zod校验
+   * @keyword-en payload-schema-description, zod-validation
+   */
+  private describePayloadSchema(schema: ZodTypeAny): string {
+    try {
+      return this.previewSchemaValue(z.toJSONSchema(schema));
+    } catch {
+      const schemaDef = (schema as { _def?: { type?: string; typeName?: string } })
+        ._def;
+      return this.previewSchemaValue({
+        type: schemaDef?.type ?? schemaDef?.typeName ?? 'zod-schema',
+      });
+    }
+  }
+
+  /**
+   * 压缩展示 JSON Schema, 避免单条 hook 错误响应过长。
+   * @keyword-cn schema预览, payload校验
+   * @keyword-en schema-preview, payload-validation
+   */
+  private previewSchemaValue(value: unknown): string {
+    if (value === undefined) return 'undefined';
+    const raw = JSON.stringify(value);
+    if (!raw) return `<${typeof value}>`;
+    return raw.length > 1800 ? `${raw.slice(0, 1797)}...` : raw;
   }
 
   private compose<TPayload, TResult>(

@@ -6,9 +6,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * @keywords-cn 迁移, Agent知识分配, 关系表
  * @keywords-en migration, agent-knowledge-assignment, relation-table
  */
-export class AgentKnowledgeAssignments1779601000000
-  implements MigrationInterface
-{
+export class AgentKnowledgeAssignments1779601000000 implements MigrationInterface {
   name = 'AgentKnowledgeAssignments1779601000000';
 
   /**
