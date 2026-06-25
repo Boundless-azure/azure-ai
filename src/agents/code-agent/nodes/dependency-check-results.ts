@@ -109,6 +109,7 @@ export function buildDependencyCheckResultMessage(
     context: result.context,
     hooks: result.hooks,
     decision: result.decision,
+    targetResolution: result.targetResolution,
     log: result.log,
     solutions: result.solutions.map((solution) => ({
       id: solution.id,
@@ -121,14 +122,15 @@ export function buildDependencyCheckResultMessage(
     })),
     errors: result.errors,
     next:
-      result.status === 'ready'
-        ? 'dependency-check complete; continue to the next code graph node'
-        : result.status === 'waiting_for_selection'
-          ? 'pause before next node; caller must resolve routePlan selections and resume with updated context'
-          : 'blocked; fix missing runner hooks, hook caller, or AI adapter first',
+      result.status === 'ready' && result.targetResolution?.status === 'ready'
+        ? 'dependency-check and target-resolution complete; later nodes may create or reuse the selected concrete targets'
+        : result.status === 'ready'
+          ? 'dependency-check complete; target-resolution did not complete'
+          : result.status === 'waiting_for_selection'
+            ? 'pause before next node; caller must resolve routePlan selections and resume with updated context'
+            : 'blocked; fix missing runner hooks, hook caller, AI adapter, or target-resolution inputs first',
   };
-  return [
-    'code graph dependency-check result:',
-    JSON.stringify(body, null, 2),
-  ].join('\n');
+  return ['code graph routing result:', JSON.stringify(body, null, 2)].join(
+    '\n',
+  );
 }

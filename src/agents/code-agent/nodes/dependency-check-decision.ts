@@ -88,13 +88,8 @@ export async function decideCodeGraphDependencies(args: {
   if (boundSolution) {
     const boundAction = findContextBoundAction(
       args.request.context,
-      args.input,
-      args.targetKind,
     );
-    if (
-      !boundAction ||
-      isSolutionSuitableForAction(boundSolution, boundAction)
-    ) {
+    if (boundAction && isSolutionSuitableForAction(boundSolution, boundAction)) {
       args.graphLog.info(
         'decision:context-binding',
         'using solution from graph context',
@@ -127,7 +122,9 @@ export async function decideCodeGraphDependencies(args: {
     }
     args.graphLog.warn(
       'decision:context-binding-review',
-      'bound solution does not look suitable for the requested action; asking dependency decision to review reuse vs new solution',
+      boundAction
+        ? 'bound solution does not look suitable for the requested action; asking dependency decision to review reuse vs new solution'
+        : 'bound solution has no confirmed action; asking dependency decision to choose action with the logic model',
       {
         solutionId: boundSolution.solutionId,
         name: boundSolution.name,
@@ -203,7 +200,7 @@ export async function decideCodeGraphDependencies(args: {
  * @keyword-cn 逻辑模型, 依赖判定
  * @keyword-en logic-model, dependency-decision
  */
-function selectLogicModel(
+export function selectLogicModel(
   aiAdapter: AgentAiServer,
   input: CodeGenOrchestrateInput,
 ): AgentAiModelClient {
@@ -771,7 +768,9 @@ function buildFallbackDependencyDecision(
   targetKind: CodeAgentTargetKind,
   solutions: RunnerSolutionSummary[],
 ): CodeGraphDependencyDecision {
-  const useAction = normalizeActionChoice(input.targetKind ?? targetKind);
+  const useAction = normalizeActionChoice(
+    readContextString(input.context ?? {}, 'chooseAction'),
+  );
   const useActions = useAction ? [useAction] : [];
   const hasSolutions = solutions.length > 0;
   const reason = hasSolutions
@@ -791,6 +790,7 @@ function buildFallbackDependencyDecision(
     routePlan: buildDefaultRoutePlan({
       requirement: normalizeDependencyNodeRequirement(input),
       actions: useActions,
+      waitChooseAction: useAction ? [] : [...CODE_GRAPH_ACTION_VALUES],
       reason,
     }),
     requiresNewSolution: !hasSolutions,
@@ -1095,20 +1095,16 @@ function isSolutionSuitableForAction(
 }
 
 /**
- * Resolve an action bound by graph context or tool input.
+ * Resolve an action already bound by graph context.
  * @keyword-cn 动作选择, 会话绑定
  * @keyword-en action-selection, session-binding
  */
 function findContextBoundAction(
   context: CodeGraphRequest['context'],
-  input: CodeGenOrchestrateInput,
-  targetKind: CodeAgentTargetKind,
 ): CodeGraphActionKind | null {
   return (
     normalizeActionChoice(readContextString(context, 'chooseAction')) ??
-    normalizeActionChoice(readContextString(context, 'targetKind')) ??
-    normalizeActionChoice(input.targetKind) ??
-    normalizeActionChoice(targetKind)
+    normalizeActionChoice(readContextString(context, 'targetKind'))
   );
 }
 
@@ -1134,7 +1130,7 @@ function readContextActionList(
  * @keyword-cn JSON解析, 依赖判定
  * @keyword-en json-parse, dependency-decision
  */
-function parseJsonObjectLoose(raw: string): unknown {
+export function parseJsonObjectLoose(raw: string): unknown {
   const text = raw.trim();
   try {
     return JSON.parse(text);

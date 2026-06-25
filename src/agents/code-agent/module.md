@@ -4,7 +4,7 @@ code-agent（代码生成智能体）
 
 ## 概述 (Overview)
 
-提供代码生成智能体的对话层和 code graph 工具入口。`code_gen_orchestrate` 现在是真实 LangGraph 工作流入口：先校验完整需求、Runner 指派、Runner 在线状态和会话上下文；如果缺少 `runner_id`，直接返回要求先获取 Runner 并完成指派的字符串；如果已指定 Runner，则先通过 `saas.app.runner.get` hook 确认 Runner 为 `mounted`，再生成稳定 thread id 并把 `StateGraph` + `TypeOrmCheckpointSaver` 放到后台执行，然后立即向 LLM 返回 `scheduled/resume_scheduled`。dependency-check 节点在后台验证 Runner Solution 列表 hook、读取已有 Solution 列表，并用逻辑模型把需求中已有的步骤/事项路由到 Solution 与 `app/unit/data-point` action，输出可包含多项的 `routePlan`。需要人工选择时通过 LangGraph `interrupt` 暂停，并由选择卡片提交后以 `Command({ resume })` 异步恢复同一个 graph thread。
+提供代码生成智能体的对话层和 code graph 工具入口。`code_gen_orchestrate` 现在是真实 LangGraph 工作流入口：先校验完整需求、Runner 指派、Runner 在线状态和会话上下文；如果缺少 `runner_id`，直接返回要求先获取 Runner 并完成指派的字符串；如果已指定 Runner，则先通过 `saas.app.runner.get` hook 确认 Runner 为 `mounted`，再生成稳定 thread id 并把 `StateGraph` + `TypeOrmCheckpointSaver` 放到后台执行，然后立即向 LLM 返回 `scheduled/resume_scheduled`。dependency-check 节点在后台验证 Runner Solution 列表 hook、读取已有 Solution 列表，并用逻辑模型把需求中已有的步骤/事项路由到 Solution 与 `app/unit/data-point` action，输出可包含多项的 `routePlan`。target-resolution 节点在 action 确认后读取对应 Solution 下的 app/unit/data-point 候选，再由逻辑模型判定每个具体目标是复用还是新建，输出 `targetPlan`。需要人工选择时通过 LangGraph `interrupt` 暂停，并由选择卡片提交后以 `Command({ resume })` 异步恢复同一个 graph thread。
 
 ## 文件清单 (File List)
 
@@ -12,6 +12,7 @@ code-agent（代码生成智能体）
 - `agent.handle.ts` — AgentRuntime 注入点、工具导出与 LangGraph code graph 编排。
 - `nodes/dependency-check.types.ts` — dependency-check 节点、graph 编排和选择卡片共享的类型与 hook 常量。
 - `nodes/dependency-check.node.ts` — code graph 首个 dependency-check 节点主流程。
+- `nodes/target-resolution.node.ts` — code graph 第二个 target-resolution 节点，读取 app/unit/data-point 候选并判定新建或复用。
 - `nodes/dependency-check-log.ts` — code graph 节点日志读取、续写和类型守卫。
 - `nodes/dependency-check-context.ts` — dependency-check 上下文字段、列表数据、动作和 Solution 选择读取。
 - `nodes/dependency-check-runner-hooks.ts` — Runner Solution list hook 探测与 Solution 列表读取。
@@ -47,7 +48,7 @@ code-agent（代码生成智能体）
 - `extractCodeGraphLog(context)` — 从工具 context 读取上一轮 code graph 日志 | keywords: graph-log, resume-log
 - `isCodeGraphLogEntry(value)` — 校验未知值是否为 graph log entry | keywords: graph-log, type-guard
 - `runCodeGenGraph(args)` — 通过 LangGraph 运行 code graph 并处理 interrupt/checkpoint resume | keywords: langgraph-workflow, checkpoint-resume
-- `buildCodeGenWorkflowGraph(args)` — 构建当前 code-agent LangGraph 工作流 | keywords: langgraph-workflow, dependency-check-node
+- `buildCodeGenWorkflowGraph(args)` — 构建当前 code-agent LangGraph 工作流 | keywords: langgraph-workflow, target-resolution
 - `buildCodeGraphRunnableConfig(args)` — 构造带 thread/workflow 元数据的 LangGraph runnable config | keywords: checkpoint-config, workflow-context
 - `buildCodeGraphThreadId(request, workflowContext)` — 为一次代码生成请求生成独立 graph thread id | keywords: checkpoint-thread, code-graph-request
 - `normalizeCodeGraphThreadId(threadId)` — 将外部传入的 graph thread id 归一化到 checkpoint schema 限制内 | keywords: checkpoint-thread, field-normalize
@@ -59,6 +60,23 @@ code-agent（代码生成智能体）
 - `buildWaitingDependencyCheckResultFromInterrupt(payload, log)` — 根据 LangGraph interrupt payload 构造等待选择回包 | keywords: interrupt-result, dependency-check-node
 - `buildBlockedDependencyCheckResult(request, reason)` — 构造 graph 无法继续时的 blocked 回包 | keywords: tool-result, blocked-status
 - `runDependencyCheckNode(args)` — 执行依赖检查节点，探测 Runner DB hooks、读取 Solution 并判定目标 | keywords: dependency-check-node, runner-db-hooks
+- `runTargetResolutionNode(args)` — 执行具体目标判定节点，按已确认 action 判定 app/unit/data-point 新建或复用 | keywords: target-resolution, code-graph-node
+- `buildTargetRouteInputs(args)` — 读取 routePlan 并列出每条路由的具体目标候选 | keywords: target-resolution, route-plan
+- `readSelectedRouteSolution(route, dependencyCheck)` — 读取单条 route 已选择的既有或新建 Solution | keywords: target-selection, route-plan
+- `isRunnerSolution(value)` — 判断目标判定中的 Solution 是否为既有 Runner Solution | keywords: solution-selection, type-guard
+- `listConcreteTargets(args)` — 按 action 读取 app/unit/data-point 具体目标候选 | keywords: target-candidate, runner-db-hooks
+- `normalizeTargetCandidate(action, value)` — 将 app/unit/data-point hook 行归一化为目标候选 | keywords: target-candidate, field-read
+- `readStringArrayField(value, field)` — 从 hook 行读取字符串数组字段 | keywords: field-read, target-candidate
+- `decideTargetResolution(args)` — 调用逻辑模型判定每条 route 的具体目标新建或复用 | keywords: target-resolution, dependency-decision
+- `buildTargetResolutionPrompt(requirement, routes)` — 构造要求 LLM 输出具体目标判定 JSON 的提示 | keywords: target-resolution, json-output
+- `normalizeLlmTargetResolution(payload, routes)` — 将 LLM 目标判定输出归一化为 graph targetPlan | keywords: target-resolution, route-plan
+- `normalizeTargetRouteDecision(args)` — 归一化单条 route 的目标新建/复用判定 | keywords: target-resolution, target-selection
+- `findPayloadRouteDecision(values, index, routeId)` — 按 route id 或位置匹配 LLM 返回的目标判定项 | keywords: field-read, target-resolution
+- `resolveTargetCandidate(choice, candidates)` — 从候选 id 或名称解析被复用的具体目标 | keywords: target-selection, field-read
+- `buildNewTargetOption(args)` — 为 create 判定构造新的 app/unit/data-point 目标候选 | keywords: target-create, fallback-decision
+- `withTargetResolutionResult(dependencyCheck, result, log)` — 将 target-resolution 输出合并回 code graph 回包 | keywords: target-resolution, graph-output
+- `buildBlockedTargetResolution(dependencyCheck, graphLog, reason)` — 构造 target-resolution blocked 回包 | keywords: target-resolution, blocked-status
+- `buildSkippedTargetResolution(dependencyCheck, graphLog, reason)` — 构造 target-resolution skipped 回包 | keywords: target-resolution, graph-output
 - `probeRunnerSolutionHooks(hookCaller, runnerId, workflowContext)` — 用 Runner meta hook 检查 Solution 数据库检索 hooks 是否存在 | keywords: hook-probe, runner-db-hooks
 - `listRunnerSolutions(hookCaller, runnerId, workflowContext)` — 通过 Runner 本地 solution hook 列出 Solution | keywords: solution-list, runner-db-hooks
 - `decideCodeGraphDependencies(args)` — 使用逻辑模型和确定性回退选择 Solution、动作与新 Solution 需求 | keywords: solution-selection, dependency-decision
@@ -105,7 +123,7 @@ code-agent（代码生成智能体）
 - `toRunnerSolutionSummary(value, runnerId)` — 规范化 Runner Solution 摘要 | keywords: solution-summary, runner-db-hooks
 - `findContextBoundSolution(context, solutions)` — 在 graph context 里优先解析已绑定的既有 Runner Solution | keywords: session-binding, solution-selection
 - `isSolutionSuitableForAction(solution, action)` — 判断已绑定 Solution 是否声明支持指定 action | keywords: solution-fit, action-selection
-- `findContextBoundAction(context, input, targetKind)` — resolves `chooseAction` / `targetKind` from graph context or tool input | keywords: action-selection, session-binding
+- `findContextBoundAction(context)` — 从 graph context 解析已确认的 `chooseAction` / `targetKind` | keywords: action-selection, session-binding
 - `readContextActionList(context, field)` — 从 graph context 读取并归一化动作数组 | keywords: graph-context, action-selection
 - `readContextString(context, field)` — 从 graph context 读取字符串字段 | keywords: graph-context, field-read
 - `readContextRecord(context, field)` — 从 graph context 读取对象字段 | keywords: graph-context, field-read
@@ -149,6 +167,7 @@ code-agent（代码生成智能体）
 | 中断回包         | interrupt-result       |
 | 阻塞状态         | blocked-status         |
 | 依赖检查节点     | dependency-check-node  |
+| 代码Graph节点    | code-graph-node        |
 | Runner数据库Hook | runner-db-hooks        |
 | Hook调用接口     | hook-caller            |
 | RunnerHook       | runner-hook            |
@@ -165,6 +184,11 @@ code-agent（代码生成智能体）
 | 依赖判定         | dependency-decision    |
 | JSON输出         | json-output            |
 | 路由计划         | route-plan             |
+| 目标判定         | target-resolution      |
+| 目标选择         | target-selection       |
+| 目标候选         | target-candidate       |
+| 目标新建         | target-create          |
+| 目标复用         | target-selection       |
 | Solution选择     | solution-selection     |
 | Solution适配     | solution-fit           |
 | Solution摘要     | solution-summary       |
@@ -209,20 +233,25 @@ code-agent（代码生成智能体）
 - `CodeGraphLogLevel` — code graph 节点日志级别 | keywords: graph-log, node-log
 - `RunnerSolutionSummary` — Runner Solution 列表项在 code graph 内部使用的摘要形状 | keywords: solution-summary, runner-db-hooks
 - `CodeGraphNewSolutionOption` — 选择卡片里表示新建 Solution 的候选形状 | keywords: new-solution-option, dependency-decision
+- `CodeGraphTargetDecisionKind` — 具体目标判定的 `reuse/create` 决策枚举 | keywords: target-selection, target-create
+- `CodeGraphConcreteTargetSummary` — app、unit 或 data-point 候选目标的归一化摘要 | keywords: target-candidate, target-selection
+- `CodeGraphNewTargetOption` — target-resolution 为后续节点提出的新建具体目标候选 | keywords: target-create, target-resolution
+- `CodeGraphTargetRouteDecision` — 单条 route 的具体目标复用或新建判定 | keywords: target-resolution, route-plan
 - `CodeGraphRequirementRoute` — dependency-check 对单个已有需求项的 Solution/action 路由形状 | keywords: route-plan, dependency-decision
 - `CodeGraphDependencyDecision` — dependency-check 对 Solution、action routePlan 与新建需求的判定结果 | keywords: dependency-decision, solution-selection
 - `LlmDependencyDecisionPayload` — 逻辑模型返回的 dependency-check JSON 判定载荷，支持 `useActions` 与 `routePlan` | keywords: dependency-decision, json-output
-- `CodeGraphRuntimeContext` — dependency-check 写入后续节点的运行上下文，包含 `chooseActions` 与 `routePlan` | keywords: graph-context, solution-selection
+- `CodeGraphRuntimeContext` — dependency-check 与 target-resolution 写入后续节点的运行上下文，包含 `chooseActions`、`routePlan` 与 `targetPlan` | keywords: graph-context, solution-selection
 - `CodeGraphResumeRef` — LangGraph 选择卡片恢复所需的 thread/checkpoint/interrupt 引用 | keywords: checkpoint-resume, langgraph-state
 - `CodeGraphLogEntry` — code graph 节点日志条目形状 | keywords: graph-log, resume-log
 - `CodeGraphNodeLogger` — dependency-check 节点追加结构化日志的 logger 接口 | keywords: node-log, resume-log
 - `CodeGraphDependencyCheckResult` — dependency-check 节点的 ready/waiting/blocked 回包 | keywords: dependency-check-node, graph-output
+- `CodeGraphTargetResolutionResult` — target-resolution 节点的 ready/skipped/blocked 回包 | keywords: target-resolution, graph-output
 - `CodeGraphDependencyResumeChoice` — 选择卡片恢复为 LangGraph resume value 的选择形状 | keywords: dependency-selection, checkpoint-resume
 - `CodeGraphDependencyInterruptPayload` — dependency-check 暂停并发送选择卡片的 interrupt payload | keywords: interrupt-payload, selection-card
 
 ## 模块功能描述 (Module Function Description)
 
-`code_gen_orchestrate` 当前处理 Runner 指派和真实 LangGraph dependency-check 节点：
+`code_gen_orchestrate` 当前处理 Runner 指派、真实 LangGraph dependency-check 节点和 target-resolution 节点：
 
 - 对话层系统提示要求生成、修改、初始化类任务不要在聊天回复里直接输出代码、HTML、CSS、JS、补丁或文件全文，只整理需求并启动 `code_gen_orchestrate`。
 
@@ -231,7 +260,7 @@ code-agent（代码生成智能体）
 - 入参支持 `context.session_id`，若未传则回退到 AgentRuntime 注入的 `WorkflowContext.sessionId`。
 - 入参支持 `resume.threadId/checkpointId/interruptId`，用于选择卡片提交后恢复 LangGraph checkpoint。
 - 工具顶层不接受 `allowCreateSolution`、`solutionName`、`solutionVersion`、`solutionSummary` 等创建或命名 Solution 的字段；Solution 只能来自 Runner 已有记录或 graph context 已绑定选择。
-- `targetKind` 与选择卡片 action 只允许 `app/unit/data-point`；`solution` 不是 code-agent 可执行动作；dependency-check 不负责拆代码目标，只在需求本身已经明确包含多步/多项时生成多个 `routePlan[]` 项。
+- `targetKind` 与选择卡片 action 只允许 `app/unit/data-point`；`solution` 不是 code-agent 可执行动作；dependency-check 不负责拆代码目标，只在需求本身已经明确包含多步/多项时生成多个 `routePlan[]` 项；入口推断出的 `targetKind` 只作为默认提示，LLM 不可用时 fallback 会等待 action 确认，不直接硬判定。
 - `runner_id` 缺失时，不启动 graph，直接返回要求先获取 Runner 并完成指派的字符串。
 - `runner_id` 存在时，先通过 SaaS hook `saas.app.runner.get` 校验 Runner 当前 `status === "mounted"`；未查到、离线或校验失败时直接返回阻断提示，不启动 graph。
 - Runner 在线校验通过后，`code_gen_orchestrate` 生成稳定 thread id，后台触发 `StateGraph` + `TypeOrmCheckpointSaver`，并立即向 LLM 返回 `scheduled/resume_scheduled`，不等待 dependency-check 完成。
@@ -239,7 +268,10 @@ code-agent（代码生成智能体）
 - dependency-check 从 `context.code_graph_log` / `context.codeGraphLog` 继承已有日志，并把每一步 append 到同一条日志链。
 - dependency-check 会调用 `runner.system.hookbus.getInfo` 检查 `runner.app.solution.list` 是否存在。
 - hooks 满足后调用 `runner.app.solution.list` 获取 Runner 数据库里的 Solution 摘要，并交给逻辑模型返回 JSON 决策；决策包含兼容字段 `useAction`，以及多动作字段 `useActions`、`routePlan`。
-- dependency-check 不读取 app/unit/data-point 关联列表，不解析具体对象 id/name，不做依赖分析；这些工作由后续节点在 Solution/action 确认后处理。
+- dependency-check 不读取 app/unit/data-point 关联列表，不解析具体对象 id/name，不做依赖分析；这些工作由 target-resolution 在 Solution/action 确认后处理。
+- target-resolution 只在 dependency-check `ready` 后运行；它按已确认的 `route.useAction` 调用 `runner.app.solution.listApps`、`runner.app.solution.listUnits` 或 `runner.app.dataTouchpoint.list` 读取候选目标，不重新硬判定 action。
+- target-resolution 把完整需求、routePlan、已选 Solution 和候选 app/unit/data-point 交给逻辑模型，要求输出严格 JSON `targetPlan[]`，每项只能是 `decision="reuse"` 并引用真实候选，或 `decision="create"` 并给出 `newTarget`。
+- target-resolution 遇到新建 Solution 时不会读取候选，仍交给逻辑模型在空候选下产出具体目标的新建选项；LLM 不可用、返回非 JSON 或引用不存在的候选时返回 `blocked`，不做确定性硬判定。
 - 即使 Runner 只返回一个 Solution，dependency-check 也不再确定性自动复用；逻辑模型必须判断该 Solution 是否适合当前需求，必要时返回 `requiresNewSolution/newSolutionOption/newSolutionReason`。
 - LLM 决策不可用或返回非 JSON 时，fallback 会暂停并要求用户显式确认复用已有 Solution，同时给出 `newSolutionOption`；不会因为只有一个候选就直接 `ready`。
 - 用户在确认卡片选择 `newSolutionOption` 后，dependency-check 会以 `ready + requiresNewSolution` 结束，把新 Solution 候选留给后续创建节点消费。
@@ -248,5 +280,5 @@ code-agent（代码生成智能体）
 - 如果某个 `routePlan` 项的 Solution/action 指向仍不明确，dependency-check 节点调用 LangGraph `interrupt(payload)` 暂停；后台任务读取 state snapshot 后通过 `saas.app.conversation.sendMsg` 主动发送只包含 `saas.app.conversation.codeAgentDependencyChoice` hook fence 的消息；卡片 payload 携带按需求语种生成的 `uiText`，由组件自身说明选择含义，并把 `waiting_for_selection`、候选项与当前 `code_graph_log` 写入运行产物日志。
 - 选择卡片提交到 `saas.app.conversation.codeAgentChoiceSubmit` 后，SaaS 侧重新加载 code-agent 工具并传入 `Command({ resume })`，异步恢复同一个 LangGraph thread；恢复值必须携带已确认的 `routePlan`，兼容字段从 routePlan 派生。
 - 任意 hook/节点异常都会返回 `blocked` 并写入 `code_graph_log`，避免日志断裂。
-- 每次后台 graph 完成或暂停后，都会把 dependency-check 最终回包、节点日志和最终节点回包文本写入 `logs/code-agent/<session_id>/...json`；也可用 `CODE_AGENT_LOG_DIR` 覆盖目录。
-- 当前阶段不写 Runner 文件、不执行真实代码生成节点；后续重构会在 dependency-check 之后接入生成/编辑节点。
+- 每次后台 graph 完成或暂停后，都会把 dependency-check/target-resolution 最终回包、节点日志和最终节点回包文本写入 `logs/code-agent/<session_id>/...json`；也可用 `CODE_AGENT_LOG_DIR` 覆盖目录。
+- 当前阶段不写 Runner 文件、不真实创建 Solution/app/unit/data-point、不执行真实代码生成节点；后续重构会在 `targetPlan` 之后接入创建/生成/编辑节点。

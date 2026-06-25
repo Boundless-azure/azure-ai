@@ -25,6 +25,7 @@ import {
 import { buildDependencyResumeChoice } from './nodes/dependency-check-decision';
 import { createCodeGraphNodeLogger } from './nodes/dependency-check-log';
 import { runDependencyCheckNode } from './nodes/dependency-check.node';
+import { runTargetResolutionNode } from './nodes/target-resolution.node';
 import {
   buildBlockedDependencyCheckResult,
   buildDependencyCheckResultMessage,
@@ -76,7 +77,10 @@ const CodeGenGraphAnnotation = Annotation.Root({
 });
 
 type CodeGenGraphUpdate = typeof CodeGenGraphAnnotation.Update;
-type CodeGenGraphNodeName = 'dependency-check' | typeof START;
+type CodeGenGraphNodeName =
+  | 'dependency-check'
+  | 'target-resolution'
+  | typeof START;
 
 type CodeGenGraphState = {
   request: CodeGraphRequest;
@@ -528,6 +532,13 @@ function buildCodeGraphRunSummary(
       routePlan.flatMap((route) => (route.useAction ? [route.useAction] : [])),
     ),
   ];
+  const targetPlan = result.context.targetPlan ?? [];
+  const reusedTargets = targetPlan.filter(
+    (item) => item.decision === 'reuse',
+  ).length;
+  const newTargets = targetPlan.filter(
+    (item) => item.decision === 'create',
+  ).length;
   const newSolutionName =
     result.decision.requiresNewSolution && result.decision.newSolutionOption
       ? result.decision.newSolutionOption.name
@@ -542,6 +553,9 @@ function buildCodeGraphRunSummary(
       ? `newSolution=${newSolutionName}`
       : '',
     actions.length ? `actions=${actions.join(',')}` : '',
+    targetPlan.length ? `targets=${targetPlan.length}` : '',
+    reusedTargets ? `reuseTargets=${reusedTargets}` : '',
+    newTargets ? `newTargets=${newTargets}` : '',
     errors,
     file,
   ]
@@ -649,8 +663,8 @@ async function runCodeGenGraph(args: {
 
 /**
  * Build the current code-agent LangGraph workflow.
- * @keyword-cn LangGraph工作流, 依赖检查节点
- * @keyword-en langgraph-workflow, dependency-check-node
+ * @keyword-cn LangGraph工作流, 目标判定
+ * @keyword-en langgraph-workflow, target-resolution
  */
 function buildCodeGenWorkflowGraph(args: {
   aiAdapter: AgentAiServer | null;
@@ -669,8 +683,24 @@ function buildCodeGenWorkflowGraph(args: {
         workflowContext: args.workflowContext,
       }),
     }))
+    .addNode('target-resolution', async (state: CodeGenGraphState) => ({
+      dependencyCheck: state.dependencyCheck
+        ? await runTargetResolutionNode({
+            request: state.request,
+            input: state.input,
+            dependencyCheck: state.dependencyCheck,
+            aiAdapter: args.aiAdapter,
+            hookCaller: args.hookCaller,
+            workflowContext: args.workflowContext,
+          })
+        : buildBlockedDependencyCheckResult(
+            state.request,
+            'dependency-check result missing before target-resolution',
+          ),
+    }))
     .addEdge(START, 'dependency-check')
-    .addEdge('dependency-check', END)
+    .addEdge('dependency-check', 'target-resolution')
+    .addEdge('target-resolution', END)
     .compile({
       checkpointer: args.checkpointer,
       name: 'code-agent-code-graph',

@@ -130,6 +130,66 @@ export type CodeGraphNewSolutionOption = {
   targetKind: CodeAgentTargetKind;
 };
 
+/**
+ * @title Concrete target reuse/create decision
+ * @description Decision kind used after the broad app/unit/data-point action is selected.
+ * @keyword-cn 目标复用, 目标新建
+ * @keyword-en target-selection, target-create
+ */
+export type CodeGraphTargetDecisionKind = 'reuse' | 'create';
+
+/**
+ * @title Concrete target summary
+ * @description Normalized app, unit, or data-point candidate discovered under a selected Solution.
+ * @keyword-cn 目标候选, 目标复用
+ * @keyword-en target-candidate, target-selection
+ */
+export type CodeGraphConcreteTargetSummary = {
+  id: string;
+  action: CodeGraphActionKind;
+  name: string;
+  solutionId?: string;
+  solutionName?: string;
+  description?: string;
+  path?: string;
+  status?: string;
+  isInitialized?: boolean;
+  sources?: string[];
+};
+
+/**
+ * @title New concrete target option
+ * @description LLM-proposed app, unit, or data-point target to create in a later node.
+ * @keyword-cn 目标新建, 目标判定
+ * @keyword-en target-create, target-resolution
+ */
+export type CodeGraphNewTargetOption = {
+  action: CodeGraphActionKind;
+  name: string;
+  summary: string;
+  reason?: string;
+};
+
+/**
+ * @title Concrete target route decision
+ * @description Per-route decision that either reuses one target candidate or proposes a new target.
+ * @keyword-cn 目标判定, 路由计划
+ * @keyword-en target-resolution, route-plan
+ */
+export type CodeGraphTargetRouteDecision = {
+  routeId: string;
+  requirement: string;
+  title: string;
+  summary: string;
+  action: CodeGraphActionKind;
+  solution: RunnerSolutionSummary | CodeGraphNewSolutionOption | null;
+  decision: CodeGraphTargetDecisionKind;
+  useTarget: CodeGraphConcreteTargetSummary | null;
+  newTarget: CodeGraphNewTargetOption | null;
+  candidates: CodeGraphConcreteTargetSummary[];
+  reason?: string;
+};
+
 export type CodeGraphRequirementRoute = {
   id: string;
   requirement: string;
@@ -160,6 +220,7 @@ export type CodeGraphRuntimeContext = {
   chooseAction: CodeGraphActionKind | '';
   chooseActions: CodeGraphActionKind[];
   routePlan: CodeGraphRequirementRoute[];
+  targetPlan?: CodeGraphTargetRouteDecision[];
   selectedSolution?: RunnerSolutionSummary | CodeGraphNewSolutionOption;
   newSolutionOption?: CodeGraphNewSolutionOption;
   code_graph_log: CodeGraphLogEntry[];
@@ -200,6 +261,21 @@ export type CodeGraphDependencyCheckResult = {
   context: CodeGraphRuntimeContext;
   solutions: RunnerSolutionSummary[];
   decision: CodeGraphDependencyDecision;
+  targetResolution?: CodeGraphTargetResolutionResult;
+  errors: string[];
+  log: CodeGraphLogEntry[];
+};
+
+/**
+ * @title Target resolution result
+ * @description Result produced by the second code graph node after dependency-check has selected route actions.
+ * @keyword-cn 目标判定, Graph输出
+ * @keyword-en target-resolution, graph-output
+ */
+export type CodeGraphTargetResolutionResult = {
+  status: 'ready' | 'skipped' | 'blocked';
+  node: 'target-resolution';
+  targetPlan: CodeGraphTargetRouteDecision[];
   errors: string[];
   log: CodeGraphLogEntry[];
 };
