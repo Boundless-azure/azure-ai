@@ -417,7 +417,8 @@ export class RunnerHookBusService {
     if (value === undefined) return 'undefined';
     const raw = JSON.stringify(value);
     if (!raw) return `<${typeof value}>`;
-    return raw.length > 1800 ? `${raw.slice(0, 1797)}...` : raw;
+    // 返回完整 payloadSchema 供 LLM 逐字段对齐 payload; 仅极端超长 (>16000) 才截断防爆炸。
+    return raw.length > 16000 ? `${raw.slice(0, 15997)}...` : raw;
   }
 
   private compose<TPayload, TResult>(

@@ -489,7 +489,16 @@ function processOneCallAftermath(
     const hasSchemaError = reply.errorMsg.some((m) =>
       /payload-schema-invalid/i.test(m),
     );
-    if (
+    if (hasSchemaError && failureCount >= 2 && !entry.debug) {
+      // L3 二次保底 :: 第一次 schema 失败已随 errorMsg 返回完整 payloadSchema (L2 自愈),
+      //   同一 hook 仍 schema 失败 → 升级: 让 LLM 走 get_hook_info 重新确认, 或考虑非 payload 问题。
+      reply.errorMsg.push(
+        `⚠ 已返回过该 hook 的完整 payloadSchema 但仍失败 ${failureCount} 次。下一步: ` +
+          `(1) 调 get_hook_info({ hookNames: ["${entry.hookName}"] }) 重新确认 payloadSchema 并逐字段对齐 payload; ` +
+          `(2) 也可能根本不是 payload 格式问题 (业务规则 / 鉴权 / 数据缺失) — 仔细读 errorMsg 主体按它排查, 不要再盲改 payload; ` +
+          `(3) 可传 debug: true 启 OTel trace 看 handler 内部日志定位根因。`,
+      );
+    } else if (
       !hasSchemaError &&
       failureCount >= FAILURE_HINT_THRESHOLD &&
       !entry.debug
@@ -605,7 +614,7 @@ export function buildCallHookTool(
         '</batching>\n\n' +
         '<errors>\n' +
         '- errorMsg 非空 = 软错, 不影响 batch 其它项. 据此纠正再试.\n' +
-        '- payload-schema-invalid: read expectedPayloadSchema in errorMsg and fix payload directly. Do not call init_tip for this error.\n' +
+        '- payload-schema-invalid: read the full expectedPayloadSchema in errorMsg and fix payload directly. If the SAME hook still fails after that, call get_hook_info to re-confirm its schema — it may also not be a payload problem (business/auth/missing data). Do not call init_tip for schema errors.\n' +
         '- hook-not-found: hook name is wrong or undiscovered; call init_tip, then use get_hook_tag / search_hook / get_hook_info.\n' +
         '- 鉴权/数据缺失: 如实告诉用户, 不绕过.\n' +
         '</errors>\n\n' +

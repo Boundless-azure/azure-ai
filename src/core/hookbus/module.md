@@ -32,7 +32,7 @@
 - HookRegistryService.list()
 - HookInvokerService.invoke(event, regs)
 - HookInvokerService.describePayloadSchema(schema) — 把当前 hook 的 zod payload schema 投影为紧凑 JSON Schema, 随 payload 校验错误返回 | keywords: payload模式描述, zod校验, payload-schema-description, zod-validation
-- HookInvokerService.previewSchemaValue(value) — 压缩展示 JSON Schema, 保留足够上下文供 LLM 修正 payload | keywords: schema预览, payload校验, schema-preview, payload-validation
+- HookInvokerService.previewSchemaValue(value) — 返回完整 payloadSchema 供 LLM 逐字段对齐 payload, 仅极端超长 (>16000) 才截断 | keywords: schema预览, payload校验, schema-preview, payload-validation
 - HookInvokerService.use(mw)
 - HookInvokerService.useNamed(name, mw)
 - HookInvokeController.invoke(body, req) — POST /hook-invoke :: 按 hookName 调用已注册 Hook，JWT 鉴权，返回 { ok, data } 或 { ok: false, errorMsg }；主要用于前端 Web Component 动态调用 Hook | keywords: hook-invoke-endpoint, frontend-component-call, invoke-hook-by-name
@@ -133,7 +133,7 @@ payload schema 校验 (zod, SSOT, 全项目唯一校验路径):
 - @HookRoute 注册: args 是位置参数 schema 数组, hook-controller-explorer 自动包成 tuple schema 写入 metadata.payloadSchema
 - 无参 HookRoute 兼容 `[]` 和 `[{}]`, 但调用 controller 方法时会忽略空对象, 仍只追加 principal/context/event
 - HookInvokerService.runHandlerWithSchema 在 handler 执行前自动 safeParse, 校验失败返回
-  `payload-schema-invalid: field=payload[0].xxx actualType=... actualValue=... message="..."; expectedPayloadSchema={...}` + 一句直白的修复指引 (payload 是位置数组, 对象参数包成 payload[0] 如 `[{...}]`, 无参传 `[]`, 禁止 ""/null/占位), 不进入 handler; schema 错误不再要求重新走 init_tip / hook discovery
+  `payload-schema-invalid: field=payload[0].xxx actualType=... actualValue=... message="..."; expectedPayloadSchema={完整 schema}` + 一句直白的修复指引 (payload 是位置数组, 对象参数包成 payload[0] 如 `[{...}]`, 无参传 `[]`, 禁止 ""/null/占位), 不进入 handler; **`expectedPayloadSchema` 完整不截断 (L2 自愈)**, schema 错误不要求走 init_tip; 同一 hook 第二次 schema 失败由 call_hook 升级到 get_hook_info (L3 保底, 见 agent-runtime)
 - hook-controller 方法签名复用 `z.infer<typeof xxxSchema>`, schema 即类型源
 - 缺省 payloadSchema 时跳过校验 (兼容存量); LLM 通过 get_hook_info 拿到的 JSON Schema 也来自此字段
 - 不再使用 class-validator + payloadDto 路径 (已移除)
