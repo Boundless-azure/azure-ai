@@ -4,7 +4,7 @@ Runner Solution 模块
 
 ## 概述 (Overview)
 
-提供 Runner 本地 Solution 的安装、删除、升级、搜索、详情、应用关联和单元关联能力。核心能力通过 4 段命名空间 HookBus hook 暴露给 SaaS，hook 名均包含模块目录名 `solution` 并声明 requiredAbility。
+提供 Runner 本地 Solution 的安装、删除、升级、搜索、详情、应用关联和单元关联能力。Solution 元数据只存储在 Mongo `solutions` collection，不再写入 workspace 下的 `solution.json` 镜像文件。核心能力通过 4 段命名空间 HookBus hook 暴露给 SaaS，hook 名均包含模块目录名 `solution` 并声明 requiredAbility。
 
 ## 文件清单 (File List)
 
@@ -23,7 +23,7 @@ Runner Solution 模块
 - `RunnerSolutionService.getDetail(identity, runnerDb)` — 返回包含 apps/units 的 Solution 详情 | keywords: solution-detail, app-unit-detail
 - `RunnerSolutionService.listAppsBySolutions(identity, runnerDb)` — 列出选中 Solution 的应用 | keywords: solution-app-list, app-association
 - `RunnerSolutionService.listUnitsBySolutions(identity)` — 列出选中 Solution 的本地单元 | keywords: solution-unit-list, unit-association
-- `RunnerSolutionService.install(params)` — 安装 Solution 并写入 Mongo 与 solution.json | keywords: install-solution, solution-install, install
+- `RunnerSolutionService.install(params)` — 安装 Solution 并写入 Mongo 源表 | keywords: install-solution, solution-install, install
 - `RunnerSolutionService.upsertMetadata(params)` — 在真实 `solutions` collection 中创建或更新 Solution 元数据 | keywords: solution-upsert, solution-metadata
 - `RunnerSolutionService.ensureDefaultLightweightSolution()` — 确保内置默认展示 Solution 存在 | keywords: default-lightweight-solution, view-solution, runner-bootstrap
 - `RunnerSolutionService.ensureTarget(params, runnerDb)` — 确保 code-agent 目标 Solution/App 元数据存在 | keywords: ensure-target, solution-create, app-create
@@ -82,5 +82,5 @@ Runner Solution 模块
 - Runner hook: `runner.app.solution.listUnits`，payload `{ solutionId?, solutionIds?, name?, names? }`，返回 solution-local unit 关联列表。
 - Runner hook: `runner.app.solution.ensureTarget`，payload `{ solutionName, appName?, runnerId? }`，确保 code-agent 目标元数据存在。
 - Runner hook: `runner.app.solution.delete`，payload `{ name }`，删除本地 Solution。
-- Runner 本地 Solution 的唯一源表是 Mongo `solutions` collection；不再向 `runner_solutions` 投影表双写。
+- Runner 本地 Solution 的唯一源表是 Mongo `solutions` collection；不再向 `runner_solutions` 投影表双写，也不再向 workspace 写 `solution.json` 镜像文件。
 - App 关联来自 `runner_apps`；unit 关联只扫描 Solution 目录下的 `unit/` 或 `units/`，不把全局 `workspace/unit` 默认归属到每个 Solution。

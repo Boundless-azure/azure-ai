@@ -847,12 +847,13 @@ function buildDirectHooks(): string[] {
 }
 
 /**
- * 构造 init_tip 的 cross-cutting 使用规则; 静态 4 条, 跨所有链路共用.
+ * 构造 init_tip 的 cross-cutting 使用规则; 静态 5 条, 跨所有链路共用.
  *  - commit early :: 1-2 个候选立即 call, 不要反复 search
  *  - no loops :: 整 turn search+info ≤ 3 次, 超了强行 commit
  *  - no skip :: 按 ①→②→③→④→⑤ 顺序, 不跳步
  *  - must sendMsg :: 业务 / 知识完成后必发 sendMsg, 否则消息丢失
- * @keyword-en build-usage-rules, commit-early, no-loops, no-skip, must-send-msg
+ *  - no guess :: hook 名 / payload 不许凭记忆猜, 名字照真实返回填, payload 照 payloadSchema 填
+ * @keyword-en build-usage-rules, commit-early, no-loops, no-skip, must-send-msg, no-guess
  */
 function buildUsageRules(): string[] {
   return [
@@ -860,6 +861,7 @@ function buildUsageRules(): string[] {
     '⚠ no loops :: 整 turn search_hook + get_hook_info 合计 ≤ 3 次. 超过这个数说明卡死了, 必须 commit 现有最佳候选, 不要继续发现.',
     '⚠ no skip :: 每条链路按 ①→②→③→④→⑤ 顺序走, 不跳步. 例: 没 getTag 就 search 会用错 tag; 没 get_hook_info 就 call_hook 会写错 payload.',
     '⚠ must sendMsg :: 业务 hook 完成后 / 知识章节读完后, **必须** call_hook saas.app.conversation.sendMsg 把结果反馈给用户. 直接返回 final prose 不会送达用户 — 等于消息丢失.',
+    '⚠ no guess :: hook 名和 payload 一律不许凭记忆猜. hookName 必须照 search_hook / get_hook_info 真实返回的完整全名填 (漏段 / 缩写 → hook-not-found, 错误里带 Did-you-mean 候选, 照抄); payload 是位置数组, 照 get_hook_info 的 payloadSchema 填, payload[0] 要对象就传对象, 不要塞 "" / null / 占位.',
   ];
 }
 

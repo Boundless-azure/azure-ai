@@ -430,6 +430,24 @@ export class AIModelService implements OnModuleInit {
 
       if (responseTo) {
         aiResponse.tokensUsed = this.handleCountTokenToEntity(responseTo);
+        const finishReason = this.readFinishReason(responseTo);
+        if (finishReason) aiResponse.finishReason = finishReason;
+      }
+
+      // 诊断 :: content 为空时把模型真实返回打出来 (finish_reason / additional_kwargs /
+      // reasoning_content), 便于区分 "思考占满 token 截断" vs "正文错位进 reasoning_content"
+      // vs "extractMessageText 漏了某种 content block". 只在空内容时打, 不污染正常日志。
+      if (!contentStr.trim()) {
+        const reasoning = this.readReasoningText(responseTo);
+        this.logger.warn(
+          `[chat:empty-content] model=${request.modelId} source=${request.source ?? ''} ` +
+            `finish=${aiResponse.finishReason ?? 'n/a'} ` +
+            `contentType=${Array.isArray(directContent) ? 'array' : typeof directContent} ` +
+            `contentRaw=${JSON.stringify(this.previewForLog(directContent))} ` +
+            `akKeys=${responseTo?.additional_kwargs ? Object.keys(responseTo.additional_kwargs).join('|') : 'none'} ` +
+            `reasoningLen=${reasoning.length} ` +
+            `reasoningPreview=${JSON.stringify(reasoning.slice(0, 600))}`,
+        );
       }
 
       this.logger.log(
@@ -454,6 +472,68 @@ export class AIModelService implements OnModuleInit {
       return this.extractTokenUsage(meta.tokenUsage);
     }
     return undefined;
+  }
+
+  /**
+   * 读取助手消息的结束原因 (finish_reason / stop_reason), 供上层判断截断/正常停。
+   * @keyword-cn 结束原因, 截断诊断
+   * @keyword-en finish-reason, truncation-diagnostic
+   */
+  private readFinishReason(msg?: {
+    response_metadata?: Record<string, unknown>;
+    additional_kwargs?: Record<string, unknown>;
+  }): string | undefined {
+    const meta = msg?.response_metadata ?? {};
+    const candidate =
+      meta['finish_reason'] ?? meta['finishReason'] ?? meta['stop_reason'];
+    return typeof candidate === 'string' ? candidate : undefined;
+  }
+
+  /**
+   * 读取 reasoning 模型放在 additional_kwargs 里的思考/正文文本 (reasoning_content 等)。
+   * @keyword-cn 思考内容, 错位回退
+   * @keyword-en reasoning-content, misaligned-fallback
+   */
+  private readReasoningText(msg?: {
+    additional_kwargs?: Record<string, unknown>;
+  }): string {
+    const ak = msg?.additional_kwargs;
+    if (!ak) return '';
+    const direct = ak['reasoning_content'] ?? ak['reasoning'];
+    if (typeof direct === 'string') return direct;
+    const raw = ak['__raw_response'];
+    if (raw && typeof raw === 'object') {
+      const delta = (
+        (raw as Record<string, unknown>)['choices'] as
+          | Array<Record<string, unknown>>
+          | undefined
+      )?.[0];
+      const fromDelta =
+        (delta?.['delta'] as Record<string, unknown> | undefined)?.[
+          'reasoning_content'
+        ] ??
+        (delta?.['message'] as Record<string, unknown> | undefined)?.[
+          'reasoning_content'
+        ];
+      if (typeof fromDelta === 'string') return fromDelta;
+    }
+    return '';
+  }
+
+  /**
+   * 压缩任意值供日志展示, 避免 content block 数组刷屏。
+   * @keyword-cn 日志预览, 截断
+   * @keyword-en log-preview, truncate
+   */
+  private previewForLog(value: unknown, max = 300): unknown {
+    let str: string;
+    try {
+      str = typeof value === 'string' ? value : JSON.stringify(value);
+    } catch {
+      str = String(value);
+    }
+    if (!str) return str;
+    return str.length > max ? `${str.slice(0, max)}…(+${str.length - max})` : str;
   }
 
   /**
@@ -950,7 +1030,10 @@ export class AIModelService implements OnModuleInit {
    */
   private applyModelParams(
     _model: unknown,
-    _params: Partial<ModelParameters> & { stop?: string[] },
+    _params: Partial<ModelParameters> & {
+      stop?: string[];
+      responseFormat?: { type: 'json_object' | 'text' };
+    },
     provider?: string,
   ): ChatOpenAICompletionsCallOptions &
     ChatOpenAIResponsesCallOptions &
@@ -977,6 +1060,12 @@ export class AIModelService implements OnModuleInit {
     if (Array.isArray(_params.stop) && _params.stop.length > 0) {
       (options as { stop?: string[] }).stop = _params.stop;
     }
+    // OpenAI 兼容 JSON mode :: 调用方传 responseFormat 时透传 response_format,
+    // 强制模型把合法 JSON 放进 content (不进 reasoning); 非 OpenAI 协议会被 langchain 忽略。
+    if (_params.responseFormat) {
+      (options as { response_format?: { type: string } }).response_format =
+        _params.responseFormat;
+    }
 
     return options;
   }
@@ -1000,7 +1089,10 @@ export class AIModelService implements OnModuleInit {
     const callOptions = request.params
       ? this.applyModelParams(
           model,
-          request.params as Partial<ModelParameters> & { stop?: string[] },
+          request.params as Partial<ModelParameters> & {
+            stop?: string[];
+            responseFormat?: { type: 'json_object' | 'text' };
+          },
           config.provider,
         )
       : {};

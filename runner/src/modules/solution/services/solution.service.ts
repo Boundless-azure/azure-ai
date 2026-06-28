@@ -1,5 +1,5 @@
 import { basename, join } from 'node:path';
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import type { Collection, Db } from 'mongodb';
 import type {
   EnsureSolutionTarget,
@@ -184,7 +184,6 @@ export class RunnerSolutionService {
       mkdirSync(solutionDir, { recursive: true });
     }
 
-    // 写入 solution.json 元信息
     const solutionInfo: SolutionInfo = {
       solutionId: buildStableId('solution', params.name, params.version),
       name: params.name,
@@ -198,9 +197,6 @@ export class RunnerSolutionService {
       installedAt: new Date().toISOString(),
       isInitialized: true,
     };
-
-    const metaPath = join(solutionDir, 'solution.json');
-    writeFileSync(metaPath, JSON.stringify(solutionInfo, null, 2), 'utf-8');
 
     // 如果有 sourceUrl，这里可以下载或复制内容（暂不实现）
     // await this.downloadFromSource(params.sourceUrl, solutionDir);
@@ -248,11 +244,6 @@ export class RunnerSolutionService {
         params.isInitialized ?? existing?.isInitialized ?? true,
     };
 
-    writeFileSync(
-      join(solution.location, 'solution.json'),
-      JSON.stringify(solution, null, 2),
-      'utf-8',
-    );
     await this.collection.updateOne(
       { name: solution.name },
       { $set: solution },
@@ -301,12 +292,6 @@ export class RunnerSolutionService {
       { $set: solution },
       { upsert: true },
     );
-    writeFileSync(
-      join(solution.location, 'solution.json'),
-      JSON.stringify(solution, null, 2),
-      'utf-8',
-    );
-
     return solution;
   }
 
@@ -373,12 +358,6 @@ export class RunnerSolutionService {
       { $set: solution },
       { upsert: true },
     );
-    writeFileSync(
-      join(solution.location, 'solution.json'),
-      JSON.stringify(solution, null, 2),
-      'utf-8',
-    );
-
     const appName = params.appName?.trim();
     if (!appName) return { solution };
 
@@ -455,9 +434,6 @@ export class RunnerSolutionService {
       location: solutionDir,
       installedAt: new Date().toISOString(),
     };
-
-    const metaPath = join(solutionDir, 'solution.json');
-    writeFileSync(metaPath, JSON.stringify(updated, null, 2), 'utf-8');
 
     await this.collection.updateOne({ name }, { $set: updated });
     return updated;

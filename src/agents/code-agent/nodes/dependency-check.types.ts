@@ -190,6 +190,38 @@ export type CodeGraphTargetRouteDecision = {
   reason?: string;
 };
 
+/**
+ * @title Bootstrap metadata
+ * @description Short LLM-generated metadata used to ensure a Solution or app target.
+ * @keyword-cn 初始创建, 元数据生成
+ * @keyword-en target-bootstrap, metadata-generation
+ */
+export type CodeGraphBootstrapMetadata = {
+  name: string;
+  version?: string;
+  summary: string;
+  description?: string;
+  tags: string[];
+};
+
+/**
+ * @title Bootstrap ensure entry
+ * @description One Solution or app metadata object ensured through the Runner hook.
+ * @keyword-cn 初始创建, 目标新建
+ * @keyword-en target-bootstrap, target-create
+ */
+export type CodeGraphBootstrapEntry = {
+  kind: 'solution' | 'app';
+  routeId?: string;
+  action?: CodeGraphActionKind;
+  solutionId?: string;
+  solutionName: string;
+  appId?: string;
+  appName?: string;
+  metadata: CodeGraphBootstrapMetadata;
+  reason?: string;
+};
+
 export type CodeGraphRequirementRoute = {
   id: string;
   requirement: string;
@@ -213,6 +245,8 @@ export type CodeGraphDependencyDecision = {
   newSolutionOption?: CodeGraphNewSolutionOption;
   newSolutionReason?: string;
   reason?: string;
+  /** 面向用户的本地化告知文案：用哪个 Solution 承载、复用还是新建 (语言跟随需求) */
+  notice?: string;
 };
 
 export type CodeGraphRuntimeContext = {
@@ -221,6 +255,7 @@ export type CodeGraphRuntimeContext = {
   chooseActions: CodeGraphActionKind[];
   routePlan: CodeGraphRequirementRoute[];
   targetPlan?: CodeGraphTargetRouteDecision[];
+  targetBootstrap?: CodeGraphBootstrapEntry[];
   selectedSolution?: RunnerSolutionSummary | CodeGraphNewSolutionOption;
   newSolutionOption?: CodeGraphNewSolutionOption;
   code_graph_log: CodeGraphLogEntry[];
@@ -262,6 +297,7 @@ export type CodeGraphDependencyCheckResult = {
   solutions: RunnerSolutionSummary[];
   decision: CodeGraphDependencyDecision;
   targetResolution?: CodeGraphTargetResolutionResult;
+  targetBootstrap?: CodeGraphTargetBootstrapResult;
   errors: string[];
   log: CodeGraphLogEntry[];
 };
@@ -276,6 +312,22 @@ export type CodeGraphTargetResolutionResult = {
   status: 'ready' | 'skipped' | 'blocked';
   node: 'target-resolution';
   targetPlan: CodeGraphTargetRouteDecision[];
+  /** 面向用户的本地化告知文案：每条 route 的具体 app/unit/data-point 是复用还是新建 */
+  notice?: string;
+  errors: string[];
+  log: CodeGraphLogEntry[];
+};
+
+/**
+ * @title Target bootstrap result
+ * @description Result produced after ensuring initial Solution/app metadata for create decisions.
+ * @keyword-cn 初始创建, Graph输出
+ * @keyword-en target-bootstrap, graph-output
+ */
+export type CodeGraphTargetBootstrapResult = {
+  status: 'ready' | 'skipped' | 'blocked';
+  node: 'target-bootstrap';
+  entries: CodeGraphBootstrapEntry[];
   errors: string[];
   log: CodeGraphLogEntry[];
 };
@@ -347,6 +399,7 @@ export type LlmDependencyDecisionPayload = {
   } | null;
   newSolutionReason?: string;
   reason?: string;
+  notice?: string;
 };
 
 /**

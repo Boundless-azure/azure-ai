@@ -25,6 +25,7 @@ import {
 import { buildDependencyResumeChoice } from './nodes/dependency-check-decision';
 import { createCodeGraphNodeLogger } from './nodes/dependency-check-log';
 import { runDependencyCheckNode } from './nodes/dependency-check.node';
+import { runTargetBootstrapNode } from './nodes/target-bootstrap.node';
 import { runTargetResolutionNode } from './nodes/target-resolution.node';
 import {
   buildBlockedDependencyCheckResult,
@@ -80,6 +81,7 @@ type CodeGenGraphUpdate = typeof CodeGenGraphAnnotation.Update;
 type CodeGenGraphNodeName =
   | 'dependency-check'
   | 'target-resolution'
+  | 'target-bootstrap'
   | typeof START;
 
 type CodeGenGraphState = {
@@ -539,6 +541,7 @@ function buildCodeGraphRunSummary(
   const newTargets = targetPlan.filter(
     (item) => item.decision === 'create',
   ).length;
+  const bootstrapEntries = result.context.targetBootstrap ?? [];
   const newSolutionName =
     result.decision.requiresNewSolution && result.decision.newSolutionOption
       ? result.decision.newSolutionOption.name
@@ -556,6 +559,7 @@ function buildCodeGraphRunSummary(
     targetPlan.length ? `targets=${targetPlan.length}` : '',
     reusedTargets ? `reuseTargets=${reusedTargets}` : '',
     newTargets ? `newTargets=${newTargets}` : '',
+    bootstrapEntries.length ? `bootstrapped=${bootstrapEntries.length}` : '',
     errors,
     file,
   ]
@@ -663,8 +667,8 @@ async function runCodeGenGraph(args: {
 
 /**
  * Build the current code-agent LangGraph workflow.
- * @keyword-cn LangGraph工作流, 目标判定
- * @keyword-en langgraph-workflow, target-resolution
+ * @keyword-cn LangGraph工作流, 初始创建
+ * @keyword-en langgraph-workflow, target-bootstrap
  */
 function buildCodeGenWorkflowGraph(args: {
   aiAdapter: AgentAiServer | null;
@@ -698,9 +702,25 @@ function buildCodeGenWorkflowGraph(args: {
             'dependency-check result missing before target-resolution',
           ),
     }))
+    .addNode('target-bootstrap', async (state: CodeGenGraphState) => ({
+      dependencyCheck: state.dependencyCheck
+        ? await runTargetBootstrapNode({
+            request: state.request,
+            input: state.input,
+            dependencyCheck: state.dependencyCheck,
+            aiAdapter: args.aiAdapter,
+            hookCaller: args.hookCaller,
+            workflowContext: args.workflowContext,
+          })
+        : buildBlockedDependencyCheckResult(
+            state.request,
+            'target-resolution result missing before target-bootstrap',
+          ),
+    }))
     .addEdge(START, 'dependency-check')
     .addEdge('dependency-check', 'target-resolution')
-    .addEdge('target-resolution', END)
+    .addEdge('target-resolution', 'target-bootstrap')
+    .addEdge('target-bootstrap', END)
     .compile({
       checkpointer: args.checkpointer,
       name: 'code-agent-code-graph',
@@ -723,6 +743,11 @@ function buildCodeGraphRunnableConfig(args: {
     resume?.threadId?.trim() ||
     buildCodeGraphThreadId(args.request, args.workflowContext);
   return {
+    // 后台 graph 在主对话的 async 上下文里启动, 会继承主对话那条已经关闭的流式
+    // EventStreamCallbackHandler; 在 graph 根 config 设空 callbacks, 一次性切断整棵
+    // graph 树 (所有节点 + 其内部 LLM/chain 调用) 的 callback 继承, 避免每个 chain
+    // start/end 撞 "WritableStream is closed"。比逐个 chat 传 isolateCallbacks 更彻底。
+    callbacks: [],
     configurable: {
       thread_id: threadId,
       ...(resume?.checkpointId?.trim()

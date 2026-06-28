@@ -53,7 +53,9 @@ LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationCont
 - `buildGetHookTagTool(hookBus, hookRpc, getCtx)` — 获取 tag 频次榜; isWeb=false(默认)排除组件 tag, isWeb=true 只统计组件 tag | keywords: get-hook-tag-tool, tag-leaderboard, is-web-filter
 - `buildGetHookInfoTool(hookBus, hookRpc, getCtx)` — 批量获取 hook 描述+tags+payload schema; 当 item 为 Web Component Hook (isComponent=true) 时额外注入 `_usage` 字段, 告知 LLM 输出 hook fence 并调 sendMsg, 不可用 call_hook 直接调用 | keywords: get-hook-info-tool, batch-info, component-usage-hint
 - `dispatchOne(hookBus, hookRpc, ctx, input, defaultDebug)` — 内部统一路由 (saas/runner); debug 三层优先级 (input.debug ?? defaultDebug ?? false) | keywords: dispatch-one, debug-priority
-- `dispatchSaasHook(hookBus, ctx, input)` — 适配 SaaS HookBus 结果到统一外形 | keywords: adapt-saas-result
+- `dispatchSaasHook(hookBus, ctx, input)` — 适配 SaaS HookBus 结果到统一外形; hook 未注册时附 did-you-mean 候选名 | keywords: adapt-saas-result
+- `suggestHookNames(hookBus, wrongName, limit?)` — hook-not-found 时从注册表挑最接近的真实 hook 名 (LLM 常漏段/记错名) | keywords: hook-name-suggest, did-you-mean
+- `scoreHookSimilarity(candidate, wrongSegs, wrongAction, wrongPrefix)` — 给候选 hook 名打相似度分 (末段相同/共享段/前缀命中加权) | keywords: hook-name-suggest, similarity-score
 - `normalizeHookCallInput(entry)` — 根据 `saas.*` / `runner.*` hookName 前缀归一化 target, 前缀优先于 target 字段 | keywords: normalize-hook-call-input, target-normalize
 - `projectSaasRegistrations(regs)` — 把 SaaS Registry 投影成与 runner meta hook 同形列表 | keywords: project-saas-registrations
 - `InvocationContextProvider` (type) — `() => HookInvocationContext` 闭包取值器 | keywords: invocation-context-provider
@@ -67,7 +69,7 @@ LLM Hook 工具集 (5 个 tool 全部 target 路由, 闭包注入 invocationCont
 
 ### types/agent-runtime.types.ts
 
-- `AgentAiRequest` — Agent 侧统一 AI 调用入参，不暴露 aiModelIds，支持 source 标记模型调用来源 | keywords: agent-ai-request, model-slot-client
+- `AgentAiRequest` — Agent 侧统一 AI 调用入参，不暴露 aiModelIds，支持 source 标记模型调用来源；`isolateCallbacks` 透传给 AIModelRequest，供后台 graph 任务隔离主对话已关闭的流式 callbacks | keywords: agent-ai-request, model-slot-client, isolate-callbacks
 - `AgentAiModelClient` — 已绑定某个槽位或显式模型 ID 的 AI 客户端，支持 `chat` / `chatStream` / `getModelId`，对外只暴露 ai_models.id 语义 | keywords: agent-ai-model-client, use-model, with-model
 - `AgentAiServer` — AgentRuntime 注入给 handle/dialogues 的 AI 适配器；提供 `chat` / `chatStream` / `useModel(index)` / `withModel(modelId)`，其中 `useModel(index)` 只在当前 agent.aiModelIds 内按最近槽位回退，不使用平台全局模型 | keywords: agent-ai-server, model-slot-client
 - `LoadedAgent` — Agent 加载结果类型 (tools, dialogues, descriptor)

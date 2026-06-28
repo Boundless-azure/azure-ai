@@ -393,6 +393,7 @@ export class AgentRuntimeService {
         ? req.checkpointer
         : undefined,
       params: req.params as AIModelRequest['params'],
+      isolateCallbacks: req.isolateCallbacks,
       tools: tools && tools.length > 0 ? tools : undefined,
     });
 

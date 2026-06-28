@@ -18,6 +18,8 @@ export interface AgentAiRequest {
   conversationGroupId?: string;
   checkpointer?: unknown;
   params?: Record<string, unknown>;
+  /** 后台任务调用时隔离 LangChain callbacks，避免继承主对话已关闭的流式 writer */
+  isolateCallbacks?: boolean;
 }
 
 /**

@@ -8,3 +8,4 @@ tmp-tip-write
 /storage
 /plugins
 logs
+/runner/workspace/solutions/**/solution.json

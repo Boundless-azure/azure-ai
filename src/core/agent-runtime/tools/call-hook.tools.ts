@@ -249,6 +249,69 @@ function normalizeHookCallInput(entry: HookCallInput): HookCallInput {
 }
 
 /**
+ * 为 hook-not-found 找最接近的真实 hook 名 (LLM 常漏段/记错名), 返回 did-you-mean 候选。
+ * @keyword-cn Hook名建议, 拼写纠正
+ * @keyword-en hook-name-suggest, did-you-mean
+ */
+function suggestHookNames(
+  hookBus: HookBusService,
+  wrongName: string,
+  limit = 3,
+): string[] {
+  const wrong = wrongName.trim().toLowerCase();
+  if (!wrong) return [];
+  const wrongSegs = wrong.split('.').filter(Boolean);
+  const wrongAction = wrongSegs[wrongSegs.length - 1] ?? '';
+  const wrongPrefix = wrongSegs.slice(0, -1).join('.');
+  const seen = new Set<string>();
+  const scored: Array<{ name: string; score: number }> = [];
+  for (const reg of hookBus.listRegistrations()) {
+    if (seen.has(reg.name)) continue;
+    seen.add(reg.name);
+    scored.push({
+      name: reg.name,
+      score: scoreHookSimilarity(
+        reg.name.toLowerCase(),
+        wrongSegs,
+        wrongAction,
+        wrongPrefix,
+      ),
+    });
+  }
+  return scored
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((item) => item.name);
+}
+
+/**
+ * 给候选 hook 名打相似度分: action 末段相同 / 共享段 / 前缀命中权重叠加。
+ * @keyword-cn Hook名建议, 相似度评分
+ * @keyword-en hook-name-suggest, similarity-score
+ */
+function scoreHookSimilarity(
+  candidate: string,
+  wrongSegs: string[],
+  wrongAction: string,
+  wrongPrefix: string,
+): number {
+  const candSegs = candidate.split('.').filter(Boolean);
+  const candAction = candSegs[candSegs.length - 1] ?? '';
+  let score = 0;
+  // 末段 (action) 相同是最强信号: 典型错误是漏中间段
+  // (saas.app.conversation.setPendingAction ← saas.app.conversation.currentSession.setPendingAction)
+  if (wrongAction && candAction === wrongAction) score += 100;
+  const candSet = new Set(candSegs);
+  for (const seg of wrongSegs) {
+    if (candSet.has(seg)) score += 10;
+  }
+  // 候选以猜错名的前缀开头 (漏尾段 / 中间插段场景)
+  if (wrongPrefix && candidate.startsWith(wrongPrefix)) score += 30;
+  return score;
+}
+
+/**
  * 把 SaaS HookBus 的 HookResult[] 适配成 { errorMsg, result, debugLog } 外形
  * @keyword-en adapt-saas-result
  */
@@ -262,8 +325,13 @@ async function dispatchSaasHook(
     //   (无此挡板 invoker 会返回 [{status:'skipped'}], 经过下面循环会变成 result=[undefined], ok=1)
     const regs = hookBus.select(input.hookName);
     if (regs.length === 0) {
+      const suggestions = suggestHookNames(hookBus, input.hookName);
       return softError(
         `hook-not-found:${input.hookName} :: This hook is not registered on saas. ` +
+          (suggestions.length > 0
+            ? `Did you mean: ${suggestions.join(' | ')} ? ` +
+              'Use one of these exact full names (platform.app.module.action), do not shorten or drop segments. '
+            : '') +
           '⚠ Correction order: call tool init_tip first to receive discoveryChains, ' +
           'then walk the hook chain (get_hook_tag → search_hook → get_hook_info → call_hook) to find the right hook. ' +
           'Do not guess hook names.',
@@ -523,6 +591,12 @@ export function buildCallHookTool(
         '- hookName 前缀优先于 target 字段; SaaS hook 永远不会被发到 Runner.\n' +
         '</routing>\n\n' +
         '<payload>每个 payload 是位置参数数组: 单参 [input], 多参 [arg1, arg2], 无参 [].</payload>\n\n' +
+        '<no_guess>\n' +
+        'hookName 和 payload 都不许凭记忆猜. ' +
+        'hookName 必须来自 search_hook / get_hook_info 的真实返回 — 漏段 / 改名 / 缩写都会 hook-not-found (返回里带 "Did you mean" 候选, 照抄完整全名). ' +
+        'payload 必须照 get_hook_info 的 payloadSchema 填: payload[0] 要对象就传对象, 不要塞 "" / null / 占位; 无参才传 []. ' +
+        '不确定先 get_hook_info, 不要靠软错回退一遍遍试探.\n' +
+        '</no_guess>\n\n' +
         '<batching>\n' +
         '- 独立的读调用共享一个 batch (一次 call_hook 传多 entry).\n' +
         '- 有依赖的调用拆 stage (前一次拿结果, 后一次基于结果再调).\n' +

@@ -134,7 +134,11 @@ export class HookInvokerService {
         status: HookResultStatus.Error,
         error:
           `payload-schema-invalid: ${detail}; ` +
-          `expectedPayloadSchema=${this.describePayloadSchema(schema)}`,
+          `expectedPayloadSchema=${this.describePayloadSchema(schema)}. ` +
+          `→ Fix the payload to match expectedPayloadSchema and retry now: payload is a ` +
+          `positional-args array, so wrap an object arg as payload[0] (e.g. [{...}]); ` +
+          `pass [] for a no-arg hook. Never send "", null, or placeholder values. ` +
+          `This is a payload shape error — do NOT call init_tip / re-discover the hook.`,
       } as HookResult<R>;
     }
     return await reg.handler({ ...event, payload: parsed.data as T });

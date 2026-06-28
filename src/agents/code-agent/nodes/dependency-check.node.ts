@@ -9,6 +9,7 @@ import {
   getDecisionActions,
   hasPendingRoutePlanSelection,
 } from './dependency-check-decision';
+import { sendDependencyNotice } from './dependency-choice-card';
 import { createCodeGraphNodeLogger } from './dependency-check-log';
 import {
   listRunnerSolutions,
@@ -287,6 +288,19 @@ export async function runDependencyCheckNode(args: {
           newSolutionOption: finalDecision.newSolutionOption,
         },
       );
+    }
+
+    // 确定需求环节 :: 复用/新建 Solution 一旦定下 (没走选择卡片), 主动告知用户用了哪个
+    // 承载位置、是复用还是新建; 文案语言由逻辑模型跟随需求生成。resume 恢复时不重复发,
+    // 因为用户已通过选择卡片交互过。发送失败只 warn, 不阻断 graph。
+    if (!args.input.resume && finalDecision.notice && args.hookCaller) {
+      await sendDependencyNotice({
+        hookCaller: args.hookCaller,
+        request: args.request,
+        workflowContext: args.workflowContext,
+        notice: finalDecision.notice,
+        graphLog,
+      });
     }
 
     graphLog.info('complete', 'dependency-check node completed');

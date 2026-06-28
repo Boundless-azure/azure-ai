@@ -65,6 +65,49 @@ export async function sendDependencyChoiceCard(args: {
 }
 
 /**
+ * Send a plain-text notice telling the user which Solution will carry the work
+ * and whether it is reused or newly created. Failure is non-fatal (warn only).
+ * @keyword-cn 复用告知, 选择卡片发送
+ * @keyword-en reuse-notice, selection-card-send
+ */
+export async function sendDependencyNotice(args: {
+  hookCaller: HookCaller;
+  request: CodeGraphRequest;
+  workflowContext: WorkflowContext | null;
+  notice: string;
+  graphLog: CodeGraphNodeLogger;
+}): Promise<void> {
+  const sessionId = args.request.context.session_id;
+  const content = args.notice.trim();
+  if (!sessionId || !content) {
+    args.graphLog.warn(
+      'send-notice:skip',
+      'missing session_id or empty notice; skip dependency notice',
+    );
+    return;
+  }
+  try {
+    const data = await callRunnerHookData(
+      args.hookCaller,
+      args.request.runner_id,
+      CONVERSATION_SEND_MSG_HOOK,
+      [{ sessionId, content }],
+      args.workflowContext,
+    );
+    assertForwardedSaaSHookDataOk(CONVERSATION_SEND_MSG_HOOK, data);
+    args.graphLog.info('send-notice:done', 'dependency reuse notice sent', {
+      sessionId,
+    });
+  } catch (error) {
+    args.graphLog.warn(
+      'send-notice:fail',
+      'failed to send dependency reuse notice',
+      { error: error instanceof Error ? error.message : String(error) },
+    );
+  }
+}
+
+/**
  * Build markdown content containing the hook component fence.
  * @keyword-cn Hook组件消息, 选择卡片
  * @keyword-en hook-component-message, selection-card

@@ -152,11 +152,12 @@ export function buildInitTipTool(
         '    - knowledge: 查权威知识 (knowledge.getTag → search → getToc → getChapter → sendMsg)\n' +
         '    - hook: 发现业务能力 (get_hook_tag → search_hook → get_hook_info → call_hook → sendMsg)\n' +
         '    - **history**: 回看会话历史 (conversation.smartTags → smartSearch → smartMessages → sendMsg); 用户说"之前/上次/我说过"等回溯关键词时必走\n' +
-        '- usageRules :: 4 条 cross-cutting 行为约束, 走任何链路都必须遵守:\n' +
+        '- usageRules :: 5 条 cross-cutting 行为约束, 走任何链路都必须遵守:\n' +
         '    · commit early: 1-2 个候选立即 call_hook commit, 不要反复 search\n' +
         '    · no loops: 整 turn search + info 合计 ≤ 3 次, 超过强行 commit\n' +
         '    · no skip: ①→②→③→④→⑤ 顺序, 不跳步\n' +
         '    · must sendMsg: 业务/知识完成后必发 sendMsg, 否则消息丢失\n' +
+        '    · no guess: hook 名/payload 不许凭记忆猜 — 名字照 search/info 真实返回填 (漏段→hook-not-found 带 Did-you-mean), payload 照 payloadSchema 填, payload[0] 要对象就传对象, 不塞空串/占位\n' +
         '- tipNote :: 一句话本轮总览, 按 declared 强调走哪条; 两种情境会改写它:\n' +
         '    · **callLog 复用** :: needHook 且本会话之前轮次已有成功调用 (返回带 hasCallHistory:true) → tipNote 改提示"先 call_hook callHistory.query [{}] 复用近期成功调用, 不必每轮重走完整发现链路". 命中后 { id, includeDetail:true } 取详情复用 payload.\n' +
         '    · **主动消息发送提醒** :: 主动对话模式 (返回带 proactive:true, 用户尚未说话) → tipNote 前置提醒: 本轮必须 call_hook saas.app.conversation.sendMsg 主动发消息, 否则用户收不到任何内容.\n' +

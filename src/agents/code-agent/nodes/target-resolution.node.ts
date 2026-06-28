@@ -3,9 +3,11 @@ import z from 'zod';
 import type { AgentAiServer } from '@/core/agent-runtime/types/agent-runtime.types';
 import { readItems, readStringField } from './dependency-check-context';
 import {
+  compactRequirementForRouting,
   parseJsonObjectLoose,
   selectLogicModel,
 } from './dependency-check-decision';
+import { sendDependencyNotice } from './dependency-choice-card';
 import { createCodeGraphNodeLogger } from './dependency-check-log';
 import { callRunnerHookData } from './dependency-check-runner-hooks';
 import type {
@@ -52,6 +54,7 @@ const LlmTargetRouteSchema = z.object({
 const LlmTargetResolutionSchema = z.object({
   targetPlan: z.array(LlmTargetRouteSchema).optional(),
   reason: z.string().optional(),
+  notice: z.string().optional(),
 });
 
 type LlmTargetResolutionPayload = z.infer<typeof LlmTargetResolutionSchema>;
@@ -142,7 +145,7 @@ export async function runTargetResolutionNode(args: {
         graphLog.entries,
       );
     }
-    const targetPlan = await decideTargetResolution({
+    const { targetPlan, notice } = await decideTargetResolution({
       aiAdapter: args.aiAdapter,
       input: args.input,
       request: args.request,
@@ -153,6 +156,7 @@ export async function runTargetResolutionNode(args: {
       status: 'ready',
       node: 'target-resolution',
       targetPlan,
+      ...(notice ? { notice } : {}),
       errors: [],
       log: graphLog.entries,
     };
@@ -165,6 +169,17 @@ export async function runTargetResolutionNode(args: {
         newTargetName: item.newTarget?.name ?? null,
       })),
     });
+    // app/unit/data-point 复用或新建一旦定下, 主动告知用户复用了哪个目标 / 新建什么,
+    // 文案语言由逻辑模型跟随需求生成。发送失败只 warn, 不阻断 graph。
+    if (notice && args.hookCaller) {
+      await sendDependencyNotice({
+        hookCaller: args.hookCaller,
+        request: args.request,
+        workflowContext: args.workflowContext,
+        notice,
+        graphLog,
+      });
+    }
     return withTargetResolutionResult(
       args.dependencyCheck,
       result,
@@ -394,7 +409,7 @@ async function decideTargetResolution(args: {
   request: CodeGraphRequest;
   routes: TargetResolutionRouteInput[];
   graphLog: CodeGraphNodeLogger;
-}): Promise<CodeGraphTargetRouteDecision[]> {
+}): Promise<{ targetPlan: CodeGraphTargetRouteDecision[]; notice?: string }> {
   const model = selectLogicModel(args.aiAdapter, args.input);
   args.graphLog.info(
     'target:llm:start',
@@ -402,16 +417,18 @@ async function decideTargetResolution(args: {
   );
   const response = await model.chat({
     source: 'code-agent.target-resolution',
+    // 后台 graph 任务 :: 隔离主对话已关闭的流式 callbacks (见 dependency-check 同理)。
+    isolateCallbacks: true,
     messages: [
       {
         role: 'user',
         content: buildTargetResolutionPrompt(
-          args.request.full_requirement,
+          compactRequirementForRouting(args.request.full_requirement),
           args.routes,
         ),
       },
     ],
-    params: { temperature: 0 },
+    params: { temperature: 0, responseFormat: { type: 'json_object' } },
   });
   const parsed = LlmTargetResolutionSchema.parse(
     parseJsonObjectLoose(response.content),
@@ -420,7 +437,12 @@ async function decideTargetResolution(args: {
     'target:llm:done',
     'logic model returned target-resolution JSON',
   );
-  return normalizeLlmTargetResolution(parsed, args.routes);
+  const targetPlan = normalizeLlmTargetResolution(parsed, args.routes);
+  const notice =
+    typeof parsed.notice === 'string' && parsed.notice.trim()
+      ? parsed.notice.trim()
+      : undefined;
+  return { targetPlan, notice };
 }
 
 /**
@@ -457,12 +479,15 @@ function buildTargetResolutionPrompt(
   return [
     'You are the target-resolution node for code-agent. Return strict JSON only, no markdown.',
     'Dependency-check already selected the broad action lane for every route. Do not change any action.',
-    'For every route, decide whether the concrete app/unit/data-point target should reuse one listed candidate or create a new target.',
-    'Use reuse only when a candidate clearly matches the route requirement and selected action.',
-    'Use create when no candidate matches, the route asks for a distinct new app/unit/data-point, or the selected Solution is new and has no candidates yet.',
+    'For every route, decide whether the concrete app/unit/data-point target should reuse one listed candidate or create a new target. Decide it yourself from the evidence; this node never asks the user.',
+    'HARD RULE: a route whose candidate list is empty has nothing to reuse — you MUST return decision="create" for it. decision="reuse" is only valid when you copy an exact id or name from that route\'s NON-EMPTY candidates; never invent a target.',
+    'Prefer reuse: pick decision="reuse" when any listed candidate is a reasonable home for this route (its name/description/path/sources already cover the requirement and the selected action), even if the match is not perfect.',
+    'Use decision="create" only when no candidate is a sensible home, the route clearly asks for a distinct new app/unit/data-point, or the selected Solution is new and has no candidates yet.',
+    'Never create a near-duplicate of an existing candidate; reuse it instead.',
     'Do not invent existing target ids. For reuse, copy one candidate id or name exactly from that route.',
     'For create, provide a short newTarget.name and summary. Later nodes will do the actual creation.',
-    'JSON shape: {"targetPlan":[{"routeId":"...","decision":"reuse","useTarget":{"id":"candidate-id","name":"candidate-name","reason":"..."},"newTarget":null,"reason":"..."}]} or {"targetPlan":[{"routeId":"...","decision":"create","useTarget":null,"newTarget":{"name":"new-target-name","summary":"...","reason":"..."},"reason":"..."}]}',
+    'Also return a top-level `notice` (1-2 sentences) written IN THE SAME NATURAL LANGUAGE AS THE REQUIREMENT (Chinese requirement => Chinese notice), plainly telling the user which concrete app/unit/data-point will be reused (name it) or newly created. Do NOT mention ids / JSON / candidate / internal field names; speak like a teammate.',
+    'JSON shape: {"targetPlan":[{"routeId":"...","decision":"reuse","useTarget":{"id":"candidate-id","name":"candidate-name","reason":"..."},"newTarget":null,"reason":"..."}],"notice":"将复用已有页面 baidu-overview-spa。"} or with create: {"targetPlan":[{"routeId":"...","decision":"create","useTarget":null,"newTarget":{"name":"new-target-name","summary":"...","reason":"..."},"reason":"..."}],"notice":"将新建一个页面 baidu-company-intro-view。"}',
     '',
     `Full requirement:\n${requirement}`,
     '',
@@ -514,40 +539,68 @@ function normalizeTargetRouteDecision(args: {
       args.payload.useTarget ?? {},
       args.route.candidates,
     );
-    if (!candidate) {
-      throw new Error(
-        `target-resolution reuse target is invalid for route ${args.route.route.id}`,
-      );
+    if (candidate) {
+      return {
+        routeId: args.route.route.id,
+        requirement: args.route.route.requirement,
+        title: args.route.route.title,
+        summary: args.route.route.summary,
+        action: args.route.action,
+        solution: args.route.solution,
+        decision: 'reuse',
+        useTarget: candidate,
+        newTarget: null,
+        candidates: args.route.candidates,
+        reason,
+      };
     }
-    return {
-      routeId: args.route.route.id,
-      requirement: args.route.route.requirement,
-      title: args.route.route.title,
-      summary: args.route.route.summary,
-      action: args.route.action,
-      solution: args.route.solution,
-      decision: 'reuse',
-      useTarget: candidate,
-      newTarget: null,
-      candidates: args.route.candidates,
-      reason,
-    };
+    // LLM 判了 reuse 但候选里解析不到 (典型: 候选为空却硬判 reuse, 或 id/name 对不上)。
+    // 语义上"没有可复用的候选"= 应当新建; 降级为 create 而不是 blocked 卡死整条流程。
+    const downgradeReason =
+      args.route.candidates.length === 0
+        ? 'logic model chose reuse but this Solution has no existing target candidates; creating a new target instead'
+        : 'logic model chose reuse but referenced a target that is absent from the candidate list; creating a new target instead';
+    logger.warn(
+      `target-resolution reuse downgraded to create for route ${args.route.route.id} (candidates=${args.route.candidates.length})`,
+    );
+    return buildCreateRouteDecision(
+      args.route,
+      args.payload.newTarget ?? undefined,
+      downgradeReason,
+    );
   }
+  return buildCreateRouteDecision(
+    args.route,
+    args.payload.newTarget ?? undefined,
+    reason,
+  );
+}
+
+/**
+ * Build a "create" route decision, synthesizing a new target option.
+ * @keyword-cn 目标新建, 目标判定
+ * @keyword-en target-create, target-resolution
+ */
+function buildCreateRouteDecision(
+  route: TargetResolutionRouteInput,
+  newTargetPayload: { name?: string; summary?: string; reason?: string } | undefined,
+  reason: string | undefined,
+): CodeGraphTargetRouteDecision {
   return {
-    routeId: args.route.route.id,
-    requirement: args.route.route.requirement,
-    title: args.route.route.title,
-    summary: args.route.route.summary,
-    action: args.route.action,
-    solution: args.route.solution,
+    routeId: route.route.id,
+    requirement: route.route.requirement,
+    title: route.route.title,
+    summary: route.route.summary,
+    action: route.action,
+    solution: route.solution,
     decision: 'create',
     useTarget: null,
     newTarget: buildNewTargetOption({
-      route: args.route,
-      payload: args.payload.newTarget ?? undefined,
+      route,
+      payload: newTargetPayload,
       reason,
     }),
-    candidates: args.route.candidates,
+    candidates: route.candidates,
     reason,
   };
 }
