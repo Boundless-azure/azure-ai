@@ -406,12 +406,22 @@ async function ensureBootstrapTargets(args: {
       dependencyCheck: args.dependencyCheck,
       newSolutionMetadata: solutionMetadata,
     });
+    // summary 回写 :: 既有 Solution 的 summary 是占位/弱文案时, 用本次生成的 app 摘要回写,
+    // 让 Runner 端把占位摘要升级成真实描述 (Runner 只刷新弱摘要, 不覆盖已有真摘要)。
+    const solutionMetadataForPayload =
+      !solutionRef.isNew && isWeakBootstrapSummary(solutionRef.metadata.summary)
+        ? {
+            ...solutionRef.metadata,
+            summary: appMetadata.summary,
+            description: appMetadata.description ?? appMetadata.summary,
+          }
+        : solutionRef.metadata;
     const data = await callEnsureTargetHook({
       hookCaller: args.hookCaller,
       runnerId: args.runnerId,
       workflowContext: args.workflowContext,
       payload: buildEnsureTargetPayload({
-        solutionMetadata: solutionRef.metadata,
+        solutionMetadata: solutionMetadataForPayload,
         appMetadata,
         sessionId: args.sessionId,
       }),
@@ -542,6 +552,19 @@ function resolveBootstrapSolutionRef(args: {
     throw new Error('bootstrap target has no Solution to attach to');
   }
   return { metadata: args.newSolutionMetadata, isNew: true };
+}
+
+/**
+ * Detect a placeholder / weak Solution summary that should be refreshed.
+ * @keyword-cn 占位摘要, 摘要回写
+ * @keyword-en placeholder-summary, summary-writeback
+ */
+function isWeakBootstrapSummary(summary?: string): boolean {
+  const value = (summary ?? '').trim();
+  if (!value) return true;
+  if (/^create or bind a new solution/i.test(value)) return true;
+  if (/solution managed by code-agent$/i.test(value)) return true;
+  return false;
 }
 
 /**
@@ -763,7 +786,8 @@ function buildSkippedTargetBootstrap(
     status: 'skipped',
     node: 'target-bootstrap',
     entries: dependencyCheck.context.targetBootstrap ?? [],
-    errors: [reason],
+    reason,
+    errors: [],
     log: graphLog.entries,
   };
 }

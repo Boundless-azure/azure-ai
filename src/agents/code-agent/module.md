@@ -72,20 +72,21 @@ code-agent（代码生成智能体）
 - `buildTargetResolutionPrompt(requirement, routes)` — 构造要求 LLM 优先复用既有候选、候选为空必须 create、reuse 只能照抄非空候选精确 id/name 的具体目标判定 JSON 提示 | keywords: target-resolution, json-output
 - `normalizeLlmTargetResolution(payload, routes)` — 将 LLM 目标判定输出归一化为 graph targetPlan | keywords: target-resolution, route-plan
 - `normalizeTargetRouteDecision(args)` — 归一化单条 route 的目标新建/复用判定；reuse 解析不到候选（候选为空硬判 reuse 或 id/name 对不上）时降级为 create，不再 blocked | keywords: target-resolution, target-selection
-- `buildCreateRouteDecision(route, newTargetPayload, reason)` — 构造 create 路由判定并合成新目标候选，供正常 create 与 reuse 降级共用 | keywords: target-create, target-resolution
+- `buildCreateRouteDecision(route, newTargetPayload, reason, downgraded)` — 构造 create 路由判定并合成新目标候选，供正常 create 与 reuse 降级共用；降级时 `downgraded=true` 打标 | keywords: target-create, target-resolution
 - `findPayloadRouteDecision(values, index, routeId)` — 按 route id 或位置匹配 LLM 返回的目标判定项 | keywords: field-read, target-resolution
 - `resolveTargetCandidate(choice, candidates)` — 从候选 id 或名称解析被复用的具体目标 | keywords: target-selection, field-read
 - `buildNewTargetOption(args)` — 为 create 判定构造新的 app/unit/data-point 目标候选 | keywords: target-create, fallback-decision
 - `withTargetResolutionResult(dependencyCheck, result, log)` — 将 target-resolution 输出合并回 code graph 回包 | keywords: target-resolution, graph-output
 - `buildBlockedTargetResolution(dependencyCheck, graphLog, reason)` — 构造 target-resolution blocked 回包 | keywords: target-resolution, blocked-status
-- `buildSkippedTargetResolution(dependencyCheck, graphLog, reason)` — 构造 target-resolution skipped 回包 | keywords: target-resolution, graph-output
+- `buildSkippedTargetResolution(dependencyCheck, graphLog, reason)` — 构造 target-resolution skipped 回包；跳过原因写 `reason`、`errors` 留空，避免监控误报 | keywords: target-resolution, graph-output
 - `runTargetBootstrapNode(args)` — 根据新建 Solution/App 判定执行初始元数据创建节点 | keywords: target-bootstrap, code-graph-node
 - `buildBootstrapRequests(dependencyCheck)` — 从 targetPlan 与新 Solution 判定中收集需要初步创建的对象 | keywords: target-bootstrap, target-create
 - `readNewSolutionOption(dependencyCheck)` — 读取 dependency-check 或 targetPlan 里选中的新 Solution 候选 | keywords: target-bootstrap, new-solution-option
 - `isNewSolutionOption(value)` — 判断未知值是否为新 Solution 候选 | keywords: new-solution-option, type-guard
 - `generateBootstrapMetadata(args)` — 调用逻辑模型为 Solution/App 生成简短名称、描述和 tags | keywords: metadata-generation, target-bootstrap
 - `buildBootstrapMetadataPrompt(requirement, requests)` — 构造初始创建元数据生成的严格 JSON 提示 | keywords: metadata-generation, json-output
-- `ensureBootstrapTargets(args)` — 通过 Runner ensureTarget hook 确保 Solution/App 元数据存在 | keywords: target-bootstrap, runner-hook-call
+- `ensureBootstrapTargets(args)` — 通过 Runner ensureTarget hook 确保 Solution/App 元数据存在；既有 Solution 摘要为占位/弱文案时用本次生成的 app 摘要回写 | keywords: target-bootstrap, runner-hook-call
+- `isWeakBootstrapSummary(summary)` — 判断既有 Solution 摘要是否为占位/弱文案（空 / "Create or bind…" / "…managed by code-agent"），决定是否回写 | keywords: placeholder-summary, summary-writeback
 - `buildEnsureTargetPayload(args)` — 从生成的元数据构造 `runner.app.solution.ensureTarget` payload | keywords: target-bootstrap, hook-data
 - `callEnsureTargetHook(args)` — 调用 Runner `runner.app.solution.ensureTarget` hook | keywords: runner-hook-call, target-bootstrap
 - `resolveBootstrapSolutionRef(args)` — 为 app 新建目标解析应挂载的 Solution 元数据 | keywords: target-bootstrap, solution-selection
@@ -100,7 +101,7 @@ code-agent（代码生成智能体）
 - `trimText(value, maxLength)` — 把生成文本裁剪为紧凑单行字符串 | keywords: field-normalize, metadata-generation
 - `withTargetBootstrapResult(dependencyCheck, result, log)` — 将 target-bootstrap 输出合并回 code graph 回包 | keywords: target-bootstrap, graph-output
 - `buildBlockedTargetBootstrap(dependencyCheck, graphLog, reason)` — 构造 target-bootstrap blocked 回包 | keywords: target-bootstrap, blocked-status
-- `buildSkippedTargetBootstrap(dependencyCheck, graphLog, reason)` — 构造 target-bootstrap skipped 回包 | keywords: target-bootstrap, graph-output
+- `buildSkippedTargetBootstrap(dependencyCheck, graphLog, reason)` — 构造 target-bootstrap skipped 回包；跳过原因写 `reason`、`errors` 留空，避免监控误报 | keywords: target-bootstrap, graph-output
 - `probeRunnerSolutionHooks(hookCaller, runnerId, workflowContext)` — 用 Runner meta hook 检查 Solution 数据库检索 hooks 是否存在 | keywords: hook-probe, runner-db-hooks
 - `listRunnerSolutions(hookCaller, runnerId, workflowContext)` — 通过 Runner 本地 solution hook 列出 Solution | keywords: solution-list, runner-db-hooks
 - `decideCodeGraphDependencies(args)` — 使用逻辑模型和确定性回退选择 Solution、动作与新 Solution 需求 | keywords: solution-selection, dependency-decision
@@ -273,7 +274,7 @@ code-agent（代码生成智能体）
 - `CodeGraphTargetDecisionKind` — 具体目标判定的 `reuse/create` 决策枚举 | keywords: target-selection, target-create
 - `CodeGraphConcreteTargetSummary` — app、unit 或 data-point 候选目标的归一化摘要 | keywords: target-candidate, target-selection
 - `CodeGraphNewTargetOption` — target-resolution 为后续节点提出的新建具体目标候选 | keywords: target-create, target-resolution
-- `CodeGraphTargetRouteDecision` — 单条 route 的具体目标复用或新建判定 | keywords: target-resolution, route-plan
+- `CodeGraphTargetRouteDecision` — 单条 route 的具体目标复用或新建判定；`downgraded` 标记 reuse→create 降级 | keywords: target-resolution, route-plan
 - `CodeGraphBootstrapMetadata` — target-bootstrap 使用的简短名称、摘要、描述和 tags 元数据 | keywords: target-bootstrap, metadata-generation
 - `CodeGraphBootstrapEntry` — 已通过 Runner hook 初步确保的 Solution/App 元数据记录 | keywords: target-bootstrap, target-create
 - `CodeGraphRequirementRoute` — dependency-check 对单个已有需求项的 Solution/action 路由形状 | keywords: route-plan, dependency-decision
@@ -284,8 +285,8 @@ code-agent（代码生成智能体）
 - `CodeGraphLogEntry` — code graph 节点日志条目形状 | keywords: graph-log, resume-log
 - `CodeGraphNodeLogger` — dependency-check 节点追加结构化日志的 logger 接口 | keywords: node-log, resume-log
 - `CodeGraphDependencyCheckResult` — dependency-check 节点的 ready/waiting/blocked 回包 | keywords: dependency-check-node, graph-output
-- `CodeGraphTargetResolutionResult` — target-resolution 节点的 ready/skipped/blocked 回包；含 `notice` 面向用户的 app 层复用/新建告知 | keywords: target-resolution, graph-output
-- `CodeGraphTargetBootstrapResult` — target-bootstrap 节点的 ready/skipped/blocked 回包 | keywords: target-bootstrap, graph-output
+- `CodeGraphTargetResolutionResult` — target-resolution 节点的 ready/skipped/blocked 回包；含 `notice`（app 层复用/新建告知）与 `reason`（skipped 跳过原因，与 errors 区分） | keywords: target-resolution, graph-output
+- `CodeGraphTargetBootstrapResult` — target-bootstrap 节点的 ready/skipped/blocked 回包；含 `reason`（skipped 跳过原因，与 errors 区分） | keywords: target-bootstrap, graph-output
 - `CodeGraphDependencyResumeChoice` — 选择卡片恢复为 LangGraph resume value 的选择形状 | keywords: dependency-selection, checkpoint-resume
 - `CodeGraphDependencyInterruptPayload` — dependency-check 暂停并发送选择卡片的 interrupt payload | keywords: interrupt-payload, selection-card
 
@@ -320,6 +321,9 @@ code-agent（代码生成智能体）
 - target-resolution 把完整需求、routePlan、已选 Solution 和候选 app/unit/data-point 交给逻辑模型，要求输出严格 JSON `targetPlan[]`，每项只能是 `decision="reuse"` 并引用真实候选，或 `decision="create"` 并给出 `newTarget`。
 - target-resolution 遇到新建 Solution 或候选为空时不会读取候选，仍交给逻辑模型产出具体目标的新建选项；LLM 不可用或返回非 JSON 时返回 `blocked`。
 - 但「逻辑模型判 reuse 却引用了不存在/候选为空的目标」不再 blocked：归一化阶段降级为 create（语义上"没有可复用候选"= 应当新建），并 warn 记录；prompt 同时硬约束"候选为空必须 create、reuse 只能照抄非空候选的精确 id/name"，双保险避免弱模型在空候选下硬判 reuse 卡死流程。
+- 降级（reuse→create）会给该 route 打 `downgraded=true`；target-resolution 检测到任一 route 降级时**丢弃 LLM 的 app notice 不发**（它多半基于"复用"判定生成、会误导用户），只在日志记 `target:notice:skip`。
+- target-resolution / target-bootstrap 的 `skipped` 回包把跳过原因写进 `reason` 字段、`errors` 留空，避免监控把"正常跳过"当错误误报；只有真错误才进 `errors`（blocked）。
+- 摘要回写：target-bootstrap 在既有 Solution 摘要为占位/弱文案（空 / "Create or bind a new Solution…" / "…managed by code-agent"）时，用本次生成的 app 摘要回写，并由 Runner `ensureTarget` 升级该 Solution 摘要（Runner 只刷新弱摘要、永不覆盖已有真摘要），改善后续语义匹配。
 - target-bootstrap 只在 target-resolution `ready` 后运行；它收集新 Solution 和 `action="app" + decision="create"` 的目标，拿完整用户需求让逻辑模型生成简短 `name/summary/description/tags`。
 - target-bootstrap 的名称要求短 kebab-case slug，summary/description/tags 用来帮助后续生成节点理解目标；节点会归一化长度和 tags，但 LLM 不可用或缺失必要元数据时会 `blocked`。
 - target-bootstrap 通过 `runner.app.solution.ensureTarget` 完成初步创建：新 Solution 会创建 Solution 元数据，新 app 会在已选或新建 Solution 下创建 app 元数据；unit/data-point 的真实创建留给后续专门节点。

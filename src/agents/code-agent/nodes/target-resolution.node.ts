@@ -438,8 +438,17 @@ async function decideTargetResolution(args: {
     'logic model returned target-resolution JSON',
   );
   const targetPlan = normalizeLlmTargetResolution(parsed, args.routes);
+  // 若有 route 由 reuse 降级为 create, LLM 的 notice 多半基于"复用"判定生成、会误导用户,
+  // 此时丢弃 notice 不发, 只在日志记录 (宁可不发, 不发错的)。
+  const hasDowngrade = targetPlan.some((item) => item.downgraded === true);
+  if (hasDowngrade) {
+    args.graphLog.info(
+      'target:notice:skip',
+      'dropping app notice because a reuse decision was downgraded to create',
+    );
+  }
   const notice =
-    typeof parsed.notice === 'string' && parsed.notice.trim()
+    !hasDowngrade && typeof parsed.notice === 'string' && parsed.notice.trim()
       ? parsed.notice.trim()
       : undefined;
   return { targetPlan, notice };
@@ -567,12 +576,14 @@ function normalizeTargetRouteDecision(args: {
       args.route,
       args.payload.newTarget ?? undefined,
       downgradeReason,
+      true,
     );
   }
   return buildCreateRouteDecision(
     args.route,
     args.payload.newTarget ?? undefined,
     reason,
+    false,
   );
 }
 
@@ -583,8 +594,11 @@ function normalizeTargetRouteDecision(args: {
  */
 function buildCreateRouteDecision(
   route: TargetResolutionRouteInput,
-  newTargetPayload: { name?: string; summary?: string; reason?: string } | undefined,
+  newTargetPayload:
+    | { name?: string; summary?: string; reason?: string }
+    | undefined,
   reason: string | undefined,
+  downgraded: boolean,
 ): CodeGraphTargetRouteDecision {
   return {
     routeId: route.route.id,
@@ -602,6 +616,7 @@ function buildCreateRouteDecision(
     }),
     candidates: route.candidates,
     reason,
+    ...(downgraded ? { downgraded: true } : {}),
   };
 }
 
@@ -728,7 +743,8 @@ function buildSkippedTargetResolution(
     status: 'skipped',
     node: 'target-resolution',
     targetPlan: dependencyCheck.context.targetPlan ?? [],
-    errors: [reason],
+    reason,
+    errors: [],
     log: graphLog.entries,
   };
 }

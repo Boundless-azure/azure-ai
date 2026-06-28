@@ -26,7 +26,9 @@ Runner Solution 模块
 - `RunnerSolutionService.install(params)` — 安装 Solution 并写入 Mongo 源表 | keywords: install-solution, solution-install, install
 - `RunnerSolutionService.upsertMetadata(params)` — 在真实 `solutions` collection 中创建或更新 Solution 元数据 | keywords: solution-upsert, solution-metadata
 - `RunnerSolutionService.ensureDefaultLightweightSolution()` — 确保内置默认展示 Solution 存在 | keywords: default-lightweight-solution, view-solution, runner-bootstrap
-- `RunnerSolutionService.ensureTarget(params, runnerDb)` — 确保 code-agent 目标 Solution/App 元数据存在 | keywords: ensure-target, solution-create, app-create
+- `RunnerSolutionService.ensureTarget(params, runnerDb)` — 确保 code-agent 目标 Solution/App 元数据存在；既有 Solution 摘要/描述为占位或空时用 params 回写升级，已有真文案永不覆盖 | keywords: ensure-target, solution-create, app-create, summary-writeback
+- `isWeakSolutionText(text)` — 判断 Solution 文案是否占位/弱文案（空 / "Create or bind a new Solution…" / "…managed by code-agent"） | keywords: weak-solution-text, summary-writeback
+- `pickRefreshedSolutionText(existing, incoming, fallback)` — 既有为弱文案时用 incoming 回写，否则保留既有真文案，都没有再用兜底 | keywords: pick-refreshed-text, summary-writeback
 - `RunnerSolutionService.delete(name)` — 删除 Solution 目录与 Mongo 记录 | keywords: delete-solution, solution-delete, delete
 - `RunnerSolutionService.upgrade(name, sourceUrl)` — 升级已安装 Solution | keywords: upgrade-solution, solution-upgrade, upgrade
 - `RunnerSolutionService.search(query)` — 按 q/source/include 搜索 Solution | keywords: search-solution, solution-search, search

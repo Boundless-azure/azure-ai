@@ -24,6 +24,32 @@ const DEFAULT_LIGHTWEIGHT_SOLUTION_DESCRIPTION =
   'Built-in Solution for temporary tables, lightweight pages, and one-off visual displays.';
 
 /**
+ * 判断 Solution 文案是否为占位/弱文案 (空 / "Create or bind a new Solution…" / "… managed by code-agent")，需要回写真摘要。
+ * @keyword-en weak-solution-text, summary-writeback
+ */
+function isWeakSolutionText(text?: string): boolean {
+  const value = (text ?? '').trim();
+  if (!value) return true;
+  if (/^create or bind a new solution/i.test(value)) return true;
+  if (/solution managed by code-agent$/i.test(value)) return true;
+  return false;
+}
+
+/**
+ * 选择更"强"的文案：既有为占位/弱文案时用 incoming 回写，否则保留既有真文案，都没有再用兜底。
+ * @keyword-en pick-refreshed-text, summary-writeback
+ */
+function pickRefreshedSolutionText(
+  existing: string | undefined,
+  incoming: string | undefined,
+  fallback: string,
+): string {
+  if (!isWeakSolutionText(existing)) return (existing ?? '').trim();
+  if (!isWeakSolutionText(incoming)) return (incoming ?? '').trim();
+  return (existing ?? incoming ?? fallback).trim();
+}
+
+/**
  * @title Runner Solution 服务
  * @description 提供 Runner 本地 Solution 的安装、删除、升级、查询功能
  * @keywords-cn solution服务, solution管理, runner方案
@@ -334,17 +360,21 @@ export class RunnerSolutionService {
       version: existing?.version ?? solutionVersion,
       source: existing?.source ?? 'self_developed',
       location: existing?.location ?? solutionDir,
+      // 既有 Solution 的占位/空摘要会被 params 回写升级；已有真摘要永不被覆盖。
       summary: isDefaultLightweightSolution
         ? DEFAULT_LIGHTWEIGHT_SOLUTION_SUMMARY
-        : existing
-          ? existing.summary
-          : params.solutionSummary ??
+        : pickRefreshedSolutionText(
+            existing?.summary,
+            params.solutionSummary,
             `${solutionName} solution managed by code-agent`,
+          ),
       description: isDefaultLightweightSolution
         ? DEFAULT_LIGHTWEIGHT_SOLUTION_DESCRIPTION
-        : existing
-          ? existing.description
-          : params.solutionDescription ?? '',
+        : pickRefreshedSolutionText(
+            existing?.description,
+            params.solutionDescription,
+            '',
+          ),
       images: existing?.images ?? [],
       includes,
       installedAt: existing?.installedAt ?? nowIso,

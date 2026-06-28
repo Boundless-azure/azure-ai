@@ -188,6 +188,8 @@ export type CodeGraphTargetRouteDecision = {
   newTarget: CodeGraphNewTargetOption | null;
   candidates: CodeGraphConcreteTargetSummary[];
   reason?: string;
+  /** true 表示这条 create 是由 reuse 解析失败降级而来 (LLM 判 reuse 但候选对不上) */
+  downgraded?: boolean;
 };
 
 /**
@@ -314,6 +316,8 @@ export type CodeGraphTargetResolutionResult = {
   targetPlan: CodeGraphTargetRouteDecision[];
   /** 面向用户的本地化告知文案：每条 route 的具体 app/unit/data-point 是复用还是新建 */
   notice?: string;
+  /** skipped 时的跳过原因 (与真错误 errors 区分, 避免监控误报) */
+  reason?: string;
   errors: string[];
   log: CodeGraphLogEntry[];
 };
@@ -328,6 +332,8 @@ export type CodeGraphTargetBootstrapResult = {
   status: 'ready' | 'skipped' | 'blocked';
   node: 'target-bootstrap';
   entries: CodeGraphBootstrapEntry[];
+  /** skipped 时的跳过原因 (与真错误 errors 区分, 避免监控误报) */
+  reason?: string;
   errors: string[];
   log: CodeGraphLogEntry[];
 };
