@@ -125,58 +125,110 @@ export class HookInvokerService {
     if (!schema) return await reg.handler(event);
     const parsed = schema.safeParse(event.payload);
     if (!parsed.success) {
+      // 转一次 JSON Schema, 既用于逐字段取 fieldSchema, 又用于末尾全量兜底展示
+      const jsonSchema = this.toJsonSchemaSafe(schema);
       const detail = parsed.error.issues
         .map((i) =>
-          this.formatPayloadSchemaIssue(i.path, i.message, event.payload),
+          this.formatPayloadSchemaIssue(
+            i.path,
+            i.message,
+            event.payload,
+            jsonSchema,
+          ),
         )
         .join('; ');
+      // payload=[""] / null 之类 = 你送了空占位, 不是传输层改的; 命中就加一句硬指认, 掐断"平台序列化 bug"的误判
+      const hasEmptyPlaceholder = parsed.error.issues.some((i) => {
+        const actual = this.readPayloadPath(event.payload, i.path);
+        return actual === '' || actual === null;
+      });
       return {
         status: HookResultStatus.Error,
+        // 每个报错字段自带 fieldSchema, 指名让 LLM 照该字段 schema 只重生成该字段的值; 全量 schema 仅兜底放末尾
         error:
-          `payload-schema-invalid: ${detail}; ` +
-          `expectedPayloadSchema=${this.describePayloadSchema(schema)}. ` +
-          `→ Fix the payload to match expectedPayloadSchema and retry now: payload is a ` +
-          `positional-args array, so wrap an object arg as payload[0] (e.g. [{...}]); ` +
-          `pass [] for a no-arg hook. Never send "", null, or placeholder values. ` +
-          `This is a payload shape error — do NOT call init_tip / re-discover the hook.`,
+          `payload-schema-invalid: ${detail}. ` +
+          `→ You built this payload and its shape is wrong. The transport never rewrites, drops, or empties payload — ` +
+          `${hasEmptyPlaceholder ? 'payload=[""] means you literally sent an empty string, ' : ''}` +
+          `this is NOT a platform or serialization bug. ` +
+          `For EACH failing field above, read that field's own \`fieldSchema\` and regenerate ONLY that field's value to satisfy it — ` +
+          `do not blank the whole object or re-send a placeholder. ` +
+          `payload is a positional-args array — wrap the object arg as payload[0] (e.g. [{...}]), ` +
+          `pass [] for a no-arg hook, never send ""/null/placeholder. ` +
+          `Do NOT call init_tip / re-discover the hook. ` +
+          `Full structure for reference — expectedPayloadSchema=${this.previewSchemaValue(jsonSchema)}`,
       } as HookResult<R>;
     }
     return await reg.handler({ ...event, payload: parsed.data as T });
   }
 
   /**
-   * 把当前 hook 的 zod payload schema 投影为紧凑 JSON Schema, 直接随 payload 校验错误返回给 LLM。
-   * @keyword-cn payload模式描述, zod校验
-   * @keyword-en payload-schema-description, zod-validation
+   * 把当前 hook 的 zod payload schema 转成 JSON Schema 对象 (转换一次, 供逐字段 fieldSchema 提取 + 末尾全量展示复用)。
+   * @keyword-cn schema转换, 逐字段schema
+   * @keyword-en json-schema-convert, field-schema
    */
-  private describePayloadSchema(schema: ZodTypeAny): string {
+  private toJsonSchemaSafe(schema: ZodTypeAny): unknown {
     try {
-      return this.previewSchemaValue(z.toJSONSchema(schema));
+      return z.toJSONSchema(schema);
     } catch {
       const schemaDef = (
         schema as { _def?: { type?: string; typeName?: string } }
       )._def;
-      return this.previewSchemaValue({
-        type: schemaDef?.type ?? schemaDef?.typeName ?? 'zod-schema',
-      });
+      return { type: schemaDef?.type ?? schemaDef?.typeName ?? 'zod-schema' };
     }
   }
 
   /**
-   * 格式化 zod payload 错误 :: 输出字段路径、实际类型和值, 让 LLM 能直接修 payload。
+   * 沿 zod 错误 path 从 JSON Schema 里取出该报错字段自己的子 schema, 让 LLM 只按这个字段改值。
+   * @description 支持 tuple 的 prefixItems[n] / array 的 items / object 的 properties[key]; 取不到返回 undefined。
+   * @keyword-cn 逐字段schema, 子schema提取
+   * @keyword-en field-schema, subschema-resolve
+   */
+  private resolveFieldSchema(
+    jsonSchema: unknown,
+    path: ReadonlyArray<PropertyKey>,
+  ): unknown {
+    let node: unknown = jsonSchema;
+    for (const part of path) {
+      if (!node || typeof node !== 'object') return undefined;
+      const rec = node as Record<string, unknown>;
+      if (typeof part === 'number') {
+        const prefix = Array.isArray(rec.prefixItems)
+          ? rec.prefixItems
+          : undefined;
+        node = prefix && part < prefix.length ? prefix[part] : rec.items;
+        continue;
+      }
+      if (typeof part === 'symbol') return undefined;
+      const props =
+        rec.properties && typeof rec.properties === 'object'
+          ? (rec.properties as Record<string, unknown>)
+          : undefined;
+      if (!props || !(part in props)) return undefined;
+      node = props[part];
+    }
+    return node;
+  }
+
+  /**
+   * 格式化 zod payload 错误 :: 输出字段路径、实际类型和值、**该字段自己的 fieldSchema**, 让 LLM 照字段 schema 改值。
    * @keyword-en format-payload-schema-issue
    */
   private formatPayloadSchemaIssue(
     path: ReadonlyArray<PropertyKey>,
     message: string,
     payload: unknown,
+    jsonSchema: unknown,
   ): string {
     const field = this.formatPayloadPath(path);
     const actual = this.readPayloadPath(payload, path);
+    const fieldSchema = this.resolveFieldSchema(jsonSchema, path);
     return [
       `field=${field}`,
       `actualType=${this.describeType(actual)}`,
       `actualValue=${this.previewValue(actual)}`,
+      `fieldSchema=${
+        fieldSchema === undefined ? 'n/a' : this.previewSchemaValue(fieldSchema)
+      }`,
       `message=${JSON.stringify(message)}`,
     ].join(' ');
   }

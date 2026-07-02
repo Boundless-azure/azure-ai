@@ -493,10 +493,11 @@ function processOneCallAftermath(
       // L3 二次保底 :: 第一次 schema 失败已随 errorMsg 返回完整 payloadSchema (L2 自愈),
       //   同一 hook 仍 schema 失败 → 升级: 让 LLM 走 get_hook_info 重新确认, 或考虑非 payload 问题。
       reply.errorMsg.push(
-        `⚠ 已返回过该 hook 的完整 payloadSchema 但仍失败 ${failureCount} 次。下一步: ` +
-          `(1) 调 get_hook_info({ hookNames: ["${entry.hookName}"] }) 重新确认 payloadSchema 并逐字段对齐 payload; ` +
-          `(2) 也可能根本不是 payload 格式问题 (业务规则 / 鉴权 / 数据缺失) — 仔细读 errorMsg 主体按它排查, 不要再盲改 payload; ` +
-          `(3) 可传 debug: true 启 OTel trace 看 handler 内部日志定位根因。`,
+        `⚠ 已返回过该 hook 的完整 payloadSchema 但仍失败 ${failureCount} 次。这仍是你构造的 payload 形状错误 —— ` +
+          `传输层不会改写/丢弃/清空 payload, 不是平台或序列化故障。下一步: ` +
+          `(1) 严格照 errorMsg 里的 expectedPayloadSchema 结构, 自己按结构逐字段重新生成 payload 的值 (对象参数包成 payload[0], 无参传 []); ` +
+          `(2) 若某字段的值确实拿不到, 那是缺数据不是缺格式 —— 去调对应 hook 取到真实值再填, 别塞 ""/null/占位, 也别判定平台不可用; ` +
+          `(3) 可传 debug: true 启 OTel trace 看 handler 内部日志辅助定位。`,
       );
     } else if (
       !hasSchemaError &&

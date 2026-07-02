@@ -258,9 +258,60 @@ export type CodeGraphRuntimeContext = {
   routePlan: CodeGraphRequirementRoute[];
   targetPlan?: CodeGraphTargetRouteDecision[];
   targetBootstrap?: CodeGraphBootstrapEntry[];
+  changePlan?: CodeGraphChangeTask[];
   selectedSolution?: RunnerSolutionSummary | CodeGraphNewSolutionOption;
   newSolutionOption?: CodeGraphNewSolutionOption;
   code_graph_log: CodeGraphLogEntry[];
+};
+
+/**
+ * @title Hook contract
+ * @description One hook a change task declares: name, signature (JSON), summary, and out-edges.
+ * @keyword-cn hook契约, 依赖边
+ * @keyword-en hook-contract, dependency-edge
+ */
+export type CodeGraphHookContract = {
+  name: string;
+  summary?: string;
+  signature?: Record<string, unknown>;
+  calls?: string[];
+  compatibleWith?: string[];
+};
+
+/**
+ * @title Change task
+ * @description One create-only change-plan node: a new file plus the hook contracts it declares.
+ * @keyword-cn 变更任务, 新增
+ * @keyword-en change-task, create-only
+ */
+export type CodeGraphChangeTask = {
+  taskId: string;
+  routeId?: string;
+  targetId?: string;
+  solutionId?: string;
+  action?: CodeGraphActionKind;
+  op: 'create';
+  path: string;
+  /** 该文件是什么 (面向下游生成节点; app/data-point 文件靠它表达用途) */
+  summary?: string;
+  /** 仅 unit 目标产出 hook 契约; app/data-point 为空 */
+  hooks: CodeGraphHookContract[];
+  /** 本 plan 内该文件直接组合/依赖的其它 taskId (粗粒度, 非 import 行、非 hook 边); 供拓扑排序 */
+  dependsOn?: string[];
+  reason?: string;
+};
+
+/**
+ * @title Change plan dependency edge
+ * @description A derived edge between hook contracts, classified by how its target resolves.
+ * @keyword-cn 依赖边, 边解析
+ * @keyword-en dependency-edge, edge-resolution
+ */
+export type CodeGraphChangePlanEdge = {
+  from: string;
+  to: string;
+  kind: 'calls' | 'compatibleWith';
+  resolved: 'new' | 'existing' | 'unresolved';
 };
 
 export type CodeGraphResumeRef = {
@@ -300,6 +351,7 @@ export type CodeGraphDependencyCheckResult = {
   decision: CodeGraphDependencyDecision;
   targetResolution?: CodeGraphTargetResolutionResult;
   targetBootstrap?: CodeGraphTargetBootstrapResult;
+  changePlan?: CodeGraphChangePlanResult;
   errors: string[];
   log: CodeGraphLogEntry[];
 };
@@ -332,6 +384,34 @@ export type CodeGraphTargetBootstrapResult = {
   status: 'ready' | 'skipped' | 'blocked';
   node: 'target-bootstrap';
   entries: CodeGraphBootstrapEntry[];
+  /** skipped 时的跳过原因 (与真错误 errors 区分, 避免监控误报) */
+  reason?: string;
+  errors: string[];
+  log: CodeGraphLogEntry[];
+};
+
+/**
+ * @title Change plan result
+ * @description Result of the create-only change-plan node: the changeTask set, derived edges,
+ *   and the code-driven todo loop outcome (open todos / iterations). Stored alongside the
+ *   durable Mongo-backed plan addressed by planId.
+ * @keyword-cn 变更集结果, Graph输出
+ * @keyword-en change-plan-result, graph-output
+ */
+export type CodeGraphChangePlanResult = {
+  status: 'ready' | 'skipped' | 'blocked';
+  node: 'change-plan';
+  planId: string;
+  changeTasks: CodeGraphChangeTask[];
+  edges: CodeGraphChangePlanEdge[];
+  /** 变更任务的拓扑生成顺序 (taskId, 按 dependsOn 排, 叶子在前); 供下游生成节点决定先后 */
+  topoOrder?: string[];
+  /** 本次规划选用的知识库书本 id (先选书) */
+  bookIds?: string[];
+  openTodos: number;
+  iterations: number;
+  /** 面向用户的本地化告知文案：将新增哪些文件/能力 (语言跟随需求) */
+  notice?: string;
   /** skipped 时的跳过原因 (与真错误 errors 区分, 避免监控误报) */
   reason?: string;
   errors: string[];

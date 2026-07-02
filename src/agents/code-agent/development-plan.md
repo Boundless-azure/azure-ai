@@ -46,4 +46,20 @@
 - [x] Define the frontend selection card payload for `waitChoose` and `waitChooseAction`.
 - [x] Add session metadata persistence for selected `routePlan`, deriving compatibility `chooseSolution` / `chooseAction` while keeping checkpoint ids in the card payload and LangGraph tables.
 - [x] Resume dependency-check from the LangGraph checkpoint after the user submits the selection.
-- [ ] Add the second dependency node that analyzes the selected solution's app/unit list and decides concrete downstream dependencies.
+- [x] Add the second dependency node (target-resolution) that analyzes the selected solution's app/unit list and decides concrete reuse/create per target.
+- [x] Add the third node (target-bootstrap) that ensures initial Solution/App metadata for create decisions.
+
+## Change-Plan Node (file processing analysis, create-only)
+
+- [x] Runner provides a dedicated `code-agent-plan` module: `runner.app.codeAgentPlan.{ensurePlan,upsertTasks,searchTasks,upsertTodos,listTodos,getSnapshot}`. A `RunnerCodeAgentPlanService` owns three Mongo collections (`code_agent_plans` / `code_agent_change_tasks` / `code_agent_plan_todos`) via the raw `Db` — the legitimate business path around the `denyLlm` mongo write hooks. All ops are planId-scoped; requiredAbility reuses the `solution` subject.
+- [x] The change plan lives in the assigned Runner's Mongo (per-tenant physical isolation), never in SaaS process memory; it supports partial upsert + local search so a large plan is only read back as slices.
+- [x] `change-plan` node runs after `target-bootstrap` (CREATE-ONLY: every change is `op:'create'`; modify/delete deferred; module.md outline reading dropped here).
+- [x] A code-driven todo state machine drives the loop: seed one `plan-target` todo per target, then each turn feed the LLM the open todos + relevant task slices + existing hooks found, take one strict-JSON action turn (tasks / todoUpdates / todoAdds / searchRequests / notice), persist via the store, fulfill scoped existing-hook searches, run deterministic edge validation, repeat until no open todos or `maxIterations`.
+- [x] Completion is decided ONLY by the todo table (`getSnapshot.openTodos`), not by the LLM claiming done. The LLM may only close `plan-target` todos; `resolve-edge` todo status is code-authoritative.
+- [x] One LLM session plans the whole routePlan (cross-solution) into an action tree: each new hook inlines `calls` / `compatibleWith` out-edges; code derives `edges` and classifies them new / existing / unresolved.
+- [x] Self-correction: unresolved edges become `resolve-edge` todos (re-opened if the LLM wrongly closed them, closed by code once resolved), forcing the model to add a defining task, search an existing hook, or drop the edge. `new→existing` edges resolve via `searchSolutionHooks` scoped to the routePlan solutions' apps/units; existing hooks cannot change (create-only) so the new side adapts.
+- [x] The node never blocks the pipeline: hitting the iteration cap with open todos still returns `ready` (warn + `reason` + `openTodos` in the result envelope).
+- [x] Action-aware planning: `app` / `data-point` targets plan FILES ONLY (no hooks/edges — a page has no hooks); only `unit` targets build the hook-contract action tree. Paths are full solution/app-relative (code joins the target basePath under a scope fence). Persisted run artifact is slimmed (node log deduped, requirement not duplicated in input).
+- [x] Knowledge-driven planning (先选书): a local "前端开发手册" book (`local_frontend_dev_handbook`) defines project archetypes (one per chapter; default Astro) and cross-archetype rules (minimal module chunking, separated resource dirs, separated page JS/CSS). change-plan first selects books by routePlan (LLM pick via `saas.app.knowledge.search`, load via `getChapter`) and feeds the manual into every generation turn; selected `bookIds` recorded on the result. SaaS HookBus threaded into the node.
+- [ ] Verify end-to-end on a mounted runner (LLM tool-loop turn behavior, Mongo store round-trips, edge convergence, manual-driven multi-file output) — needs the live system.
+- [ ] Next: consume `changeTasks` in real create/generate/integrate nodes after change-plan.

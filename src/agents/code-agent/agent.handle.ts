@@ -24,6 +24,7 @@ import {
 } from './nodes/dependency-check-context';
 import { buildDependencyResumeChoice } from './nodes/dependency-check-decision';
 import { createCodeGraphNodeLogger } from './nodes/dependency-check-log';
+import { runChangePlanNode } from './nodes/change-plan.node';
 import { runDependencyCheckNode } from './nodes/dependency-check.node';
 import { runTargetBootstrapNode } from './nodes/target-bootstrap.node';
 import { runTargetResolutionNode } from './nodes/target-resolution.node';
@@ -82,6 +83,7 @@ type CodeGenGraphNodeName =
   | 'dependency-check'
   | 'target-resolution'
   | 'target-bootstrap'
+  | 'change-plan'
   | typeof START;
 
 type CodeGenGraphState = {
@@ -276,6 +278,7 @@ export default class AgentHandleClass {
           targetKind,
           aiAdapter: this.#aiAdapter,
           hookCaller: this.#hookCaller,
+          hookBus: this.#hookBus,
           workflowContext: this.#workflowContext,
           checkpointer: this.#checkpointer,
         });
@@ -360,6 +363,7 @@ type CodeGraphLaunchInput = {
   targetKind: CodeAgentTargetKind;
   aiAdapter: AgentAiServer | null;
   hookCaller: HookCaller | null;
+  hookBus: HookBusLike | null;
   workflowContext: WorkflowContext | null;
   checkpointer: BaseCheckpointSaver | null;
 };
@@ -458,6 +462,46 @@ type CodeGraphRunArtifactRef = {
 };
 
 /**
+ * Slim the persisted result by deduplicating the node log (kept once at top level).
+ * @keyword-cn 产物瘦身, 日志去重
+ * @keyword-en artifact-slim, log-dedup
+ */
+function slimCodeGraphResultForArtifact(
+  result: CodeGraphDependencyCheckResult,
+): Record<string, unknown> {
+  const seeTop = '[see top-level log]';
+  const slim: Record<string, unknown> = {
+    ...result,
+    log: seeTop,
+    context: { ...result.context, code_graph_log: seeTop },
+  };
+  if (result.targetResolution) {
+    slim.targetResolution = { ...result.targetResolution, log: undefined };
+  }
+  if (result.targetBootstrap) {
+    slim.targetBootstrap = { ...result.targetBootstrap, log: undefined };
+  }
+  if (result.changePlan) {
+    slim.changePlan = { ...result.changePlan, log: undefined };
+  }
+  return slim;
+}
+
+/**
+ * Drop the bulky requirement text from the persisted tool input (request keeps one copy).
+ * @keyword-cn 产物瘦身, 入参裁剪
+ * @keyword-en artifact-slim, input-trim
+ */
+function trimArtifactInput(
+  input: CodeGenOrchestrateInput,
+): Record<string, unknown> {
+  const { full_requirement, requirement, ...rest } = input;
+  void full_requirement;
+  void requirement;
+  return rest;
+}
+
+/**
  * Persist the final code graph response and node log as a local JSON artifact.
  * @keyword-cn 运行产物日志, CodeGraph结果
  * @keyword-en artifact-log, code-graph-result
@@ -486,8 +530,8 @@ async function persistCodeGraphRunArtifact(
     targetKind: args.targetKind,
     status: args.result.status,
     request: args.request,
-    input: args.input,
-    result: args.result,
+    input: trimArtifactInput(args.input),
+    result: slimCodeGraphResultForArtifact(args.result),
     log: args.result.log,
     toolMessage: args.toolMessage,
   };
@@ -608,6 +652,7 @@ async function runCodeGenGraph(args: {
   targetKind: CodeAgentTargetKind;
   aiAdapter: AgentAiServer | null;
   hookCaller: HookCaller | null;
+  hookBus: HookBusLike | null;
   workflowContext: WorkflowContext | null;
   checkpointer: BaseCheckpointSaver | null;
 }): Promise<CodeGraphDependencyCheckResult> {
@@ -673,6 +718,7 @@ async function runCodeGenGraph(args: {
 function buildCodeGenWorkflowGraph(args: {
   aiAdapter: AgentAiServer | null;
   hookCaller: HookCaller | null;
+  hookBus: HookBusLike | null;
   workflowContext: WorkflowContext | null;
   checkpointer: BaseCheckpointSaver;
 }) {
@@ -717,10 +763,27 @@ function buildCodeGenWorkflowGraph(args: {
             'target-resolution result missing before target-bootstrap',
           ),
     }))
+    .addNode('change-plan', async (state: CodeGenGraphState) => ({
+      dependencyCheck: state.dependencyCheck
+        ? await runChangePlanNode({
+            request: state.request,
+            input: state.input,
+            dependencyCheck: state.dependencyCheck,
+            aiAdapter: args.aiAdapter,
+            hookCaller: args.hookCaller,
+            hookBus: args.hookBus,
+            workflowContext: args.workflowContext,
+          })
+        : buildBlockedDependencyCheckResult(
+            state.request,
+            'target-bootstrap result missing before change-plan',
+          ),
+    }))
     .addEdge(START, 'dependency-check')
     .addEdge('dependency-check', 'target-resolution')
     .addEdge('target-resolution', 'target-bootstrap')
-    .addEdge('target-bootstrap', END)
+    .addEdge('target-bootstrap', 'change-plan')
+    .addEdge('change-plan', END)
     .compile({
       checkpointer: args.checkpointer,
       name: 'code-agent-code-graph',

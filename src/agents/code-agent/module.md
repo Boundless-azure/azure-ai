@@ -4,7 +4,7 @@ code-agent（代码生成智能体）
 
 ## 概述 (Overview)
 
-提供代码生成智能体的对话层和 code graph 工具入口。`code_gen_orchestrate` 现在是真实 LangGraph 工作流入口：先校验完整需求、Runner 指派、Runner 在线状态和会话上下文；如果缺少 `runner_id`，直接返回要求先获取 Runner 并完成指派的字符串；如果已指定 Runner，则先通过 `saas.app.runner.get` hook 确认 Runner 为 `mounted`，再生成稳定 thread id 并把 `StateGraph` + `TypeOrmCheckpointSaver` 放到后台执行，然后立即向 LLM 返回 `scheduled/resume_scheduled`。dependency-check 节点在后台验证 Runner Solution 列表 hook、读取已有 Solution 列表，并用逻辑模型把需求中已有的步骤/事项路由到 Solution 与 `app/unit/data-point` action，输出可包含多项的 `routePlan`。target-resolution 节点在 action 确认后读取对应 Solution 下的 app/unit/data-point 候选，再由逻辑模型判定每个具体目标是复用还是新建，输出 `targetPlan`。target-bootstrap 节点根据新建 Solution 或 app 的判定，用完整用户需求让逻辑模型生成简短名称、摘要、描述和 tags，并通过 Runner hook 完成初步元数据创建。需要人工选择时通过 LangGraph `interrupt` 暂停，并由选择卡片提交后以 `Command({ resume })` 异步恢复同一个 graph thread。
+提供代码生成智能体的对话层和 code graph 工具入口。`code_gen_orchestrate` 现在是真实 LangGraph 工作流入口：先校验完整需求、Runner 指派、Runner 在线状态和会话上下文；如果缺少 `runner_id`，直接返回要求先获取 Runner 并完成指派的字符串；如果已指定 Runner，则先通过 `saas.app.runner.get` hook 确认 Runner 为 `mounted`，再生成稳定 thread id 并把 `StateGraph` + `TypeOrmCheckpointSaver` 放到后台执行，然后立即向 LLM 返回 `scheduled/resume_scheduled`。dependency-check 节点在后台验证 Runner Solution 列表 hook、读取已有 Solution 列表，并用逻辑模型把需求中已有的步骤/事项路由到 Solution 与 `app/unit/data-point` action，输出可包含多项的 `routePlan`。target-resolution 节点在 action 确认后读取对应 Solution 下的 app/unit/data-point 候选，再由逻辑模型判定每个具体目标是复用还是新建，输出 `targetPlan`。target-bootstrap 节点根据新建 Solution 或 app 的判定，用完整用户需求让逻辑模型生成简短名称、摘要、描述和 tags，并通过 Runner hook 完成初步元数据创建。change-plan 节点 (第四步, create-only) 在 target-bootstrap 后运行：用一个 code 驱动的 todo 状态机外循环 + 确定性验图自纠，规划整个 routePlan 要新增的文件与 hook 契约 (action tree)；变更集落在对应 Runner 的 Mongo (经 `runner.app.codeAgentPlan.*` 专有业务 hook)，不存 SaaS 内存，多租户物理隔离。需要人工选择时通过 LangGraph `interrupt` 暂停，并由选择卡片提交后以 `Command({ resume })` 异步恢复同一个 graph thread。
 
 ## 文件清单 (File List)
 
@@ -14,6 +14,10 @@ code-agent（代码生成智能体）
 - `nodes/dependency-check.node.ts` — code graph 首个 dependency-check 节点主流程。
 - `nodes/target-resolution.node.ts` — code graph 第二个 target-resolution 节点，读取 app/unit/data-point 候选并判定新建或复用。
 - `nodes/target-bootstrap.node.ts` — code graph 第三个 target-bootstrap 节点，生成简短元数据并确保 Solution/App 初始记录存在。
+- `nodes/change-plan.node.ts` — code graph 第四个 change-plan 节点，create-only 的 todo 状态机外循环 + 验图自纠，规划要新增的文件/hook 契约 (action tree)。
+- `nodes/change-plan.types.ts` — change-plan 节点的 LLM 每轮动作 payload schema、todo 枚举、循环上限与存量 hook 摘要类型。
+- `nodes/change-plan-store.ts` — change-plan 的 Runner 变更集存储客户端 (调 runner.app.codeAgentPlan.*) 与 scoped 存量 hook 搜索。
+- `nodes/change-plan-knowledge.ts` — change-plan 的「先选书」: 按 routePlan 由 LLM 选用知识库书本 (调 saas.app.knowledge.search/getChapter) 并拼成生成手册。
 - `nodes/dependency-check-log.ts` — code graph 节点日志读取、续写和类型守卫。
 - `nodes/dependency-check-context.ts` — dependency-check 上下文字段、列表数据、动作和 Solution 选择读取。
 - `nodes/dependency-check-runner-hooks.ts` — Runner Solution list hook 探测与 Solution 列表读取。
@@ -102,6 +106,47 @@ code-agent（代码生成智能体）
 - `withTargetBootstrapResult(dependencyCheck, result, log)` — 将 target-bootstrap 输出合并回 code graph 回包 | keywords: target-bootstrap, graph-output
 - `buildBlockedTargetBootstrap(dependencyCheck, graphLog, reason)` — 构造 target-bootstrap blocked 回包 | keywords: target-bootstrap, blocked-status
 - `buildSkippedTargetBootstrap(dependencyCheck, graphLog, reason)` — 构造 target-bootstrap skipped 回包；跳过原因写 `reason`、`errors` 留空，避免监控误报 | keywords: target-bootstrap, graph-output
+- `runChangePlanNode(args)` — 执行 create-only change-plan 节点：code 驱动的 todo 外循环 + 验图自纠，规划要新增的文件/hook 契约 | keywords: change-plan, code-graph-node
+- `seedTargetTodos(store, planId, targetPlan, graphLog)` — 为每个 target 种一个 plan-target todo，给外循环起点 | keywords: seed-todos, plan-target
+- `requestChangePlanTurn(args)` — 调用逻辑模型跑一轮 change-plan 动作并解析 JSON | keywords: llm-turn, change-plan
+- `applyTurn(args)` — 应用一轮动作：upsert 变更任务，再 upsert todo 新增/状态更新 | keywords: apply-turn, change-plan
+- `runSearchRequests(args)` — 履行模型的存量 hook 搜索请求并记录命中 | keywords: fulfill-search, edge-resolution
+- `computeEdges(tasks, foundExisting)` — 从所有任务推导 calls/compatibleWith 边并分类 new/existing/unresolved | keywords: edge-derive, edge-resolution
+- `computeTopoOrder(tasks)` — 按任务级 dependsOn 派生叶子在前的拓扑生成顺序，回 { order, dangling(引用了不存在的 taskId), cyclic(成环任务补末尾) }，永不抛 | keywords: topo-order, dependency-order
+- `syncResolveEdgeTodos(args)` — 按真实边状态同步 resolve-edge todo (code 权威自纠，不信 LLM 早退) | keywords: resolve-edge-sync, validation-self-correct
+- `buildChangePlanPrompt(args)` — 构造 change-plan 单轮严格 JSON 提示 | keywords: change-plan-prompt, json-output
+- `normalizeTurnTask(task, index)` — 将 LLM 任务输入归一化为 create-only 变更任务 | keywords: task-normalize, create-only
+- `edgeTodoId(edge)` — 从边派生稳定 resolve-edge todo id | keywords: edge-todo-id, field-normalize
+- `slugifyPath(path)` — 把文件路径转成稳定 task id 片段 | keywords: path-slug, field-normalize
+- `derivePlanId(request)` — 从稳定 code graph thread id 派生 planId | keywords: plan-id, checkpoint-thread
+- `collectSolutionIds(targetPlan)` — 收集 targetPlan 引用的去重既有 solutionId | keywords: collect-solutions, change-plan
+- `collectScopeNames(targetPlan)` — 收集用于 scope 存量 hook 搜索的候选 app/unit/target 名 | keywords: scope-names, existing-hook-search
+- `withChangePlanResult(dependencyCheck, result, log)` — 将 change-plan 输出合并回 code graph 回包 | keywords: change-plan-result, graph-output
+- `buildSkippedChangePlan(graphLog, reason)` — 构造 change-plan skipped 回包 | keywords: change-plan-skip, graph-output
+- `buildBlockedChangePlan(graphLog, reason, planId)` — 构造 change-plan blocked 回包 | keywords: change-plan-blocked, blocked-status
+- `buildTargetContext(targetPlan)` — 构造 routeId→{basePath,targetId,solutionId} 映射 | keywords: target-context, base-path
+- `deriveTargetBasePath(target)` — 推导目标的 solution/app 相对基路径 (workspace 下) | keywords: base-path, target-path
+- `toWorkspaceRelative(absPath)` — 把 Runner 绝对路径裁成 workspace 相对路径 | keywords: workspace-relative, path-normalize
+- `joinTargetPath(base, file)` — 把模型给的目标内文件路径拼到基路径下 (防越界) | keywords: path-join, scope-fence
+- `slimCodeGraphResultForArtifact(result)` — 持久化产物去重节点日志 (顶层只留一份) | keywords: artifact-slim, log-dedup
+- `trimArtifactInput(input)` — 持久化产物剥掉 input 里重复的需求全文 | keywords: artifact-slim, input-trim
+- `loadPlanningManuals(args)` — change-plan 先选书: 按 routePlan 选知识库书本并加载章节为生成手册 | keywords: select-load-books, manual-load
+- `listCandidateBooks(hookBus, workflowContext)` — 经 saas.app.knowledge.search 列出 Agent 可见候选书本 | keywords: candidate-books, knowledge-list
+- `pickBooks(args)` — 逻辑模型按 routePlan 选用书本, 失败回退前端 tag 书本 | keywords: pick-books, fallback-decision
+- `buildBookPickPrompt(targetPlan, candidates)` — 构造选书严格 JSON 提示 | keywords: book-pick-prompt, json-output
+- `loadChapters(hookBus, workflowContext, bookIds)` — 先 getToc 拿全部 chapterId 再 getChapter 取正文 (含详情章, 不止 LM必读), 按 bookIds 顺序限长拼接 | keywords: load-chapters, manual-assemble
+- `collectChapterRecords(data, bookIds)` — 把 getToc/getChapter 的 Record<bookId,章节[]>/数组/{items} 展平为有序章节记录 | keywords: flatten-chapters, shape-tolerant
+- `isRecord(value)` — 普通对象记录类型守卫 | keywords: record-guard, type-guard
+- `callSaasHook(hookBus, hookName, payload, workflowContext)` — 经 SaaS HookBus 调知识 hook 并解包数据 | keywords: saas-hook-call, knowledge-read
+- `buildManualPromptSection(manualText)` — 把手册拼成注入生成 prompt 的段落 | keywords: manual-section, prompt-inject
+- `ChangePlanStore.ensurePlan(payload)` — 幂等创建/读取计划元数据 (调 runner.app.codeAgentPlan.ensurePlan) | keywords: ensure-plan, idempotent
+- `ChangePlanStore.upsertTasks(planId, tasks)` — 批量 merge-upsert 变更任务 | keywords: upsert-tasks, partial-upsert
+- `ChangePlanStore.searchTasks(planId, filter)` — 计划内局部搜索变更任务 | keywords: search-tasks, local-search
+- `ChangePlanStore.upsertTodos(planId, todos)` — 批量 merge-upsert todo (新增与改状态共用) | keywords: upsert-todos, state-machine
+- `ChangePlanStore.listTodos(planId, status?)` — 按状态列出 todo，驱动外循环 | keywords: list-todos, status-filter
+- `ChangePlanStore.getSnapshot(planId)` — 读计划元数据 + 计数供完成判定 | keywords: plan-snapshot, completion-check
+- `searchSolutionHooks(args)` — scope 到 routePlan solution 的存量 hook 搜索 (hookbus.search + getInfo) | keywords: existing-hook-search, edge-resolution
+- `normalizeStoredTask(value)` — 把存储的变更任务行归一化为 graph 变更任务形状 | keywords: task-normalize, change-task
 - `probeRunnerSolutionHooks(hookCaller, runnerId, workflowContext)` — 用 Runner meta hook 检查 Solution 数据库检索 hooks 是否存在 | keywords: hook-probe, runner-db-hooks
 - `listRunnerSolutions(hookCaller, runnerId, workflowContext)` — 通过 Runner 本地 solution hook 列出 Solution | keywords: solution-list, runner-db-hooks
 - `decideCodeGraphDependencies(args)` — 使用逻辑模型和确定性回退选择 Solution、动作与新 Solution 需求 | keywords: solution-selection, dependency-decision
@@ -256,6 +301,73 @@ code-agent（代码生成智能体）
 | 目标类型推断     | infer-tool-target-kind |
 | 默认应用目标     | default-app-target     |
 | 对话层           | dialogue               |
+| 变更集规划       | change-plan            |
+| 变更集结果       | change-plan-result     |
+| 变更集跳过       | change-plan-skip       |
+| 变更集阻塞       | change-plan-blocked    |
+| 变更集提示       | change-plan-prompt     |
+| 变更集存储客户端 | change-plan-store-client |
+| 变更任务         | change-task            |
+| 任务归一化       | task-normalize         |
+| 新增            | create-only            |
+| hook契约         | hook-contract          |
+| 依赖边           | dependency-edge        |
+| 边解析           | edge-resolution        |
+| 边推导           | edge-derive            |
+| 边todo同步       | resolve-edge-sync      |
+| 验图自纠         | validation-self-correct |
+| 存量hook搜索     | existing-hook-search   |
+| 作用域名集       | scope-names            |
+| 种子todo         | seed-todos             |
+| 规划目标         | plan-target            |
+| LLM动作          | llm-turn               |
+| 应用动作         | apply-turn             |
+| 搜索履行         | fulfill-search         |
+| todo状态         | todo-status            |
+| todo类型         | todo-type              |
+| 状态机           | state-machine          |
+| todo列表         | list-todos             |
+| 状态过滤         | status-filter          |
+| 任务批量写       | upsert-tasks           |
+| todo批量写       | upsert-todos           |
+| 任务搜索         | search-tasks           |
+| 局部搜索         | local-search           |
+| 局部更新         | partial-upsert         |
+| 确保计划         | ensure-plan            |
+| 计划快照         | plan-snapshot          |
+| 完成判定         | completion-check       |
+| 计划Id           | plan-id                |
+| 路径slug         | path-slug              |
+| 边todoId         | edge-todo-id           |
+| Solution收集     | collect-solutions      |
+| 循环上限         | loop-limit             |
+| 目标上下文       | target-context         |
+| 路径基址         | base-path              |
+| 目标路径         | target-path            |
+| 工作区相对       | workspace-relative     |
+| 路径归一化       | path-normalize         |
+| 路径拼接         | path-join              |
+| 作用域围栏       | scope-fence            |
+| 产物瘦身         | artifact-slim          |
+| 日志去重         | log-dedup              |
+| 入参裁剪         | input-trim             |
+| 选书读书         | select-load-books      |
+| 手册加载         | manual-load            |
+| 候选书本         | candidate-books        |
+| 知识列举         | knowledge-list         |
+| 选书判定         | pick-books             |
+| 选书提示         | book-pick-prompt       |
+| 章节加载         | load-chapters          |
+| 手册拼接         | manual-assemble        |
+| 知识读取         | knowledge-read         |
+| 手册段落         | manual-section         |
+| 提示注入         | prompt-inject          |
+| 章节展平         | flatten-chapters       |
+| 形状兼容         | shape-tolerant         |
+| 记录守卫         | record-guard           |
+| SaaSHook总线     | saas-hook-bus          |
+| 选用书本         | selected-books         |
+| 手册文本         | manual-text            |
 
 ## 类型导出 (Type Exports)
 
@@ -289,6 +401,17 @@ code-agent（代码生成智能体）
 - `CodeGraphTargetBootstrapResult` — target-bootstrap 节点的 ready/skipped/blocked 回包；含 `reason`（skipped 跳过原因，与 errors 区分） | keywords: target-bootstrap, graph-output
 - `CodeGraphDependencyResumeChoice` — 选择卡片恢复为 LangGraph resume value 的选择形状 | keywords: dependency-selection, checkpoint-resume
 - `CodeGraphDependencyInterruptPayload` — dependency-check 暂停并发送选择卡片的 interrupt payload | keywords: interrupt-payload, selection-card
+- `CodeGraphHookContract` — 单个 hook 契约 (名称 + 签名 + calls/compatibleWith 出边) | keywords: hook-contract, dependency-edge
+- `CodeGraphChangeTask` — create-only 变更任务 (一个新文件 + `summary` 用途; `hooks` 仅 unit 目标有, app/data-point 为空; `dependsOn` 本 plan 内粗粒度兄弟 taskId 依赖, 供拓扑排序) | keywords: change-task, create-only
+- `CodeGraphChangePlanEdge` — 由 hook 契约派生的依赖边，按 new/existing/unresolved 分类 | keywords: dependency-edge, edge-resolution
+- `CodeGraphChangePlanResult` — change-plan 节点的 ready/skipped/blocked 回包 (changeTasks/edges/topoOrder/openTodos/iterations) | keywords: change-plan-result, graph-output
+- `CHANGE_PLAN_TODO_STATUS` / `ChangePlanTodoStatus` — todo 状态机枚举 | keywords: todo-status, state-machine
+- `CHANGE_PLAN_TODO_TYPES` / `ChangePlanTodoType` — todo 类型枚举 (plan-target/resolve-edge/fix-validation) | keywords: todo-type, planning-work-unit
+- `CHANGE_PLAN_LIMITS` — code 驱动外循环与搜索的硬上限 | keywords: loop-limit, search-limit
+- `ExistingHookSummary` — scoped 搜索命中的存量 hook 摘要 (名称+签名)，用于解析 new→existing 边 | keywords: existing-hook-summary, edge-resolution
+- `ChangePlanTurnSchema` / `ChangePlanTurnPayload` — change-plan 单轮 LLM 动作 JSON payload | keywords: llm-turn-payload, change-plan
+- `SaasHookBusLike` — change-plan 读知识库所需的最小 SaaS HookBus 形状 | keywords: saas-hook-bus, knowledge-read
+- `SelectedManuals` — 先选书选中的书本 id + 拼好的手册文本 + 面向用户的 notice | keywords: selected-books, manual-text
 
 ## 模块功能描述 (Module Function Description)
 
@@ -337,4 +460,17 @@ code-agent（代码生成智能体）
 - 选择卡片提交到 `saas.app.conversation.codeAgentChoiceSubmit` 后，SaaS 侧重新加载 code-agent 工具并传入 `Command({ resume })`，异步恢复同一个 LangGraph thread；恢复值必须携带已确认的 `routePlan`，兼容字段从 routePlan 派生。
 - 任意 hook/节点异常都会返回 `blocked` 并写入 `code_graph_log`，避免日志断裂。
 - 每次后台 graph 完成或暂停后，都会把 dependency-check/target-resolution/target-bootstrap 最终回包、节点日志和最终节点回包文本写入 `logs/code-agent/<session_id>/...json`；也可用 `CODE_AGENT_LOG_DIR` 覆盖目录。
-- 当前阶段 target-bootstrap 只创建 Solution/App 元数据，不写业务代码文件、不真实创建 unit/data-point、不执行真实代码生成节点；后续重构会在 `targetBootstrap` 后接入创建/生成/编辑节点。
+- target-bootstrap 只创建 Solution/App 元数据，不写业务代码文件、不真实创建 unit/data-point。
+- change-plan 节点 (create-only) 在 target-bootstrap `ready` 后运行，是「文件处理分析 / 变更集规划」环节：
+  - 只产 `op:'create'` (新增)；modify/delete 复杂度高，后续接入。module.md 大纲读取在此环节弃用 (改用新格式)。
+  - **先选书再生成 (LLM 判定, 非阻断)**：节点开始先 `loadPlanningManuals` —— 经 `saas.app.knowledge.search` 列出 Agent 可见书本，逻辑模型按需求/routePlan 选用 (可多本，失败回退前端 tag 书本)，再 `saas.app.knowledge.getChapter` 加载章节 (含 LM必读) 拼成手册，注入每轮生成 prompt；选中的 `bookIds` 记进 changePlan 结果。选书 LLM 同时产出 `notice`，**选完即经 `sendDependencyNotice` 往消息窗口发一条告知** (语言跟随需求，与依赖/目标判定 notice 同一通道)。取不到书不阻断、仍生成，但每个分支都打 `knowledge:start/selected/skip/fail` 日志便于排查。本地预置「前端开发手册」(`local_frontend_dev_handbook`) 即此用途：默认前端定型 Astro (含单页/普通页面)、最小模块分块、资源目录分离、页面 JS/CSS 分离。SaaS HookBus 经 `agent.handle.ts` 串入 change-plan 节点。
+  - 变更集 (changePlan) 持久化在**对应 Runner 的 Mongo** (经 `runner.app.codeAgentPlan.*` 六个专有业务 hook)，不存 SaaS 进程内存 (多租户危险)；支持局部 upsert + 局部搜索，体积大也只回切片。
+  - 是一个 **code 驱动的 todo 状态机外循环**：代码挑出开放 todo → 喂给 LLM 当前 todo + 相关任务切片 + 已找到的存量 hook → LLM 用 json_object 吐出一轮动作 (新增/更新任务、改 todo 状态、发存量 hook 搜索请求、notice) → 代码经 store 落库 + 履行搜索 + 跑确定性验图 → 直到无开放 todo 或撞 `maxIterations` 上限。完成判定**只看 todo 表 (getSnapshot.openTodos)**，不信 LLM 嘴上说完成。
+  - **按 target 的 action 分流 (关键)**：`app` (前端页面/UI) 和 `data-point` (数据结构) 只规划**文件** (`{path, summary}`)，**不产 hook、不产边** —— 一个普通页面没有 hook，页面里的 JS 函数不是 hook，prompt 明确禁止给它们编 hook/签名/calls。只有 `unit` (HookBus 后端能力) 才产 hook 契约 + action tree。
+  - 一个 LLM 连贯吃完整个 routePlan (跨 solution)；对 `unit` 目标产出 action tree：每个新 hook 内联 `calls`/`compatibleWith` 出边；代码从所有任务派生 `edges` 并分类 new/existing/unresolved (无 hook 的 app/data-point 任务自然不产边)。
+  - **拓扑顺序 (dependsOn)**：每个任务带粗粒度 `dependsOn: string[]` = 本 plan 内它直接组合/使用的**兄弟 taskId** (页面依赖布局+各 section 组件+样式，组件依赖共享样式/脚本；叶子文件为空)。仅 task 级、非 import 行、非 hook 边 (hook 连线仍走 calls/compatibleWith)。`computeTopoOrder` 用 Kahn 派生叶子在前的生成顺序放进回包 `topoOrder` 供下游生成节点定先后；引用到不存在的 taskId 记 `dangling`、成环任务补末尾并 warn，均不阻断。import 精连仍留给下游 Integrator (AST)、脚手架/包依赖归 archetype 层，change-plan 只表达粗粒度关系。
+  - **验图自纠**：unresolved 边由代码注入 `resolve-edge` todo (被 LLM 错误关掉的会重新打开、已解决的由代码关掉)，逼模型补一个新任务定义它、或搜到既有 hook、或删边；这类 todo 状态由代码权威同步。new→existing 边靠 `searchSolutionHooks` (scope 到 routePlan solution 的 app/unit) 解析，存量 hook 改不了 (create-only)，新侧适配。
+  - **路径是完整的 solution/app 相对路径**：模型只产目标内文件路径 (如 `index.html`)，代码用 target 的 `basePath` (`deriveTargetBasePath`, 来自 `useTarget.path` 裁成 workspace 相对、或按 `solutions/<sol>/apps/<app>` 构造) `joinTargetPath` 拼成完整相对路径，并做 `..`/绝对路径防越界 (作用域围栏)；多目标时模型须带 `routeId` 定位。
+  - change-plan 不阻断流水线：撞迭代上限仍有开放 todo 时 status 仍 `ready`，只 warn + 记 `reason`，回包带 `openTodos` 供下游判断。
+  - 运行产物 (`logs/code-agent/.../*.json`) 已瘦身：节点日志去重 (顶层 `log` 留一份，`result.*.log` / `result.context.code_graph_log` 标 `[see top-level log]`)，`input` 剥掉与 `request.full_requirement` 重复的需求全文。
+  - 后续重构会在 change-plan 之后接入真实创建/生成/编辑/集成节点，消费 changeTasks。
