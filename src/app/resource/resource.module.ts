@@ -4,6 +4,7 @@ import { ResourceEntity } from './entities/resource.entity';
 import { ResourceService } from './services/resource.service';
 import { ResourceSignService } from './services/resource-sign.service';
 import { ResourceController } from './controllers/resource.controller';
+import { ResourceHookController } from './controllers/resource.hook-controller';
 
 /**
  * @title Resource 模块
@@ -13,7 +14,7 @@ import { ResourceController } from './controllers/resource.controller';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([ResourceEntity])],
-  providers: [ResourceService, ResourceSignService],
+  providers: [ResourceService, ResourceSignService, ResourceHookController],
   controllers: [ResourceController],
   exports: [ResourceService, ResourceSignService],
 })

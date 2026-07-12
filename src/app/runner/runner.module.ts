@@ -7,6 +7,8 @@ import { DomainBindingEntity } from './entities/domain-binding.entity';
 import { RewardRecordEntity } from './entities/reward-record.entity';
 import { FrpNodeEntity } from './entities/frp-node.entity';
 import { RunnerController } from './controllers/runner.controller';
+import { RunnerHookController } from './controllers/runner.hook-controller';
+import { RunnerBootstrapHookController } from './controllers/runner-bootstrap.hook-controller';
 import { RunnerProxyController } from './controllers/runner.proxy.controller';
 import { HookComponentController } from './controllers/hook-component.controller';
 import { RewardRecordController } from './controllers/reward-record.controller';
@@ -17,7 +19,6 @@ import { RunnerFrpService } from './services/runner-frp.service';
 import { RunnerDomainService } from './services/runner-domain.service';
 import { DomainAllocationService } from './services/domain-allocation.service';
 import { RewardRecordService } from './services/reward-record.service';
-import { RunnerHookRegisterService } from './services/runner-hook-register.service';
 import { RunnerProxyService } from './services/runner-proxy.service';
 import { RunnerFrpNodeService } from './services/runner-frp-node.service';
 import { RunnerTokenService } from './services/runner-token.service';
@@ -54,7 +55,8 @@ import { RunnerHookRpcService } from './services/runner-hook-rpc.service';
     DomainAllocationService,
     RewardRecordService,
     RunnerGateway,
-    RunnerHookRegisterService,
+    RunnerHookController,
+    RunnerBootstrapHookController,
     RunnerProxyService,
     RunnerFrpNodeService,
     RunnerTokenService,

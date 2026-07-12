@@ -48,11 +48,11 @@ function countReply(reply: HookCallReply): { ok: number; err: number } {
 }
 
 /**
- * @title LLM Hook 工具集 (call_hook + call_hook_async + search_hook + get_hook_tag + get_hook_info)
+ * @title LLM Hook 工具集 (call_hook + call_hook_batch + search_hook + get_hook_tag + get_hook_info)
  * @description 全部走 target 路由 (saas / runner), runner 必填 runnerId; 任何路径都是软错返回, 不抛。
  *              所有工具的 invocationContext (token / principalId / traceId) 由 AgentRuntime 闭包注入,
  *              LLM schema 完全不暴露, 保证 LLM 不可见不可改 token。
- *              批量统一通过数组形参实现 (call_hook / call_hook_async 入参 calls 数组, search_hook / get_hook_info 入参 tags / hookNames 数组), 不再单独声明 batch 工具。
+ *              payload 为**单对象** (非位置数组): call_hook 单调用 { call, payload:{} }; call_hook_batch 批量 { calls:[...] }。
  * @keywords-cn LLM工具, Hook调用, 路由分发, 上下文闭包, 元工具, 软错误
  * @keywords-en llm-tools, hook-call, target-routing, ctx-closure, meta-tools, soft-error
  */
@@ -79,11 +79,11 @@ const RUNNER_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * 单次 hook 调用条目 (call_hook / call_hook_async 共用 entry)
+ * 单次 hook 调用条目 (call_hook 单调用 / call_hook_batch 批量共用 entry)
  * @keyword-en hook-call-entry-schema
  */
 const hookCallEntrySchema = z.object({
-  hookName: z
+  call: z
     .string()
     .describe(
       '要调用的 hook 完整名 (platform.app.module.action 4 段, 例 saas.app.runner.list / runner.unitcore.terminal.exec); ' +
@@ -91,10 +91,12 @@ const hookCallEntrySchema = z.object({
         '名称必须来自 search_hook / get_hook_info 返回的真实 hook',
     ),
   payload: z
-    .array(z.unknown())
+    .object({})
+    .passthrough()
     .optional()
     .describe(
-      '传给 hook 的位置参数数组。默认按方法形参展开: 单参传 [input], 多参传 [id, body]。无参数传 [] 或省略。',
+      '传给 hook 的**单对象**参数 (不是数组): 照 get_hook_info 的 payloadSchema 逐字段填, 例 {"id":"..."}。' +
+        '无参 hook 传 {} 或省略。禁止塞 "" / null / 占位。',
     ),
   target: z
     .enum([SAAS, RUNNER])
@@ -127,20 +129,33 @@ const hookCallEntrySchema = z.object({
 type HookCallInput = z.infer<typeof hookCallEntrySchema>;
 
 /**
- * call_hook / call_hook_async 批量入参; reasoning 强制思考已废除 (LLM 实测不填), 行为约束改由 init_tip 的 usageRules 承载.
+ * call_hook 单调用入参 = 单个 entry (call / payload / target / runnerId / debug / debugDb)。
+ * @keyword-en call-hook-single-schema
+ */
+const callHookSingleSchema = hookCallEntrySchema;
+type CallHookSingleInput = z.infer<typeof callHookSingleSchema>;
+
+/**
+ * call_hook_batch 批量入参; reasoning 强制思考已废除 (LLM 实测不填), 行为约束改由 init_tip 的 usageRules 承载.
  * @keyword-en call-hook-batch-schema, batch-calls
  */
-const callHookSchema = z.object({
+const callHookBatchSchema = z.object({
   calls: z
     .array(hookCallEntrySchema)
     .min(1)
     .max(CALL_HOOK_BATCH_LIMIT)
     .describe(
-      `要调用的 hook 列表, 顺序与返回 results 对齐; 单调用传单元素数组, 批量上限 ${CALL_HOOK_BATCH_LIMIT}. ` +
+      `要调用的 hook 列表, 顺序与返回 results 对齐; 批量上限 ${CALL_HOOK_BATCH_LIMIT}. ` +
         '不同 entry 可指向不同 target / runnerId, 派发并发执行, 一项软错不影响其他.',
     ),
+  debug: z
+    .boolean()
+    .optional()
+    .describe(
+      '可选, 批量级 debug 兜底: entry 未显式声明 debug 时沿用此值. 仅诊断时置 true.',
+    ),
 });
-type CallHookBatchInput = z.infer<typeof callHookSchema>;
+type CallHookBatchInput = z.infer<typeof callHookBatchSchema>;
 
 /** 单条 hook 调用结果 (随 hookName 回带, 便于 LLM 对齐) */
 interface HookCallResultEntry extends HookCallReply {
@@ -244,7 +259,7 @@ function inferTargetFromHookName(
  * @keyword-en normalize-hook-call-input
  */
 function normalizeHookCallInput(entry: HookCallInput): HookCallInput {
-  const inferredTarget = inferTargetFromHookName(entry.hookName);
+  const inferredTarget = inferTargetFromHookName(entry.call);
   return inferredTarget ? { ...entry, target: inferredTarget } : entry;
 }
 
@@ -343,7 +358,7 @@ async function dispatchSaasHook(
       : ctx;
     const results = await hookBus.emit({
       name: input.hookName,
-      payload: input.payload ?? [],
+      payload: input.payload ?? {},
       context: enrichedCtx,
     });
     const errorMsg: string[] = [];
@@ -394,7 +409,7 @@ async function dispatchOne(
   const debug = normalized.debug ?? defaultDebug;
   if (normalized.target === SAAS) {
     return await dispatchSaasHook(hookBus, ctx, {
-      hookName: normalized.hookName,
+      hookName: normalized.call,
       payload: normalized.payload,
       debug,
     });
@@ -402,9 +417,10 @@ async function dispatchOne(
   if (!normalized.runnerId) {
     return softError('runnerId-required');
   }
+  // payload 现为单对象; runner hookbus 对业务 hook 先按 object schema 校验, 无参传 {}
   return await hookRpc.callHook(normalized.runnerId, {
-    hookName: normalized.hookName,
-    payload: normalized.payload ?? [],
+    hookName: normalized.call,
+    payload: normalized.payload ?? {},
     context: ctx,
     debug,
     debugDb: normalized.debugDb,
@@ -479,11 +495,7 @@ function processOneCallAftermath(
 ): void {
   const { err } = countReply(reply);
   const sessionId = ctx.extras?.sessionId as string | undefined;
-  const failureKey = buildFailureKey(
-    sessionId,
-    ctx.principalId,
-    entry.hookName,
-  );
+  const failureKey = buildFailureKey(sessionId, ctx.principalId, entry.call);
   if (err > 0) {
     const failureCount = recordHookFailure(failureKey);
     const hasSchemaError = reply.errorMsg.some((m) =>
@@ -495,7 +507,7 @@ function processOneCallAftermath(
       reply.errorMsg.push(
         `⚠ 已返回过该 hook 的完整 payloadSchema 但仍失败 ${failureCount} 次。这仍是你构造的 payload 形状错误 —— ` +
           `传输层不会改写/丢弃/清空 payload, 不是平台或序列化故障。下一步: ` +
-          `(1) 严格照 errorMsg 里的 expectedPayloadSchema 结构, 自己按结构逐字段重新生成 payload 的值 (对象参数包成 payload[0], 无参传 []); ` +
+          `(1) 严格照 errorMsg 里的 expectedPayloadSchema 结构, 自己按结构逐字段重新生成 payload 的值 (payload 是单对象直接传 {...}, id+body 平铺为 { id, ...body }, 无参传 {}); ` +
           `(2) 若某字段的值确实拿不到, 那是缺数据不是缺格式 —— 去调对应 hook 取到真实值再填, 别塞 ""/null/占位, 也别判定平台不可用; ` +
           `(3) 可传 debug: true 启 OTel trace 看 handler 内部日志辅助定位。`,
       );
@@ -519,7 +531,7 @@ function processOneCallAftermath(
     try {
       sideEffects.onCallComplete(
         {
-          hookName: entry.hookName,
+          hookName: entry.call,
           target: entry.target,
           payload: entry.payload ?? null,
           result: reply.result ?? null,
@@ -530,16 +542,15 @@ function processOneCallAftermath(
       );
     } catch (e) {
       toolLogger.warn(
-        `[call_hook] sideEffect failed (${entry.hookName}): ${e instanceof Error ? e.message : String(e)}`,
+        `[call_hook] sideEffect failed (${entry.call}): ${e instanceof Error ? e.message : String(e)}`,
       );
     }
   }
 }
 
 /**
- * 构建 call_hook (同步, 批量) 工具
- * - 一次接受 calls 数组, 并发派发, 顺序与返回 results 对齐
- * - 单调用 = 单元素数组; 任一项软错不影响其他项
+ * 构建 call_hook (同步, 单调用) 工具
+ * - 一次调一个 hook, 等结果; 批量走 call_hook_batch
  * - options.defaultDebug :: 节点级 debug 默认值; 工厂闭包绑定, 整个 graph 流共享
  * @keyword-en build-call-hook-tool
  */
@@ -552,10 +563,96 @@ export function buildCallHookTool(
 ) {
   const defaultDebug = options?.defaultDebug ?? false;
   return tool(
+    async (input: CallHookSingleInput): Promise<string> => {
+      const start = Date.now();
+      const ctx = getCtx();
+      const entry = normalizeHookCallInput(input);
+      const reply = await dispatchOne(
+        hookBus,
+        hookRpc,
+        ctx,
+        entry,
+        defaultDebug,
+      );
+      processOneCallAftermath(entry, reply, ctx, sideEffects);
+      const { ok, err } = countReply(reply);
+      toolLogger.log(
+        `[call_hook] ${targetTag(entry.target, entry.runnerId)} ${entry.call} ` +
+          `payload=${preview(entry.payload ?? {})} ok=${ok} err=${err} duration=${Date.now() - start}ms` +
+          (err > 0
+            ? ` errMsg=${preview(reply.errorMsg, 200)}`
+            : ` data=${preview(reply.result, 240)}`),
+      );
+      const result: HookCallResultEntry = { hookName: entry.call, ...reply };
+      return JSON.stringify(result);
+    },
+    {
+      name: 'call_hook',
+      description:
+        '同步调用**单个** hook, 等待结果. 这是我触达平台真实数据/能力的唯一通道. ' +
+        '入参 { call, payload, target?, runnerId?, debug?, debugDb? }. 需要一次并发调多个 → 用 call_hook_batch.\n\n' +
+        '<when_to_call>\n' +
+        '我需要平台数据 / 想发消息给用户 / 想触发任何业务动作时调它. ' +
+        '若仅是闲聊且 initTip 已声明 false/false, 也要用本工具调 sendMsg 把回复发出去 — ' +
+        '直接返回 final prose 不会送达用户.\n' +
+        '</when_to_call>\n\n' +
+        '<routing>\n' +
+        '- call 名 saas.* 自动路由 SaaS; runner.* 自动路由 Runner (必填 runnerId).\n' +
+        '- call 名前缀优先于 target 字段; SaaS hook 永远不会被发到 Runner.\n' +
+        '</routing>\n\n' +
+        '<payload>payload 是**单对象** (不是数组): 照 payloadSchema 逐字段填, 例 {"id":"..."}; 无参 hook 传 {} 或省略.</payload>\n\n' +
+        '<no_guess>\n' +
+        'call 名和 payload 都不许凭记忆猜. ' +
+        'call 名必须来自 search_hook / get_hook_info 的真实返回 — 漏段 / 改名 / 缩写都会 hook-not-found (返回里带 "Did you mean" 候选, 照抄完整全名). ' +
+        'payload 必须照 get_hook_info 的 payloadSchema 填对象, 不要塞 "" / null / 占位; 无参才传 {}. ' +
+        '不确定先 get_hook_info, 不要靠软错回退一遍遍试探.\n' +
+        '</no_guess>\n\n' +
+        '<errors>\n' +
+        '- errorMsg 非空 = 软错. 据此纠正再试.\n' +
+        '- payload-schema-invalid: read the full expectedPayloadSchema in errorMsg and fix payload directly. If the SAME hook still fails after that, call get_hook_info to re-confirm its schema — it may also not be a payload problem (business/auth/missing data). Do not call init_tip for schema errors.\n' +
+        '- hook-not-found: hook name is wrong or undiscovered; call init_tip, then use get_hook_tag / search_hook / get_hook_info.\n' +
+        '- 鉴权/数据缺失: 如实告诉用户, 不绕过.\n' +
+        '</errors>\n\n' +
+        '<example>\n' +
+        '用户问 "我的待办":\n' +
+        'call_hook({ call: "saas.app.todo.list", payload: { ownerPrincipalId: "<from-ctx>" } })\n' +
+        '</example>\n\n' +
+        '<example_bad>\n' +
+        'call_hook 凭记忆编造 payload 字段 ← 软错回退浪费一轮; payload 不确定先看 callHistory 或 get_hook_info.\n' +
+        '</example_bad>',
+      schema: callHookSingleSchema,
+    },
+  );
+}
+
+/* =========================================================================
+ * 2) call_hook_batch  ::  同步, 一次并发多个
+ * ========================================================================= */
+/**
+ * 构建 call_hook_batch (同步, 批量) 工具
+ * - 一次接受 calls 数组, 并发派发, 顺序与返回 results 对齐; 一项软错不影响其他项
+ * - input.debug 为批量级兜底, entry 未声明 debug 时沿用
+ * @keyword-en build-call-hook-batch-tool
+ */
+export function buildCallHookBatchTool(
+  hookBus: HookBusService,
+  hookRpc: RunnerHookRpcService,
+  getCtx: InvocationContextProvider,
+  sideEffects?: CallHookSideEffects,
+  options?: { defaultDebug?: boolean },
+) {
+  const defaultDebug = options?.defaultDebug ?? false;
+  return tool(
     async (input: CallHookBatchInput): Promise<string> => {
       const start = Date.now();
       const ctx = getCtx();
-      const calls = input.calls.map(normalizeHookCallInput);
+      const calls = input.calls.map((entry) =>
+        normalizeHookCallInput(
+          input.debug !== undefined && entry.debug === undefined
+            ? { ...entry, debug: input.debug }
+            : entry,
+        ),
+      );
       const replies = await Promise.all(
         calls.map((entry) =>
           dispatchOne(hookBus, hookRpc, ctx, entry, defaultDebug),
@@ -567,13 +664,13 @@ export function buildCallHookTool(
         processOneCallAftermath(entry, reply, ctx, sideEffects);
         const { ok, err } = countReply(reply);
         toolLogger.log(
-          `[call_hook] ${targetTag(entry.target, entry.runnerId)} ${entry.hookName} ` +
+          `[call_hook_batch] ${targetTag(entry.target, entry.runnerId)} ${entry.call} ` +
             `payload=${preview(entry.payload ?? {})} ok=${ok} err=${err}` +
             (err > 0
               ? ` errMsg=${preview(reply.errorMsg, 200)}`
               : ` data=${preview(reply.result, 240)}`),
         );
-        return { hookName: entry.hookName, ...reply };
+        return { hookName: entry.call, ...reply };
       });
 
       const totalErr = results.reduce(
@@ -581,105 +678,29 @@ export function buildCallHookTool(
         0,
       );
       toolLogger.log(
-        `[call_hook] batch=${calls.length} err=${totalErr} duration=${Date.now() - start}ms`,
+        `[call_hook_batch] batch=${calls.length} err=${totalErr} duration=${Date.now() - start}ms`,
       );
 
       return JSON.stringify({ results });
     },
     {
-      name: 'call_hook',
+      name: 'call_hook_batch',
       description:
-        '同步批量调用 hook, 等待全部结果. 这是我触达平台真实数据/能力的唯一通道. ' +
-        '入参 { calls: [{ hookName, payload, target, runnerId, debug, debugDb }, ...] }.\n\n' +
+        '同步批量调用 hook, 并发派发并等待全部结果. 入参 { calls: [{ call, payload, target, runnerId, debug, debugDb }, ...], debug? }.\n\n' +
         '<when_to_call>\n' +
-        '我需要平台数据 / 想发消息给用户 / 想触发任何业务动作时调它. ' +
-        '若仅是闲聊且 initTip 已声明 false/false, 也要用本工具调 sendMsg 把回复发出去 — ' +
-        '直接返回 final prose 不会送达用户.\n' +
+        '一次要并发调多个**彼此独立**的 hook 时用它 (省往返). 单个调用用 call_hook.\n' +
         '</when_to_call>\n\n' +
-        '<routing>\n' +
-        '- saas.* 自动路由 SaaS; runner.* 自动路由 Runner (必填 runnerId).\n' +
-        '- hookName 前缀优先于 target 字段; SaaS hook 永远不会被发到 Runner.\n' +
-        '</routing>\n\n' +
-        '<payload>每个 payload 是位置参数数组: 单参 [input], 多参 [arg1, arg2], 无参 [].</payload>\n\n' +
-        '<no_guess>\n' +
-        'hookName 和 payload 都不许凭记忆猜. ' +
-        'hookName 必须来自 search_hook / get_hook_info 的真实返回 — 漏段 / 改名 / 缩写都会 hook-not-found (返回里带 "Did you mean" 候选, 照抄完整全名). ' +
-        'payload 必须照 get_hook_info 的 payloadSchema 填: payload[0] 要对象就传对象, 不要塞 "" / null / 占位; 无参才传 []. ' +
-        '不确定先 get_hook_info, 不要靠软错回退一遍遍试探.\n' +
-        '</no_guess>\n\n' +
+        '<routing>saas.* / runner.* 按 call 名前缀自动路由; runner 必填 runnerId. 不同 entry 可指向不同 target / runnerId.</routing>\n\n' +
+        '<payload>每个 payload 是**单对象** (不是数组): 照 payloadSchema 逐字段填; 无参 hook 传 {}.</payload>\n\n' +
         '<batching>\n' +
-        '- 独立的读调用共享一个 batch (一次 call_hook 传多 entry).\n' +
-        '- 有依赖的调用拆 stage (前一次拿结果, 后一次基于结果再调).\n' +
+        '- 独立的读调用共享一个 batch.\n' +
+        '- 有依赖的调用别塞同一 batch: 拆成两次 (前一次拿结果, 后一次基于结果再调).\n' +
         '- 写调用仅在彼此独立、不会互相覆盖时才并行.\n' +
         `- 单 batch 上限 ${CALL_HOOK_BATCH_LIMIT}.\n` +
         '</batching>\n\n' +
-        '<errors>\n' +
-        '- errorMsg 非空 = 软错, 不影响 batch 其它项. 据此纠正再试.\n' +
-        '- payload-schema-invalid: read the full expectedPayloadSchema in errorMsg and fix payload directly. If the SAME hook still fails after that, call get_hook_info to re-confirm its schema — it may also not be a payload problem (business/auth/missing data). Do not call init_tip for schema errors.\n' +
-        '- hook-not-found: hook name is wrong or undiscovered; call init_tip, then use get_hook_tag / search_hook / get_hook_info.\n' +
-        '- 鉴权/数据缺失: 如实告诉用户, 不绕过.\n' +
-        '</errors>\n\n' +
-        '<example>\n' +
-        '用户问 "我的待办":\n' +
-        'call_hook({ calls: [{ hookName: "saas.app.todo.list", payload: [{ ownerPrincipalId: "<from-ctx>" }] }] })\n' +
-        '</example>\n\n' +
-        '<example_bad>\n' +
-        'call_hook 凭记忆编造 payload 字段 ← 软错回退浪费一轮; payload 不确定先看 callHistory 或 get_hook_info.\n' +
-        '</example_bad>',
-      schema: callHookSchema,
-    },
-  );
-}
-
-/* =========================================================================
- * 2) call_hook_async  ::  fire-and-forget
- * ========================================================================= */
-/**
- * 构建 call_hook_async (fire-and-forget) 工具
- * @keyword-en build-call-hook-async-tool
- */
-export function buildCallHookAsyncTool(
-  hookBus: HookBusService,
-  hookRpc: RunnerHookRpcService,
-  getCtx: InvocationContextProvider,
-  options?: { defaultDebug?: boolean },
-) {
-  const defaultDebug = options?.defaultDebug ?? false;
-  return tool(
-    (input: CallHookBatchInput): string => {
-      const ctx = getCtx();
-      const calls = input.calls.map(normalizeHookCallInput);
-      const queued = calls.map((entry) => {
-        toolLogger.log(
-          `[call_hook_async] ${targetTag(entry.target, entry.runnerId)} ${entry.hookName} ` +
-            `payload=${preview(entry.payload ?? {})} (fire-and-forget)`,
-        );
-        void dispatchOne(hookBus, hookRpc, ctx, entry, defaultDebug).catch(
-          () => undefined,
-        );
-        return {
-          hookName: entry.hookName,
-          target: entry.target,
-          queued: true,
-        };
-      });
-      return JSON.stringify({ results: queued });
-    },
-    {
-      name: 'call_hook_async',
-      description:
-        '异步批量触发 hook (fire-and-forget), 立即返回不等结果. ' +
-        '入参 { calls: [{...}, ...] }.\n\n' +
-        '<when_to_call>\n' +
-        '仅用于触发后台任务且我不关心返回值. 默认走 call_hook 同步; ' +
-        '只有明确不需要结果时才用 async (例: 触发分析任务、写日志、广播事件).\n' +
-        '</when_to_call>\n\n' +
-        '<routing/payload/batching>\n' +
-        '与 call_hook 相同 (saas./runner. 前缀路由, payload 数组, ' +
-        `单 batch 上限 ${CALL_HOOK_BATCH_LIMIT}).\n` +
-        '</routing/payload/batching>\n\n' +
-        '返回 { results: [{ hookName, target, queued: true }, ...] } 顺序与 calls 对齐.',
-      schema: callHookSchema,
+        '<errors>errorMsg 非空 = 软错, 不影响其它项. payload-schema-invalid / hook-not-found 的处理同 call_hook.</errors>\n\n' +
+        '返回 { results: [{ hookName, errorMsg, result, debugLog }, ...] } 顺序与 calls 对齐.',
+      schema: callHookBatchSchema,
     },
   );
 }

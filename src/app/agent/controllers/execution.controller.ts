@@ -7,35 +7,10 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import { z } from 'zod';
 import { AgentExecutionService } from '../services/execution.service';
 import { AgentExecutionEntity } from '../entities/agent-execution.entity';
 import { QueryExecutionDto, UpdateExecutionDto } from '../types/agent.types';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
-import {
-  HookController,
-  HookRoute,
-} from '@/core/hookbus/decorators/hook-controller.decorator';
-
-/**
- * @title Agent Execution Hook payload schema (input 形状, SSOT)
- * @keywords-cn AgentExecutionHook, payloadSchema, input
- * @keywords-en agent-execution-hook, payload-schema, input
- */
-const onAgentExecutionListInput = z.object({
-  agentId: z.string().optional(),
-  contextMessageId: z.string().optional(),
-  runnerId: z.string().optional(),
-});
-
-const onAgentExecutionUpdateInput = z.object({
-  nodeStatus: z.record(z.string(), z.unknown()).optional(),
-  latestResponse: z.record(z.string(), z.unknown()).optional(),
-  contextMessageId: z.string().min(1).max(36).optional(),
-  runnerId: z.string().min(1).max(36).optional(),
-});
-
-const idParamInput = z.object({ id: z.string() });
 
 /**
  * @title 执行Agent 控制器
@@ -43,18 +18,12 @@ const idParamInput = z.object({ id: z.string() });
  * @keywords-cn 执行Agent控制器, 查询, 更新, 删除
  * @keywords-en agent-execution-controller, query, update, delete
  */
-@HookController({ pluginName: 'agent', tags: ['agent', 'execution'] })
 @Controller('agent-execution')
 export class AgentExecutionController {
   constructor(private readonly service: AgentExecutionService) {}
 
   @Get()
   @CheckAbility('read', 'agent_execution')
-  @HookRoute({
-    hook: 'saas.app.agent.executionList',
-    description: 'Agent执行记录列表查询',
-    args: [onAgentExecutionListInput],
-  })
   async list(
     @Query() query: QueryExecutionDto,
   ): Promise<AgentExecutionEntity[]> {
@@ -63,22 +32,12 @@ export class AgentExecutionController {
 
   @Get(':id')
   @CheckAbility('read', 'agent_execution')
-  @HookRoute({
-    hook: 'saas.app.agent.executionGet',
-    description: 'Agent执行记录详情查询',
-    args: [idParamInput.shape.id],
-  })
   async get(@Param('id') id: string): Promise<AgentExecutionEntity | null> {
     return await this.service.get(id);
   }
 
   @Put(':id')
   @CheckAbility('update', 'agent_execution')
-  @HookRoute({
-    hook: 'saas.app.agent.executionUpdate',
-    description: 'Agent执行记录更新',
-    args: [idParamInput.shape.id, onAgentExecutionUpdateInput],
-  })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateExecutionDto,
@@ -88,11 +47,6 @@ export class AgentExecutionController {
 
   @Delete(':id')
   @CheckAbility('delete', 'agent_execution')
-  @HookRoute({
-    hook: 'saas.app.agent.executionDelete',
-    description: 'Agent执行记录删除',
-    args: [idParamInput.shape.id],
-  })
   async delete(@Param('id') id: string): Promise<{ ok: boolean }> {
     await this.service.delete(id);
     return { ok: true };

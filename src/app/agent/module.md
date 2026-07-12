@@ -16,6 +16,8 @@
 - app/agent/services/execution.service.ts
 - app/agent/controllers/agent.controller.ts
 - app/agent/controllers/execution.controller.ts
+- app/agent/controllers/agent.hook-controller.ts
+- app/agent/controllers/execution.hook-controller.ts
 - app/agent/types/agent.types.ts
 - app/agent/enums/agent.enums.ts
 - app/agent/cache/agent.cache.ts
@@ -35,26 +37,37 @@
   - get(id)
   - update(id, dto)
   - delete(id)
-- AgentController
+- AgentController （仅 HTTP; hook 已迁至 AgentHookController）
   - GET /agent
   - GET /agent/:id
   - GET /agent/:id/knowledge-assignments
   - PUT /agent/:id
   - PUT /agent/:id/knowledge-assignments
   - DELETE /agent/:id
-  - HookController(pluginName=agent, tags=[agent])
-  - HookRoute on CRUD: 全部声明 zod payloadSchema (input 形状), 命名 platform.app.module.action
-    · saas.app.agent.list (q?), saas.app.agent.get ({id}), saas.app.agent.update (UpdateAgentInput),
-      saas.app.agent.delete ({id}), saas.app.agent.embeddingsUpdate (ids?),
-      saas.app.agent.knowledgeAssignmentList ({id}), saas.app.agent.knowledgeAssignmentUpdate ({id, bookIds[]})
-- AgentExecutionController
+  - POST /agent/embeddings
+- AgentExecutionController （仅 HTTP; hook 已迁至 AgentExecutionHookController）
   - GET /agent-execution
   - GET /agent-execution/:id
   - PUT /agent-execution/:id
   - DELETE /agent-execution/:id
-  - HookController(pluginName=agent, tags=[agent, execution])
-  - HookRoute on CRUD: 全部声明 zod payloadSchema (input 形状), 命名 platform.app.module.action
-    · saas.app.agent.executionList, executionGet/executionDelete ({id}), executionUpdate (UpdateExecutionInput)
+- AgentHookController （单对象 payload hook 声明层; HookController(pluginName=agent, tags=[agent])）
+  - list(payload, _principal, context?) — Agent 列表查询 | keywords: agent-list, query
+  - get(payload, _principal, context?) — Agent 详情查询 | keywords: agent-get, query
+  - getKnowledgeAssignments(payload, _principal, context?) — Agent 知识分配查询 | keywords: agent-knowledge-assignments, query
+  - update(payload, _principal, context?) — Agent 更新 | keywords: agent-update
+  - updateKnowledgeAssignments(payload, _principal, context?) — Agent 知识分配更新 | keywords: agent-knowledge-assignments-update
+  - delete(payload, _principal, context?) — Agent 删除 | keywords: agent-delete
+  - updateEmbeddings(payload, _principal, context?) — Agent 向量更新 | keywords: embeddings-update, all, selected
+  - hooks: saas.app.agent.list (q?), saas.app.agent.get ({id}), saas.app.agent.update ({id, ...body}),
+    saas.app.agent.delete ({id}), saas.app.agent.embeddingsUpdate ({ids?}),
+    saas.app.agent.knowledgeAssignmentList ({id}), saas.app.agent.knowledgeAssignmentUpdate ({id, bookIds[]})
+- AgentExecutionHookController （单对象 payload hook 声明层; HookController(pluginName=agent, tags=[agent, execution])）
+  - list(payload, _principal, context?) — 执行记录列表查询 | keywords: execution-list, query
+  - get(payload, _principal, context?) — 执行记录详情查询 | keywords: execution-get, query
+  - update(payload, _principal, context?) — 执行记录更新 | keywords: execution-update
+  - delete(payload, _principal, context?) — 执行记录删除 | keywords: execution-delete
+  - hooks: saas.app.agent.executionList, saas.app.agent.executionGet ({id}),
+    saas.app.agent.executionDelete ({id}), saas.app.agent.executionUpdate ({id, ...body})
 
 关键词索引（中文 / English Keyword Index）
 Agent表 -> app/agent/entities/agent.entity.ts
@@ -62,6 +75,9 @@ Agent知识分配表 -> app/agent/entities/agent-knowledge-assignment.entity.ts
 执行Agent表 -> app/agent/entities/agent-execution.entity.ts
 改删查接口 -> app/agent/controllers/*
 知识分配接口 -> app/agent/controllers/agent.controller.ts
+Agent Hook声明 -> app/agent/controllers/agent.hook-controller.ts
+执行Agent Hook声明 -> app/agent/controllers/execution.hook-controller.ts
+单对象payload -> app/agent/controllers/*.hook-controller.ts
 用途说明 -> app/agent/entities/agent.entity.ts
 拟人昵称 -> app/agent/entities/agent.entity.ts
 头像地址 -> app/agent/entities/agent.entity.ts
@@ -83,8 +99,8 @@ AI模型槽位 -> app/agent/services/agent.service.ts
 - AgentExecutionService.delete -> d17f6a45
 - AgentController.update -> 6c2bf912
 - AgentExecutionController.update -> 84ad315e
-- AgentController.list(HookRoute) -> agent_hook_list_001
-- AgentExecutionController.update(HookRoute) -> agent_hook_exec_update_002
+- AgentHookController.list(HookRoute) -> agent_hook_list_001
+- AgentExecutionHookController.update(HookRoute) -> agent_hook_exec_update_002
 
 模块功能描述（Description）
 本模块提供 Agent、Agent 知识分配与其执行记录的持久化与接口，仅支持查询、修改（受限字段）与删除。Agent 修改允许更新"昵称""用途说明""头像地址""AI模型ID列表"；知识分配允许为单个 Agent 绑定数据库知识书本，并自动并入全部本地知识。执行记录允许更新节点状态、最新返回与上下文关联。

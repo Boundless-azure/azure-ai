@@ -8,7 +8,6 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import { z } from 'zod';
 import { TodoService } from '../services/todo.service';
 import { TodoEntity } from '../entities/todo.entity';
 import { TodoFollowupEntity } from '../entities/todo-followup.entity';
@@ -21,90 +20,28 @@ import {
   CreateCommentDto,
   UpdateFollowupDto,
 } from '../types/todo.types';
-import { TodoStatus } from '../enums/todo.enums';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
 import { CurrentPrincipal } from '@/core/auth/decorators/current-principal.decorator';
 import type { JwtPayload } from '@/core/auth/types/auth.types';
-import {
-  HookController,
-  HookRoute,
-} from '@/core/hookbus/decorators/hook-controller.decorator';
+import type { HookInvocationContext } from '@/core/hookbus/types/hook.types';
 
 /**
- * @title Todo Hook payload schema (input 形状, SSOT)
- * @description HookRoute 的 payload 统一是数组形参; 此处声明每个位置参数的 schema,
- *              hook-controller 将 args schema 写入 metadata.payloadSchema 供 invoker 校验和 LLM 派生 JSON Schema。
- * @keywords-cn TodoHook, payloadSchema, input, SSOT
- * @keywords-en todo-hook, payload-schema, input, ssot
+ * 从 Hook 调用上下文解析 principal (JwtPayload 形状); Hook 链路下 principalId / principalType
+ * 由 HookAuthMiddleware 校验后回填。无 principalId 时返回 undefined (交由 service 层兜底)。
+ * @keyword-cn 解析待办主体, Hook上下文
+ * @keyword-en resolve-todo-principal, hook-context
  */
-const todoStatusSchema = z.enum([
-  TodoStatus.Pending,
-  TodoStatus.InProgress,
-  TodoStatus.Failed,
-  TodoStatus.WaitingAcceptance,
-  TodoStatus.Completed,
-]);
-
-const onTodoListInput = z.object({
-  sessionId: z.string().optional(),
-  taskId: z.string().optional(),
-  status: todoStatusSchema.optional(),
-  followerId: z.string().optional(),
-  initiatorId: z.string().optional(),
-  q: z.string().optional(),
-});
-
-const onTodoCountInput = z.object({
-  status: todoStatusSchema.optional().describe('按状态过滤; 不传返回全部'),
-  sessionId: z.string().optional().describe('按关联会话 ID 过滤; 不传返回全局'),
-  taskId: z.string().optional().describe('按所属任务 ID 过滤; 不传返回全部'),
-});
-
-const onTodoIdParamInput = z.object({ id: z.string() });
-
-const onTodoCreateInput = z.object({
-  initiatorId: z.string(),
-  sessionId: z.string().optional(),
-  taskId: z.string().optional(),
-  title: z.string(),
-  description: z.string().optional(),
-  content: z.string().optional(),
-  followerId: z.string().optional(),
-  statusColor: z.string().optional(),
-  status: todoStatusSchema.optional(),
-});
-
-const onTodoUpdateInput = z.object({
-  sessionId: z.string().nullable().optional(),
-  taskId: z.string().nullable().optional(),
-  title: z.string().optional(),
-  description: z.string().optional(),
-  content: z.string().optional(),
-  followerId: z.string().nullable().optional(),
-  statusColor: z.string().optional(),
-  status: todoStatusSchema.optional(),
-});
-
-const onFollowupCreateInput = z.object({
-  followerId: z.string(),
-  followerName: z.string(),
-  followerAvatar: z.string().optional(),
-  content: z.string().optional(),
-});
-
-const onFollowupUpdateInput = z.object({
-  followerId: z.string().optional(),
-  followerName: z.string().optional(),
-  followerAvatar: z.string().optional(),
-  content: z.string().optional(),
-});
-
-const onCommentCreateInput = z.object({
-  userId: z.string(),
-  userName: z.string(),
-  userAvatar: z.string().optional(),
-  content: z.string(),
-});
+export function resolveTodoPrincipal(
+  context?: HookInvocationContext,
+): JwtPayload | undefined {
+  const id = context?.principalId?.trim();
+  if (!id) return undefined;
+  return {
+    id,
+    type: context?.principalType ?? 'user',
+    tenantId: context?.extras?.tenantId as string | undefined,
+  };
+}
 
 /**
  * @title 待办事项控制器
@@ -112,20 +49,12 @@ const onCommentCreateInput = z.object({
  * @keywords-cn 待办控制器, 查询, 创建, 更新, 删除, 跟进, 评论
  * @keywords-en todo-controller, query, create, update, delete, followup, comment
  */
-@HookController({ pluginName: 'todo', tags: ['todo'] })
 @Controller('todo')
 export class TodoController {
   constructor(private readonly service: TodoService) {}
 
   @Get('count')
   @CheckAbility('read', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.todoCount',
-    description:
-      '待办总数统计 :: 返回 { count: number }，支持按 status / sessionId / taskId 过滤',
-    args: [onTodoCountInput],
-    metadata: { tags: ['count', 'query'] },
-  })
   async count(
     @Query() query: { status?: string; sessionId?: string; taskId?: string },
   ): Promise<{ count: number }> {
@@ -134,12 +63,6 @@ export class TodoController {
 
   @Get()
   @CheckAbility('read', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.list',
-    description: '待办列表查询',
-    args: [onTodoListInput],
-    metadata: { tags: ['list', 'query'] },
-  })
   async list(
     @Query() query: QueryTodoDto,
     @CurrentPrincipal() principal?: JwtPayload,
@@ -149,24 +72,12 @@ export class TodoController {
 
   @Get(':id')
   @CheckAbility('read', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.get',
-    description: '待办详情查询',
-    args: [onTodoIdParamInput.shape.id],
-    metadata: { tags: ['detail', 'query'] },
-  })
   async get(@Param('id') id: string): Promise<TodoEntity | null> {
     return await this.service.get(id);
   }
 
   @Post()
   @CheckAbility('create', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.create',
-    description: '待办创建',
-    args: [onTodoCreateInput],
-    metadata: { tags: ['create', 'write'] },
-  })
   async create(
     @Body() dto: CreateTodoDto,
     @CurrentPrincipal() principal?: JwtPayload,
@@ -176,12 +87,6 @@ export class TodoController {
 
   @Put(':id')
   @CheckAbility('update', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.update',
-    description: '待办更新',
-    args: [onTodoIdParamInput.shape.id, onTodoUpdateInput],
-    metadata: { tags: ['update', 'write'] },
-  })
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateTodoDto,
@@ -192,12 +97,6 @@ export class TodoController {
 
   @Delete(':id')
   @CheckAbility('delete', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.delete',
-    description: '待办删除',
-    args: [onTodoIdParamInput.shape.id],
-    metadata: { tags: ['delete', 'write'] },
-  })
   async delete(@Param('id') id: string): Promise<{ ok: boolean }> {
     await this.service.delete(id);
     return { ok: true };
@@ -207,12 +106,6 @@ export class TodoController {
 
   @Post(':id/followups')
   @CheckAbility('create', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.followup.create',
-    description: '待办跟进记录创建',
-    args: [onTodoIdParamInput.shape.id, onFollowupCreateInput],
-    metadata: { tags: ['followup', 'create', 'write'] },
-  })
   async createFollowup(
     @Param('id') id: string,
     @Body() dto: CreateFollowupDto,
@@ -227,24 +120,12 @@ export class TodoController {
 
   @Get(':id/followups')
   @CheckAbility('read', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.followup.list',
-    description: '待办跟进记录列表查询',
-    args: [onTodoIdParamInput.shape.id],
-    metadata: { tags: ['followup', 'list', 'query'] },
-  })
   async listFollowups(@Param('id') id: string): Promise<TodoFollowupEntity[]> {
     return await this.service.listFollowups(id);
   }
 
   @Delete('followups/:followupId')
   @CheckAbility('delete', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.followup.delete',
-    description: '待办跟进记录删除',
-    args: [onTodoIdParamInput.shape.id],
-    metadata: { tags: ['followup', 'delete', 'write'] },
-  })
   async deleteFollowup(
     @Param('followupId') id: string,
   ): Promise<{ ok: boolean }> {
@@ -254,12 +135,6 @@ export class TodoController {
 
   @Put('followups/:followupId')
   @CheckAbility('update', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.followup.update',
-    description: '待办跟进记录更新',
-    args: [onTodoIdParamInput.shape.id, onFollowupUpdateInput],
-    metadata: { tags: ['followup', 'update', 'write'] },
-  })
   async updateFollowup(
     @Param('followupId') id: string,
     @Body() dto: UpdateFollowupDto,
@@ -276,12 +151,6 @@ export class TodoController {
 
   @Post('followups/:followupId/comments')
   @CheckAbility('create', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.comment.create',
-    description: '待办跟进评论创建',
-    args: [onTodoIdParamInput.shape.id, onCommentCreateInput],
-    metadata: { tags: ['comment', 'create', 'write'] },
-  })
   async createComment(
     @Param('followupId') followupId: string,
     @Body() dto: CreateCommentDto,
@@ -296,12 +165,6 @@ export class TodoController {
 
   @Get('followups/:followupId/comments')
   @CheckAbility('read', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.comment.list',
-    description: '待办跟进评论列表查询',
-    args: [onTodoIdParamInput.shape.id],
-    metadata: { tags: ['comment', 'list', 'query'] },
-  })
   async listComments(
     @Param('followupId') followupId: string,
   ): Promise<TodoFollowupCommentEntity[]> {
@@ -310,12 +173,6 @@ export class TodoController {
 
   @Delete('comments/:commentId')
   @CheckAbility('delete', 'todo')
-  @HookRoute({
-    hook: 'saas.app.todo.comment.delete',
-    description: '待办跟进评论删除',
-    args: [onTodoIdParamInput.shape.id],
-    metadata: { tags: ['comment', 'delete', 'write'] },
-  })
   async deleteComment(
     @Param('commentId') id: string,
   ): Promise<{ ok: boolean }> {

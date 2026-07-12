@@ -6,6 +6,7 @@ import { PrincipalEntity } from '@/app/identity/entities/principal.entity';
 import { UserEntity } from '@/app/identity/entities/user.entity';
 import { AuthService } from './services/auth.service';
 import { AuthController } from './controllers/auth.controller';
+import { AuthHookController } from './controllers/auth.hook-controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { IdentityModule } from '@/app/identity/identity.module';
 
@@ -23,6 +24,7 @@ import { IdentityModule } from '@/app/identity/identity.module';
   ],
   providers: [
     AuthService,
+    AuthHookController,
     JwtStrategy,
     {
       provide: JwtService,

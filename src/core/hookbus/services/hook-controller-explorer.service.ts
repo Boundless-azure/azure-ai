@@ -25,8 +25,8 @@ const CHECK_ABILITY_KEY = 'check_ability_metadata';
 /**
  * @title Hook Controller Explorer
  * @description Registers @HookRoute methods from Nest providers/controllers.
- *              A hook route receives event.payload as a positional args array.
- * @keywords-en hook-controller-scan, positional-args, controller-reuse
+ *              A hook route receives event.payload as a SINGLE object (not a positional args array).
+ * @keywords-en hook-controller-scan, single-object-payload, controller-reuse
  */
 @Injectable()
 export class HookControllerExplorerService implements OnModuleInit {
@@ -73,7 +73,7 @@ export class HookControllerExplorerService implements OnModuleInit {
               instance,
               fn,
               route,
-              event as HookEvent<unknown[]>,
+              event as HookEvent<unknown>,
             ),
           metadata,
         );
@@ -85,15 +85,8 @@ export class HookControllerExplorerService implements OnModuleInit {
     instance: Record<string, unknown>,
     fn: (...args: unknown[]) => unknown,
     route: HookRouteMeta,
-    event: HookEvent<unknown[]>,
+    event: HookEvent<unknown>,
   ): Promise<HookResult> {
-    if (!Array.isArray(event.payload)) {
-      return {
-        status: HookResultStatus.Error,
-        error:
-          'payload-array-required: hook-controller payload must be an array',
-      };
-    }
     const principal = event.context?.principalId
       ? {
           id: event.context.principalId,
@@ -104,7 +97,8 @@ export class HookControllerExplorerService implements OnModuleInit {
           },
         }
       : undefined;
-    const payloadArgs = route.args?.length ? event.payload : [];
+    // payload 现在是单对象 (非位置数组): 有声明 args → 作为第一个形参 (payload); 无参 hook → 不传 payload。
+    const payloadArgs = route.args?.length ? [event.payload] : [];
     const result = await fn.apply(instance, [
       ...payloadArgs,
       principal,
@@ -137,8 +131,13 @@ export class HookControllerExplorerService implements OnModuleInit {
   }
 
   private buildArgsSchema(args: HookRouteMeta['args']): z.ZodTypeAny {
+    // 单对象 payload 约定: 无参 hook → 允许省略或空对象; 有参 hook → 直接用其对象 schema (args[0])。
+    // (迁移后 args 恒为 [] 或 [singleObjectSchema]; 存量多元素退化为末尾 tuple 兜底, 正常不触达)
     if (!args || args.length === 0) {
-      return z.union([z.tuple([]), z.tuple([z.object({}).strict()])]);
+      return z.object({}).passthrough().optional();
+    }
+    if (args.length === 1) {
+      return args[0];
     }
     const [first, ...rest] = args;
     return z.tuple([first, ...rest]);

@@ -26,9 +26,10 @@
 - app/runner/services/domain-allocation.service.ts
 - app/runner/services/reward-record.service.ts
 - app/runner/services/runner-proxy.service.ts
-- app/runner/services/runner-hook-register.service.ts
 - app/runner/services/runner-hook-rpc.service.ts # SaaS↔Runner Hook RPC 调度 (in-flight + 软超时 + 背压)
-- app/runner/controllers/runner.controller.ts
+- app/runner/controllers/runner.controller.ts     # 纯 HTTP REST (hook 已迁出)
+- app/runner/controllers/runner.hook-controller.ts # hook 声明层: saas.app.runner.list / get (单对象 payload)
+- app/runner/controllers/runner-bootstrap.hook-controller.ts # saas.app.<module>.runnerBootstrap 占位 hook (7 个, 无入参, 迁自 RunnerHookRegisterService)
 - app/runner/controllers/runner.gateway.ts        # onRegister 返回 frpsToken
 - app/runner/controllers/runner.proxy.controller.ts
 - app/runner/controllers/hook-component.controller.ts
@@ -97,8 +98,11 @@
   - findByRunnerId(runnerId) - 查询 FRP 记录
   - findByDomain(domain) - 根据域名查询 FRP 记录
   - releasePort(runnerId) - 释放 FRP 端口
-- RunnerHookRegisterService
-  - onModuleInit() - Hook 注册初始化
+- RunnerHookController (hook 声明层, 单对象 payload)
+  - list(payload) - hook saas.app.runner.list (read); mounted 经 gateway 二次确认离线回写 | keywords: list-runners, runner-discovery-for-llm
+  - get(payload{id}) - hook saas.app.runner.get (read); 在线核对 | keywords: get-runner, online-check
+- RunnerBootstrapHookController (7 个 saas.app.<module>.runnerBootstrap 占位, 无入参; 系统内部触发免 @CheckAbility)
+  - agent/conversation/identity/resource/todo/plugin/runner() - 各回 { moduleName } | keywords: runner-bootstrap, system-event
 
 关键词索引（中文 / English Keyword Index）
 Runner实体 -> app/runner/entities/runner.entity.ts
@@ -116,7 +120,8 @@ Runner模块 -> app/runner/runner.module.ts
 域名分配服务 -> app/runner/services/domain-allocation.service.ts
 奖励记录服务 -> app/runner/services/reward-record.service.ts
 奖励记录控制器 -> app/runner/controllers/reward-record.controller.ts
-Hook注册初始化 -> app/runner/services/runner-hook-register.service.ts
+Runner Hook声明 -> app/runner/controllers/runner.hook-controller.ts
+Runner启动占位Hook -> app/runner/controllers/runner-bootstrap.hook-controller.ts
 runner-entity -> app/runner/entities/runner.entity.ts
 runner-service -> app/runner/services/runner.service.ts
 runner-gateway -> app/runner/controllers/runner.gateway.ts

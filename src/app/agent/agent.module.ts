@@ -7,6 +7,8 @@ import { AgentService } from './services/agent.service';
 import { AgentExecutionService } from './services/execution.service';
 import { AgentController } from './controllers/agent.controller';
 import { AgentExecutionController } from './controllers/execution.controller';
+import { AgentHookController } from './controllers/agent.hook-controller';
+import { AgentExecutionHookController } from './controllers/execution.hook-controller';
 import { AgentCache } from './cache/agent.cache';
 import { AICoreModule } from '@core/ai/ai-core.module';
 import { KnowledgeBookEntity } from '../knowledge/entities/knowledge-book.entity';
@@ -27,7 +29,13 @@ import { KnowledgeBookEntity } from '../knowledge/entities/knowledge-book.entity
       KnowledgeBookEntity,
     ]),
   ],
-  providers: [AgentService, AgentExecutionService, AgentCache],
+  providers: [
+    AgentService,
+    AgentExecutionService,
+    AgentCache,
+    AgentHookController,
+    AgentExecutionHookController,
+  ],
   controllers: [AgentController, AgentExecutionController],
   exports: [AgentService, AgentExecutionService],
 })

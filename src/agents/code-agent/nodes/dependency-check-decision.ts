@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { tool } from 'langchain';
 import z from 'zod';
 import type {
   AgentAiModelClient,
@@ -30,8 +30,6 @@ import {
   readContextString,
   resolveSolutionChoice,
 } from './dependency-check-context';
-
-const logger = new Logger('CodeAgentDependencyDecision');
 
 /**
  * Normalize the human dependency selection into a LangGraph resume value.
@@ -86,10 +84,11 @@ export async function decideCodeGraphDependencies(args: {
     args.solutions,
   );
   if (boundSolution) {
-    const boundAction = findContextBoundAction(
-      args.request.context,
-    );
-    if (boundAction && isSolutionSuitableForAction(boundSolution, boundAction)) {
+    const boundAction = findContextBoundAction(args.request.context);
+    if (
+      boundAction &&
+      isSolutionSuitableForAction(boundSolution, boundAction)
+    ) {
       args.graphLog.info(
         'decision:context-binding',
         'using solution from graph context',
@@ -148,7 +147,7 @@ export async function decideCodeGraphDependencies(args: {
   }
 
   const model = selectLogicModel(args.aiAdapter, args.input);
-  const parsed = await requestDependencyDecisionJson({
+  const parsed = await requestDependencyDecision({
     model,
     requirement: compactRequirementForRouting(args.request.full_requirement),
     targetKind: args.targetKind,
@@ -170,83 +169,152 @@ export async function decideCodeGraphDependencies(args: {
   );
 }
 
+const DecisionSolutionRefSchema = z.object({
+  id: z.string().optional(),
+  solutionId: z.string().optional(),
+  name: z.string().optional(),
+  reason: z.string().optional(),
+});
+
+const DecisionRouteInputSchema = z.object({
+  id: z.string().optional(),
+  requirement: z.string().optional(),
+  title: z.string().optional(),
+  summary: z.string().optional(),
+  useSolution: DecisionSolutionRefSchema.nullable().optional(),
+  waitChoose: z.array(DecisionSolutionRefSchema).optional(),
+  useAction: z.enum(CODE_GRAPH_ACTION_VALUES).nullable().optional(),
+  waitChooseAction: z.array(z.enum(CODE_GRAPH_ACTION_VALUES)).optional(),
+  reason: z.string().optional(),
+});
+
+const DecisionNewSolutionInputSchema = z.object({
+  name: z.string().optional(),
+  version: z.string().optional(),
+  summary: z.string().optional(),
+  reason: z.string().optional(),
+});
+
 /**
- * Call the logic model for a routing decision, retrying once with a stricter prompt.
- * @keyword-cn 依赖判定, 模型重试
- * @keyword-en dependency-decision, llm-retry
+ * Call the logic model to BUILD the routing decision by CALLING TOOLS (set_route / propose_new_solution
+ * / set_notice) instead of returning one big JSON blob — no big-JSON parse, so no parse-fail retry. The
+ * accumulated routePlan is fed through the SAME normalizeLlmDependencyDecision (behavior unchanged).
+ * @keyword-cn 依赖判定, 工具调用
+ * @keyword-en dependency-decision, tool-calling
  */
-async function requestDependencyDecisionJson(args: {
+async function requestDependencyDecision(args: {
   model: AgentAiModelClient;
   requirement: string;
   targetKind: CodeAgentTargetKind;
   solutions: RunnerSolutionSummary[];
   graphLog: CodeGraphNodeLogger;
 }): Promise<LlmDependencyDecisionPayload | null> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let rawContent = '';
-    let finishReason: string | undefined;
-    try {
-      args.graphLog.info(
-        'decision:llm:start',
-        'calling logic model for dependency decision',
-        { attempt },
-      );
-      const response = await args.model.chat({
-        source: 'code-agent.dependency-check',
-        // 后台 graph 任务 :: 隔离主对话已关闭的流式 callbacks, 否则 minimax 等
-        // 走流式 token 的 provider 会因 "WritableStream is closed" 丢掉全部 content。
-        isolateCallbacks: true,
-        messages: [
-          {
-            role: 'user',
-            content:
-              attempt === 0
-                ? buildDependencyDecisionPrompt(
-                    args.requirement,
-                    args.targetKind,
-                    args.solutions,
-                  )
-                : buildDependencyDecisionRetryPrompt(
-                    args.requirement,
-                    args.targetKind,
-                    args.solutions,
-                  ),
-          },
-        ],
-        // langchain 限定方式 :: OpenAI 兼容 JSON mode, 强制模型把合法 JSON 放进 content。
-        params: { temperature: 0, responseFormat: { type: 'json_object' } },
-      });
-      rawContent = response.content ?? '';
-      finishReason = response.finishReason;
-      const parsed = LlmDependencyDecisionSchema.parse(
-        parseJsonObjectLoose(rawContent),
-      );
-      args.graphLog.info(
-        'decision:llm:done',
-        'logic model returned dependency JSON',
-        { attempt },
-      );
-      return parsed;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn(
-        `dependency-check llm decision attempt ${attempt} failed: ${message} ` +
-          `(finish=${finishReason ?? 'n/a'} contentLen=${rawContent.length})`,
-      );
-      args.graphLog.warn(
-        'decision:llm:parse-fail',
-        'logic model output was not valid decision JSON',
+  const routes: z.infer<typeof DecisionRouteInputSchema>[] = [];
+  const shared: {
+    requiresNewSolution?: boolean;
+    newSolutionOption?: z.infer<typeof DecisionNewSolutionInputSchema>;
+    notice?: string;
+  } = {};
+  const tools = [
+    tool(
+      (route: z.infer<typeof DecisionRouteInputSchema>) => {
+        routes.push(route);
+        const where = route.useSolution?.name
+          ? `reuse ${route.useSolution.name}`
+          : (route.waitChoose?.length ?? 0) > 0
+            ? 'pending choice'
+            : 'new/unresolved';
+        return `route "${route.id ?? routes.length}" committed (${route.useAction ?? 'action?'}, ${where})`;
+      },
+      {
+        name: 'set_route',
+        description:
+          'Commit ONE routePlan entry = one requirement item routed to a Solution + action lane. Fields: {id, requirement, title, summary, useSolution?({solutionId,name,reason}) OR waitChoose?[] only when 2+ genuinely tie, useAction?(app|unit|data-point) OR waitChooseAction?[] only when truly undecidable, reason}. Commit the best choice; leave waitChoose/waitChooseAction empty unless you genuinely cannot decide. Call once per requirement item.',
+        schema: DecisionRouteInputSchema,
+      },
+    ),
+    tool(
+      (input: z.infer<typeof DecisionNewSolutionInputSchema>) => {
+        shared.requiresNewSolution = true;
+        shared.newSolutionOption = input;
+        return `new solution proposed: ${input.name ?? '(unnamed)'}`;
+      },
+      {
+        name: 'propose_new_solution',
+        description:
+          'Call ONLY when NO existing Solution is a sensible home for the requirement. Proposes creating a new Solution container: {name, version?, summary(why a new container is better), reason?}. Prefer reusing an existing Solution over a near-duplicate; do not call this just because no match is perfect.',
+        schema: DecisionNewSolutionInputSchema,
+      },
+    ),
+    tool(
+      (input: { notice: string }) => {
+        if (input.notice.trim()) shared.notice = input.notice.trim();
+        return 'notice set';
+      },
+      {
+        name: 'set_notice',
+        description:
+          'Set a short (1-2 sentence) user-facing notice IN THE SAME LANGUAGE AS THE REQUIREMENT, telling the user which Solution carries this work and whether it is reused or newly created (say so if it is a generic/shared container). Plain words, no solutionId/JSON/field names. Call once.',
+        schema: z.object({ notice: z.string() }),
+      },
+    ),
+  ];
+  args.graphLog.info(
+    'decision:llm:start',
+    'calling logic model for dependency decision (tool-calling)',
+    {},
+  );
+  try {
+    await args.model.chat({
+      source: 'code-agent.dependency-check',
+      // 后台 graph 任务 :: 隔离主对话已关闭的流式 callbacks, 否则 minimax 等
+      // 走流式 token 的 provider 会因 "WritableStream is closed" 丢掉全部 content。
+      isolateCallbacks: true,
+      messages: [
         {
-          attempt,
-          error: message,
-          finishReason: finishReason ?? null,
-          contentLength: rawContent.length,
-          sample: rawContent.slice(0, 500),
+          role: 'user',
+          content: buildDependencyDecisionPrompt(
+            args.requirement,
+            args.targetKind,
+            args.solutions,
+          ),
         },
-      );
-    }
+      ],
+      params: { temperature: 0, maxTokens: 8000 },
+      tools,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    args.graphLog.warn(
+      'decision:llm:error',
+      'dependency decision tool loop errored',
+      { error: message },
+    );
   }
-  return null;
+  if (routes.length === 0 && !shared.requiresNewSolution) {
+    args.graphLog.warn(
+      'decision:llm:empty',
+      'decision tools produced no routes; falling back',
+      {},
+    );
+    return null;
+  }
+  args.graphLog.info(
+    'decision:llm:done',
+    'dependency decision assembled from tool calls',
+    {
+      routes: routes.length,
+      requiresNewSolution: shared.requiresNewSolution === true,
+    },
+  );
+  return {
+    routePlan: routes,
+    ...(shared.requiresNewSolution ? { requiresNewSolution: true } : {}),
+    ...(shared.newSolutionOption
+      ? { newSolutionOption: shared.newSolutionOption }
+      : {}),
+    ...(shared.notice ? { notice: shared.notice } : {}),
+  };
 }
 
 /**
@@ -297,141 +365,36 @@ function buildDependencyDecisionPrompt(
     isInitialized: solution.isInitialized,
   }));
   return [
-    'You are the dependency-check routing node for code-agent. Return strict JSON only, no markdown.',
+    'You are the dependency-check routing node for code-agent. You BUILD the routing decision by CALLING TOOLS — do NOT print JSON or prose describing it.',
     'Scope: for each existing requirement item, route it to a Runner Solution (reuse an existing one or propose a new one) and pick the broad action lane: app, unit, or data-point.',
+    '',
+    'Tools: set_route (commit one requirement item → Solution + action lane; call once per item), propose_new_solution (ONLY when no existing Solution fits), set_notice (one short user-facing note).',
     '',
     'Decision policy (most important):',
     '- Decide, do not defer. A user choice card is shown only when a field is left unresolved, so leave a field unresolved ONLY when you genuinely cannot decide. Whenever the evidence supports one best choice, commit it and leave the matching waitChoose / waitChooseAction empty.',
     '- Solution reuse: if an existing Solution is a reasonable home for the requirement (its name/summary/domain overlaps and its `includes` can host the action), set route.useSolution to it and leave route.waitChoose empty. A single plausible Solution must be reused directly via useSolution, never parked in waitChoose. An imperfect-but-clear match is still a decision: reuse it.',
     '- Only set route.waitChoose (and leave route.useSolution null) when two or more existing Solutions are genuinely comparable homes AND picking the wrong one would materially change the outcome. Do not ask the user to break a loose tie; pick the best and commit.',
-    '- New Solution: set requiresNewSolution=true with newSolutionOption ONLY when no existing Solution is a sensible home for this requirement. Do not invent a new Solution just because no match is perfect; prefer reuse over creating a near-duplicate container.',
+    '- New Solution: call propose_new_solution ONLY when no existing Solution is a sensible home for this requirement. Do not invent a new Solution just because no match is perfect; prefer reuse over creating a near-duplicate container.',
     '- Action lane: infer app/unit/data-point from the requirement. UI / page / screen / frontend / HTML / component => app; backend capability / service / business logic / hook / API => unit; data schema / storage / collection / record / touchpoint / field => data-point. Commit route.useAction and leave route.waitChooseAction empty.',
     '- Treat the default action hint as a strong prior: adopt it as route.useAction unless the requirement clearly points to a different lane. Leave route.useAction null with route.waitChooseAction candidates ONLY when the requirement is truly undecidable between lanes.',
     '',
     'Routing rules:',
-    'Do not split one vague requirement into implementation tasks. Only create multiple routePlan entries when the user requirement already contains multiple explicit steps/items.',
+    'Do not split one vague requirement into implementation tasks. Only call set_route multiple times when the user requirement already contains multiple explicit steps/items.',
     'Do not resolve concrete app/unit/data-point ids, names, files, modules, code targets, or dependencies. That belongs to later nodes.',
-    'routePlan is required and is the source of truth. Do not collapse requirement items that point to different Solutions or actions into one route.',
-    'Each routePlan entry represents one existing requirement item and may include: id, requirement, title, summary, useSolution, waitChoose, useAction, waitChooseAction, reason.',
-    'Top-level useSolution/useAction/useActions/waitChoose/waitChooseAction are compatibility summaries derived from routePlan only.',
+    'routePlan (the set_route calls) is the source of truth. Do not collapse requirement items that point to different Solutions or actions into one route. The top-level solution/action summaries are derived by code from your routes — you do not emit them.',
     'Only use Solutions from the Runner solutions list. Do not invent an existing Solution.',
-    'Also return a short user-facing `notice` (1-2 sentences) written IN THE SAME NATURAL LANGUAGE AS THE REQUIREMENT (Chinese requirement => Chinese notice). It tells the user, in plain words, which Solution will carry this work and whether it is being reused or newly created — e.g. reusing an existing dedicated Solution, reusing a general/shared display container, or creating a new Solution. If the Solution is a generic container (like a default display solution), say so, so the user understands it is a shared home rather than an unrelated project. Do NOT mention solutionId / payload / JSON / action-lane / internal field names; speak like a teammate.',
-    'JSON shape: {"waitChoose":[{"solutionId":"...","name":"...","reason":"..."}],"useSolution":{"solutionId":"...","name":"...","reason":"..."}|null,"waitChooseAction":["app","unit","data-point"],"useAction":"app"|"unit"|"data-point"|null,"useActions":["app","unit"],"routePlan":[{"id":"step-1","requirement":"original requirement item","title":"...","summary":"...","useSolution":{"solutionId":"...","name":"..."}|null,"waitChoose":[{"solutionId":"...","name":"...","reason":"..."}],"useAction":"app"|"unit"|"data-point"|null,"waitChooseAction":["app","unit"],"reason":"..."}],"requiresNewSolution":false,"newSolutionOption":{"name":"new-solution-name","summary":"why new container is better","reason":"..."}|null,"newSolutionReason":"","reason":"...","notice":"用户语言的一句话告知，比如：我会把这个页面放进通用展示容器 default-view-solution 里新建一个独立页面应用。"}',
+    'Call set_notice once: 1-2 sentences IN THE SAME NATURAL LANGUAGE AS THE REQUIREMENT (Chinese requirement => Chinese notice), telling the user in plain words which Solution will carry this work and whether it is being reused or newly created — e.g. reusing an existing dedicated Solution, reusing a general/shared display container, or creating a new Solution. If the Solution is a generic container (like a default display solution), say so, so the user understands it is a shared home rather than an unrelated project. Do NOT mention solutionId / payload / JSON / action-lane / internal field names; speak like a teammate.',
+    'When every requirement item has a set_route (and you have set a notice), stop calling tools.',
     `Default action hint: ${targetKind}`,
     `Requirement: ${requirement}`,
     `Runner solutions: ${JSON.stringify(solutionBrief)}`,
   ].join('\n');
 }
 
-/**
- * Build a minimal, strict retry prompt for models that emitted non-JSON.
- * @keyword-cn 依赖判定, 模型重试
- * @keyword-en dependency-decision, llm-retry
- */
-function buildDependencyDecisionRetryPrompt(
-  requirement: string,
-  targetKind: CodeAgentTargetKind,
-  solutions: RunnerSolutionSummary[],
-): string {
-  const solutionBrief = solutions.map((solution) => ({
-    solutionId: solution.solutionId,
-    name: solution.name,
-    summary: solution.summary,
-    includes: solution.includes,
-  }));
-  return [
-    'Output ONLY one minified JSON object. No prose, no markdown, no <think> blocks, no explanation before or after.',
-    'Task: route this code-agent requirement to a Solution and an action lane (app|unit|data-point).',
-    'Reuse an existing Solution when one is a reasonable home (commit it in routePlan[].useSolution). Set requiresNewSolution=true with newSolutionOption ONLY when no existing Solution fits.',
-    'Commit routePlan[].useAction from the requirement; adopt the action hint when the requirement does not clearly point elsewhere. Leave fields null only when genuinely undecidable.',
-    'Add a short user-facing `notice` (1-2 sentences) in the SAME language as the requirement, plainly telling the user which Solution carries this work and whether it is reused or newly created; no technical field names.',
-    'Shape: {"routePlan":[{"id":"step-1","useSolution":{"solutionId":"...","name":"..."}|null,"waitChoose":[{"solutionId":"...","name":"..."}],"useAction":"app"|"unit"|"data-point"|null,"waitChooseAction":["app"],"reason":"..."}],"requiresNewSolution":false,"newSolutionOption":{"name":"...","summary":"...","reason":"..."}|null,"reason":"...","notice":"..."}',
-    `Action hint: ${targetKind}`,
-    `Requirement: ${requirement}`,
-    `Runner solutions: ${JSON.stringify(solutionBrief)}`,
-  ].join('\n');
-}
-
-const LlmDependencyDecisionSchema = z.object({
-  waitChoose: z
-    .array(
-      z
-        .object({
-          id: z.string().optional(),
-          solutionId: z.string().optional(),
-          name: z.string().optional(),
-          reason: z.string().optional(),
-        })
-        .passthrough(),
-    )
-    .optional(),
-  useSolution: z
-    .object({
-      id: z.string().optional(),
-      solutionId: z.string().optional(),
-      name: z.string().optional(),
-      reason: z.string().optional(),
-    })
-    .passthrough()
-    .nullable()
-    .optional(),
-  waitChooseAction: z.array(z.enum(CODE_GRAPH_ACTION_VALUES)).optional(),
-  useAction: z.enum(CODE_GRAPH_ACTION_VALUES).nullable().optional(),
-  useActions: z.array(z.enum(CODE_GRAPH_ACTION_VALUES)).optional(),
-  routePlan: z
-    .array(
-      z
-        .object({
-          id: z.string().optional(),
-          requirement: z.string().optional(),
-          title: z.string().optional(),
-          summary: z.string().optional(),
-          waitChoose: z
-            .array(
-              z
-                .object({
-                  id: z.string().optional(),
-                  solutionId: z.string().optional(),
-                  name: z.string().optional(),
-                  reason: z.string().optional(),
-                })
-                .passthrough(),
-            )
-            .optional(),
-          useSolution: z
-            .object({
-              id: z.string().optional(),
-              solutionId: z.string().optional(),
-              name: z.string().optional(),
-              reason: z.string().optional(),
-            })
-            .passthrough()
-            .nullable()
-            .optional(),
-          waitChooseAction: z
-            .array(z.enum(CODE_GRAPH_ACTION_VALUES))
-            .optional(),
-          useAction: z.enum(CODE_GRAPH_ACTION_VALUES).nullable().optional(),
-          reason: z.string().optional(),
-        })
-        .passthrough(),
-    )
-    .optional(),
-  requiresNewSolution: z.boolean().optional(),
-  newSolutionOption: z
-    .object({
-      name: z.string().optional(),
-      version: z.string().optional(),
-      summary: z.string().optional(),
-      reason: z.string().optional(),
-    })
-    .passthrough()
-    .nullable()
-    .optional(),
-  newSolutionReason: z.string().optional(),
-  reason: z.string().optional(),
-  notice: z.string().optional(),
-});
+// NOTE: the big LlmDependencyDecisionSchema (JSON-parse validator) was removed in the tool-calling
+// refactor — the decision is now assembled from set_route / propose_new_solution / set_notice tool
+// calls (see DecisionRouteInputSchema etc. above). The LlmDependencyDecisionPayload TYPE still lives
+// in dependency-check.types and normalizeLlmDependencyDecision consumes it unchanged.
 
 /**
  * Normalize a logic-model dependency decision against actual runner solutions.

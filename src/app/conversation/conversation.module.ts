@@ -9,6 +9,9 @@ import { ConversationService } from './services/conversation.service';
 import { ImController } from './controllers/im.controller';
 import { ImGateway } from './controllers/im.gateway';
 import { WebMcpGateway } from './controllers/webmcp.gateway';
+import { WebMcpHookController } from './controllers/webmcp.hook-controller';
+import { ConversationSmartHookController } from './controllers/conversation-smart.hook-controller';
+import { ImExtraHookController } from './controllers/im-extra.hook-controller';
 import { ImSessionService } from './services/im-session.service';
 import { ImMessageService } from './services/im-message.service';
 import { ImContactGroupController } from './controllers/im-contact-group.controller';
@@ -97,6 +100,9 @@ import { AuthModule } from '@/core/auth/auth.module';
     ConversationService,
     ImGateway,
     WebMcpGateway,
+    WebMcpHookController,
+    ConversationSmartHookController,
+    ImExtraHookController,
     ImSessionService,
     ImMessageService,
     ImContactGroupService,

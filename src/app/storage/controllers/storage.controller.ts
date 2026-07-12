@@ -21,10 +21,6 @@ import * as path from 'path';
 import type { Request } from 'express';
 import { z } from 'zod';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
-import {
-  HookController,
-  HookRoute,
-} from '@/core/hookbus/decorators/hook-controller.decorator';
 import type { HookInvocationContext } from '@/core/hookbus/types/hook.types';
 import { StorageService } from '../services/storage.service';
 import { ResourceService } from '../../resource/services/resource.service';
@@ -90,7 +86,7 @@ function tempDir(): string {
  * 解析 Storage 租户 ID; Hook 调用优先使用 context.extras.tenantId, HTTP 调用使用 req.user.tenantId。
  * @keyword-en resolve-storage-tenant-id
  */
-function resolveStorageTenantId(
+export function resolveStorageTenantId(
   actor?: PrincipalLike | null,
   context?: HookInvocationContext,
 ): string {
@@ -107,7 +103,7 @@ function resolveStorageTenantId(
  * 解析 Storage 操作用户 ID; Hook 调用下通常为当前 agent principalId。
  * @keyword-en resolve-storage-user-id
  */
-function resolveStorageUserId(
+export function resolveStorageUserId(
   actor?: PrincipalLike | null,
   context?: HookInvocationContext,
 ): string {
@@ -131,7 +127,7 @@ function readString(value: unknown): string | null {
  * 对 file 类型节点, 注入 resourcePath (带签名的资源访问 URL), 前端直接 window.open 即可。
  * @keyword-en to-storage-node-response, signed-resource-path
  */
-function toStorageNodeResponse(
+export function toStorageNodeResponse(
   node: StorageNodeEntity,
   sign: ResourceSignService,
 ): Record<string, unknown> {
@@ -151,7 +147,7 @@ function toStorageNodeResponse(
  * 输出 Storage 节点响应列表。
  * @keyword-en to-storage-node-response-list
  */
-function toStorageNodeResponseList(
+export function toStorageNodeResponseList(
   nodes: StorageNodeEntity[],
   sign: ResourceSignService,
 ): Array<Record<string, unknown>> {
@@ -164,7 +160,6 @@ function toStorageNodeResponseList(
  * @keywords-cn 存储控制器, 资源库, 文件管理, 分享
  * @keywords-en storage-controller, resource-library, file-management, share
  */
-@HookController({ pluginName: 'storage', tags: ['storage', 'file'] })
 @Controller('storage')
 export class StorageController {
   private readonly logger = new Logger(StorageController.name);
@@ -190,15 +185,6 @@ export class StorageController {
    */
   @Post('nodes')
   @CheckAbility('create', 'storage')
-  @HookRoute({
-    hook: 'saas.app.storage.createNode',
-    description:
-      'Storage 节点创建 (文件夹或文件)。' +
-      'type=file 时 resourceId 必填, 且必须来自用户在当前聊天对话框上传的文件 ' +
-      '(通过 saas.app.resource.currentSession 查询拿到)。' +
-      'LLM 禁止编造 resourceId; 用户未上传时请用 sendMsg 提示其上传, 不要凭空创建。',
-    args: [CreateStorageNodeSchema],
-  })
   async createNode(
     @Body() body: CreateStorageNodeRequest,
     @Req() req: AuthedReq,
@@ -242,11 +228,6 @@ export class StorageController {
    */
   @Post('nodes/copy')
   @CheckAbility('create', 'storage')
-  @HookRoute({
-    hook: 'saas.app.storage.copyNodes',
-    description: 'Storage 节点批量复制 (递归 + 自动改名)',
-    args: [CopyNodesSchema],
-  })
   async copyNodes(
     @Body() body: CopyNodesRequest,
     @Req() req: AuthedReq,
@@ -333,12 +314,6 @@ export class StorageController {
    */
   @Get('nodes')
   @CheckAbility('read', 'storage')
-  @HookRoute({
-    hook: 'saas.app.storage.listNodes',
-    description:
-      'Storage 节点列表查询 (按 path 取目录子节点; path="/" 为根目录; 支持 type / q 过滤)',
-    args: [ListStorageNodesSchema],
-  })
   async listNodes(
     @Query() query: ListStorageNodesQuery,
     @Req() req: AuthedReq,
@@ -355,11 +330,6 @@ export class StorageController {
    */
   @Get('nodes/root')
   @CheckAbility('read', 'storage')
-  @HookRoute({
-    hook: 'saas.app.storage.getRootNodes',
-    description: 'Storage 根目录节点列表',
-    args: [],
-  })
   async getRootNodes(@Req() req: AuthedReq, context?: HookInvocationContext) {
     const tenantId = resolveStorageTenantId(req, context);
     this.logger.log(
@@ -377,11 +347,6 @@ export class StorageController {
    */
   @Get('nodes/:id')
   @CheckAbility('read', 'storage')
-  @HookRoute({
-    hook: 'saas.app.storage.getNode',
-    description: 'Storage 节点详情',
-    args: [idParamInput.shape.id],
-  })
   async getNode(
     @Param('id') id: string,
     @Req() req: AuthedReq,
@@ -398,11 +363,6 @@ export class StorageController {
    */
   @Put('nodes/:id')
   @CheckAbility('update', 'storage')
-  @HookRoute({
-    hook: 'saas.app.storage.updateNode',
-    description: 'Storage 节点更新 (改名或移动 parent)',
-    args: [idParamInput.shape.id, UpdateStorageNodeSchema],
-  })
   async updateNode(
     @Param('id') id: string,
     @Body() body: UpdateStorageNodeRequest,
@@ -426,11 +386,6 @@ export class StorageController {
    */
   @Delete('nodes/:id')
   @CheckAbility('delete', 'storage')
-  @HookRoute({
-    hook: 'saas.app.storage.deleteNode',
-    description: 'Storage 节点软删除',
-    args: [idParamInput.shape.id],
-  })
   async deleteNode(
     @Param('id') id: string,
     @Req() req: AuthedReq,
@@ -447,11 +402,6 @@ export class StorageController {
    */
   @Post('nodes/:id/share')
   @CheckAbility('share', 'storage')
-  @HookRoute({
-    hook: 'saas.app.storage.createShare',
-    description: 'Storage 节点分享链接创建',
-    args: [idParamInput.shape.id, CreateShareSchema],
-  })
   async createShare(
     @Param('id') id: string,
     @Body() body: CreateShareRequest,
@@ -469,11 +419,6 @@ export class StorageController {
    */
   @Delete('nodes/:id/share')
   @CheckAbility('share', 'storage')
-  @HookRoute({
-    hook: 'saas.app.storage.removeShare',
-    description: 'Storage 节点分享链接移除',
-    args: [idParamInput.shape.id],
-  })
   async removeShare(
     @Param('id') id: string,
     @Req() req: AuthedReq,

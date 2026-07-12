@@ -312,10 +312,14 @@ export class RunnerGateway implements OnGatewayDisconnect, OnModuleInit {
   ): Promise<void> {
     if (!envelope?.callId || !envelope?.hookName) return;
     const runnerId = this.socketRunnerMap.get(client.id);
+    // SaaS @HookRoute 已统一单对象 payload; 兼容 runner 侧旧式 [obj] 数组入参 → 取首元素
+    const normalizedPayload = Array.isArray(envelope.payload)
+      ? (envelope.payload[0] ?? {})
+      : (envelope.payload ?? {});
     try {
       const results = await this.hookBusService.emit({
         name: envelope.hookName,
-        payload: envelope.payload,
+        payload: normalizedPayload,
         context: {
           ...(envelope.context ?? {}),
           runnerId,

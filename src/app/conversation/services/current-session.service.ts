@@ -861,7 +861,7 @@ function buildUsageRules(): string[] {
     '⚠ no loops :: 整 turn search_hook + get_hook_info 合计 ≤ 3 次. 超过这个数说明卡死了, 必须 commit 现有最佳候选, 不要继续发现.',
     '⚠ no skip :: 每条链路按 ①→②→③→④→⑤ 顺序走, 不跳步. 例: 没 getTag 就 search 会用错 tag; 没 get_hook_info 就 call_hook 会写错 payload.',
     '⚠ must sendMsg :: 业务 hook 完成后 / 知识章节读完后, **必须** call_hook saas.app.conversation.sendMsg 把结果反馈给用户. 直接返回 final prose 不会送达用户 — 等于消息丢失.',
-    '⚠ no guess :: hook 名和 payload 一律不许凭记忆猜. hookName 必须照 search_hook / get_hook_info 真实返回的完整全名填 (漏段 / 缩写 → hook-not-found, 错误里带 Did-you-mean 候选, 照抄); payload 是位置数组, 照 get_hook_info 的 payloadSchema 填, payload[0] 要对象就传对象, 不要塞 "" / null / 占位.',
+    '⚠ no guess :: hook 名和 payload 一律不许凭记忆猜. call 名必须照 search_hook / get_hook_info 真实返回的完整全名填 (漏段 / 缩写 → hook-not-found, 错误里带 Did-you-mean 候选, 照抄); payload 是**单对象**, 照 get_hook_info 的 payloadSchema 逐字段填 (id+body 平铺为 { id, ...body }), 无参传 {}, 不要塞 "" / null / 占位.',
   ];
 }
 

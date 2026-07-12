@@ -12,6 +12,8 @@ import { PluginModule } from './core/plugin/plugin.module';
 import { PromptModule } from './core/prompt/prompt.module';
 import { HookBusModule } from './core/hookbus/hookbus.module';
 import { ConversationModule } from '@/app/conversation/conversation.module';
+// AGENT-MONITOR-TEMP :: 临时调试监听, 后期整体删除 (grep AGENT-MONITOR-TEMP)
+import { CodeGraphMonitorModule } from '@/app/code-graph-monitor/code-graph-monitor.module';
 import { AgentModule } from '@/app/agent/agent.module';
 import { TaskModule } from './app/task/task.module';
 import { TodoModule } from './app/todo/todo.module';
@@ -108,6 +110,7 @@ import type { DatabaseConfig } from './config/types';
     IdentityModule,
     ResourceModule,
     ConversationModule,
+    CodeGraphMonitorModule, // AGENT-MONITOR-TEMP (grep AGENT-MONITOR-TEMP)
     AgentModule,
     TaskModule,
     TodoModule,

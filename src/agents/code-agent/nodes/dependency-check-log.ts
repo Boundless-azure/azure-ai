@@ -1,4 +1,6 @@
 import { Logger } from '@nestjs/common';
+// AGENT-MONITOR-TEMP :: 临时调试监听, 后期整体删除 (grep AGENT-MONITOR-TEMP)
+import { publishCodeGraphProgress } from '../monitor/code-graph-progress.sink';
 import type {
   CodeGraphLogEntry,
   CodeGraphNodeLogger,
@@ -6,6 +8,23 @@ import type {
 } from './dependency-check.types';
 
 const logger = new Logger('CodeAgentDependencyCheckLog');
+
+/** 从 graph context 读会话/线程键, 供进度推送归属 (session_id 是 web 天然知道的键) */
+function readProgressKeys(context: CodeGraphRequest['context']): {
+  sessionId?: string;
+  threadId?: string;
+  runnerId?: string;
+} {
+  const read = (key: string): string | undefined => {
+    const value = (context as Record<string, unknown>)[key];
+    return typeof value === 'string' && value ? value : undefined;
+  };
+  return {
+    sessionId: read('session_id') ?? read('sessionId'),
+    threadId: read('codeGraphThreadId') ?? read('threadId') ?? read('thread_id'),
+    runnerId: read('runner_id') ?? read('runnerId'),
+  };
+}
 
 /**
  * Create a node logger that continues any log already carried in graph context.
@@ -17,6 +36,7 @@ export function createCodeGraphNodeLogger(
   context: CodeGraphRequest['context'],
 ): CodeGraphNodeLogger {
   const entries = extractCodeGraphLog(context);
+  const keys = readProgressKeys(context);
   const append = (
     level: CodeGraphLogEntry['level'],
     step: string,
@@ -32,6 +52,15 @@ export function createCodeGraphNodeLogger(
       ...(data === undefined ? {} : { data }),
     };
     entries.push(entry);
+    // 实时推给监听页 (best-effort, 无 sink 时 no-op); 需要 sessionId 才有归属
+    if (keys.sessionId) {
+      publishCodeGraphProgress({
+        sessionId: keys.sessionId,
+        ...(keys.threadId ? { threadId: keys.threadId } : {}),
+        ...(keys.runnerId ? { runnerId: keys.runnerId } : {}),
+        entry: { kind: 'node', ...entry },
+      });
+    }
     const line = `[${node}] ${step} ${message}`;
     if (level === 'error') {
       logger.error(line, data ? JSON.stringify(data) : undefined);

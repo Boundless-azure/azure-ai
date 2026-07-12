@@ -10,7 +10,8 @@
 - app/storage/types/storage.types.ts
 - app/storage/services/storage.service.ts
 - app/storage/services/storage-components.service.ts
-- app/storage/controllers/storage.controller.ts
+- app/storage/controllers/storage.controller.ts        # 纯 HTTP REST + 共享 helper (resolveStorageTenantId/resolveStorageUserId/toStorageNodeResponse/toStorageNodeResponseList)
+- app/storage/controllers/storage.hook-controller.ts   # hook 声明层 (单对象 payload, 9 个 hook), 从 controller 迁出
 - app/storage/storage.module.ts
 
 函数清单（Function Index）
@@ -31,21 +32,22 @@
   - createShare() - 创建分享链接
   - getShareContent() - 获取分享内容
   - removeShare() - 删除分享链接
-- StorageController
-  - HookController(pluginName=storage, tags=[storage, file])
-  - resolveStorageTenantId() - 统一解析 HTTP / Hook 调用的租户 ID；Hook 路径优先使用 context.extras.tenantId，StorageController.getRootNodes 会打印实际查询 tenant 便于核查
-  - resolveStorageUserId() - 统一解析 HTTP / Hook 调用的操作主体 ID
-  - POST /storage/nodes - 创建节点; **hook saas.app.storage.createNode**: type=file 时 resourceId 必填且不可编造, 必须先通过 saas.app.resource.currentSession 拿到本会话已上传的 items[].resourceId 才能创建; service + zod superRefine + controller 三层校验, 跨租户/不存在 resource 均拒绝 | keywords: create-node, file-node, resource-id-required, chat-upload-only, no-fabrication
-- toStorageNodeResponse(node, sign) — 输出 storage node 响应; **对 file 类节点自动挂 `resourcePath` 字段** (走 ResourceSignService.buildAccessPath(node.resourceId, node.tenantId) 拼带签名的 URL), 前端可直接 window.open(resourcePath) 打开文件; folder 节点不挂 | keywords: signed-resource-path, file-open
-  - GET /storage/nodes - 获取节点列表（path=/ 或 /workspace）
-  - GET /storage/nodes/root - 获取根目录
-    - HookRoute: saas.app.storage.getRootNodes；复用同一方法，Hook payload 可传 `[]` 或 `[{}]`
-  - GET /storage/nodes/:id - 获取节点详情
-  - PUT /storage/nodes/:id - 更新节点
-  - DELETE /storage/nodes/:id - 删除节点
-  - POST /storage/nodes/:id/share - 创建分享
-  - DELETE /storage/nodes/:id/share - 删除分享
-  - GET /storage/share/:token - 访问分享内容
+- StorageController (纯 HTTP REST; 不再声明 hook)
+  - resolveStorageTenantId(req?, context?) — 统一解析 HTTP / Hook 调用的租户 ID；Hook 路径优先使用 context.extras.tenantId (导出, 供 hook-controller 复用) | keywords: resolve-tenant-id
+  - resolveStorageUserId(req?, context?) — 统一解析 HTTP / Hook 调用的操作主体 ID (导出) | keywords: resolve-user-id
+  - toStorageNodeResponse(node, sign) — 输出 storage node 响应; **对 file 类节点自动挂 `resourcePath` 字段** (走 ResourceSignService.buildAccessPath), 前端可直接 window.open(resourcePath) 打开文件; folder 节点不挂 (导出) | keywords: signed-resource-path, file-open
+  - toStorageNodeResponseList(nodes, sign) — 批量版 (导出) | keywords: node-response-list
+  - POST /storage/nodes · GET /storage/nodes · GET /storage/nodes/root · GET /storage/nodes/:id · PUT /storage/nodes/:id · DELETE /storage/nodes/:id · POST /storage/nodes/:id/share · DELETE /storage/nodes/:id/share · GET /storage/share/:token
+- StorageHookController (@Injectable @HookController pluginName=storage tags=[storage,file]; 单对象 payload; 注册在 module providers)
+  - createNode(payload, _p, ctx) — **hook saas.app.storage.createNode** (create); type=file 时 resourceId 必填且不可编造, 必须先经 saas.app.resource.currentSession 拿本会话上传的 resourceId; service+zod+controller 三层校验, 跨租户/不存在 resource 均拒 | keywords: create-node, file-node, resource-id-required, chat-upload-only, no-fabrication
+  - copyNodes(payload, _p, ctx) — **hook saas.app.storage.copyNodes** (create); 递归复制 + 自动改名, resource 走 duplicate | keywords: copy-nodes, recursive-copy
+  - listNodes(payload, _p, ctx) — **hook saas.app.storage.listNodes** (read); 按 path 取目录子节点, 支持 type/q 过滤 | keywords: list-nodes, directory-query
+  - getRootNodes(_p, ctx) — **hook saas.app.storage.getRootNodes** (read); args=[] 无 payload | keywords: root-nodes, node-list
+  - getNode(payload{id}, _p, ctx) — **hook saas.app.storage.getNode** (read) | keywords: get-node, read-detail
+  - updateNode(payload{id,...body}, _p, ctx) — **hook saas.app.storage.updateNode** (update); id 平铺进对象后 {id,...body} 解构 | keywords: update-node, rename-move
+  - deleteNode(payload{id}, _p, ctx) — **hook saas.app.storage.deleteNode** (delete); 软删整子树 | keywords: delete-node, soft-delete
+  - createShare(payload{id,...body}, _p, ctx) — **hook saas.app.storage.createShare** (share); data=share (非 node) | keywords: create-share, share-link
+  - removeShare(payload{id}, _p, ctx) — **hook saas.app.storage.removeShare** (share) | keywords: remove-share, clear-token
 
 关键词索引（中文 / English Keyword Index）
 存储节点 -> app/storage/entities/storage-node.entity.ts
@@ -58,6 +60,7 @@ MD5引用检查 -> app/storage/services/storage.service.ts
 - "StorageNodeEntity" -> app/storage/entities/storage-node.entity.ts
 - "StorageService" -> app/storage/services/storage.service.ts
 - "StorageController" -> app/storage/controllers/storage.controller.ts
+- "StorageHookController" -> app/storage/controllers/storage.hook-controller.ts
 - "StorageModule" -> app/storage/storage.module.ts
 
 关键词到文件函数哈希映射（Keywords -> Function Hash）
@@ -89,7 +92,7 @@ MD5引用检查 -> app/storage/services/storage.service.ts
 
 模块功能描述（Description）
 本模块提供资源库目录结构管理，支持文件夹和文件的 CRUD 操作，分享链接管理，以及删除时的物理文件引用检查（确保跨租户 MD5 去重正确性）。
-Hook 调用路径复用 HTTP Controller 方法，但不会有真实 Express Request；controller 会从 `HookInvocationContext.extras.tenantId` 解析租户，HTTP 路径则继续使用 `req.user.tenantId`。Agent 发起的 SaaS hook 上下文由 ImMessageService 构建：鉴权主体保持 agent principalId，业务 tenantId 跟随当前触发用户。
+Hook 声明已从 HTTP controller 迁出到独立的 `StorageHookController`（单对象 payload, 从 `HookInvocationContext.extras.tenantId` 解析租户）；HTTP 路径继续用 `req.user.tenantId`。两者共享 controller 导出的 helper。Agent 发起的 SaaS hook 上下文由 ImMessageService 构建：鉴权主体保持 agent principalId，业务 tenantId 跟随当前触发用户。
 
 前端模块：web/src/modules/storage/
 概述

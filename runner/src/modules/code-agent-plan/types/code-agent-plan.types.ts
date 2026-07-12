@@ -138,6 +138,8 @@ export const EnsurePlanPayloadSchema = z.object({
   runnerId: z.string().optional(),
   requirement: z.string().optional(),
   solutionIds: z.array(z.string()).optional(),
+  /** 计划涉及的目标根 (solutions/<sol>/apps|units|data/<name>); 让读/搜工具在规划前也能围栏到既有目标 */
+  scopeRoots: z.array(z.string()).optional(),
   status: z.enum(PLAN_STATUS).optional(),
 });
 export type EnsurePlanPayload = z.infer<typeof EnsurePlanPayloadSchema>;
@@ -229,6 +231,8 @@ export type CodeAgentPlanDoc = {
   runnerId?: string;
   requirement?: string;
   solutionIds: string[];
+  /** 计划涉及的目标根; 读/搜工具围栏并上它, 使规划前的分析也能访问既有目标 */
+  scopeRoots?: string[];
   status: PlanStatus;
   createdAt: string;
   updatedAt: string;

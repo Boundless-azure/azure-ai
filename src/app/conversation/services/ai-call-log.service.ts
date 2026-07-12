@@ -215,7 +215,7 @@ function buildLogTitle(record: CallLogRecord): string {
 }
 
 /**
- * call_hook payload 现在是位置参数数组; 单参对象用第 0 个参数生成 title 摘要.
+ * call_hook payload 现在是单对象; 直接用于 title 摘要 (兼容旧式单元素数组 → 取第 0 个).
  * @keyword-en normalize-payload-for-title
  */
 function normalizePayloadForTitle(payload: unknown): unknown {

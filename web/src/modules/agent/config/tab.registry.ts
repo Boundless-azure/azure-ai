@@ -22,6 +22,13 @@ export const tabRegistry: Record<string, TabRegistryEntry> = {
     file: 'src/modules/todo/components/TodoList.vue',
     loader: () => import('../../todo/components/TodoList.vue'),
   },
+  // AGENT-MONITOR-TEMP :: 临时调试监听, 后期整体删除 (grep AGENT-MONITOR-TEMP)
+  codeGraphMonitor: {
+    name: 'Code Agent 监听',
+    file: 'src/modules/code-graph-monitor/components/CodeGraphMonitor.vue',
+    loader: () =>
+      import('../../code-graph-monitor/components/CodeGraphMonitor.vue'),
+  },
   tasks: {
     name: '任务',
     file: 'src/modules/task/components/TaskList.vue',

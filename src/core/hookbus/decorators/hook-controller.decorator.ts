@@ -3,8 +3,8 @@ import type { HookMetadata } from '../types/hook.types';
 
 /**
  * @title Hook Controller decorators
- * @description Define hook-first controller methods that receive payload array items as positional args.
- * @keywords-en hook-controller, positional-args, llm-payload-array
+ * @description Define hook-first controller methods that receive the payload as a SINGLE object (args[0]).
+ * @keywords-en hook-controller, single-object-payload, llm-payload-object
  */
 
 export const HOOK_CONTROLLER_METADATA = 'hookbus:hook-controller';
@@ -19,8 +19,8 @@ export interface HookRouteOptions {
   hook: string;
   description: string;
   /**
-   * Positional argument schemas. LLM-facing payload is always an array, and
-   * item i is passed to controller arg i.
+   * Payload schema. Single-object convention: pass one object schema as args[0]
+   * (it becomes the method's first param); pass [] for a no-arg hook.
    */
   args?: ZodTypeAny[];
   metadata?: Omit<

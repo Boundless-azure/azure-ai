@@ -117,7 +117,7 @@ interface LlmCurrentSessionGuard {
   required: true;
   tool: 'call_hook';
   hookName: 'saas.app.conversation.initTip';
-  payload: '[{needKnowledge,needHook,reason?}]';
+  payload: '{needKnowledge,needHook,reason?}';
   reason: string;
   rule: string;
 }
@@ -142,7 +142,7 @@ interface LlmCurrentSessionRetry {
   };
   requiredReferences: string[];
   hookName: 'saas.app.conversation.initTip';
-  payload: '[{needKnowledge,needHook,reason}]';
+  payload: '{needKnowledge,needHook,reason}';
   must: string[];
   successCriteria: string[];
 }
@@ -1452,11 +1452,11 @@ export class ImMessageService {
       },
       requiredReferences,
       hookName: 'saas.app.conversation.initTip',
-      payload: '[{needKnowledge,needHook,reason}]',
+      payload: '{needKnowledge,needHook,reason}',
       must: [
-        'DO THIS FIRST: call call_hook with hookName saas.app.conversation.initTip and payload [{needKnowledge,needHook,reason}] before any final text or sendMsg.',
+        'DO THIS FIRST: call call_hook with call="saas.app.conversation.initTip" and payload {needKnowledge,needHook,reason} (single object) before any final text or sendMsg.',
         'Read the suggestions in the response (callHistoryHints / handbookInventory / activeDirectives / suggestedChain / tipNote). Use them to choose the next hook freely — they are advisory, not forced.',
-        'If this is pure chat, use payload [{needKnowledge:false,needHook:false,reason:"chat"}], then call saas.app.conversation.sendMsg.',
+        'If this is pure chat, use payload {needKnowledge:false,needHook:false,reason:"chat"}, then call saas.app.conversation.sendMsg.',
         'initTip only declares state; it never substitutes for evidence. If needHook=true, call a real business/knowledge hook, or setPendingAction (missing_args/not_found) + sendMsg.',
         'Do not return final text directly in proactive mode — only sendMsg reaches the user.',
       ],
@@ -1535,7 +1535,7 @@ export class ImMessageService {
       record.severity !== 'strict' ||
       record.attempt !== 2 ||
       record.hookName !== 'saas.app.conversation.initTip' ||
-      record.payload !== '[{needKnowledge,needHook,reason}]' ||
+      record.payload !== '{needKnowledge,needHook,reason}' ||
       !Array.isArray(record.reasons) ||
       !Array.isArray(record.requiredReferences) ||
       !Array.isArray(record.must) ||
@@ -1561,7 +1561,7 @@ export class ImMessageService {
         (it): it is string => typeof it === 'string',
       ),
       hookName: 'saas.app.conversation.initTip',
-      payload: '[{needKnowledge,needHook,reason}]',
+      payload: '{needKnowledge,needHook,reason}',
       must: record.must.filter((it): it is string => typeof it === 'string'),
       successCriteria: record.successCriteria.filter(
         (it): it is string => typeof it === 'string',
@@ -2255,7 +2255,7 @@ export class ImMessageService {
       required: true,
       tool: 'call_hook',
       hookName: 'saas.app.conversation.initTip',
-      payload: '[{needKnowledge,needHook,reason?}]',
+      payload: '{needKnowledge,needHook,reason?}',
       reason: task.type,
       rule: 'FIRST tool call every turn. Pure chat => false,false then sendMsg. needHook + missing args => currentSession.setPendingAction(missing_args) then sendMsg question; ready => business hook.',
     };

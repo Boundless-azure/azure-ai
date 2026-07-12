@@ -31,6 +31,8 @@ import { registerSolutionHooks } from './modules/solution/hooks/solution.hooks';
 import { RunnerSolutionService } from './modules/solution/services/solution.service';
 import { registerDataTouchpointHooks } from './modules/data-touchpoint/hooks/data-touchpoint.hooks';
 import { registerCodeAgentPlanHooks } from './modules/code-agent-plan/hooks/code-agent-plan.hooks';
+import { registerAppTagHooks } from './modules/app-tag/hooks/app-tag.hooks';
+import { registerCodeAgentFsHooks } from './modules/code-agent-fs/hooks/code-agent-fs.hooks';
 import { RunnerTouchpointTriggerService } from './modules/data-touchpoint/services/touchpoint-trigger.service';
 import { registerProxyRoutes } from './modules/proxy/proxy.routes';
 import { registerFrpcRoutes } from './modules/frpc/routes/frpc.routes';
@@ -158,6 +160,12 @@ export async function createRunnerApp() {
     registerSolutionHooks(hookBus, mongoClient, runnerDb);
     registerDataTouchpointHooks(hookBus, mongoClient, touchpointTrigger);
     registerCodeAgentPlanHooks(hookBus, mongoClient);
+    registerAppTagHooks(hookBus, runnerDb, join(process.cwd(), 'workspace'));
+    registerCodeAgentFsHooks(
+      hookBus,
+      mongoClient,
+      join(process.cwd(), 'workspace'),
+    );
   }
   if (cfg.redisUri) {
     await redisClient.connect(cfg.redisUri);

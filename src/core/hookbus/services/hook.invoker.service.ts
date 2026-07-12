@@ -11,6 +11,37 @@ import { HookCacheService } from '../cache/hook.cache';
 import { createHookLogSession } from '@core/observability/services/hook-log.factory';
 import { runWithHookLog } from '@core/observability/services/hook-log.context';
 
+/** 一个值是否是"空占位": null / undefined / 空串或纯空白串 */
+function isEmptyPlaceholder(element: unknown): boolean {
+  return (
+    element === null ||
+    element === undefined ||
+    (typeof element === 'string' && element.trim() === '')
+  );
+}
+
+/**
+ * 统一归一 payload 里的空占位 —— 低能模型常用 `""` 当"空参"。payload 现为**单对象**约定。规则:
+ * **整个 payload 为空占位 → 空对象 {}** (如 `""`→`{}`, 适配全可选对象的 hook);
+ * **payload 是对象且某些字段为空占位 → 该字段值置 null** (如 `{id:"x",name:""}`→`{id:"x",name:null}`)。
+ * 无空占位则原样返回, 不影响正常 payload。在 schema 校验前统一做。
+ * @keyword-cn 空占位归一, payload序列化
+ * @keyword-en normalize-empty-placeholder, payload-serialize
+ */
+function normalizePayloadEmpties(payload: unknown): unknown {
+  // 整个 payload 是空占位 (含 "" / null / undefined) → 归一为空对象, 适配无参 / 全可选 hook
+  if (isEmptyPlaceholder(payload)) return {};
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    const entries = Object.entries(payload as Record<string, unknown>);
+    if (entries.some(([, v]) => isEmptyPlaceholder(v))) {
+      return Object.fromEntries(
+        entries.map(([k, v]) => [k, isEmptyPlaceholder(v) ? null : v]),
+      );
+    }
+  }
+  return payload;
+}
+
 /**
  * @title Hook 调用器服务
  * @description 串接全局中间件 + 声明级中间件 + 命中的 handler。
@@ -123,23 +154,20 @@ export class HookInvokerService {
   ): Promise<HookResult<R>> {
     const schema = reg.metadata?.payloadSchema;
     if (!schema) return await reg.handler(event);
-    const parsed = schema.safeParse(event.payload);
+    // 统一序列化: 归一空占位 (单值且空→{}, 多值里的空→null); 校验/报错/handler 都用归一后的 payload。
+    const payload = normalizePayloadEmpties(event.payload);
+    const parsed = schema.safeParse(payload);
     if (!parsed.success) {
       // 转一次 JSON Schema, 既用于逐字段取 fieldSchema, 又用于末尾全量兜底展示
       const jsonSchema = this.toJsonSchemaSafe(schema);
       const detail = parsed.error.issues
         .map((i) =>
-          this.formatPayloadSchemaIssue(
-            i.path,
-            i.message,
-            event.payload,
-            jsonSchema,
-          ),
+          this.formatPayloadSchemaIssue(i.path, i.message, payload, jsonSchema),
         )
         .join('; ');
-      // payload=[""] / null 之类 = 你送了空占位, 不是传输层改的; 命中就加一句硬指认, 掐断"平台序列化 bug"的误判
+      // payload 仍含空占位 = 你送了空占位, 不是传输层改的; 命中就加一句硬指认, 掐断"平台序列化 bug"的误判
       const hasEmptyPlaceholder = parsed.error.issues.some((i) => {
-        const actual = this.readPayloadPath(event.payload, i.path);
+        const actual = this.readPayloadPath(payload, i.path);
         return actual === '' || actual === null;
       });
       return {
@@ -148,13 +176,15 @@ export class HookInvokerService {
         error:
           `payload-schema-invalid: ${detail}. ` +
           `→ You built this payload and its shape is wrong. The transport never rewrites, drops, or empties payload — ` +
-          `${hasEmptyPlaceholder ? 'payload=[""] means you literally sent an empty string, ' : ''}` +
+          `${hasEmptyPlaceholder ? 'an empty string "" means you literally sent an empty string, ' : ''}` +
           `this is NOT a platform or serialization bug. ` +
           `For EACH failing field above, read that field's own \`fieldSchema\` and regenerate ONLY that field's value to satisfy it — ` +
           `do not blank the whole object or re-send a placeholder. ` +
-          `payload is a positional-args array — wrap the object arg as payload[0] (e.g. [{...}]), ` +
-          `pass [] for a no-arg hook, never send ""/null/placeholder. ` +
+          `payload is a SINGLE object — send the object directly (e.g. {"id":"..."}), ` +
+          `pass {} (or omit) for a no-arg hook, never send ""/null/placeholder. ` +
           `Do NOT call init_tip / re-discover the hook. ` +
+          `The complete authoritative format for this hook is exactly what \`get_hook_info\` returns as payloadSchema — ` +
+          `it is ALREADY inlined below as expectedPayloadSchema (align every field to it; no need to re-call get_hook_info unless you want to re-confirm). ` +
           `Full structure for reference — expectedPayloadSchema=${this.previewSchemaValue(jsonSchema)}`,
       } as HookResult<R>;
     }

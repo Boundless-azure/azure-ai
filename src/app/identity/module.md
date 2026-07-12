@@ -23,6 +23,12 @@
 - app/identity/controllers/membership.controller.ts
 - app/identity/controllers/permission-definition.controller.ts
 - app/identity/controllers/users.controller.ts
+- app/identity/controllers/principal.hook-controller.ts
+- app/identity/controllers/organization.hook-controller.ts
+- app/identity/controllers/role.hook-controller.ts
+- app/identity/controllers/membership.hook-controller.ts
+- app/identity/controllers/users.hook-controller.ts
+- app/identity/controllers/permission-definition.hook-controller.ts
 - app/identity/enums/principal.enums.ts
 - app/identity/types/identity.types.ts
 - app/identity/identity.module.ts
@@ -60,9 +66,10 @@
 - IdentityComponentsService
   - userTable (@HookComponent) — Web Component Hook: 表格展示用户列表，支持 q/tenantId/type 过滤；经 ctx.callHook('saas.app.identity.userList') 获取数据，组件不碰 URL/token | keywords: user-table-web-component, identity-components, web-component-hook-declaration
   - roleTable (@HookComponent) — Web Component Hook: 表格展示角色列表，支持 q/organizationId 过滤；内置/自定义类型 badge；经 ctx.callHook('saas.app.identity.roleList') 获取数据，组件不碰 URL/token | keywords: role-table-web-component, identity-components
-- Identity Controllers
-  - 每个 RBAC controller 都声明 `@HookController({ pluginName: 'identity', tags: ['identity', <resource>] })`, 方便 `search_hook({ tags:['identity'] })` 发现真实 hook, 避免猜测不存在的 `identity.profile.*`
-  - HookRoute on RBAC CRUD: 全部声明 zod payloadSchema (input 形状), 每个字段带 .describe(), hook-controller 数组形参
+- Identity Hook Controllers（hook 声明层, 与 HTTP controller 解耦; HTTP controller 仅留 @Controller/@Get/@Post/... + @CheckAbility, 不再挂 @HookController/@HookRoute）
+  - 每个 hook-controller 声明 `@Injectable() @HookController({ pluginName: 'identity', tags: ['identity', <resource>] })`, 注入与原 controller 相同的 service/repository
+  - HookRoute: 单对象 payload (args 恰好一个 object schema); id 类型平铺为 { id }; id+body 平铺为 idField.merge(BodySchema); handler 形参 (payload, _principal, context?)
+  - rolePermissionUpsert 的 operatorId 从 context?.principalId 解析 (原 HTTP 用 req.user?.id)
     · 命名遵循 saas.app.identity.<resource><Action>:
     · saas.app.identity.userCount (GET /identity/users/count) — 返回 { count: number }，支持 type/tenantId 过滤
     · saas.app.identity.userList/userCreate/userUpdate/userDelete (× 4)  filter :: q / tenantId / type
@@ -92,9 +99,9 @@ Hook能力中间件 -> app/identity/services/hook.ability-middleware.service.ts
 - RoleService.upsertPermissions -> id_role_upsert_perm_003
 - AbilityService.buildForRoles -> id_ability_build_004
  - AbilityService.buildForPrincipal -> id_ability_build_005
-- RoleController.create(HookRoute) -> id_hook_role_create_010
-- MembershipController.add(HookRoute) -> id_hook_membership_add_011
-- PermissionDefinitionController.create(HookRoute) -> id_hook_perm_def_create_012
+- RoleHookController.create(HookRoute) -> id_hook_role_create_010
+- MembershipHookController.add(HookRoute) -> id_hook_membership_add_011
+- PermissionDefinitionHookController.create(HookRoute) -> id_hook_perm_def_create_012
 - HookAbilityMiddlewareService.onModuleInit -> id_hook_ability_mw_013
 
 模块功能描述（Description）

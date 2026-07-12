@@ -12,6 +12,7 @@ import type {
   CodeGenOrchestrateInput,
   CodeGraphBootstrapEntry,
   CodeGraphBootstrapMetadata,
+  CodeGraphConcreteTargetSummary,
   CodeGraphDependencyCheckResult,
   CodeGraphNewSolutionOption,
   CodeGraphNodeLogger,
@@ -735,11 +736,22 @@ function withTargetBootstrapResult(
   result: CodeGraphTargetBootstrapResult,
   log: CodeGraphTargetBootstrapResult['log'],
 ): CodeGraphDependencyCheckResult {
+  // bootstrap 建好真实 solution/app 后, 把身份 (name/id) 回写进 targetPlan 的 useTarget —— 否则下游
+  // (change-plan.deriveTargetBasePath) 仍按 routing LLM 的 newSolutionOption.name (常是需求全文) 拼路径,
+  // 导致文件写到 `solutions/<需求全文>/...` 而非真实 solution slug。
+  const targetPlan =
+    result.status === 'ready'
+      ? applyBootstrapToTargetPlan(
+          dependencyCheck.context.targetPlan ?? [],
+          result.entries,
+        )
+      : dependencyCheck.context.targetPlan;
   return {
     ...dependencyCheck,
     status: result.status === 'blocked' ? 'blocked' : dependencyCheck.status,
     context: {
       ...dependencyCheck.context,
+      ...(targetPlan ? { targetPlan } : {}),
       targetBootstrap: result.entries,
       code_graph_log: log,
     },
@@ -750,6 +762,41 @@ function withTargetBootstrapResult(
         : dependencyCheck.errors,
     log,
   };
+}
+
+/**
+ * Write the bootstrapped solution/app identity (real name + id) back into each targetPlan target's
+ * useTarget, so downstream nodes build paths from the created Solution slug, not the routing name.
+ * @keyword-cn 身份回写, 目标计划
+ * @keyword-en identity-writeback, target-plan
+ */
+function applyBootstrapToTargetPlan(
+  targetPlan: CodeGraphTargetRouteDecision[],
+  entries: CodeGraphBootstrapEntry[],
+): CodeGraphTargetRouteDecision[] {
+  const appByRoute = new Map(
+    entries
+      .filter((entry) => entry.kind === 'app' && Boolean(entry.routeId))
+      .map((entry) => [entry.routeId as string, entry]),
+  );
+  return targetPlan.map((target) => {
+    const app = appByRoute.get(target.routeId);
+    if (!app) return target;
+    const solutionName = app.solutionName ?? target.useTarget?.solutionName;
+    const solutionId = app.solutionId ?? target.useTarget?.solutionId;
+    const useTarget: CodeGraphConcreteTargetSummary = {
+      id: app.appId ?? target.useTarget?.id ?? target.routeId,
+      action: target.action,
+      name: app.appName ?? target.useTarget?.name ?? target.routeId,
+      ...(solutionId ? { solutionId } : {}),
+      ...(solutionName ? { solutionName } : {}),
+      ...(target.useTarget?.path ? { path: target.useTarget.path } : {}),
+      ...(target.useTarget?.isInitialized !== undefined
+        ? { isInitialized: target.useTarget.isInitialized }
+        : {}),
+    };
+    return { ...target, useTarget };
+  });
 }
 
 /**

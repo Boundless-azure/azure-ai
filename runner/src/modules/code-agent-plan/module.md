@@ -14,7 +14,8 @@ Runner Code-Agent 变更集存储模块 (code-agent-plan)
 
 ## 函数清单 (Function List)
 
-- `RunnerCodeAgentPlanService.ensurePlan(payload)` — 幂等创建/读取计划元数据文档 | keywords: ensure-plan, idempotent
+- `RunnerCodeAgentPlanService.ensurePlan(payload)` — 幂等创建/读取计划元数据文档 (含 scopeRoots 目标根) | keywords: ensure-plan, idempotent
+- `RunnerCodeAgentPlanService.getScopeRoots(planId)` — 读计划声明的目标根 scopeRoots; 供 fs 层围栏并上, 规划前分析也能访问既有目标 (无 task 也不空) | keywords: get-scope-roots, plan-scope
 - `RunnerCodeAgentPlanService.upsertTasks(payload)` — 批量 merge-upsert 变更任务节点 (按 planId+taskId) | keywords: upsert-tasks, partial-upsert
 - `RunnerCodeAgentPlanService.searchTasks(payload)` — 计划内按 taskIds/routeId/hookName 局部搜索任务 | keywords: search-tasks, local-search
 - `RunnerCodeAgentPlanService.upsertTodos(payload)` — 批量 merge-upsert 规划 todo (新增与改状态共用) | keywords: upsert-todos, state-machine
@@ -82,7 +83,7 @@ Runner Code-Agent 变更集存储模块 (code-agent-plan)
 
 ## 模块功能描述 (Module Function Description)
 
-- Runner hook: `runner.app.codeAgentPlan.ensurePlan`, payload `{ planId, sessionId?, runnerId?, requirement?, solutionIds?, status? }`, 幂等创建/读取计划元数据。
+- Runner hook: `runner.app.codeAgentPlan.ensurePlan`, payload `{ planId, sessionId?, runnerId?, requirement?, solutionIds?, scopeRoots?, status? }`, 幂等创建/读取计划元数据; `scopeRoots` = 计划涉及的目标根, 供 fs 层围栏并上 (规划前分析既有目标不再空)。
 - Runner hook: `runner.app.codeAgentPlan.upsertTasks`, payload `{ planId, tasks:[ChangeTaskInput] }`, 批量 merge-upsert 变更任务节点。
 - Runner hook: `runner.app.codeAgentPlan.searchTasks`, payload `{ planId, taskIds?, routeId?, hookName?, limit? }`, 返回 `{ items }` 任务切片。
 - Runner hook: `runner.app.codeAgentPlan.upsertTodos`, payload `{ planId, todos:[PlanTodoInput] }`, 批量 merge-upsert todo。

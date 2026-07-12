@@ -13,6 +13,7 @@
 - app/resource/services/resource.service.ts
 - app/resource/services/resource-sign.service.ts
 - app/resource/controllers/resource.controller.ts
+- app/resource/controllers/resource.hook-controller.ts
 - app/resource/resource.module.ts
 
 函数清单（Function Index）
@@ -32,7 +33,9 @@
 - ResourceSignService (新增)
   - buildAccessPath(id, tenantId) - 构造 /resources/:id?sig=...&tid=... 完整签名 path | keywords: build-signed-path, signed-url
   - verify(id, tenantId, sig) - 时间安全 HMAC 校验, 用于 GET 拦截非法访问 | keywords: verify-resource-sig, timing-safe
-- ResourceController (含 @HookController(plugin=resource, tags=[resource, file]))
+- ResourceHookController (@Injectable @HookController(plugin=resource, tags=[resource, file]); 注册在 module providers)
+  - **hook saas.app.resource.currentSession** - currentSessionResources(payload, _principal, context?); 列出当前聊天会话已上传的资源 (分页); sessionId 由 ctx.extras.sessionId 强制注入, LLM 不能跨会话查; 返回 items[].resourceId 可直接传给 saas.app.storage.createNode | keywords: current-session-resources, paged-list, ctx-driven-session, resource-id-for-llm
+- ResourceController (纯 HTTP, hook 已迁至 ResourceHookController)
   - POST /resources/upload - 简单上传
   - POST /resources/upload/multiple - 多文件上传
   - POST /resources/chunked/init - 分片上传初始化
@@ -40,7 +43,6 @@
   - GET /resources/chunked/status/:uploadId - 查询分片状态
   - POST /resources/chunked/commit - 完成分片上传
   - DELETE /resources/chunked/abort/:uploadId - 取消分片上传
-  - **hook saas.app.resource.currentSession** - 列出当前聊天会话已上传的资源 (分页); sessionId 由 ctx.extras.sessionId 强制注入, LLM 不能跨会话查; 返回 items[].resourceId 可直接传给 saas.app.storage.createNode | keywords: current-session-resources, paged-list, ctx-driven-session, resource-id-for-llm
 - POST /resources/batch/copy - 批量复制（粘贴）
 - GET /resources?sessionId=xxx - 查询资源列表（聊天文件列表使用 resources 表）
 - GET /resources/:id?sig=&tid= - 资源访问（流式+Range）; @Public 兼容 <img> 直链, 但强制要求 sig+tid 签名 (历史无 channelId 资源兼容期免签); 白名单 mime (image非svg / video / audio / pdf) 走 inline, 其它一律 application/octet-stream + attachment; 全局 X-Content-Type-Options: nosniff 阻止 MIME sniff XSS | keywords: signed-access, tenant-isolation, force-download, nosniff

@@ -40,7 +40,7 @@
   - queryUserMessagesByKeywords(userId, keywords, limit, matchMode)：在用户范围内按消息正文 LIKE 查询命中消息。 | keywords: db-query, text-like, content-search
   - queryMessagesByKeywords(sessionId, keywords, limit, matchMode)：在单会话内按消息正文 LIKE 查询命中消息。 | keywords: db-query, text-like, content-search
 - AIModelService
-  - createModelInstance(config, request)：按 provider 创建 LangChain 模型实例；支持 kimi OpenAI 兼容接口与 minimax OpenAI/Anthropic 兼容接口，并把 request.source 写入创建日志。
+  - createModelInstance(config, request)：按 provider 创建 LangChain 模型实例（每次新建、不缓存）；支持 kimi OpenAI 兼容接口与 minimax OpenAI/Anthropic 兼容接口，并把 request.source 写入创建日志。**输出上限 `resolvedMaxTokens` = `request.params?.maxTokens || config.defaultParams?.maxTokens || 4096`** —— 调用方 per-call `params.maxTokens` 优先并在**构造期**生效（tool-calling/createAgent 路径也可靠），供写整份文件/长规划这类调用加预算，避开 4096 兜底被 `finish=max_tokens` 截断成空 content。
   - chat(request)：非流式模型调用；支持 isolateCallbacks 给后台任务隔离 LangChain callbacks，避免继承已关闭的流式 writer；日志包含 request.source 用于区分 graph 节点、对话和后台摘要；回填 finishReason；**content 为空时打 `[chat:empty-content]` 诊断日志**(finish/akKeys/reasoning_content 长度+预览)，便于排查 reasoning 模型正文错位或截断。
   - extractMessageText(content)：从 string 或 content block 数组提取非流式响应正文。 | keywords: message-text, content-blocks, non-stream-response
   - readFinishReason(msg)：读助手消息的 finish_reason/stop_reason，供上层判断截断/正常停。 | keywords: finish-reason, truncation-diagnostic

@@ -37,6 +37,8 @@ const translations = {
       runners: 'Runner Management',
       tasks: 'Task List',
       todos: 'Todo List',
+      // AGENT-MONITOR-TEMP (grep AGENT-MONITOR-TEMP)
+      codeGraphMonitor: 'Code Agent Monitor',
       more: 'More',
       logs: 'System Logs',
       backup: 'Backups',
@@ -410,6 +412,8 @@ const translations = {
       runners: 'Runner管理',
       tasks: '任务列表',
       todos: '待办事项',
+      // AGENT-MONITOR-TEMP (grep AGENT-MONITOR-TEMP)
+      codeGraphMonitor: 'Code Agent 监听',
       more: '更多菜单',
       logs: '系统日志',
       backup: '备份管理',

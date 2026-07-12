@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SolutionController } from './controllers/solution.controller';
+import { SolutionHookController } from './controllers/solution.hook-controller';
 import { SolutionService } from './services/solution.service';
 import { SolutionEntity } from './entities/solution.entity';
 import { SolutionPurchaseEntity } from './entities/solution-purchase.entity';
@@ -19,7 +20,7 @@ import { RunnerModule } from '@/app/runner/runner.module';
     RunnerModule,
   ],
   controllers: [SolutionController],
-  providers: [SolutionService],
+  providers: [SolutionService, SolutionHookController],
   exports: [SolutionService],
 })
 export class SolutionModule {}

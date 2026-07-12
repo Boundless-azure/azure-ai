@@ -1,0 +1,163 @@
+import { Injectable } from '@nestjs/common';
+import { z } from 'zod';
+import {
+  HookController,
+  HookRoute,
+} from '@/core/hookbus/decorators/hook-controller.decorator';
+import type { HookInvocationContext } from '@/core/hookbus/types/hook.types';
+import { PrincipalService } from '../services/principal.service';
+import { CheckAbility } from '../decorators/check-ability.decorator';
+import type {
+  QueryPrincipalDto,
+  CreatePrincipalDto,
+  UpdatePrincipalDto,
+} from '../types/identity.types';
+
+/**
+ * @title Principal Hook payload schema (input 形状, SSOT)
+ * @description 单对象 payload; id+body 已平铺进对象 (id+body → { id, ...body })。
+ * @keywords-cn PrincipalHook, payloadSchema, input, 单对象payload
+ * @keywords-en principal-hook, payload-schema, input, single-object-payload
+ */
+const principalTypeSchema = z
+  .enum(['user', 'user_consumer', 'official_account', 'agent', 'system'])
+  .describe(
+    '主体类型 :: user=企业用户, user_consumer=消费者用户, official_account=官方账号, agent=AI 智能体, system=系统账号',
+  );
+
+const onRbacPrincipalListInput = z.object({
+  q: z
+    .string()
+    .optional()
+    .describe('模糊匹配 displayName / email / phone (LIKE %q%)'),
+  type: principalTypeSchema.optional().describe('按主体类型过滤'),
+  tenantId: z
+    .string()
+    .optional()
+    .describe('按所属租户/组织 ID 过滤 (Principal.tenantId)'),
+});
+
+const onRbacPrincipalCreateInput = z.object({
+  displayName: z.string().describe('主体显示名'),
+  principalType: principalTypeSchema,
+  avatarUrl: z.string().nullable().optional().describe('头像 URL'),
+  email: z.string().nullable().optional().describe('主邮箱, 系统账号建议保留'),
+  phone: z.string().nullable().optional().describe('联系电话'),
+  tenantId: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('归属租户/组织 ID; null 表示平台级 (跨租户)'),
+});
+
+const onRbacPrincipalUpdateInput = z.object({
+  displayName: z.string().optional(),
+  avatarUrl: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  active: z
+    .boolean()
+    .optional()
+    .describe('启用/停用; false 不会软删, 仅冻结登录'),
+});
+
+const idField = z.object({
+  id: z.string().describe('主体 principal_id (UUID)'),
+});
+
+const PrincipalUpdateHookSchema = idField.merge(onRbacPrincipalUpdateInput);
+
+/**
+ * @title Principal Hook Controller
+ * @description principal 控制器的 hook 声明层 (单对象 payload); 从 PrincipalController 迁出, HTTP 与 hook 解耦。
+ * @keywords-cn 主体Hook声明, 单对象payload
+ * @keywords-en principal-hook-controller, single-object-payload
+ */
+@Injectable()
+@HookController({ pluginName: 'identity', tags: ['identity', 'principal'] })
+export class PrincipalHookController {
+  constructor(private readonly principalService: PrincipalService) {}
+
+  /**
+   * RBAC 主体列表查询 (含全部 principalType)。
+   * @keyword-cn 主体列表, 查询
+   * @keyword-en principal-list, list-principals
+   */
+  @HookRoute({
+    hook: 'saas.app.identity.principalList',
+    description:
+      'RBAC 主体列表查询 (含全部 principalType) :: 按 q 模糊匹配 displayName/email/phone, 按 type 限定主体类型, 按 tenantId 限定租户; 仅返回未软删主体; 单次最多 500 条',
+    args: [onRbacPrincipalListInput],
+  })
+  @CheckAbility('read', 'principal')
+  async list(
+    payload: QueryPrincipalDto,
+    _principal: unknown,
+    _context?: HookInvocationContext,
+  ) {
+    return await this.principalService.list(payload);
+  }
+
+  /**
+   * RBAC 主体创建。
+   * @keyword-cn 主体创建, 新增
+   * @keyword-en principal-create, create-principal
+   */
+  @HookRoute({
+    hook: 'saas.app.identity.principalCreate',
+    description:
+      'RBAC 主体创建 :: 仅插 principals 表, 不创建关联 user/agent 记录; 创建普通用户应改用 saas.app.identity.userCreate, 创建 Agent 应改用 saas.app.agent.* 系列 hook',
+    args: [onRbacPrincipalCreateInput],
+  })
+  @CheckAbility('create', 'principal')
+  async create(
+    payload: CreatePrincipalDto,
+    _principal: unknown,
+    _context?: HookInvocationContext,
+  ) {
+    return await this.principalService.create(payload);
+  }
+
+  /**
+   * RBAC 主体更新。
+   * @keyword-cn 主体更新, 改资料
+   * @keyword-en principal-update, update-principal
+   */
+  @HookRoute({
+    hook: 'saas.app.identity.principalUpdate',
+    description:
+      'RBAC 主体更新 :: 主要用于改 displayName/avatar/contact 与启停; 仅写 principals 表, 不动关联 user/agent',
+    args: [PrincipalUpdateHookSchema],
+  })
+  @CheckAbility('update', 'principal')
+  async update(
+    payload: z.infer<typeof PrincipalUpdateHookSchema>,
+    _principal: unknown,
+    _context?: HookInvocationContext,
+  ) {
+    const { id, ...body } = payload;
+    await this.principalService.update(id, body as UpdatePrincipalDto);
+    return { success: true } as const;
+  }
+
+  /**
+   * RBAC 主体软删除。
+   * @keyword-cn 主体删除, 软删
+   * @keyword-en principal-delete, soft-delete
+   */
+  @HookRoute({
+    hook: 'saas.app.identity.principalDelete',
+    description:
+      'RBAC 主体软删除 :: 仅 principals 表 isDelete=true + active=false; 关联的 membership/user/agent 不会级联清理, 业务层需自行处理',
+    args: [idField],
+  })
+  @CheckAbility('delete', 'principal')
+  async delete(
+    payload: { id: string },
+    _principal: unknown,
+    _context?: HookInvocationContext,
+  ) {
+    await this.principalService.delete(payload.id);
+    return { success: true } as const;
+  }
+}

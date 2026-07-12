@@ -270,7 +270,8 @@ export class AuthService {
   private async emitAuthHook(name: string, payload: Record<string, unknown>) {
     if (!this.hookBus) return;
     try {
-      await this.hookBus.emit({ name, payload: [payload] });
+      // 单对象 payload 约定 (与 @HookRoute 迁移后对齐; 不再包数组)
+      await this.hookBus.emit({ name, payload });
     } catch {
       return;
     }

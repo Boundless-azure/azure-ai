@@ -123,9 +123,8 @@ Jest 额外 mock :: `^uuid$  →  test/mocks/uuid.ts`  (ESM uuid 需 mock).
                     │  tools auto-inject      │
                     │  ┌──────────────────┐   │
                     └──┤ call_hook         ├──┘
-                       │ call_hook_async   │
-                       │ call_hook_batch_sync
                        │ call_hook_batch   │
+                       │ (payload: 单对象) │
                        └──────────────────┘
              强制注入每个加载的 Agent tool set
 ```

@@ -10,6 +10,7 @@
 - app/task/types/task.types.ts
 - app/task/services/task.service.ts
 - app/task/controllers/task.controller.ts
+- app/task/controllers/task.hook-controller.ts
 - app/task/task.module.ts
 
 函数清单（Function Index）
@@ -25,12 +26,19 @@
   - POST /task — 任务创建 | keywords: task-create, task-controller, task-write
   - PUT /task/:id — 任务更新 | keywords: task-update, task-controller, task-write
   - DELETE /task/:id — 任务删除 | keywords: task-delete, task-controller, task-write
+- TaskHookController (单对象 payload; @HookController pluginName=task)
+  - list(payload) — saas.app.task.list 任务列表查询 | keywords: list-tasks, task-query
+  - get(payload) — saas.app.task.get 任务详情 ({ id }) | keywords: get-task, read-detail
+  - create(payload) — saas.app.task.create 任务创建 | keywords: create-task, task-write
+  - update(payload) — saas.app.task.update 任务更新 ({ id, ...body }) | keywords: update-task, task-write
+  - delete(payload) — saas.app.task.delete 任务软删除 ({ id }) | keywords: delete-task, soft-delete
 
 关键词索引（中文 / English Keyword Index）
 任务实体 -> app/task/entities/task.entity.ts
 任务请求类型 -> app/task/types/task.types.ts
 任务服务 -> app/task/services/task.service.ts
 任务控制器 -> app/task/controllers/task.controller.ts
+任务Hook控制器 / task-hook-controller -> app/task/controllers/task.hook-controller.ts
 任务模块 -> app/task/task.module.ts
 
 模块功能描述（Description）

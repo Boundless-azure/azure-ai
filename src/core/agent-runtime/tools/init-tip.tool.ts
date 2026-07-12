@@ -157,9 +157,9 @@ export function buildInitTipTool(
         '    · no loops: 整 turn search + info 合计 ≤ 3 次, 超过强行 commit\n' +
         '    · no skip: ①→②→③→④→⑤ 顺序, 不跳步\n' +
         '    · must sendMsg: 业务/知识完成后必发 sendMsg, 否则消息丢失\n' +
-        '    · no guess: hook 名/payload 不许凭记忆猜 — 名字照 search/info 真实返回填 (漏段→hook-not-found 带 Did-you-mean), payload 照 payloadSchema 填, payload[0] 要对象就传对象, 不塞空串/占位\n' +
+        '    · no guess: hook 名/payload 不许凭记忆猜 — 名字照 search/info 真实返回填 (漏段→hook-not-found 带 Did-you-mean), payload 是单对象照 payloadSchema 逐字段填 (id+body 平铺 { id, ...body }), 无参传 {}, 不塞空串/占位\n' +
         '- tipNote :: 一句话本轮总览, 按 declared 强调走哪条; 两种情境会改写它:\n' +
-        '    · **callLog 复用** :: needHook 且本会话之前轮次已有成功调用 (返回带 hasCallHistory:true) → tipNote 改提示"先 call_hook callHistory.query [{}] 复用近期成功调用, 不必每轮重走完整发现链路". 命中后 { id, includeDetail:true } 取详情复用 payload.\n' +
+        '    · **callLog 复用** :: needHook 且本会话之前轮次已有成功调用 (返回带 hasCallHistory:true) → tipNote 改提示"先 call_hook callHistory.query {} 复用近期成功调用, 不必每轮重走完整发现链路". 命中后 { id, includeDetail:true } 取详情复用 payload.\n' +
         '    · **主动消息发送提醒** :: 主动对话模式 (返回带 proactive:true, 用户尚未说话) → tipNote 前置提醒: 本轮必须 call_hook saas.app.conversation.sendMsg 主动发消息, 否则用户收不到任何内容.\n' +
         '⚠ **先看 directHooks**: 想知道对方身份 / IP / 时间, 直接调 currentSession.context, 不要走 hook 发现链路 (它注册在 conversation 命名空间, search 按 identity/user 标签找不到).\n' +
         '⚠ **回看历史走 history 链路**: 不要从 18 条窗口外硬猜, 也不要凭训练记忆瞎答 "我们之前聊到...". 走 smartTags → smartSearch → smartMessages 三步拿真实的过往对话。\n' +

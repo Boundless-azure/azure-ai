@@ -102,6 +102,10 @@ export class AIModelService implements OnModuleInit {
       let model: ChatOpenAI | ChatAnthropic | ChatGoogleGenerativeAI;
       const aiConf: AIConfig = loadAIConfigFromEnv();
       const maxRetries = aiConf.client.maxRetries;
+      // 输出上限: 调用方 params.maxTokens 优先 (让写整份文件/长规划这类调用能加预算, 避开 finish=max_tokens
+      // 截断成空 content), 其次模型配置 defaultParams.maxTokens, 最后兜底 4096。实例每次新建、不缓存, 不会串。
+      const resolvedMaxTokens =
+        request.params?.maxTokens || config.defaultParams?.maxTokens || 4096;
       // 代理已在 onModuleInit 通过 applyAIProxyFetchOverride 全局生效，无需在此重复设置
       // thinking 模式 :: 独立 boolean 列 (thinking_enabled), enabled=true 时各 provider 用合理默认值
       //  - Anthropic Claude 4.x :: budget_tokens = 4096
@@ -141,7 +145,7 @@ export class AIModelService implements OnModuleInit {
             openAIApiKey: config.apiKey,
             modelName: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
-            maxTokens: config.defaultParams?.maxTokens || 4096,
+            maxTokens: resolvedMaxTokens,
             __includeRawResponse: true,
             ...(openaiReasoningKwargs && {
               modelKwargs: openaiReasoningKwargs,
@@ -161,7 +165,7 @@ export class AIModelService implements OnModuleInit {
               apiKey: config.apiKey,
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
-              maxTokens: config.defaultParams?.maxTokens || 4096,
+              maxTokens: resolvedMaxTokens,
               __includeRawResponse: true,
               configuration: { baseURL },
             } as ConstructorParameters<typeof ChatOpenAI>[0] & {
@@ -177,7 +181,7 @@ export class AIModelService implements OnModuleInit {
             model = new KimiChatOpenAI({
               apiKey: config.apiKey,
               modelName: config.name,
-              maxTokens: config.defaultParams?.maxTokens || 4096,
+              maxTokens: resolvedMaxTokens,
               __includeRawResponse: true,
               modelKwargs: {
                 thinking: { type: thinkingEnabled ? 'enabled' : 'disabled' },
@@ -199,7 +203,7 @@ export class AIModelService implements OnModuleInit {
                 anthropicApiKey: config.apiKey,
                 modelName: config.name,
                 temperature: config.defaultParams?.temperature || 0.7,
-                maxTokens: config.defaultParams?.maxTokens || 4096,
+                maxTokens: resolvedMaxTokens,
                 maxRetries,
                 ...(anthropicThinkingKwargs && {
                   modelKwargs: anthropicThinkingKwargs,
@@ -212,7 +216,7 @@ export class AIModelService implements OnModuleInit {
                 apiKey: config.apiKey,
                 modelName: config.name,
                 temperature: config.defaultParams?.temperature || 0.7,
-                maxTokens: config.defaultParams?.maxTokens || 4096,
+                maxTokens: resolvedMaxTokens,
                 __includeRawResponse: true,
                 modelKwargs: {
                   reasoning_split: true,
@@ -235,7 +239,7 @@ export class AIModelService implements OnModuleInit {
               apiKey: config.apiKey,
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
-              maxTokens: config.defaultParams?.maxTokens || 4096,
+              maxTokens: resolvedMaxTokens,
               __includeRawResponse: true,
               modelKwargs: nvidiaThinkingKwargs,
               configuration: { baseURL },
@@ -250,7 +254,7 @@ export class AIModelService implements OnModuleInit {
               apiKey: config.apiKey,
               modelName: config.name,
               temperature: config.defaultParams?.temperature || 0.7,
-              maxTokens: config.defaultParams?.maxTokens || 4096,
+              maxTokens: resolvedMaxTokens,
               __includeRawResponse: true,
               ...(openaiReasoningKwargs && {
                 modelKwargs: openaiReasoningKwargs,
@@ -269,7 +273,7 @@ export class AIModelService implements OnModuleInit {
             anthropicApiKey: config.apiKey,
             modelName: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
-            maxTokens: config.defaultParams?.maxTokens || 4096,
+            maxTokens: resolvedMaxTokens,
             maxRetries,
             ...(anthropicThinkingKwargs && {
               modelKwargs: anthropicThinkingKwargs,
@@ -285,7 +289,7 @@ export class AIModelService implements OnModuleInit {
             apiKey: config.apiKey,
             model: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
-            maxOutputTokens: config.defaultParams?.maxTokens || 4096,
+            maxOutputTokens: resolvedMaxTokens,
             ...(geminiThinkingKwargs && { modelKwargs: geminiThinkingKwargs }),
           });
           break;
@@ -295,7 +299,7 @@ export class AIModelService implements OnModuleInit {
             apiKey: config.apiKey,
             model: config.name,
             temperature: config.defaultParams?.temperature || 0.7,
-            maxOutputTokens: config.defaultParams?.maxTokens || 4096,
+            maxOutputTokens: resolvedMaxTokens,
             ...(geminiThinkingKwargs && { modelKwargs: geminiThinkingKwargs }),
           });
           break;
@@ -310,7 +314,7 @@ export class AIModelService implements OnModuleInit {
                 anthropicApiKey: config.apiKey,
                 modelName: config.name,
                 temperature: config.defaultParams?.temperature || 0.7,
-                maxTokens: config.defaultParams?.maxTokens || 4096,
+                maxTokens: resolvedMaxTokens,
                 maxRetries,
                 ...(anthropicThinkingKwargs && {
                   modelKwargs: anthropicThinkingKwargs,
@@ -324,7 +328,7 @@ export class AIModelService implements OnModuleInit {
                 apiKey: config.apiKey,
                 modelName: config.name,
                 temperature: config.defaultParams?.temperature || 0.7,
-                maxTokens: config.defaultParams?.maxTokens || 4096,
+                maxTokens: resolvedMaxTokens,
                 __includeRawResponse: true,
                 ...(openaiReasoningKwargs && {
                   modelKwargs: openaiReasoningKwargs,
@@ -533,7 +537,9 @@ export class AIModelService implements OnModuleInit {
       str = String(value);
     }
     if (!str) return str;
-    return str.length > max ? `${str.slice(0, max)}…(+${str.length - max})` : str;
+    return str.length > max
+      ? `${str.slice(0, max)}…(+${str.length - max})`
+      : str;
   }
 
   /**

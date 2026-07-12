@@ -19,14 +19,18 @@ export type ChangePlanTodoStatus = (typeof CHANGE_PLAN_TODO_STATUS)[number];
  * @title Change-plan todo types
  * @description Kinds of planning work units the code-driven loop tracks.
  *   plan-target: decide create files/hooks for one target; resolve-edge: ground an unresolved
- *   call/compatible edge; fix-validation: repair a validation issue.
+ *   call/compatible edge; fix-validation: repair a validation issue; contract-review: a code-forced
+ *   dedicated pass to declare cross-file coupling contracts once files are planned.
  * @keyword-cn todo类型, 规划工作单元
  * @keyword-en todo-type, planning-work-unit
  */
 export const CHANGE_PLAN_TODO_TYPES = [
+  'analyze-target',
   'plan-target',
   'resolve-edge',
   'fix-validation',
+  'generate-file',
+  'contract-review',
 ] as const;
 export type ChangePlanTodoType = (typeof CHANGE_PLAN_TODO_TYPES)[number];
 
@@ -37,9 +41,11 @@ export type ChangePlanTodoType = (typeof CHANGE_PLAN_TODO_TYPES)[number];
  * @keyword-en loop-limit, search-limit
  */
 export const CHANGE_PLAN_LIMITS = {
+  // code 驱动外循环的最大轮数 (每轮 = 一次 LLM 工具调用 + code 重算边)
   maxIterations: 12,
-  maxSearchRequestsPerTurn: 4,
   existingHookSearchLimit: 60,
+  // 单轮工具调用的输出预算: 一轮可能 upsert 很多文件 (每个一次 tool call), 4096 兜底会截断; per-call 覆盖模型默认
+  maxTokens: 16000,
 } as const;
 
 /**
@@ -84,6 +90,8 @@ export type SaasHookBusLike = {
 export type SelectedManuals = {
   bookIds: string[];
   manualText: string;
+  /** 选中书本的章节目录 (id+title); change-plan 让 LLM 按文件选章, dispatch 按选中章加载正文 */
+  chapters?: Array<{ id: string; title: string }>;
   /** 面向用户的本地化告知文案：选用了哪本手册/按什么规范来搭 (语言跟随需求) */
   notice?: string;
 };
@@ -96,57 +104,96 @@ const HookContractInputSchema = z.object({
   compatibleWith: z.array(z.string()).optional(),
 });
 
-const ChangeTaskInputSchema = z.object({
+/**
+ * @title upsert_task tool input
+ * @description `upsert_task` 工具的入参 = 要创建的一个新文件 (create-only)。unit 文件带其 hook 契约;
+ *   复用同一 taskId 即更新。不再是"大 JSON 一次返回", 而是 LLM 逐个调用工具构建。
+ * @keyword-cn 任务工具入参, 变更任务
+ * @keyword-en task-tool-input, change-task
+ */
+export const ChangeTaskInputSchema = z.object({
   taskId: z.string().optional(),
   routeId: z.string().optional(),
   targetId: z.string().optional(),
   solutionId: z.string().optional(),
   action: z.enum(CODE_GRAPH_ACTION_VALUES).optional(),
+  /** create = 新建文件 (默认); modify = 就地修改一个已存在的文件 (二次修改, 用 search_by_tag 先定位) */
+  op: z.enum(['create', 'modify']).optional(),
   path: z.string().min(1),
   summary: z.string().optional(),
   hooks: z.array(HookContractInputSchema).optional(),
   dependsOn: z.array(z.string()).optional(),
+  /** 生成本文件时要参考的手册章节 id (从 targets 上方的 chapter catalog 里挑; 只选真正相关的, 别全选) */
+  chapters: z.array(z.string()).optional(),
   reason: z.string().optional(),
 });
 
-const TodoUpdateInputSchema = z.object({
-  todoId: z.string().min(1),
-  status: z.enum(CHANGE_PLAN_TODO_STATUS),
-  note: z.string().optional(),
-});
-
-const TodoAddInputSchema = z.object({
-  todoId: z.string().min(1),
-  type: z.enum(CHANGE_PLAN_TODO_TYPES).optional(),
-  title: z.string().optional(),
-  refTaskId: z.string().optional(),
-  refHook: z.string().optional(),
-});
-
-const SearchRequestInputSchema = z.object({
-  query: z.string().min(1),
-  solutionId: z.string().optional(),
+/**
+ * @title declare_contract tool input
+ * @description `declare_contract` 工具的入参 = 一份跨文件共享约定 (锚点id/事件名/共享class/payload 形状…),
+ *   挂在参与的 taskIds 上; spec 写协定好的具体值/名字/形状, 生成时注入每个参与文件。
+ * @keyword-cn 契约工具入参, 联动契约
+ * @keyword-en contract-tool-input, coupling-contract
+ */
+export const ContractInputSchema = z.object({
+  contractId: z.string().min(1),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  spec: z.unknown().optional(),
+  taskIds: z.array(z.string()),
 });
 
 /**
- * @title Change-plan LLM turn payload
- * @description Strict JSON one outer-loop turn must return: new/updated tasks, todo state changes,
- *   existing-hook search requests, and an optional user notice. Code executes all of it.
- * @keyword-cn LLM动作payload, 变更集
- * @keyword-en llm-turn-payload, change-plan
+ * @title Dependency decision payload
+ * @description change-plan 的依赖判定 LLM 输出: 每个 app 目标要 add(引入)/remove(移除) 哪些 npm 包。
+ * @keyword-cn 依赖判定, LLM输出
+ * @keyword-en dependency-decision, llm-output
  */
-export const ChangePlanTurnSchema = z.object({
-  tasks: z.array(ChangeTaskInputSchema).optional(),
-  todoUpdates: z.array(TodoUpdateInputSchema).optional(),
-  todoAdds: z.array(TodoAddInputSchema).optional(),
-  searchRequests: z.array(SearchRequestInputSchema).optional(),
-  notice: z.string().optional(),
+export const DepDecisionSchema = z.object({
+  targets: z
+    .array(
+      z.object({
+        routeId: z.string(),
+        add: z.array(z.string()).optional(),
+        remove: z.array(z.string()).optional(),
+      }),
+    )
+    .optional(),
 });
+export type DepDecisionPayload = z.infer<typeof DepDecisionSchema>;
 
-export type ChangePlanTurnPayload = z.infer<typeof ChangePlanTurnSchema>;
+/**
+ * @title record_analysis tool input
+ * @description `record_analysis` 工具的入参 = 对一个既有 (二次修改) 目标的**分析结论**: 把需求拆成若干变更意图
+ *   (intent), 每个意图指向经代码搜索**定位到的既有文件** (files) + 一句判断 (note)。规划 modify 前的强制产物。
+ * @keyword-cn 分析结论入参, 需求代码分析
+ * @keyword-en record-analysis-input, requirement-code-analysis
+ */
+export const RecordAnalysisInputSchema = z.object({
+  routeId: z.string().optional(),
+  findings: z
+    .array(
+      z.object({
+        intent: z.string().min(1),
+        files: z.array(z.string()).optional(),
+        note: z.string().optional(),
+      }),
+    )
+    .min(1),
+});
+export type RecordAnalysisInput = z.infer<typeof RecordAnalysisInputSchema>;
+
+/**
+ * @title Analysis finding
+ * @description 一条落库的分析结论: 一个变更意图 + 定位到的既有文件 + 判断; 注入 plan-target 提示让规划有据。
+ * @keyword-cn 分析结论, 变更意图
+ * @keyword-en analysis-finding, change-intent
+ */
+export type AnalysisFinding = {
+  intent: string;
+  files: string[];
+  note?: string;
+};
+
 export type ChangePlanTaskInput = z.infer<typeof ChangeTaskInputSchema>;
-export type ChangePlanTodoUpdateInput = z.infer<typeof TodoUpdateInputSchema>;
-export type ChangePlanTodoAddInput = z.infer<typeof TodoAddInputSchema>;
-export type ChangePlanSearchRequestInput = z.infer<
-  typeof SearchRequestInputSchema
->;
+export type ContractInput = z.infer<typeof ContractInputSchema>;

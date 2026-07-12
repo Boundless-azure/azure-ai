@@ -16,9 +16,12 @@
 
 新增服务/文件
 
-- controllers/conversation.controller.ts：Conversation REST + smartTags/smartSearch/smartMessages 分层历史检索 HookRoute
-- controllers/im.controller.ts：IM REST + saas.app.conversation.sendMsg HookRoute（主动对话模式）
-- controllers/webmcp.gateway.ts：WebMCP Socket.IO 网关（namespace /webmcp）+ WebMCP HookRoute
+- controllers/conversation.controller.ts：Conversation REST（chat/sessions/history/checkpoints）; smart 历史检索 HookRoute 已迁至 conversation-smart.hook-controller.ts, 仅保留 smartTagsSchema/smartSearchSchema/smartMessagesSchema/flattenKeywords 导出 (SSOT)
+- controllers/conversation-smart.hook-controller.ts：smartTags/smartSearch/smartMessages 三步分层历史检索 HookController（单对象 payload, 注入 chat_session_smart / chat_message 仓库）
+- controllers/im.controller.ts：IM REST（会话/成员/公告/消息）; saas.app.conversation.sendMsg HookRoute 已迁至 im-extra.hook-controller.ts, 仅保留 sendMsgSchema 导出 (SSOT)
+- controllers/im-extra.hook-controller.ts：saas.app.conversation.sendMsg 主动发消息 HookController（单对象 payload, 注入 ImMessageService, sessionId 从 ctx.extras 补 / senderPrincipalId 由 ctx.principalId 强制覆盖）
+- controllers/webmcp.gateway.ts：WebMCP Socket.IO 网关（namespace /webmcp, 连接鉴权 + register/call_result 事件 + 内存 socket 映射）; WebMCP HookRoute 已迁至 webmcp.hook-controller.ts, 网关暴露 resolveSocket/sendCall/sendCallAndWait/getSocketIdBySession 供其委托
+- controllers/webmcp.hook-controller.ts：webControl/webControlPageinfo/webControlData/webControlStatus HookController（单对象 payload, 注入 WebMcpGateway + WebMcpSessionDataService）
 - services/webmcp-session-data.service.ts：会话扩展数据 CRUD
 - services/ai-session-data.service.ts：session_data CRUD + category 派生 (handbook/directive/preference/recipe/legacy/general) + handbook 按 owner 过滤
 - controllers/ai-session-data.hook-controller.ts：sessionData.save/get/list/delete HookController, list 按 category 分组渲染
@@ -35,7 +38,7 @@
 - controllers/code-agent-choice.hook-controller.ts：code-agent 依赖选择提交 HookController; 写入 chat_sessions.metadata.codeAgent.dependencyChoice/latest 与 dependencyChoices keyed map，同步 chooseActions/routePlan 到 agent principal 作用域 currentSession，并通过 `Command({ resume })` 恢复 LangGraph thread | keywords: code-agent-choice-submit, dependency-selection, session-metadata, checkpoint-resume
 - services/code-agent-choice-components.service.ts：code-agent 依赖选择卡片 HookComponent; 用户按 routePlan step 逐项确认 Solution/action 后经 ctx.callHook 提交选择和 LangGraph thread/checkpoint 引用 | keywords: code-agent-choice-card, dependency-check, web-component-hook-declaration
 
-Hook 注册（由 HookControllerExplorerService 自动发现, 全部通过 `@HookRoute(args)` 声明数组形参 schema, 命名遵循 platform.app.module.action）
+Hook 注册（由 HookControllerExplorerService 自动发现, 全部通过 `@HookRoute(args)` 声明**单对象 payload** schema (args[0]), 命名遵循 platform.app.module.action）
 
 - HookController tags 覆盖常用发现入口: conversation / im / message / history / webmcp / session-data / call-log
 - saas.app.conversation.webControl — 向前端发送 data/emit 调用 (sessionId / type / payload / timeout?)
@@ -193,9 +196,9 @@ Summary 接口
 - IM 系统消息 ↔ im system message ↔ services/im-message.service.ts
 - IM 通讯录分组 ↔ im contact groups ↔ controllers/im-contact-group.controller.ts
 - IM 分组成员维护 ↔ im contact group members ↔ services/im-contact-group.service.ts
-- WebMCP Hook ↔ webmcp hook ↔ controllers/webmcp.gateway.ts
-- 主动发消息 Hook ↔ send message hook ↔ controllers/im.controller.ts
-- Smart历史检索 Hook ↔ smart history hook ↔ controllers/conversation.controller.ts
+- WebMCP Hook ↔ webmcp hook ↔ controllers/webmcp.hook-controller.ts (schema/handler); controllers/webmcp.gateway.ts (socket 映射委托)
+- 主动发消息 Hook ↔ send message hook ↔ controllers/im-extra.hook-controller.ts (schema/sendMsgSchema 在 im.controller.ts 导出)
+- Smart历史检索 Hook ↔ smart history hook ↔ controllers/conversation-smart.hook-controller.ts (schema/flattenKeywords 在 conversation.controller.ts 导出)
 - Smart历史分段写入 ↔ smart history segment writer ↔ services/chat-session-smart.service.ts (scheduleAnalyze / analyzeSession; 按模型阈值 + LLM 摘要回退规则)
 - 会话级互斥锁 ↔ session-level mutex ↔ services/session-lock.service.ts (runExclusive)
 - LLM 摘要生成 ↔ llm summary keyword generator ↔ services/smart-llm-generator.service.ts (generate)
@@ -273,7 +276,7 @@ Summary 接口
 - ImContactGroupController.removeMember -> im_cg_members_remove_025
 - ImContactGroupService.listGroups -> im_cg_svc_list_026
 - ImContactGroupService.addMembers -> im_cg_svc_add_027
-- ImController.handleSendMsg(payload, \_principal, context) — 主动对话 sendMsg hook; LLM context.extras.triggerMessageId 优先绑定 replyToId, 无 LLM context 时沿用 payload.replyToId | keywords: send-msg, proactive, reply-to-id -> im_hook_send_msg_028
+- ImExtraHookController.handleSendMsg(payload, \_principal, context) — 主动对话 sendMsg HookController (从 ImController 迁出); LLM context.extras.triggerMessageId 优先绑定 replyToId, 无 LLM context 时沿用 payload.replyToId; sessionId 从 ctx.extras 补, senderPrincipalId 由 ctx.principalId 强制覆盖 | keywords: send-msg, proactive, reply-to-id -> im_hook_send_msg_028
 - CodeAgentChoiceHookController() — code-agent 选择提交 HookController, 负责 session metadata/currentSession 写入和 LangGraph resume 异步调度 | keywords: code-agent-choice, session-metadata, hook-controller -> code_agent_choice_controller_000
 - CodeAgentChoiceHookController.handleSubmit(payload, \_principal, context) — code-agent 依赖选择提交 hook, 写入 session metadata/currentSession 并异步调度恢复 graph | keywords: code-agent-choice-submit, dependency-selection -> code_agent_choice_submit_001
 - CodeAgentChoiceHookController.handleState(payload, \_principal, context) — code-agent 依赖选择卡片刷新时读取 metadata 中的已提交状态 | keywords: code-agent-choice-state, session-metadata -> code_agent_choice_state_010
@@ -297,13 +300,15 @@ Summary 接口
 - normalizeStringArray(values) — 归一化可选模型 ID 数组 | keywords: field-normalize, model-ids -> code_agent_choice_model_ids_009
 - CodeAgentChoiceComponentsService() — code-agent 选择卡片 HookComponent 声明服务 | keywords: code-agent-components, choice-card, web-component-hook -> code_agent_choice_components_000
 - CodeAgentChoiceComponentsService.dependencyChoice (@HookComponent) — 渲染 code-agent routePlan step 选择卡片，逐项确认 Solution/newSolutionOption 与 app/unit/data-point action，刷新时通过 codeAgentChoiceState 回填已提交状态并提交到 codeAgentChoiceSubmit | keywords: code-agent-choice-card, dependency-check -> code_agent_choice_component_005
-- WebMcpGateway.handleWebControl -> webmcp_hook_control_029
-- WebMcpGateway.handleWebControlPageInfo -> webmcp_hook_page_info_030
-- WebMcpGateway.handleWebControlData -> webmcp_hook_data_031
-- WebMcpGateway.handleWebControlStatus -> webmcp_hook_status_032
-- ConversationController.handleSmartTags -> conv_hook_smart_tags_033
-- ConversationController.handleSmartSearch -> conv_hook_smart_search_034
-- ConversationController.handleSmartMessages -> conv_hook_smart_messages_035
+- WebMcpGateway.resolveSocket(sessionId) — 优先内存映射再回退 DB 取最新 socketId; 供 WebMcpHookController 委托 | keywords: resolve-socket-id -> webmcp_gateway_resolve_socket_028b
+- WebMcpHookController.handleWebControl -> webmcp_hook_control_029
+- WebMcpHookController.handleWebControlPageInfo -> webmcp_hook_page_info_030
+- WebMcpHookController.handleWebControlData -> webmcp_hook_data_031
+- WebMcpHookController.handleWebControlStatus -> webmcp_hook_status_032
+- ConversationSmartHookController.handleSmartTags -> conv_hook_smart_tags_033
+- ConversationSmartHookController.handleSmartSearch -> conv_hook_smart_search_034
+- ConversationSmartHookController.handleSmartMessages -> conv_hook_smart_messages_035
+- flattenKeywords(keywords) — 展平 smart 段 { zh, en } 关键词为去空字符串数组; conversation.controller.ts 导出供 smart hook 复用 | keywords: smart-keywords-shape -> conv_flatten_keywords_035b
 - ChatSessionSmartService() — 按模型阈值累计可见正文生成 chat_session_smart 分段索引, 优先 LLM 摘要+关键词, 失败回退规则; smart 自身按 session 去重串行, 不阻塞 agent-run | keywords: session-smart, history-index, segment-summary, keywords, model-threshold, session-serial -> chat_session_smart_service_001
 - ChatSessionSmartAnalyzeHint (type) — smart 分析模型 hint, 用于把后台摘要绑定到本轮 agent 首个模型 | keywords: smart-analyze-hint, agent-model -> chat_session_smart_hint_001b
 - ChatSessionSmartService.scheduleAnalyze(sessionId, hint?) — 延迟触发会话 smart 分段分析, 多条消息会被 debounce 合并, hint 用于锁定本轮 agent 模型 | keywords: schedule-smart-analysis, debounce, session-index -> chat_session_smart_schedule_002

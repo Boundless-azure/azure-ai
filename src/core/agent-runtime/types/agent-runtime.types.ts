@@ -20,6 +20,12 @@ export interface AgentAiRequest {
   params?: Record<string, unknown>;
   /** 后台任务调用时隔离 LangChain callbacks，避免继承主对话已关闭的流式 writer */
   isolateCallbacks?: boolean;
+  /**
+   * 本次调用注入的可执行工具 (LangChain tool())。提供时覆盖 adapter 的固定工具集，
+   * 让某个节点用自己的一组工具跑独立 tool-calling 循环 (如 code 生成节点的 write_file/read_file)。
+   * @keyword-en per-call-tools
+   */
+  tools?: unknown[];
 }
 
 /**
@@ -66,7 +72,7 @@ export interface AgentDescriptor {
   supportDialogue: boolean;
   /**
    * 节点级 call_hook debug 默认开关 (设计期在 agent.desc.ts 声明)
-   *  - true  :: 本 agent 所有 call_hook / call_hook_async 默认开启 OTel trace, 整个 graph 流稳定带 debugLog 回包
+   *  - true  :: 本 agent 所有 call_hook / call_hook_batch 默认开启 OTel trace, 整个 graph 流稳定带 debugLog 回包
    *  - false / undefined :: 默认关闭; LLM 仍可显式传 debug:true 在排查场景临时开启
    *  - 工厂闭包绑定, graph 流期内行为一致, 不跨轮次漂移
    * @keyword-en agent-default-debug

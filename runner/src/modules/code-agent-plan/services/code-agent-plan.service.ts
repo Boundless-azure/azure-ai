@@ -66,6 +66,7 @@ export class RunnerCodeAgentPlanService {
       runnerId: payload.runnerId,
       requirement: payload.requirement,
       solutionIds: payload.solutionIds,
+      scopeRoots: payload.scopeRoots,
       status: payload.status,
       updatedAt: now,
     });
@@ -87,6 +88,22 @@ export class RunnerCodeAgentPlanService {
       { projection: { _id: 0 } },
     );
     return (doc as CodeAgentPlanDoc | null) ?? this.fallbackPlan(payload, now);
+  }
+
+  /**
+   * 读某计划声明的目标根 (scopeRoots); 供 fs 层围栏并上, 使规划前的分析也能访问既有目标 (无 task 也不空)。
+   * @keyword-cn 读目标根, 计划围栏
+   * @keyword-en get-scope-roots, plan-scope
+   */
+  async getScopeRoots(planId: string): Promise<string[]> {
+    const doc = await this.plans.findOne(
+      { planId },
+      { projection: { _id: 0, scopeRoots: 1 } },
+    );
+    const roots = (doc as { scopeRoots?: unknown } | null)?.scopeRoots;
+    return Array.isArray(roots)
+      ? roots.filter((r): r is string => typeof r === 'string')
+      : [];
   }
 
   /**

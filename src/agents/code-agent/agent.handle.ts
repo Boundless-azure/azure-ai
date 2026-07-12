@@ -9,6 +9,7 @@ import {
   END,
   INTERRUPT,
   START,
+  Send,
   StateGraph,
   isInterrupted,
 } from '@langchain/langgraph';
@@ -17,7 +18,12 @@ import { tool } from 'langchain';
 import z from 'zod';
 import type { AgentAiServer } from '@/core/agent-runtime/types/agent-runtime.types';
 import type { CodeAgentTargetKind } from './dialogues/types';
-import { sendDependencyChoiceCard } from './nodes/dependency-choice-card';
+import {
+  sendDependencyChoiceCard,
+  sendDependencyNotice,
+} from './nodes/dependency-choice-card';
+// AGENT-MONITOR-TEMP :: 临时调试监听, 后期整体删除 (grep AGENT-MONITOR-TEMP)
+import { instrumentAiServerForMonitor } from './monitor/code-graph-ai-instrument';
 import {
   readContextString,
   readStringField,
@@ -25,6 +31,19 @@ import {
 import { buildDependencyResumeChoice } from './nodes/dependency-check-decision';
 import { createCodeGraphNodeLogger } from './nodes/dependency-check-log';
 import { runChangePlanNode } from './nodes/change-plan.node';
+import {
+  collectAndSyncKeywords,
+  dispatchBuildFiles,
+  finalizeBuild,
+  runBuildVerify,
+  runGenerateFile,
+} from './nodes/build-generate.node';
+import type {
+  BuildFileResult,
+  BuildFileSend,
+} from './nodes/build-generate.types';
+import { runProjectInit } from './nodes/project-init.node';
+import { runBuildTest } from './nodes/build-test.node';
 import { runDependencyCheckNode } from './nodes/dependency-check.node';
 import { runTargetBootstrapNode } from './nodes/target-bootstrap.node';
 import { runTargetResolutionNode } from './nodes/target-resolution.node';
@@ -76,6 +95,21 @@ const CodeGenGraphAnnotation = Annotation.Root({
   input: Annotation<CodeGenOrchestrateInput>(),
   targetKind: Annotation<CodeAgentTargetKind>(),
   dependencyCheck: Annotation<CodeGraphDependencyCheckResult | undefined>(),
+  // 构建子图: 派发出的每文件任务、Send 当前文件、并发结果 (reducer 累加)
+  buildFiles: Annotation<BuildFileSend[] | undefined>(),
+  currentFile: Annotation<BuildFileSend | undefined>(),
+  buildResults: Annotation<BuildFileResult[]>({
+    reducer: (a, b) => (a ?? []).concat(b ?? []),
+    default: () => [],
+  }),
+  // 验证/repair: 已跑的 repair 轮数、本轮要重触发的缺失文件、落盘校验的 present/missing
+  repairRound: Annotation<number | undefined>(),
+  repairFiles: Annotation<BuildFileSend[] | undefined>(),
+  verifyPresent: Annotation<string[] | undefined>(),
+  verifyMissing: Annotation<Array<{ taskId: string; path: string }> | undefined>(),
+  // build-test: 已跑的构建测试轮数、本轮 LLM 判定要返修的文件 (fix-mode Send, 复用 generate-file)
+  buildTestRound: Annotation<number | undefined>(),
+  buildFixFiles: Annotation<BuildFileSend[] | undefined>(),
 });
 
 type CodeGenGraphUpdate = typeof CodeGenGraphAnnotation.Update;
@@ -84,6 +118,12 @@ type CodeGenGraphNodeName =
   | 'target-resolution'
   | 'target-bootstrap'
   | 'change-plan'
+  | 'project-init'
+  | 'build-dispatch'
+  | 'generate-file'
+  | 'build-verify'
+  | 'build-join'
+  | 'build-test'
   | typeof START;
 
 type CodeGenGraphState = {
@@ -91,6 +131,15 @@ type CodeGenGraphState = {
   input: CodeGenOrchestrateInput;
   targetKind: CodeAgentTargetKind;
   dependencyCheck?: CodeGraphDependencyCheckResult;
+  buildFiles?: BuildFileSend[];
+  currentFile?: BuildFileSend;
+  buildResults?: BuildFileResult[];
+  repairRound?: number;
+  repairFiles?: BuildFileSend[];
+  verifyPresent?: string[];
+  verifyMissing?: Array<{ taskId: string; path: string }>;
+  buildTestRound?: number;
+  buildFixFiles?: BuildFileSend[];
 };
 
 /**
@@ -276,7 +325,14 @@ export default class AgentHandleClass {
           request: graphRequest,
           input,
           targetKind,
-          aiAdapter: this.#aiAdapter,
+          // 给 aiAdapter 插桩: 每层 LLM 调用实时推给监听页 (含 prompt/response); 无 adapter 时原样透传
+          aiAdapter: this.#aiAdapter
+            ? instrumentAiServerForMonitor(this.#aiAdapter, {
+                sessionId: graphRequest.context.session_id,
+                threadId,
+                runnerId,
+              })
+            : this.#aiAdapter,
           hookCaller: this.#hookCaller,
           hookBus: this.#hookBus,
           workflowContext: this.#workflowContext,
@@ -417,7 +473,51 @@ function launchCodeGenGraphInBackground(args: CodeGraphLaunchInput): void {
       workflowContext: args.workflowContext,
     });
     logger.log(buildCodeGraphRunSummary(dependencyCheck, artifact));
+    // 把"完成/失败"结果回发给对话 —— 否则后台跑完只落本地产物 + Nest 日志, 对话侧永远停在"生成中"。
+    // 仅在真正终态时发; waiting_for_selection 已发过选择卡片, 不重复打扰。best-effort, 失败只 warn。
+    const completion = buildCodeGraphCompletionMessage(dependencyCheck);
+    if (completion && args.hookCaller) {
+      await sendDependencyNotice({
+        hookCaller: args.hookCaller,
+        request: args.request,
+        workflowContext: args.workflowContext,
+        notice: completion,
+        graphLog: createCodeGraphNodeLogger(
+          'code-graph-complete',
+          dependencyCheck.context,
+        ),
+      });
+    }
   })();
+}
+
+/**
+ * Build a user-facing completion message for the finished background run so the conversation gets a final
+ * "done / failed" signal — the loop otherwise dead-ends at the artifact + logger and the chat shows the
+ * task as still generating forever. Returns null when the run merely PAUSED for a user choice
+ * (waiting_for_selection — a choice card was already sent), so nothing extra is announced.
+ * @keyword-cn 完成消息, 回发对话
+ * @keyword-en completion-message, conversation-notify
+ */
+function buildCodeGraphCompletionMessage(
+  result: CodeGraphDependencyCheckResult,
+): string | null {
+  if (result.status === 'waiting_for_selection') return null;
+  const targets = (result.context.targetPlan ?? [])
+    .map((target) => target.useTarget?.name || target.newTarget?.name || '')
+    .filter(Boolean);
+  const label = targets.length ? [...new Set(targets)].join('、') : '目标应用';
+  if (result.status === 'blocked') {
+    const reason = result.changePlan?.reason || result.errors?.[0] || '未知原因';
+    return `⚠️ 代码生成未完成（${label}）：${reason}。可以补充或调整需求后让我重试。`;
+  }
+  const build = result.changePlan?.build;
+  const written = build?.written ?? result.changePlan?.changeTasks?.length ?? 0;
+  const failed = build?.failed ?? 0;
+  const base = `✅ 代码生成完成：${label} 已生成 ${written} 个文件到 Runner。`;
+  return failed > 0
+    ? `${base}（其中 ${failed} 个文件构建未通过，建议复查）`
+    : base;
 }
 
 /**
@@ -711,6 +811,61 @@ async function runCodeGenGraph(args: {
 }
 
 /**
+ * Fan out one concurrent generate-file node per planned file via Send; go straight to verify if none.
+ * @keyword-cn 构建扇出, Send派发
+ * @keyword-en build-fan-out, send-dispatch
+ */
+function fanOutBuildFiles(
+  state: CodeGenGraphState,
+): Send[] | 'build-verify' {
+  const files = state.buildFiles ?? [];
+  if (files.length === 0) return 'build-verify';
+  return files.map((file) => new Send('generate-file', { currentFile: file }));
+}
+
+/**
+ * After verify: re-dispatch the missing files (repair round) or fall through to finalize (join).
+ * @keyword-cn repair扇出, 断链重触发
+ * @keyword-en repair-fan-out, dangling-retrigger
+ */
+function fanOutRepairFiles(
+  state: CodeGenGraphState,
+): Send[] | 'build-join' {
+  const repair = state.repairFiles ?? [];
+  if (repair.length === 0) return 'build-join';
+  return repair.map((file) => new Send('generate-file', { currentFile: file }));
+}
+
+/**
+ * After build-test: if the LLM queued rework files, re-run those through generate-file (FIX MODE),
+ * which flows back build-verify → build-join → build-test to re-test. No rework (build OK, or the
+ * round budget was exhausted and build-test already set blocked) → end.
+ * @keyword-cn 返修扇出, 构建返修
+ * @keyword-en rework-fan-out, build-rework
+ */
+function fanOutBuildTestRepair(
+  state: CodeGenGraphState,
+): Send[] | typeof END {
+  const fixes = state.buildFixFiles ?? [];
+  if (fixes.length === 0) return END;
+  return fixes.map((file) => new Send('generate-file', { currentFile: file }));
+}
+
+/**
+ * Provision → generation boundary: enter the generation phase ONLY if provisioning succeeded.
+ * A blocked status after project-init means the env could not be provisioned (scaffold/install) —
+ * or the plan itself was blocked — so generating code into a non-ready env is pointless: end instead.
+ * Keeps env-provision failure (this gate) distinct from code-generation failure (the repair loop).
+ * @keyword-cn 初始化生成边界, 环境闸门
+ * @keyword-en provision-gate, phase-boundary
+ */
+function gateAfterProvision(
+  state: CodeGenGraphState,
+): 'build-dispatch' | typeof END {
+  return state.dependencyCheck?.status === 'blocked' ? END : 'build-dispatch';
+}
+
+/**
  * Build the current code-agent LangGraph workflow.
  * @keyword-cn LangGraph工作流, 初始创建
  * @keyword-en langgraph-workflow, target-bootstrap
@@ -779,11 +934,121 @@ function buildCodeGenWorkflowGraph(args: {
             'target-bootstrap result missing before change-plan',
           ),
     }))
+    .addNode('project-init', async (state: CodeGenGraphState) => ({
+      dependencyCheck: state.dependencyCheck
+        ? await runProjectInit({
+            dependencyCheck: state.dependencyCheck,
+            request: state.request,
+            input: state.input,
+            aiAdapter: args.aiAdapter,
+            hookCaller: args.hookCaller,
+            hookBus: args.hookBus,
+            workflowContext: args.workflowContext,
+          })
+        : state.dependencyCheck,
+    }))
+    .addNode('build-dispatch', async (state: CodeGenGraphState) => ({
+      buildFiles: state.dependencyCheck
+        ? await dispatchBuildFiles({
+            dependencyCheck: state.dependencyCheck,
+            request: state.request,
+            input: state.input,
+            hookCaller: args.hookCaller,
+            hookBus: args.hookBus,
+            workflowContext: args.workflowContext,
+          })
+        : [],
+    }))
+    .addNode('generate-file', async (state: CodeGenGraphState) => ({
+      buildResults: state.currentFile
+        ? [
+            await runGenerateFile({
+              send: state.currentFile,
+              aiAdapter: args.aiAdapter,
+              hookCaller: args.hookCaller,
+              workflowContext: args.workflowContext,
+            }),
+          ]
+        : [],
+    }))
+    .addNode('build-verify', async (state: CodeGenGraphState) => {
+      if (!state.dependencyCheck) return {};
+      const verify = await runBuildVerify({
+        dependencyCheck: state.dependencyCheck,
+        request: state.request,
+        hookCaller: args.hookCaller,
+        workflowContext: args.workflowContext,
+        buildFiles: state.buildFiles ?? [],
+        prevRound: state.repairRound ?? 0,
+      });
+      return {
+        repairRound: verify.repairRound,
+        repairFiles: verify.repairFiles,
+        verifyPresent: verify.present,
+        verifyMissing: verify.missing,
+      };
+    })
+    .addNode('build-join', async (state: CodeGenGraphState) => {
+      if (!state.dependencyCheck) return {};
+      // 所有任务完成后: 收集全部文件的 @keyword 并同步进 tags.json (去重), 再汇总
+      await collectAndSyncKeywords({
+        planId: state.dependencyCheck.changePlan?.planId ?? '',
+        runnerId: state.request.runner_id,
+        hookCaller: args.hookCaller,
+        workflowContext: args.workflowContext,
+      });
+      return {
+        dependencyCheck: finalizeBuild({
+          dependencyCheck: state.dependencyCheck,
+          results: state.buildResults ?? [],
+          present: state.verifyPresent ?? [],
+          missing: state.verifyMissing ?? [],
+        }),
+      };
+    })
+    .addNode('build-test', async (state: CodeGenGraphState) => {
+      if (!state.dependencyCheck) return {};
+      const result = await runBuildTest({
+        dependencyCheck: state.dependencyCheck,
+        request: state.request,
+        input: state.input,
+        aiAdapter: args.aiAdapter,
+        hookCaller: args.hookCaller,
+        hookBus: args.hookBus,
+        workflowContext: args.workflowContext,
+        round: state.buildTestRound ?? 0,
+      });
+      return {
+        dependencyCheck: result.dependencyCheck,
+        buildTestRound: result.round,
+        buildFixFiles: result.buildFixFiles,
+      };
+    })
     .addEdge(START, 'dependency-check')
     .addEdge('dependency-check', 'target-resolution')
     .addEdge('target-resolution', 'target-bootstrap')
     .addEdge('target-bootstrap', 'change-plan')
-    .addEdge('change-plan', END)
+    .addEdge('change-plan', 'project-init')
+    // provision→generation 边界: 供成功才进生成阶段, 环境没搭好直接收尾 (init 失败 ≠ 生成失败)
+    .addConditionalEdges('project-init', gateAfterProvision, [
+      'build-dispatch',
+      END,
+    ])
+    .addConditionalEdges('build-dispatch', fanOutBuildFiles, [
+      'generate-file',
+      'build-verify',
+    ])
+    .addEdge('generate-file', 'build-verify')
+    .addConditionalEdges('build-verify', fanOutRepairFiles, [
+      'generate-file',
+      'build-join',
+    ])
+    // 文件齐 → 过 build-test (LLM 跑 build + 判返修); 通过则 END, 有返修则复用 generate-file 修后回环
+    .addEdge('build-join', 'build-test')
+    .addConditionalEdges('build-test', fanOutBuildTestRepair, [
+      'generate-file',
+      END,
+    ])
     .compile({
       checkpointer: args.checkpointer,
       name: 'code-agent-code-graph',
@@ -975,7 +1240,7 @@ async function checkRunnerMountedByHook(
     const data = await callSaasHookData(
       hookBus,
       'saas.app.runner.get',
-      [runnerId],
+      { id: runnerId },
       workflowContext,
     );
     const runner =

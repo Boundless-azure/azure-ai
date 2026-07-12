@@ -15,11 +15,13 @@ import type {
   LoadedAgent,
 } from '../types/agent-runtime.types';
 import { HookBusService } from '@/core/hookbus/services/hook.bus.service';
+// AGENT-MONITOR-TEMP: 通用 LLM 监听埋点, 后期整体删除 (grep AGENT-MONITOR-TEMP)
+import { monitorChat } from '@/agents/code-agent/monitor/code-graph-ai-instrument';
 import { RunnerHookRpcService } from '@/app/runner/services/runner-hook-rpc.service';
 import type { HookInvocationContext } from '@/core/hookbus/types/hook.types';
 import {
   buildCallHookTool,
-  buildCallHookAsyncTool,
+  buildCallHookBatchTool,
   buildSearchHookTool,
   buildGetHookTagTool,
   buildGetHookInfoTool,
@@ -80,7 +82,7 @@ export class AgentRuntimeService {
 
   /**
    * 加载并准备 Agent (描述/工具/对话层)
-   *  - 主对话工具集 :: call_hook / call_hook_async / search_hook / get_hook_tag / get_hook_info
+   *  - 主对话工具集 :: call_hook / call_hook_batch / search_hook / get_hook_tag / get_hook_info
    *  - call_hook 挂 callHistory 副作用 :: 仅成功项 (errorMsg 为空) 落库, FIFO 50 条上限
    * @keyword-en load-agent
    */
@@ -166,9 +168,13 @@ export class AgentRuntimeService {
         { onCallComplete },
         { defaultDebug },
       ),
-      buildCallHookAsyncTool(this.hookBus, this.hookRpc, getCtx, {
-        defaultDebug,
-      }),
+      buildCallHookBatchTool(
+        this.hookBus,
+        this.hookRpc,
+        getCtx,
+        { onCallComplete },
+        { defaultDebug },
+      ),
       buildSearchHookTool(this.hookBus, this.hookRpc, getCtx),
       buildGetHookTagTool(this.hookBus, this.hookRpc, getCtx),
       buildGetHookInfoTool(this.hookBus, this.hookRpc, getCtx),
@@ -239,7 +245,7 @@ export class AgentRuntimeService {
   }
 
   /**
-   * 获取工具集合 (含 call_hook + call_hook_async + search_hook + get_hook_tag + get_hook_info + Agent 自身工具)
+   * 获取工具集合 (含 call_hook + call_hook_batch + search_hook + get_hook_tag + get_hook_info + Agent 自身工具)
    * @keyword-en get-tools
    */
   async getTools(
@@ -394,7 +400,13 @@ export class AgentRuntimeService {
         : undefined,
       params: req.params as AIModelRequest['params'],
       isolateCallbacks: req.isolateCallbacks,
-      tools: tools && tools.length > 0 ? tools : undefined,
+      // 每次调用显式注入的工具覆盖 adapter 固定工具 (让 code 生成节点跑自己的 write_file/read_file 循环);
+      // 未提供时沿用 agent 的固定工具集。
+      tools: req.tools?.length
+        ? req.tools
+        : tools && tools.length > 0
+          ? tools
+          : undefined,
     });
 
     const requireModelId = async (
@@ -444,7 +456,11 @@ export class AgentRuntimeService {
       getModelId: resolveModelId,
       chat: async (req: AgentAiRequest) => {
         const modelId = await requireModelId(resolveModelId);
-        return aiModelService.chat(buildAiRequest(modelId, req));
+        // AGENT-MONITOR-TEMP: 通用监听埋点, 后期删 (grep AGENT-MONITOR-TEMP)
+        return monitorChat(req, {
+          chat: () => aiModelService.chat(buildAiRequest(modelId, req)),
+          stream: () => aiModelService.chatStream(buildAiRequest(modelId, req)),
+        });
       },
       chatStream: (req: AgentAiRequest) =>
         (async function* () {
@@ -458,7 +474,11 @@ export class AgentRuntimeService {
         const modelId = await requireModelId(() =>
           resolveAssignedModelId(req.modelId),
         );
-        return aiModelService.chat(buildAiRequest(modelId, req));
+        // AGENT-MONITOR-TEMP: 通用监听埋点, 后期删 (grep AGENT-MONITOR-TEMP)
+        return monitorChat(req, {
+          chat: () => aiModelService.chat(buildAiRequest(modelId, req)),
+          stream: () => aiModelService.chatStream(buildAiRequest(modelId, req)),
+        });
       },
       chatStream: (
         req: AgentAiRequest & { modelId: string },

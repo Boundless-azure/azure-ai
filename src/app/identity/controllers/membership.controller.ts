@@ -9,50 +9,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { z } from 'zod';
 import { MembershipEntity } from '../entities/membership.entity';
 import { RoleEntity } from '../entities/role.entity';
 import { CheckAbility } from '../decorators/check-ability.decorator';
-import {
-  HookController,
-  HookRoute,
-} from '@/core/hookbus/decorators/hook-controller.decorator';
-
-/**
- * @title Membership Hook payload schema (input 形状, SSOT)
- * @keywords-cn MembershipHook, payloadSchema, input
- * @keywords-en membership-hook, payload-schema, input
- */
-const onRbacMembershipListInput = z.object({
-  organizationId: z.string().optional().describe('按组织 ID 过滤'),
-  principalId: z
-    .string()
-    .optional()
-    .describe(
-      '按主体 ID 过滤; 与 organizationId 同时传则取交集 (该用户在该组织的成员关系)',
-    ),
-  roleId: z.string().optional().describe('按角色 ID 过滤; 找出某角色所有成员'),
-  active: z
-    .boolean()
-    .optional()
-    .describe('按启用态过滤; 不传返回所有未软删 (含 active=false)'),
-});
-
-const onRbacMembershipCreateInput = z.object({
-  organizationId: z.string().describe('归属组织 ID'),
-  principalId: z.string().describe('成员主体 ID (任意 principalType 均可)'),
-  roleId: z.string().optional().describe('优先使用 :: 直接指定角色 UUID'),
-  role: z
-    .string()
-    .optional()
-    .describe(
-      '兼容旧入参 :: 角色 code (admin / guest / 自定义); 服务端按 code 反查 roleId; "owner" 自动映射为 "admin"',
-    ),
-});
-
-const idParamInput = z.object({
-  id: z.string().describe('成员关系记录主键 ID (UUID)'),
-});
 
 /**
  * @title Membership 控制器
@@ -60,7 +19,6 @@ const idParamInput = z.object({
  * @keywords-cn 成员控制器, 组织成员
  * @keywords-en membership-controller, organization-members
  */
-@HookController({ pluginName: 'identity', tags: ['identity', 'membership'] })
 @Controller('identity/memberships')
 export class MembershipController {
   constructor(
@@ -72,12 +30,6 @@ export class MembershipController {
 
   @Get()
   @CheckAbility('read', 'membership')
-  @HookRoute({
-    hook: 'saas.app.identity.membershipList',
-    description:
-      'RBAC 成员关系列表查询 :: 按 organizationId / principalId / roleId / active 过滤; 返回数据带 role (角色 code) 字段, 缺失角色映射回 "guest"',
-    args: [onRbacMembershipListInput],
-  })
   async list(
     @Query()
     query: {
@@ -127,12 +79,6 @@ export class MembershipController {
 
   @Post()
   @CheckAbility('create', 'membership')
-  @HookRoute({
-    hook: 'saas.app.identity.membershipCreate',
-    description:
-      'RBAC 成员关系创建 :: roleId / role 二选一 (roleId 优先); 不会校验重复关系, 同 (org, principal) 可有多条',
-    args: [onRbacMembershipCreateInput],
-  })
   async add(
     @Body()
     dto: {
@@ -163,12 +109,6 @@ export class MembershipController {
 
   @Delete(':id')
   @CheckAbility('delete', 'membership')
-  @HookRoute({
-    hook: 'saas.app.identity.membershipDelete',
-    description:
-      'RBAC 成员关系软删除 :: isDelete=true + active=false; 用于踢出某用户或解除角色绑定',
-    args: [idParamInput.shape.id],
-  })
   async remove(@Param('id') id: string) {
     await this.repo.update({ id }, { isDelete: true, active: false });
     return { success: true } as const;

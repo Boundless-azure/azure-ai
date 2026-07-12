@@ -38,18 +38,18 @@ export class HookInvokeController {
     const { hookName, payload } = parsed.data;
     const authHeader = req.headers['authorization'] ?? '';
     const token = authHeader.replace(/^Bearer\s+/i, '');
-    // @HookRoute handlers expect payload to be a positional-args array: [arg0, arg1, ...].
+    // @HookRoute handlers expect payload to be a SINGLE object (post single-object migration).
     // Normalise so callers can pass a plain object or omit entirely:
-    //   undefined / null / []  → [{}]   (no-filter invocation)
-    //   plain object           → [obj]  (single-arg shorthand)
-    //   non-empty array        → as-is  (caller knows the shape)
+    //   undefined / null / []       → {}        (no-filter invocation)
+    //   single-element legacy array → array[0]  (兼容旧式数组入参)
+    //   plain object                → as-is
     let normalizedPayload: unknown;
     if (payload === undefined || payload === null) {
-      normalizedPayload = [{}];
+      normalizedPayload = {};
     } else if (Array.isArray(payload)) {
-      normalizedPayload = payload.length > 0 ? payload : [{}];
+      normalizedPayload = payload.length > 0 ? payload[0] : {};
     } else {
-      normalizedPayload = [payload];
+      normalizedPayload = payload;
     }
     const results = await this.hookBus.emit({
       name: hookName,

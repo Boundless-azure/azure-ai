@@ -10,20 +10,10 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { z } from 'zod';
 import { CheckAbility } from '@/app/identity/decorators/check-ability.decorator';
-import {
-  HookController,
-  HookRoute,
-} from '@/core/hookbus/decorators/hook-controller.decorator';
+import type { HookInvocationContext } from '@/core/hookbus/types/hook.types';
 import { SolutionService } from '../services/solution.service';
 import {
-  CreateSolutionSchema,
-  UpdateSolutionSchema,
-  ListSolutionsQuerySchema,
-  SearchRunnerSolutionsSchema,
-  BatchSolutionIdsSchema,
-  BatchSolutionAssociationsSchema,
   type CreateSolutionRequest,
   type UpdateSolutionRequest,
   type ListSolutionsQuery,
@@ -37,27 +27,26 @@ import {
 
 type AuthedReq = Request & { user?: { id?: string; tenantId?: string } };
 
-const idParamInput = z.object({ id: z.string() });
-
-const installInput = z.object({ runnerIds: z.array(z.string()).min(1) });
-const uninstallInput = z.object({ runnerIds: z.array(z.string()).min(1) });
-const purchaseInput = z.object({
-  solutionId: z.string(),
-  solutionName: z.string(),
-  solutionVersion: z.string(),
-});
-const emptyInput = z.object({}).passthrough();
+/**
+ * 解析 Solution 操作用户 ID; Hook 调用下取 context.principalId, 缺省 'system'。
+ * @keyword-cn 解析用户ID
+ * @keyword-en resolve-solution-user-id
+ */
+export function resolveSolutionUserId(context?: HookInvocationContext): string {
+  const principalId = context?.principalId;
+  return typeof principalId === 'string' && principalId.trim()
+    ? principalId.trim()
+    : 'system';
+}
 
 /**
  * @title Solution Controller
- * @description Solution 管理控制器, CRUD/列表/标签/Runner 等接口全部挂 @HookRoute,
- *              与 @CheckAbility 共生; HookControllerExplorerService 自动把 ability 镜像进 hook 元数据,
- *              供 LLM 链路兜底鉴权。
- * @keywords-cn Solution控制器, Hook声明, CASL鉴权
- * @keywords-en solution-controller, hook-route, casl-auth
- * @keyword-en solution-controller, hook-route, casl-auth
+ * @description Solution 管理 HTTP 控制器, CRUD/列表/标签/Runner 等接口; hook 声明已迁到 SolutionHookController,
+ *              此处仅保留 HTTP 路由, 与 @CheckAbility 共生。
+ * @keywords-cn Solution控制器, HTTP路由, CASL鉴权
+ * @keywords-en solution-controller, http-route, casl-auth
+ * @keyword-en solution-controller, http-route, casl-auth
  */
-@HookController({ pluginName: 'solution', tags: ['solution'] })
 @Controller('solutions')
 export class SolutionController {
   constructor(private readonly solutionService: SolutionService) {}
@@ -68,11 +57,6 @@ export class SolutionController {
    */
   @Post()
   @CheckAbility('create', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.create',
-    description: 'Solution 创建',
-    args: [CreateSolutionSchema],
-  })
   async create(@Body() body: CreateSolutionRequest, @Req() req: AuthedReq) {
     const userId = req.user?.id ?? 'system';
     const solution = await this.solutionService.create(userId, body);
@@ -87,11 +71,6 @@ export class SolutionController {
    */
   @Post('runner/search')
   @CheckAbility('read', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.searchRunner',
-    description: 'Search runner solutions by runner ids',
-    args: [SearchRunnerSolutionsSchema],
-  })
   async searchRunnerSolutions(@Body() body: SearchRunnerSolutionsRequest) {
     const items = await this.solutionService.searchRunnerSolutions(body);
     return { success: true, data: { items } };
@@ -105,11 +84,6 @@ export class SolutionController {
    */
   @Post('details/batch')
   @CheckAbility('read', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.getBatch',
-    description: 'Get batch solution details with apps and units',
-    args: [BatchSolutionIdsSchema],
-  })
   async getBatchDetails(@Body() body: BatchSolutionIdsRequest) {
     const items = await this.solutionService.getDetailsByIds(body.ids);
     return { success: true, data: { items } };
@@ -123,11 +97,6 @@ export class SolutionController {
    */
   @Post('apps/list')
   @CheckAbility('read', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.listApps',
-    description: 'List apps for one or more solutions',
-    args: [BatchSolutionAssociationsSchema],
-  })
   async listSolutionApps(@Body() body: BatchSolutionAssociationsRequest) {
     const items = await this.solutionService.listAppsBySolutionIds(
       body.solutionIds,
@@ -143,11 +112,6 @@ export class SolutionController {
    */
   @Post('units/list')
   @CheckAbility('read', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.listUnits',
-    description: 'List units for one or more solutions',
-    args: [BatchSolutionAssociationsSchema],
-  })
   async listSolutionUnits(@Body() body: BatchSolutionAssociationsRequest) {
     const items = await this.solutionService.listUnitsBySolutionIds(
       body.solutionIds,
@@ -163,11 +127,6 @@ export class SolutionController {
    */
   @Get(':id')
   @CheckAbility('read', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.get',
-    description: 'Solution 详情查询',
-    args: [idParamInput.shape.id],
-  })
   async getById(@Param('id') id: string) {
     const solution = await this.solutionService.getById(id);
     return { success: true, data: solution };
@@ -179,11 +138,6 @@ export class SolutionController {
    */
   @Put(':id')
   @CheckAbility('update', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.update',
-    description: 'Solution 更新',
-    args: [idParamInput.shape.id, UpdateSolutionSchema],
-  })
   async update(
     @Param('id') id: string,
     @Body() body: UpdateSolutionRequest,
@@ -200,11 +154,6 @@ export class SolutionController {
    */
   @Delete(':id')
   @CheckAbility('delete', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.delete',
-    description: 'Solution 删除',
-    args: [idParamInput.shape.id],
-  })
   async delete(@Param('id') id: string) {
     await this.solutionService.delete(id);
     return { success: true };
@@ -217,11 +166,6 @@ export class SolutionController {
    */
   @Get()
   @CheckAbility('read', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.list',
-    description: 'Solution 跨 Runner 聚合列表',
-    args: [ListSolutionsQuerySchema],
-  })
   async list(@Query() query: ListSolutionsQuery) {
     const result = await this.solutionService.list(query);
     return { success: true, data: result };
@@ -234,11 +178,6 @@ export class SolutionController {
    */
   @Get('marketplace/list')
   @CheckAbility('read', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.marketplaceList',
-    description: 'Solution 市场列表 (开发中, 暂返回空)',
-    args: [ListSolutionsQuerySchema],
-  })
   listMarketplace(@Query() query: ListSolutionsQuery) {
     const result = this.solutionService.listMarketplace(query);
     return { success: true, data: result };
@@ -250,11 +189,6 @@ export class SolutionController {
    */
   @Post(':id/install')
   @CheckAbility('install', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.install',
-    description: 'Solution 安装到指定 Runner',
-    args: [idParamInput.shape.id, installInput],
-  })
   async install(
     @Param('id') id: string,
     @Body() body: InstallSolutionRequest,
@@ -275,11 +209,6 @@ export class SolutionController {
    */
   @Delete(':id/install')
   @CheckAbility('uninstall', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.uninstall',
-    description: 'Solution 从 Runner 卸载',
-    args: [idParamInput.shape.id, uninstallInput],
-  })
   async uninstall(
     @Param('id') id: string,
     @Body() body: UninstallSolutionRequest,
@@ -300,11 +229,6 @@ export class SolutionController {
    */
   @Get('purchases/list')
   @CheckAbility('read', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.purchasesList',
-    description: '我的购买列表 (开发中, 暂返回空)',
-    args: [],
-  })
   getPurchases(@Req() req: AuthedReq) {
     const userId = req.user?.id ?? 'system';
     const purchases = this.solutionService.getPurchases(userId);
@@ -317,11 +241,6 @@ export class SolutionController {
    */
   @Post('purchase')
   @CheckAbility('purchase', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.purchase',
-    description: 'Solution 购买记录',
-    args: [purchaseInput],
-  })
   async purchase(@Body() body: PurchaseSolutionRequest, @Req() req: AuthedReq) {
     const userId = req.user?.id ?? 'system';
     const purchase = await this.solutionService.purchase(
@@ -340,11 +259,6 @@ export class SolutionController {
    */
   @Get('runners')
   @CheckAbility('read', 'runner')
-  @HookRoute({
-    hook: 'saas.app.solution.getRunners',
-    description: '获取可用 Runner 列表',
-    args: [],
-  })
   async getRunners() {
     const runners = await this.solutionService.getRunners();
     return { success: true, data: runners };
@@ -357,11 +271,6 @@ export class SolutionController {
    */
   @Get('tags/list')
   @CheckAbility('read', 'solution')
-  @HookRoute({
-    hook: 'saas.app.solution.getTags',
-    description: 'Solution 标签频次榜',
-    args: [],
-  })
   async getTags() {
     const tags = await this.solutionService.getTags();
     return { success: true, data: tags };

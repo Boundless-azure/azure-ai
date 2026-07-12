@@ -17,6 +17,7 @@
 - app/todo/services/todo.service.ts
 - app/todo/services/todo-components.service.ts
 - app/todo/controllers/todo.controller.ts
+- app/todo/controllers/todo.hook-controller.ts
 - app/todo/todo.module.ts
 
 函数清单（Function Index）
@@ -37,28 +38,18 @@
   - createComment(followupId, dto, userId)
   - listComments(followupId)
   - deleteComment(id)
-- TodoController
-  - GET /todo
-  - GET /todo/:id
-  - POST /todo
-  - PUT /todo/:id
-  - DELETE /todo/:id
-  - POST /todo/:id/followups
-  - GET /todo/:id/followups
-  - DELETE /todo/followups/:followupId
-  - PUT /todo/followups/:followupId
-  - POST /todo/followups/:followupId/comments
-  - GET /todo/followups/:followupId/comments
+- TodoController （纯 HTTP，@HookRoute 已迁出到 TodoHookController）
+  - GET /todo/count, GET /todo, GET /todo/:id, POST /todo, PUT /todo/:id, DELETE /todo/:id
+  - POST /todo/:id/followups, GET /todo/:id/followups
+  - DELETE /todo/followups/:followupId, PUT /todo/followups/:followupId
+  - POST /todo/followups/:followupId/comments, GET /todo/followups/:followupId/comments
   - DELETE /todo/comments/:commentId
-  - HookController(pluginName=todo, tags=[todo])
-  - HookRoute on CRUD / followup / comment: 全部声明 zod payloadSchema (input 形状), hook-controller 数组形参
-    · 命名遵循 platform.app.module.action:
-    · saas.app.todo.todoCount (GET /todo/count) — 返回 { count: number }，支持 status/sessionId/taskId 过滤
-    · saas.app.todo.list (sessionId?/taskId?/status?/followerId?/initiatorId?/q?), saas.app.todo.get ({id}),
-      saas.app.todo.create (CreateTodoInput), saas.app.todo.update (UpdateTodoInput),
-      saas.app.todo.delete ({id})
-    · saas.app.todo.followup.create/list/update/delete（跟进记录不含 status 字段）
-    · saas.app.todo.comment.create/list/delete
+  - resolveTodoPrincipal(context?) — 从 Hook 调用上下文解析 JwtPayload principal (principalId/principalType/tenantId)，无 principalId 返回 undefined | keywords: resolve-todo-principal, hook-context
+- TodoHookController （@Injectable + @HookController(pluginName=todo, tags=[todo])，单对象 payload）
+  - 每个 @HookRoute 只收 ONE object arg (scalar-id → { id }; id+body → { id, ...body }); handler (payload, _principal, context?)，principal 从 context 解析；@CheckAbility 逐字保留
+  - count/list/get/create/update/delete — saas.app.todo.todoCount / list / get / create / update / delete | keywords: todo-count, todo-list, todo-detail, todo-create, todo-update, todo-delete
+  - createFollowup/listFollowups/deleteFollowup/updateFollowup — saas.app.todo.followup.create/list/delete/update | keywords: followup-create, followup-list, followup-delete, followup-update
+  - createComment/listComments/deleteComment — saas.app.todo.comment.create/list/delete | keywords: comment-create, comment-list, comment-delete
 
 关键词索引（中文 / English Keyword Index）
 待办事项实体 -> app/todo/entities/todo.entity.ts
@@ -68,6 +59,7 @@
 待办请求类型 -> app/todo/types/todo.types.ts
 待办服务 -> app/todo/services/todo.service.ts
 待办控制器 -> app/todo/controllers/todo.controller.ts
+待办Hook声明 -> app/todo/controllers/todo.hook-controller.ts
 待办模块 -> app/todo/todo.module.ts
 
 快速检索映射（Keywords -> Files）
@@ -85,6 +77,8 @@
 - "followerId" -> app/todo/entities/todo.entity.ts, app/todo/types/todo.types.ts, app/todo/services/todo.service.ts
 - "TodoService" -> app/todo/services/todo.service.ts
 - "TodoController" -> app/todo/controllers/todo.controller.ts
+- "TodoHookController" -> app/todo/controllers/todo.hook-controller.ts
+- "resolveTodoPrincipal" -> app/todo/controllers/todo.controller.ts
 - "TodoModule" -> app/todo/todo.module.ts
 
 关键词到文件函数哈希映射（Keywords -> Function Hash）

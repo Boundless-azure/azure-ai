@@ -8,13 +8,8 @@ import {
   Param,
   Delete,
 } from '@nestjs/common';
-import { z } from 'zod';
 import { PrincipalService } from '../services/principal.service';
 import { CheckAbility } from '../decorators/check-ability.decorator';
-import {
-  HookController,
-  HookRoute,
-} from '@/core/hookbus/decorators/hook-controller.decorator';
 import type {
   CreateUserDto,
   UpdateUserDto,
@@ -22,119 +17,35 @@ import type {
 } from '../types/identity.types';
 
 /**
- * @title Users Hook payload schema (input 形状, SSOT)
- * @description 仅声明 input 部分, hook-controller 将 args schema 写入 metadata。
- * @keywords-cn UsersHook, payloadSchema, input
- * @keywords-en users-hook, payload-schema, input
- */
-const userPrincipalTypeSchema = z
-  .enum(['user', 'user_consumer', 'system'])
-  .describe(
-    '可登录主体类型 :: user=企业用户, user_consumer=消费者用户, system=系统账号 (排除 agent / official_account)',
-  );
-
-const onRbacUserListInput = z.object({
-  q: z
-    .string()
-    .optional()
-    .describe('模糊匹配 displayName / email / phone (LIKE %q%)'),
-  tenantId: z.string().optional().describe('按所属租户/组织 ID 过滤'),
-  type: userPrincipalTypeSchema
-    .optional()
-    .describe('按类型过滤; 不传时默认返回 user + user_consumer + system'),
-});
-
-const onRbacUserCountInput = z.object({
-  type: userPrincipalTypeSchema.optional().describe('按类型过滤; 不传返回全部'),
-  tenantId: z.string().optional().describe('按所属租户/组织 ID 过滤'),
-});
-
-const onRbacUserCreateInput = z.object({
-  displayName: z.string().describe('用户显示名'),
-  principalType: userPrincipalTypeSchema,
-  email: z.string().describe('登录邮箱; 全局唯一, 已存在会报错'),
-  password: z
-    .string()
-    .optional()
-    .describe('明文密码 (服务端会 scrypt 加盐); 留空表示暂不允许密码登录'),
-  phone: z.string().nullable().optional(),
-  tenantId: z.string().nullable().optional().describe('归属租户/组织 ID'),
-});
-
-const onRbacUserUpdateInput = z.object({
-  displayName: z.string().optional(),
-  email: z
-    .string()
-    .optional()
-    .describe('改邮箱会同步 users 表, 仍受全局唯一约束'),
-  password: z
-    .string()
-    .optional()
-    .describe('新明文密码; 留空不修改密码, 非空会重新 scrypt 加盐'),
-  phone: z.string().nullable().optional(),
-  avatarUrl: z.string().nullable().optional(),
-  active: z.boolean().optional().describe('启停; 不会软删主体'),
-});
-
-const idParamInput = z.object({
-  id: z.string().describe('用户 principal_id (UUID)'),
-});
-
-/**
  * @title Users 控制器
  * @description 仅返回用户主体（企业/消费者）的列表接口。
  * @keywords-cn 用户列表, 企业用户, 消费者
  * @keywords-en users-controller, enterprise-user, consumer
  */
-@HookController({ pluginName: 'identity', tags: ['identity', 'user'] })
 @Controller('identity/users')
 export class UsersController {
   constructor(private readonly principalService: PrincipalService) {}
 
   @Get('count')
   @CheckAbility('read', 'principal')
-  @HookRoute({
-    hook: 'saas.app.identity.userCount',
-    description:
-      '用户总数统计 :: 返回 { count: number }，支持按 type / tenantId 过滤',
-    args: [onRbacUserCountInput],
-  })
   async count(@Query() query: { type?: string; tenantId?: string }) {
     return await this.principalService.countUsers(query);
   }
 
   @Get()
   @CheckAbility('read', 'principal')
-  @HookRoute({
-    hook: 'saas.app.identity.userList',
-    description:
-      'RBAC 可登录用户列表 (排除 agent / official_account) :: 按 q / tenantId / type 过滤; 单次最多 500 条',
-    args: [onRbacUserListInput],
-  })
   async list(@Query() query: QueryUsersDto) {
     return await this.principalService.listUsers(query);
   }
 
   @Post()
   @CheckAbility('create', 'principal')
-  @HookRoute({
-    hook: 'saas.app.identity.userCreate',
-    description:
-      'RBAC 用户创建 :: 事务地写 principals + users 两表, 邮箱全局唯一; password 走 scrypt+salt; 创建 Agent 请走 saas.app.agent.* 系列',
-    args: [onRbacUserCreateInput],
-  })
   async create(@Body() dto: CreateUserDto) {
     return await this.principalService.createUser(dto);
   }
 
   @Put(':id')
   @CheckAbility('update', 'principal')
-  @HookRoute({
-    hook: 'saas.app.identity.userUpdate',
-    description:
-      'RBAC 用户更新 :: 改 email/avatar 会同步 users 表; password 非空时会重置登录密码',
-    args: [idParamInput.shape.id, onRbacUserUpdateInput],
-  })
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     await this.principalService.updateUser(id, dto);
     return { success: true } as const;
@@ -142,12 +53,6 @@ export class UsersController {
 
   @Delete(':id')
   @CheckAbility('delete', 'principal')
-  @HookRoute({
-    hook: 'saas.app.identity.userDelete',
-    description:
-      'RBAC 用户软删除 :: 同时软删 principals + users 两表; 不会清理 membership, 已分配权限对象失效但仍保留行',
-    args: [idParamInput.shape.id],
-  })
   async delete(@Param('id') id: string) {
     await this.principalService.deleteUser(id);
     return { success: true } as const;

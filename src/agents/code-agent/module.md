@@ -4,7 +4,7 @@ code-agent（代码生成智能体）
 
 ## 概述 (Overview)
 
-提供代码生成智能体的对话层和 code graph 工具入口。`code_gen_orchestrate` 现在是真实 LangGraph 工作流入口：先校验完整需求、Runner 指派、Runner 在线状态和会话上下文；如果缺少 `runner_id`，直接返回要求先获取 Runner 并完成指派的字符串；如果已指定 Runner，则先通过 `saas.app.runner.get` hook 确认 Runner 为 `mounted`，再生成稳定 thread id 并把 `StateGraph` + `TypeOrmCheckpointSaver` 放到后台执行，然后立即向 LLM 返回 `scheduled/resume_scheduled`。dependency-check 节点在后台验证 Runner Solution 列表 hook、读取已有 Solution 列表，并用逻辑模型把需求中已有的步骤/事项路由到 Solution 与 `app/unit/data-point` action，输出可包含多项的 `routePlan`。target-resolution 节点在 action 确认后读取对应 Solution 下的 app/unit/data-point 候选，再由逻辑模型判定每个具体目标是复用还是新建，输出 `targetPlan`。target-bootstrap 节点根据新建 Solution 或 app 的判定，用完整用户需求让逻辑模型生成简短名称、摘要、描述和 tags，并通过 Runner hook 完成初步元数据创建。change-plan 节点 (第四步, create-only) 在 target-bootstrap 后运行：用一个 code 驱动的 todo 状态机外循环 + 确定性验图自纠，规划整个 routePlan 要新增的文件与 hook 契约 (action tree)；变更集落在对应 Runner 的 Mongo (经 `runner.app.codeAgentPlan.*` 专有业务 hook)，不存 SaaS 内存，多租户物理隔离。需要人工选择时通过 LangGraph `interrupt` 暂停，并由选择卡片提交后以 `Command({ resume })` 异步恢复同一个 graph thread。
+提供代码生成智能体的对话层和 code graph 工具入口。`code_gen_orchestrate` 现在是真实 LangGraph 工作流入口：先校验完整需求、Runner 指派、Runner 在线状态和会话上下文；如果缺少 `runner_id`，直接返回要求先获取 Runner 并完成指派的字符串；如果已指定 Runner，则先通过 `saas.app.runner.get` hook 确认 Runner 为 `mounted`，再生成稳定 thread id 并把 `StateGraph` + `TypeOrmCheckpointSaver` 放到后台执行，然后立即向 LLM 返回 `scheduled/resume_scheduled`。dependency-check 节点在后台验证 Runner Solution 列表 hook、读取已有 Solution 列表，并用逻辑模型把需求中已有的步骤/事项路由到 Solution 与 `app/unit/data-point` action，输出可包含多项的 `routePlan`。target-resolution 节点在 action 确认后读取对应 Solution 下的 app/unit/data-point 候选，再由逻辑模型判定每个具体目标是复用还是新建，输出 `targetPlan`。target-bootstrap 节点根据新建 Solution 或 app 的判定，用完整用户需求让逻辑模型生成简短名称、摘要、描述和 tags，并通过 Runner hook 完成初步元数据创建。change-plan 节点 (第四步, 支持 create 新建与 modify 就地修改) 在 target-bootstrap 后运行：用一个 code 驱动的 todo 状态机外循环 + 确定性验图自纠，规划整个 routePlan 要新增的文件与 hook 契约 (action tree)；变更集落在对应 Runner 的 Mongo (经 `runner.app.codeAgentPlan.*` 专有业务 hook)，不存 SaaS 内存，多租户物理隔离。需要人工选择时通过 LangGraph `interrupt` 暂停，并由选择卡片提交后以 `Command({ resume })` 异步恢复同一个 graph thread。
 
 ## 文件清单 (File List)
 
@@ -14,10 +14,14 @@ code-agent（代码生成智能体）
 - `nodes/dependency-check.node.ts` — code graph 首个 dependency-check 节点主流程。
 - `nodes/target-resolution.node.ts` — code graph 第二个 target-resolution 节点，读取 app/unit/data-point 候选并判定新建或复用。
 - `nodes/target-bootstrap.node.ts` — code graph 第三个 target-bootstrap 节点，生成简短元数据并确保 Solution/App 初始记录存在。
-- `nodes/change-plan.node.ts` — code graph 第四个 change-plan 节点，create-only 的 todo 状态机外循环 + 验图自纠，规划要新增的文件/hook 契约 (action tree)。
+- `nodes/change-plan.node.ts` — code graph 第四个 change-plan 节点，todo 状态机外循环 + 验图自纠，规划要新增(create)/就地改(modify)的文件与 hook 契约 (action tree); 二次修改用 read_tags/search_by_tag 定位既有文件。
 - `nodes/change-plan.types.ts` — change-plan 节点的 LLM 每轮动作 payload schema、todo 枚举、循环上限与存量 hook 摘要类型。
 - `nodes/change-plan-store.ts` — change-plan 的 Runner 变更集存储客户端 (调 runner.app.codeAgentPlan.*) 与 scoped 存量 hook 搜索。
 - `nodes/change-plan-knowledge.ts` — change-plan 的「先选书」: 按 routePlan 由 LLM 选用知识库书本 (调 saas.app.knowledge.search/getChapter) 并拼成生成手册。
+- `nodes/build-generate.node.ts` — 构建子图三段: dispatch (按 topoOrder 派发+种 generate-file todo)、runGenerateFile (单文件工具循环)、finalizeBuild (汇聚产物)。
+- `nodes/build-generate.types.ts` — 构建子图的 Send 派发载荷、单文件结果、校验结论、手册上限。
+- `nodes/project-init.node.ts` — 项目初始化节点: 对 change-plan 判定的 app 目标跑 LLM 终端工具循环 (run_terminal/read_file), needsScaffold 则脚手架 + 依赖按 deps.add/remove 增删, 验 package.json + 写 init.lock。**脚手架护栏**: create* 命令强制就地 (`.`), 否则拒跑并纠正 —— 拦随机名/嵌套子工程; 已建过拒二次。
+- `nodes/build-test.node.ts` — 构建测试节点 (生成之后): LLM 工具循环 (run_terminal 跑 `npm run build`/read_file 看错误/add_repair_task 出返修) —— **判定一定是 LLM**, 没塞返修任务=构建通过; 返修任务进 changePlan.extraPlan, 打成 fix-mode BuildFileSend **复用 generate-file** 修; 超轮数还不过置 blocked。
 - `nodes/dependency-check-log.ts` — code graph 节点日志读取、续写和类型守卫。
 - `nodes/dependency-check-context.ts` — dependency-check 上下文字段、列表数据、动作和 Solution 选择读取。
 - `nodes/dependency-check-runner-hooks.ts` — Runner Solution list hook 探测与 Solution 列表读取。
@@ -43,7 +47,8 @@ code-agent（代码生成智能体）
 - `normalizeToolSessionId(context, workflowContext)` — 从工具 context 或运行时上下文取 `session_id` | keywords: session-callback, code-graph-context
 - `buildCodeGraphRequest(fullRequirement, runnerId, context, sessionId)` — 组装未来 code graph 的标准请求信封 | keywords: code-graph-request, runner-assignment
 - `withCodeGraphThreadId(request, threadId)` — 在异步启动前把稳定 graph thread id 写入请求上下文 | keywords: checkpoint-thread, async-workflow
-- `launchCodeGenGraphInBackground(args)` — 后台触发 LangGraph 工作流并持久化最终结果 | keywords: async-workflow, background-run
+- `launchCodeGenGraphInBackground(args)` — 后台触发 LangGraph 工作流、持久化最终结果, **并把完成/失败消息回发给对话** (经 sendDependencyNotice) —— 否则后台跑完只落产物+日志, 对话侧永远停"生成中" | keywords: async-workflow, background-run
+- `buildCodeGraphCompletionMessage(result)` — 从终态结果拼面向用户的完成/失败消息 (ready=已生成N文件 / blocked=未完成+原因); waiting_for_selection 回 null(卡片已发过, 不重复) | keywords: completion-message, conversation-notify
 - `buildCodeGraphAcceptedMessage(args)` — 构造 `code_gen_orchestrate` 立即返回给 LLM 的已接收回包 | keywords: tool-result, async-workflow
 - `persistCodeGraphRunArtifact(args)` — 将 code graph 最终回包、节点日志和工具文本写入本地 JSON 运行产物，路由结果以 `result.context.routePlan` / `result.decision.routePlan` 为准 | keywords: artifact-log, code-graph-result
 - `buildCodeGraphRunSummary(result, artifact)` — 生成 Nest logger 使用的 code graph 完成摘要 | keywords: artifact-log, result-summary
@@ -72,8 +77,8 @@ code-agent（代码生成智能体）
 - `listConcreteTargets(args)` — 按 action 读取 app/unit/data-point 具体目标候选 | keywords: target-candidate, runner-db-hooks
 - `normalizeTargetCandidate(action, value)` — 将 app/unit/data-point hook 行归一化为目标候选 | keywords: target-candidate, field-read
 - `readStringArrayField(value, field)` — 从 hook 行读取字符串数组字段 | keywords: field-read, target-candidate
-- `decideTargetResolution(args)` — 调用逻辑模型判定每条 route 的具体目标新建或复用，返回 `{ targetPlan, notice }`（notice 为面向用户的本地化告知） | keywords: target-resolution, dependency-decision
-- `buildTargetResolutionPrompt(requirement, routes)` — 构造要求 LLM 优先复用既有候选、候选为空必须 create、reuse 只能照抄非空候选精确 id/name 的具体目标判定 JSON 提示 | keywords: target-resolution, json-output
+- `decideTargetResolution(args)` — 逻辑模型**工具调用**判定每条 route 复用/新建 (`set_target_decision` 每 route 一条 + `set_notice`)，不再返回大 JSON、无 parse-fail；LLM 没产出则 code **全默认 create 兜底**(不出现"不判定")，reuse 幻觉由 `normalizeLlmTargetResolution` **降级 create** 兜；返回 `{ targetPlan, notice }` | keywords: target-resolution, tool-calling
+- `buildTargetResolutionPrompt(requirement, routes)` — 构造复用/新建的**工具调用**提示 (指示 set_target_decision/set_notice)：优先复用既有候选、候选为空必须 create、reuse 只能照抄非空候选精确 id/name | keywords: target-resolution, tool-calling
 - `normalizeLlmTargetResolution(payload, routes)` — 将 LLM 目标判定输出归一化为 graph targetPlan | keywords: target-resolution, route-plan
 - `normalizeTargetRouteDecision(args)` — 归一化单条 route 的目标新建/复用判定；reuse 解析不到候选（候选为空硬判 reuse 或 id/name 对不上）时降级为 create，不再 blocked | keywords: target-resolution, target-selection
 - `buildCreateRouteDecision(route, newTargetPayload, reason, downgraded)` — 构造 create 路由判定并合成新目标候选，供正常 create 与 reuse 降级共用；降级时 `downgraded=true` 打标 | keywords: target-create, target-resolution
@@ -103,19 +108,49 @@ code-agent（代码生成智能体）
 - `normalizeBootstrapTags(tags)` — 归一化 LLM 生成的 tags 列表 | keywords: field-normalize, metadata-generation
 - `slugifyName(value)` — 把名称转换为稳定 ASCII slug | keywords: field-normalize, file-path
 - `trimText(value, maxLength)` — 把生成文本裁剪为紧凑单行字符串 | keywords: field-normalize, metadata-generation
-- `withTargetBootstrapResult(dependencyCheck, result, log)` — 将 target-bootstrap 输出合并回 code graph 回包 | keywords: target-bootstrap, graph-output
+- `withTargetBootstrapResult(dependencyCheck, result, log)` — 将 target-bootstrap 输出合并回 code graph 回包; ready 时把创建的 solution/app 身份回写进 targetPlan.useTarget | keywords: target-bootstrap, graph-output
+- `applyBootstrapToTargetPlan(targetPlan, entries)` — 把 bootstrap 建好的真实 solution/app name+id 回写进各 target 的 useTarget, 让下游按真 slug 拼路径 (修需求全文当 solution 名的 bug) | keywords: identity-writeback, target-plan
 - `buildBlockedTargetBootstrap(dependencyCheck, graphLog, reason)` — 构造 target-bootstrap blocked 回包 | keywords: target-bootstrap, blocked-status
 - `buildSkippedTargetBootstrap(dependencyCheck, graphLog, reason)` — 构造 target-bootstrap skipped 回包；跳过原因写 `reason`、`errors` 留空，避免监控误报 | keywords: target-bootstrap, graph-output
-- `runChangePlanNode(args)` — 执行 create-only change-plan 节点：code 驱动的 todo 外循环 + 验图自纠，规划要新增的文件/hook 契约 | keywords: change-plan, code-graph-node
-- `seedTargetTodos(store, planId, targetPlan, graphLog)` — 为每个 target 种一个 plan-target todo，给外循环起点 | keywords: seed-todos, plan-target
-- `requestChangePlanTurn(args)` — 调用逻辑模型跑一轮 change-plan 动作并解析 JSON | keywords: llm-turn, change-plan
-- `applyTurn(args)` — 应用一轮动作：upsert 变更任务，再 upsert todo 新增/状态更新 | keywords: apply-turn, change-plan
-- `runSearchRequests(args)` — 履行模型的存量 hook 搜索请求并记录命中 | keywords: fulfill-search, edge-resolution
+- `runChangePlanNode(args)` — 执行 change-plan 节点：code 驱动的 todo 外循环 + 验图自纠，规划要新增(create)/就地改(modify)的文件与 hook 契约; 既有目标先过 **analyze-target 分析闸门**(强制 record_analysis + 真检索代码, code 权威闭合后才 seed plan-target), 让 op:modify 规划有据 | keywords: change-plan, code-graph-node
+- `dispatchBuildFiles(args)` — 构建派发: 按 topoOrder 排序、载入手册、种 generate-file todo、打包每文件 Send 载荷; **task.op=modify 时 Send 带 op:modify** (下游进 MODIFY 模式改既有文件) | keywords: build-dispatch, fan-out-prep
+- `runGenerateFile(args)` — 单文件代码节点: **内存 todo 驱动**的完成循环。code 先 `seedFileTodos` 种"对应点"(要实现的内容/每条契约/hooks/@keyword注释/write_file), LLM 用 todo CRUD 工具边做边维护; 每轮一次真工具调用回复 (AI 层 createAgent 跑工具); **完成 = 文件真落盘且校验过 (ground truth) + 全部内存 todo 已 done**, 否则拼催办原因(文件侧问题 + 未完成 todo 逐项列出)下一轮"按 todo 完成"。`send.fix` 进 **FIX 模式**, `send.op==='modify'` 进 **MODIFY 模式**: 读现文件、优先 edit_file 定点改 | keywords: generate-file, todo-driven
+- `buildFileNodeTools(args)` — 造该文件节点的可执行工具: write_file (全量写/create)、**edit_file (按 1-based 行号区间替换/modify; 行号唯一→无"子串不唯一")**、**read_file (带行号; 可传 startLine/endLine 只读窗口)**、**两层定位: search_by_tag (第一层搜注释: 按 @keyword tag 回文件+行号) → read_node (第二层读代码: 按 {path,line} 回该符号代码体+行号) → edit_file**、grep/fast_search[/get_hook_info]、注释 keyword 词表 list_keywords/search_keywords/add_keyword、**内存 todo 增删改查 todo_list/todo_add/todo_update/todo_remove** | keywords: file-node-tools, tool-binding
+- `numberLines(text, start?)` — 给每行加行号前缀 (`<n>\t<line>`, 从 start 计数), read_file 窗口输出用 | keywords: number-lines, line-edit
+- `deriveTargetRoot(path)` — 从 task 文件路径推目标根 (solutions/<sol>/apps|units|data/<name>), 给 search_by_tag 圈搜索范围 | keywords: derive-target-root, tag-search-scope
+- `seedFileTodos(send)` — 按任务种单文件内存 todo 的"对应点": 修复/修改、实现内容、每条共享契约、hooks(unit)、@keyword 注释、write_file | keywords: seed-file-todos, checklist
+- `openTodoTexts(todos)` — 列出未完成内存 todo 文本 (催办提示用) | keywords: seed-file-todos, checklist
+- `safeUpsertTodo(store, planId, todo)` — 容错写 generate-file todo, 写失败不拖垮文件结果 | keywords: safe-upsert-todo, tolerant
+- `validateGeneratedFile(send, content)` — 文件级校验 (完成②, todo 监督): 代码文件强制含项目格式 @keyword 注释, 缺则未完成 (Astro parse 规则后续) | keywords: file-validate, comment-supervision
+- `requiresKeywordComments(path, content)` — 判该文件是否需 R5 @keyword 注释 (含函数/类/导出声明的代码文件要; 纯 css/json/svg/html/markup 免) | keywords: needs-comments, declaration-detect
+- `runBuildVerify(args)` — 验证节点 (扇出后): 调 verifyTasks 按落盘真相查缺失, 缺文件排 repair (≤maxRepairRounds), verify 出错 fail-open 免死循环 | keywords: build-verify, repair-dispatch
+- `verifyPlanFiles(args)` — 调 runner.app.codeAgentFs.verifyTasks 拿 present/missing (落盘真相) | keywords: verify-files, dangling-detect
+- `collectAndSyncKeywords(args)` — 构建后调 collectKeywords 收全部文件 @keyword, 再逐 app ensureMany 同步进 tags.json (去重); best-effort | keywords: keyword-sync, vocab-backfill
+- `decideInitTargets(args)` — change-plan 里判 app 目标: **init.lock ground-truth** 定 needsScaffold + **decideDependencies** 定依赖增删; 要脚手架或有依赖变更才入 initPlan | keywords: init-decision, init-lock
+- `decideDependencies(args)` — change-plan 一次 LLM 决定每个 app 要 add/remove 哪些 npm 依赖 (按已规划文件/需求, 保持最小) | keywords: dependency-decision, dep-add-remove
+- `buildDepsPrompt(candidates, finalTasks, requirement, manualText)` — 造依赖判定的严格 JSON 提示 | keywords: deps-prompt, json-output
+- `runProjectInit(args)` — 项目初始化节点: 逐 app 目标跑 LLM 终端工具循环脚手架+装依赖、验 package.json, 汇成 changePlan.init; 有失败置 blocked | keywords: project-init-node, scaffold
+- `initOneTarget(args)` — 单 app 目标初始化: 有界 LLM 工具循环 (run_terminal/read_file) + 验 package.json 落盘 | keywords: init-one-target, tool-loop
+- `isScaffoldCommand(command)` — 识别 npm/pnpm/yarn/bun/npx create* 脚手架命令 (护栏用) | keywords: scaffold-command-detect, guardrail
+- `commandIsInPlace(command)` — 命令是否就地 (含独立 `.` 目标 token); 脚手架护栏强制就地, 拦嵌套/随机名子工程 | keywords: in-place-check, current-dir
+- `finalizeBuild(args)` — 构建汇聚: 按 verify 真相汇成 changePlan.build (buildResults 取每 taskId 最后一次); 仍有 missing 则置 blocked | keywords: build-join, build-summary
+- `gateAfterProvision(state)` — 条件边 (project-init 后): **provision→generation 边界**, 供成功 (status≠blocked) 才进 build-dispatch, 环境没搭好/plan 被 blocked 直接 END —— 把环境初始化失败和代码生成失败分成两条终止路径 | keywords: provision-gate, phase-boundary
+- `runBuildTest(args)` — 构建测试节点: LLM 工具循环跑 build + 判定返修 (add_repair_task→extraPlan), 打 fix-mode Send 复用 generate-file; 超轮数不过置 blocked。**判定权在 LLM**; **载入手册**(书里写"如何验证构建"流程) + 提示走最短路径(build 一次→看结果→干净就停) + 小 maxTokens(`buildTestMaxTokens`), 避免 reasoning 模型乱探索/想太久 | keywords: build-test-node, rework-judge
+- `packFixSend(args)` — 把一个返修任务打成 fix-mode BuildFileSend (照抄 dispatch 的载荷形状 + fix.issue), 让 generate-file 原样处理 | keywords: pack-fix-send, reuse-generate
+- `fanOutBuildTestRepair(state)` — 条件边 (build-test 后): 有返修文件则 Send 重触发 generate-file (FIX 模式, 回环 build-verify→build-join→build-test), 无返修/超预算 → END | keywords: rework-fan-out, build-rework
+- `fanOutBuildFiles(state)` — 条件边: 每个已规划文件用 Send 扇出一个并发 generate-file 节点, 无文件直连 build-verify | keywords: build-fan-out, send-dispatch
+- `fanOutRepairFiles(state)` — 条件边 (verify 后): 有缺失文件则 Send 重触发那些 generate-file (repair 轮), 否则落 build-join | keywords: repair-fan-out, dangling-retrigger
+- `isModifiableTarget(target)` — 判目标是否可二次修改: `decision==='reuse' && !downgraded && useTarget` (复用即从 runner_apps 匹配到既有 app, 就有既有代码可 op:modify)。**不看 isInitialized** —— 那是"是否脚手架(init.lock)", 静态 view 页面永远 false 却有真实文件; 用它会漏判 | keywords: modifiable-target, create-or-modify
+- `seedTargetTodos(store, planId, targetPlan, graphLog)` — 为每个 target 种起点 todo: 既有目标先种 **analyze-target**(强制分析闸门), 新目标直接 plan-target | keywords: seed-todos, plan-target
+- `buildAnalysisPrompt(args)` — **分析闸门**那一轮的提示: 既有目标只做分析(拆需求成变更意图 + read_tags/search_by_tag 定位既有文件)并 record_analysis, 不规划文件 | keywords: analysis-prompt, requirement-code-analysis
+- `buildChangePlanTools(deps)` — 组装 change-plan **工具集**: upsert_task(带 op:create/modify)/update_todo/read_file/grep/search_files/**read_tags**(读目标 tags.json 词表)/**search_by_tag**(内置 rg 按已声明 tag 反查关联文件+注释节点)/**record_analysis**(既有目标分析闸门落结论)/search_hooks/get_hook_info/declare_contract/set_notice; 检索类工具置 `shared.sawSearch`(分析闸门校验真检索过); LLM 逐个调用构建变更集 (**不再返回大 JSON**), 各工具直改 store/共享态 (foundExisting/contracts/analysis/notice) | keywords: change-plan-tools, tool-calling
+- `runChangePlanRound(args)` — 跑一轮工具调用: LLM 用工具处理当前 open todos (createAgent 内部循环, 无 JSON 解析); 每轮完由 code 重算边 + 同步 resolve-edge todo | keywords: change-plan-round, tool-calling
 - `computeEdges(tasks, foundExisting)` — 从所有任务推导 calls/compatibleWith 边并分类 new/existing/unresolved | keywords: edge-derive, edge-resolution
 - `computeTopoOrder(tasks)` — 按任务级 dependsOn 派生叶子在前的拓扑生成顺序，回 { order, dangling(引用了不存在的 taskId), cyclic(成环任务补末尾) }，永不抛 | keywords: topo-order, dependency-order
 - `syncResolveEdgeTodos(args)` — 按真实边状态同步 resolve-edge todo (code 权威自纠，不信 LLM 早退) | keywords: resolve-edge-sync, validation-self-correct
-- `buildChangePlanPrompt(args)` — 构造 change-plan 单轮严格 JSON 提示 | keywords: change-plan-prompt, json-output
-- `normalizeTurnTask(task, index)` — 将 LLM 任务输入归一化为 create-only 变更任务 | keywords: task-normalize, create-only
+- `buildChangePlanPrompt(args)` — 构造 change-plan 单轮**工具调用**提示 (指示用工具构建, 非返回 JSON); 注入 targets(带 existing 标)/open todos/已规划任务/存量hook/已声明契约; **有既有目标时切到 create+modify 指引** (既有目标先 read_tags/search_by_tag 探查再 op:modify, 否则 create-only); contract-review 轮转 `buildContractReviewPrompt` | keywords: change-plan-prompt, tool-calling
+- `buildContractReviewPrompt(args)` — **契约复盘门**那一轮的聚焦提示: 文件已规划完, LLM 唯一任务是复盘全量文件找跨文件共享符号 (锚点id/事件/形状) 并 declare_contract, 不再规划文件 | keywords: contract-review-prompt, coupling-contract
+- `normalizeTurnTask(task, index)` — 将 LLM 任务输入归一化为变更任务; **op 取 LLM 的 create/modify (默认 create)**; **targetId/solutionId 取 ctx (code 权威, 复用即 useTarget.id) 优先于 LLM 自填** —— 否则 task.targetId=app名 与 initPlan.appId=完整id 对不上, project-init resolveAppDir 挂 | keywords: task-normalize, create-or-modify
 - `edgeTodoId(edge)` — 从边派生稳定 resolve-edge todo id | keywords: edge-todo-id, field-normalize
 - `slugifyPath(path)` — 把文件路径转成稳定 task id 片段 | keywords: path-slug, field-normalize
 - `derivePlanId(request)` — 从稳定 code graph thread id 派生 planId | keywords: plan-id, checkpoint-thread
@@ -150,11 +185,11 @@ code-agent（代码生成智能体）
 - `probeRunnerSolutionHooks(hookCaller, runnerId, workflowContext)` — 用 Runner meta hook 检查 Solution 数据库检索 hooks 是否存在 | keywords: hook-probe, runner-db-hooks
 - `listRunnerSolutions(hookCaller, runnerId, workflowContext)` — 通过 Runner 本地 solution hook 列出 Solution | keywords: solution-list, runner-db-hooks
 - `decideCodeGraphDependencies(args)` — 使用逻辑模型和确定性回退选择 Solution、动作与新 Solution 需求 | keywords: solution-selection, dependency-decision
-- `requestDependencyDecisionJson(args)` — 调用逻辑模型取路由判定 JSON（`isolateCallbacks` 隔离主对话已关闭的流式 writer + OpenAI JSON mode `responseFormat`），失败时用更严格提示重试一次，并记录 finishReason/contentLength/原始响应片段 | keywords: dependency-decision, llm-retry
+- `requestDependencyDecision(args)` — 逻辑模型**工具调用**产路由判定 (set_route/propose_new_solution/set_notice 累积成 routePlan)，**不再返回大 JSON**、无 parse-fail 重试；产物过同一 `normalizeLlmDependencyDecision`（行为不变）；空则回 null 走 fallback | keywords: dependency-decision, tool-calling
 - `compactRequirementForRouting(requirement, maxChars)` — 压缩超长需求，避免 reasoning 模型思考膨胀导致不产出 JSON | keywords: requirement-compact, dependency-decision
 - `selectLogicModel(aiAdapter, input)` — 选择 dependency-check 使用的逻辑模型客户端 | keywords: logic-model, dependency-decision
-- `buildDependencyDecisionPrompt(requirement, targetKind, solutions)` — 构造"先判定、能定就定"的 Solution/action 路由提示：可复用即复用、能推断动作即提交，仅真正歧义才 waitChoose | keywords: dependency-decision, json-output
-- `buildDependencyDecisionRetryPrompt(requirement, targetKind, solutions)` — 构造仅输出极简 JSON、禁止前后文与思考块的依赖判定重试提示 | keywords: dependency-decision, llm-retry
+- `buildDependencyDecisionPrompt(requirement, targetKind, solutions)` — 构造"先判定、能定就定"的 Solution/action 路由**工具调用**提示（指示 set_route/propose_new_solution/set_notice，非返回 JSON）：可复用即复用、能推断动作即提交，仅真正歧义才 waitChoose；决策规则原样保留 | keywords: dependency-decision, tool-calling
+- `DecisionRouteInputSchema` / `DecisionNewSolutionInputSchema` / `DecisionSolutionRefSchema` — set_route/propose_new_solution 的工具入参 schema（替代旧 LlmDependencyDecisionSchema 大 JSON 校验器） | keywords: decision-tool-input, tool-calling
 - `normalizeLlmDependencyDecision(payload, solutions, fallback, requirement)` — 将模型返回的选择、新 Solution 需求与 routePlan 映射到真实 Runner Solution | keywords: solution-selection, dependency-decision
 - `normalizeActionList(values, fallback)` — 归一化并去重 dependency-check 的多动作集合 | keywords: action-selection, route-plan
 - `normalizeRoutePlan(args)` — 归一化模型返回的 routePlan，并在缺失时生成默认路由计划 | keywords: route-plan, dependency-decision
@@ -238,6 +273,8 @@ code-agent（代码生成智能体）
 | Graph输出        | graph-output           |
 | 异步工作流       | async-workflow         |
 | 后台执行         | background-run         |
+| 完成消息         | completion-message     |
+| 回发对话         | conversation-notify    |
 | 中断读取         | interrupt-read         |
 | 中断payload      | interrupt-payload      |
 | 中断回包         | interrupt-result       |
@@ -308,8 +345,19 @@ code-agent（代码生成智能体）
 | 变更集提示       | change-plan-prompt     |
 | 变更集存储客户端 | change-plan-store-client |
 | 变更任务         | change-task            |
+| 种子文件todo     | seed-file-todos        |
+| 完成清单         | checklist              |
 | 任务归一化       | task-normalize         |
 | 新增            | create-only            |
+| 新建或修改       | create-or-modify       |
+| 按标签反查       | search-by-tag          |
+| 反查关联文件     | reverse-lookup         |
+| 注释节点         | comment-node           |
+| 可修改目标       | modifiable-target      |
+| 分析闸门提示     | analysis-prompt        |
+| 需求代码分析     | requirement-code-analysis |
+| 分析结论         | analysis-finding       |
+| 变更意图         | change-intent          |
 | hook契约         | hook-contract          |
 | 依赖边           | dependency-edge        |
 | 边解析           | edge-resolution        |
@@ -402,14 +450,27 @@ code-agent（代码生成智能体）
 - `CodeGraphDependencyResumeChoice` — 选择卡片恢复为 LangGraph resume value 的选择形状 | keywords: dependency-selection, checkpoint-resume
 - `CodeGraphDependencyInterruptPayload` — dependency-check 暂停并发送选择卡片的 interrupt payload | keywords: interrupt-payload, selection-card
 - `CodeGraphHookContract` — 单个 hook 契约 (名称 + 签名 + calls/compatibleWith 出边) | keywords: hook-contract, dependency-edge
-- `CodeGraphChangeTask` — create-only 变更任务 (一个新文件 + `summary` 用途; `hooks` 仅 unit 目标有, app/data-point 为空; `dependsOn` 本 plan 内粗粒度兄弟 taskId 依赖, 供拓扑排序) | keywords: change-task, create-only
+- `CodeGraphChangeTask` — 变更任务 (`op`: create=新文件 / modify=就地改既有文件; `summary` 用途; `hooks` 仅 unit 目标有, app/data-point 为空; `dependsOn` 本 plan 内粗粒度兄弟 taskId 依赖, 供拓扑排序) | keywords: change-task, create-or-modify
 - `CodeGraphChangePlanEdge` — 由 hook 契约派生的依赖边，按 new/existing/unresolved 分类 | keywords: dependency-edge, edge-resolution
-- `CodeGraphChangePlanResult` — change-plan 节点的 ready/skipped/blocked 回包 (changeTasks/edges/topoOrder/openTodos/iterations) | keywords: change-plan-result, graph-output
+- `CodeGraphChangePlanResult` — change-plan 节点回包 (changeTasks/edges/topoOrder/contracts/initPlan/build/openTodos/iterations) | keywords: change-plan-result, graph-output
+- `CodeGraphInitTarget` — change-plan 判定的一个 app setup 目标 (appDir + needsScaffold + deps:{add,remove}), 附在 changePlan.initPlan | keywords: init-target, scaffold
+- `CodeGraphInitSummary` — project-init 汇总 (total/ok/failed + 每 app 成败), 附在 changePlan.init | keywords: init-summary, scaffold-result
+- `CodeGraphBuildSummary` / `CodeGraphBuildFile` — 构建子图产物汇总 (total/written/failed + 每文件结果), 附在 changePlan.build | keywords: build-summary, build-file
+- `BuildFileSend` — dispatch 扇出给每个并发代码节点的 Send 载荷 (planId/runnerId/需求/手册/task/deps/**contracts**/**fix**); fix 存在=返修模式 (build-test 出) | keywords: build-file-send, send-payload
+- `CodeGraphExtraTask` — 返修/扩展任务 (taskId/path/targetId/issue/origin); build-test 的 LLM 判定要修哪个文件+什么问题, 进 changePlan.extraPlan, 复用 generate-file 修 | keywords: extra-task, rework-task
+- `CodeGraphBuildTestSummary` — build-test 汇总 (ok/rounds/pendingFixes/summary); 无返修任务=构建通过 | keywords: build-test-summary, rework
+- `BuildFileResult` — 单文件生成结果 (written/failed/skipped + bytes/turns/validation) | keywords: build-file-result, file-artifact
+- `BuildValidationResult` — 文件级校验结论 (rule/ok/issues; Astro 先行, 当前 none) | keywords: validation-result, pluggable-rule
 - `CHANGE_PLAN_TODO_STATUS` / `ChangePlanTodoStatus` — todo 状态机枚举 | keywords: todo-status, state-machine
-- `CHANGE_PLAN_TODO_TYPES` / `ChangePlanTodoType` — todo 类型枚举 (plan-target/resolve-edge/fix-validation) | keywords: todo-type, planning-work-unit
+- `CHANGE_PLAN_TODO_TYPES` / `ChangePlanTodoType` — todo 类型枚举 (plan-target/resolve-edge/fix-validation/generate-file) | keywords: todo-type, planning-work-unit
 - `CHANGE_PLAN_LIMITS` — code 驱动外循环与搜索的硬上限 | keywords: loop-limit, search-limit
 - `ExistingHookSummary` — scoped 搜索命中的存量 hook 摘要 (名称+签名)，用于解析 new→existing 边 | keywords: existing-hook-summary, edge-resolution
-- `ChangePlanTurnSchema` / `ChangePlanTurnPayload` — change-plan 单轮 LLM 动作 JSON payload | keywords: llm-turn-payload, change-plan
+- `ChangeTaskInputSchema` / `ChangePlanTaskInput` — `upsert_task` 工具入参 (`op` create/modify + 一个文件 + unit 的 hook 契约 + dependsOn); LLM 逐次调用构建, 非大 JSON | keywords: task-tool-input, change-task
+- `RecordAnalysisInputSchema` / `RecordAnalysisInput` — `record_analysis` 工具入参 (routeId + findings[{intent, files, note}]); 既有目标分析闸门产物 | keywords: record-analysis-input, requirement-code-analysis
+- `AnalysisFinding` — 一条分析结论 `{ intent, files, note? }`; 注入 plan-target 提示让 modify 规划有据 | keywords: analysis-finding, change-intent
+- `ContractInputSchema` / `ContractInput` — `declare_contract` 工具入参 (contractId/name/description/spec/taskIds) | keywords: contract-tool-input, coupling-contract
+- `CodeGraphContract` — 通用联动开发契约面 (contractId/name/description/spec/taskIds; LLM 协定的跨文件共享约定, 挂在 taskIds 上, 生成时注入参与节点), 前后端同构 | keywords: contract-surface, coupling-contract
+- `DepDecisionSchema` / `DepDecisionPayload` — change-plan 依赖判定 LLM 输出 (每 app add/remove npm 包) | keywords: dependency-decision, llm-output
 - `SaasHookBusLike` — change-plan 读知识库所需的最小 SaaS HookBus 形状 | keywords: saas-hook-bus, knowledge-read
 - `SelectedManuals` — 先选书选中的书本 id + 拼好的手册文本 + 面向用户的 notice | keywords: selected-books, manual-text
 
@@ -435,14 +496,14 @@ code-agent（代码生成智能体）
 - 依赖判定提示采用"先判定、能定就定"策略：既有 Solution 只要是合理承载就直接 `useSolution` 复用（哪怕不完美也算决策），不把单个可用 Solution 挂进 `waitChoose`；只有两个以上 Solution 真正可比且选错有实质影响时才 `waitChoose`；没有合适承载才 `requiresNewSolution`，不因匹配不完美就新建近似重复容器。
 - 动作 `app/unit/data-point` 同样由逻辑模型从需求语义推断并直接提交 `useAction`（UI/页面→app、后端能力/服务→unit、数据结构/存储→data-point），把入口 `targetKind` 当强先验；只有需求在车道间真正无法判定时才留 `waitChooseAction`。
 - 归一化阶段对"单候选选择"做自动提交：某条 route 的 `waitChoose` 或 `waitChooseAction` 只剩一个候选时直接当作 `useSolution`/`useAction` 提交，不再因为唯一候选而发起问答。
-- dependency-check / target-resolution / target-bootstrap 三个节点的逻辑模型调用都是后台 graph 任务，统一传 `isolateCallbacks: true`（隔离主对话已关闭的流式 writer，否则 minimax 等流式 provider 会因 `WritableStream is closed` 丢掉全部 content 而被迫 fallback）+ OpenAI JSON mode `responseFormat`。
+- dependency-check / target-resolution / target-bootstrap 三个节点的逻辑模型调用都是后台 graph 任务，统一传 `isolateCallbacks: true`（隔离主对话已关闭的流式 writer，否则 minimax 等流式 provider 会因 `WritableStream is closed` 丢掉全部 content 而被迫 fallback）。**dependency-check 与 target-resolution 已工具化**（`requestDependencyDecision` / `decideTargetResolution` 走工具调用，无大 JSON、无 parse-fail 重试）；target-bootstrap 仍是小 JSON。
 - 两层判定都额外产出 `notice`（一句面向用户、语言跟随需求的告知文案，不暴露 solutionId/JSON 等术语），并通过 `sendDependencyNotice`（走 `saas.app.conversation.sendMsg` 普通文本）主动发给用户：
   - dependency-check 的 notice 说明用哪个 Solution 承载、复用还是新建，在「确定需求环节」直接 `ready`（没走选择卡片、非 resume 恢复）时发，避免用户误以为"复用通用容器 default-view-solution"是复用了某个相似现成项目；
   - target-resolution 的 notice 说明具体 app/unit/data-point 是复用了哪个、还是新建，在该节点 `ready` 时发（app 层独立信息，不按 resume 过滤）。
 - dependency-check 不读取 app/unit/data-point 关联列表，不解析具体对象 id/name，不做依赖分析；这些工作由 target-resolution 在 Solution/action 确认后处理。
 - target-resolution 只在 dependency-check `ready` 后运行；它按已确认的 `route.useAction` 调用 `runner.app.solution.listApps`、`runner.app.solution.listUnits` 或 `runner.app.dataTouchpoint.list` 读取候选目标，不重新硬判定 action。
-- target-resolution 把完整需求、routePlan、已选 Solution 和候选 app/unit/data-point 交给逻辑模型，要求输出严格 JSON `targetPlan[]`，每项只能是 `decision="reuse"` 并引用真实候选，或 `decision="create"` 并给出 `newTarget`。
-- target-resolution 遇到新建 Solution 或候选为空时不会读取候选，仍交给逻辑模型产出具体目标的新建选项；LLM 不可用或返回非 JSON 时返回 `blocked`。
+- target-resolution 把完整需求、routePlan、已选 Solution 和候选 app/unit/data-point 交给逻辑模型，**逐 route 调 `set_target_decision`** 工具：每项 `decision="reuse"` 引用真实候选，或 `decision="create"` 给出 `newTarget`。
+- target-resolution 遇到新建 Solution 或候选为空时仍让 LLM 产出新建目标；**LLM 没产出任何决策时 code 全默认 create 兜底**（每 route 都有判定、不出现"不判定"），不再靠"非 JSON → blocked"。
 - 但「逻辑模型判 reuse 却引用了不存在/候选为空的目标」不再 blocked：归一化阶段降级为 create（语义上"没有可复用候选"= 应当新建），并 warn 记录；prompt 同时硬约束"候选为空必须 create、reuse 只能照抄非空候选的精确 id/name"，双保险避免弱模型在空候选下硬判 reuse 卡死流程。
 - 降级（reuse→create）会给该 route 打 `downgraded=true`；target-resolution 检测到任一 route 降级时**丢弃 LLM 的 app notice 不发**（它多半基于"复用"判定生成、会误导用户），只在日志记 `target:notice:skip`。
 - target-resolution / target-bootstrap 的 `skipped` 回包把跳过原因写进 `reason` 字段、`errors` 留空，避免监控把"正常跳过"当错误误报；只有真错误才进 `errors`（blocked）。
@@ -451,7 +512,7 @@ code-agent（代码生成智能体）
 - target-bootstrap 的名称要求短 kebab-case slug，summary/description/tags 用来帮助后续生成节点理解目标；节点会归一化长度和 tags，但 LLM 不可用或缺失必要元数据时会 `blocked`。
 - target-bootstrap 通过 `runner.app.solution.ensureTarget` 完成初步创建：新 Solution 会创建 Solution 元数据，新 app 会在已选或新建 Solution 下创建 app 元数据；unit/data-point 的真实创建留给后续专门节点。
 - 即使 Runner 只返回一个 Solution，dependency-check 也不再确定性自动复用；逻辑模型必须判断该 Solution 是否适合当前需求，必要时返回 `requiresNewSolution/newSolutionOption/newSolutionReason`。
-- 逻辑模型多为 reasoning 模型，超长需求易导致它不产出 JSON；因此喂给判定/目标解析的需求会先经 `compactRequirementForRouting` 压缩，`parseJsonObjectLoose` 会剥离 `<think>` 思考块并用括号配平提取首个完整 JSON 对象，判定失败时还会用 `buildDependencyDecisionRetryPrompt` 严格重试一次，并把原始响应片段写入 `code_graph_log` 便于排查。
+- 逻辑模型多为 reasoning 模型，超长需求会拖累，因此喂给判定/目标解析的需求先经 `compactRequirementForRouting` 压缩。**dependency-check 已工具化**（`requestDependencyDecision` 走 set_route/propose_new_solution/set_notice）—— 不再有大 JSON parse-fail 及其重试（那次实测浪费 ~21s 的病根）；`parseJsonObjectLoose` 仍供仍是 JSON 的小调用（`decideDependencies` 依赖判定、选书、目标解析）剥 `<think>`、括号配平提取首个 JSON。规划段现只剩这几个小 JSON 调用，主判定链路（dependency-check / change-plan）已全工具化。
 - 仅当压缩、增强解析、重试都失败时才回退；回退不再把 `app/unit/data-point` 也抛给用户，而是用入口推断的 `targetKind` 直接提交动作，只让用户确认复用已有 Solution 或新建（仍给出 `newSolutionOption`），不会因为只有一个候选就直接 `ready`。
 - 用户在确认卡片选择 `newSolutionOption` 后，dependency-check 会以 `ready + requiresNewSolution` 结束，把新 Solution 候选留给后续创建节点消费。
 - 如果 session 已绑定 Solution 且该 Solution 的 `includes` 声明支持目标动作，dependency-check 可直接复用；绑定但明显不适配时仍进入复用/新建判断。
@@ -465,12 +526,25 @@ code-agent（代码生成智能体）
   - 只产 `op:'create'` (新增)；modify/delete 复杂度高，后续接入。module.md 大纲读取在此环节弃用 (改用新格式)。
   - **先选书再生成 (LLM 判定, 非阻断)**：节点开始先 `loadPlanningManuals` —— 经 `saas.app.knowledge.search` 列出 Agent 可见书本，逻辑模型按需求/routePlan 选用 (可多本，失败回退前端 tag 书本)，再 `saas.app.knowledge.getChapter` 加载章节 (含 LM必读) 拼成手册，注入每轮生成 prompt；选中的 `bookIds` 记进 changePlan 结果。选书 LLM 同时产出 `notice`，**选完即经 `sendDependencyNotice` 往消息窗口发一条告知** (语言跟随需求，与依赖/目标判定 notice 同一通道)。取不到书不阻断、仍生成，但每个分支都打 `knowledge:start/selected/skip/fail` 日志便于排查。本地预置「前端开发手册」(`local_frontend_dev_handbook`) 即此用途：默认前端定型 Astro (含单页/普通页面)、最小模块分块、资源目录分离、页面 JS/CSS 分离。SaaS HookBus 经 `agent.handle.ts` 串入 change-plan 节点。
   - 变更集 (changePlan) 持久化在**对应 Runner 的 Mongo** (经 `runner.app.codeAgentPlan.*` 六个专有业务 hook)，不存 SaaS 进程内存 (多租户危险)；支持局部 upsert + 局部搜索，体积大也只回切片。
-  - 是一个 **code 驱动的 todo 状态机外循环**：代码挑出开放 todo → 喂给 LLM 当前 todo + 相关任务切片 + 已找到的存量 hook → LLM 用 json_object 吐出一轮动作 (新增/更新任务、改 todo 状态、发存量 hook 搜索请求、notice) → 代码经 store 落库 + 履行搜索 + 跑确定性验图 → 直到无开放 todo 或撞 `maxIterations` 上限。完成判定**只看 todo 表 (getSnapshot.openTodos)**，不信 LLM 嘴上说完成。
+  - 是一个 **code 驱动的 todo 状态机外循环 + LLM 工具调用内层** (与 generate-file 同构, **不再让 LLM 返回大 JSON**)：代码挑出开放 todo → 一轮 `runChangePlanRound` 把当前 todo + 任务切片 + 存量 hook + 已声明契约喂进 prompt，LLM **调用工具**构建 (`upsert_task` 增/改文件、`update_todo` 关 plan-target、`read_file`/`grep`/`search_files` 读现有文件、`search_hooks`/`get_hook_info` 找存量 hook、`declare_contract` 协定契约、`set_notice`)，createAgent 内部跑完工具循环 → 每轮完代码重算边 + 同步 resolve-edge todo → 直到无开放 todo 或撞 `maxIterations`。完成判定**只看 todo 表 (getSnapshot.openTodos) + code 权威重算边**，不信 LLM 嘴上说完成；单个工具调用坏了不毁整轮，彻底告别"not a JSON object"硬挂。
   - **按 target 的 action 分流 (关键)**：`app` (前端页面/UI) 和 `data-point` (数据结构) 只规划**文件** (`{path, summary}`)，**不产 hook、不产边** —— 一个普通页面没有 hook，页面里的 JS 函数不是 hook，prompt 明确禁止给它们编 hook/签名/calls。只有 `unit` (HookBus 后端能力) 才产 hook 契约 + action tree。
   - 一个 LLM 连贯吃完整个 routePlan (跨 solution)；对 `unit` 目标产出 action tree：每个新 hook 内联 `calls`/`compatibleWith` 出边；代码从所有任务派生 `edges` 并分类 new/existing/unresolved (无 hook 的 app/data-point 任务自然不产边)。
+  - **change-plan 具备文件读能力 (判所需/所修)**：LLM 可调 `read_file`/`grep`/`search_files` 工具 (经 `runner.app.codeAgentFs.readFile/grep/fastSearch`，围栏在 plan 目标根) **读现有文件** (如复用目标的 package.json/配置/源码) 再决策；新目标无文件可读。deps 判定 (`decideDependencies`) 也据此把 add/remove 落到真实需要。
+  - **联动开发契约面 (通用, 治跨文件符号漂移)**：全并发生成下各文件盲生成、共享符号 (锚点 id / 事件名 / 共享 class / payload 形状…) 会漂。change-plan 的 LLM 调 `declare_contract` 工具**协定** `CodeGraphContract{contractId, name, description, spec(语义/松结构), taskIds}` —— 一份跨文件共享约定挂在参与的 taskIds 上 (跨轮按 contractId 累积)。build-dispatch 按 taskId 把每个文件参与的契约**注入其 Send 载荷**，generate-file prompt 里"SHARED CONTRACTS you MUST honor"要求照抄其中 id/名字/形状 —— 联动的文件同源一份约定, 就不再漂 (如 nav 与各 section 共用一份锚点契约)。**不写死锚点**: 契约是通用 kind-无关的语义面, LLM 决定协定什么。前后端同构 —— 后端 unit 间共享 hook payload 形状走同一套。
+  - **契约复盘门 (code 强制一步, 治"契约面建好却没被触发")**：实测发现 LLM 单轮就 upsert 完所有文件 + 关 plan-target, 把可选的 declare_contract 直接跳了 → 契约永远是 0。修法: 文件规划一收口 (无 open 的 plan-target/resolve-edge 且 ≥2 文件), code 就 **seed 一个 `contract-review` todo** (todo 类型加了这一种), 逼 LLM **单独一轮**专做契约 —— `isContractRound` 时走 `buildContractReviewPrompt` (聚焦提示: 复盘全量文件、举锚点/事件/形状/共享 class 例子、逐联动 declare_contract, 不许再动文件)。这一轮跑完 **code 一次性关掉该 todo** (一锤子, 权威在 code, 不跟 LLM 纠缠是否声明)。让契约声明成为一步的主任务, 不再跟 upsert_task 抢注意力。
   - **拓扑顺序 (dependsOn)**：每个任务带粗粒度 `dependsOn: string[]` = 本 plan 内它直接组合/使用的**兄弟 taskId** (页面依赖布局+各 section 组件+样式，组件依赖共享样式/脚本；叶子文件为空)。仅 task 级、非 import 行、非 hook 边 (hook 连线仍走 calls/compatibleWith)。`computeTopoOrder` 用 Kahn 派生叶子在前的生成顺序放进回包 `topoOrder` 供下游生成节点定先后；引用到不存在的 taskId 记 `dangling`、成环任务补末尾并 warn，均不阻断。import 精连仍留给下游 Integrator (AST)、脚手架/包依赖归 archetype 层，change-plan 只表达粗粒度关系。
   - **验图自纠**：unresolved 边由代码注入 `resolve-edge` todo (被 LLM 错误关掉的会重新打开、已解决的由代码关掉)，逼模型补一个新任务定义它、或搜到既有 hook、或删边；这类 todo 状态由代码权威同步。new→existing 边靠 `searchSolutionHooks` (scope 到 routePlan solution 的 app/unit) 解析，存量 hook 改不了 (create-only)，新侧适配。
   - **路径是完整的 solution/app 相对路径**：模型只产目标内文件路径 (如 `index.html`)，代码用 target 的 `basePath` (`deriveTargetBasePath`, 来自 `useTarget.path` 裁成 workspace 相对、或按 `solutions/<sol>/apps/<app>` 构造) `joinTargetPath` 拼成完整相对路径，并做 `..`/绝对路径防越界 (作用域围栏)；多目标时模型须带 `routeId` 定位。
   - change-plan 不阻断流水线：撞迭代上限仍有开放 todo 时 status 仍 `ready`，只 warn + 记 `reason`，回包带 `openTodos` 供下游判断。
   - 运行产物 (`logs/code-agent/.../*.json`) 已瘦身：节点日志去重 (顶层 `log` 留一份，`result.*.log` / `result.context.code_graph_log` 标 `[see top-level log]`)，`input` 剥掉与 `request.full_requirement` 重复的需求全文。
-  - 后续重构会在 change-plan 之后接入真实创建/生成/编辑/集成节点，消费 changeTasks。
+  - **项目初始化 + 依赖 (project-init 节点, 在生成之前)**：change-plan 里 `decideInitTargets` 判每个 app 目标 —— **needsScaffold** 由 ground-truth `init.lock` 定 (`runner.app.codeAgentFs.checkInitLock`；无锁→要脚手架, 有锁→跳；通用不绑技术栈), **依赖增删** 由 `decideDependencies` 一次 LLM 定 (`deps:{add,remove}`, 按已规划文件推断、保持最小); 要脚手架**或**有依赖变更的 app 才入 `changePlan.initPlan`。图上 `change-plan → project-init →[gateAfterProvision]→ build-dispatch`：`project-init` 逐目标跑**LLM 终端工具循环** (`run_terminal`/`read_file`)：needsScaffold 则按手册脚手架 (**pnpm**: `pnpm create astro@latest . --template minimal --install …`)、再按 deps `pnpm add <add>` / `pnpm remove <remove>`；needsScaffold 目标验 package.json 落盘后**写 `init.lock`** (`writeInitLock`, 下次跳过), 仅依赖变更的目标不重脚手架、不写锁。`run_terminal` 走 `runner.app.codeAgentFs.runCommand` (cwd 围栏、有界超时、无通知)。汇成 `changePlan.init`, 有失败置 blocked。无 initPlan 则透传跳过。**统一用 pnpm**: Runner 起动时 `ensureWorkspacePnpmStore` 把 pnpm store 钉到 workspace 同卷 (`<workspace>/.pnpm-store`) → 硬链接、所有 app 共享一份 store, 第二个 app 起装依赖近乎秒过 (不同版本各存不冲突)。build-test 的构建命令同为 `pnpm build`。
+  - **provision→generation 边界 (终端初始化与项目生成分开)**：`project-init` 后不再无条件进生成，而是过 `gateAfterProvision` 条件边 —— **status≠blocked 才进 build-dispatch，否则直接 END**。这把"环境初始化失败 (脚手架/装包坏了 → blocked)"和"代码生成失败 (repair 循环)"分成**两条独立终止路径**：环境没搭好就不往一个非就绪的 env 里空生成。plan 被 blocked 时同样短路 (project-init 本就对 blocked plan no-op)。同一 thread/checkpointer、串行，只是边界清晰、各自失败各自处理 (起步形态，未抽成独立 subgraph)。
+  - **构建测试 + 返修 (build-test 节点, 生成之后, 判定一定是 LLM)**：文件齐 (build-join) 后接 `build-test`：跑 **LLM 工具循环** —— `run_terminal` 自己跑 `npm run build`、`read_file` 看报错源码、`add_repair_task({path,issue})` 把"哪个文件、什么问题"塞进 `changePlan.extraPlan`。**没塞任何返修任务 = LLM 判构建通过** (不拿 exitCode 判死: 0 退出但结果坏也算问题, 有些 warning 可接受)。有返修 → 每个返修任务经 `packFixSend` 打成 **fix-mode `BuildFileSend`** (照抄 dispatch 载荷 + `fix.issue`)，`fanOutBuildTestRepair` 用 Send **复用 generate-file** 节点 (FIX 模式: 读现文件、精准修、重写)，天然回环 `generate-file → build-verify → build-join → build-test` 再测。有界 `maxBuildTestRounds` (默认 3, 约 2 次返修 + 1 次终判)；超预算还不过 → 置 `blocked` + reason。图: `build-join → build-test →[fanOutBuildTestRepair]→ (generate-file 返修回环 | END)`。extraPlan 也预留给未来其它扩展。
+  - **构建子图 (build subgraph, 消费 changeTasks)**：project-init 之后经 `gateAfterProvision` 接 `build-dispatch → (Send 扇出) generate-file×N → build-verify →(缺文件 Send 重触发→generate-file, 回环) / (齐了) build-join → build-test → END`。dispatch 按 `topoOrder` 排序、载入手册、种 `generate-file` todo、打包每文件 Send 载荷；每个 `generate-file` 是一个**并发单文件代码节点**，跑**真 tool-calling 循环**：给模型绑一组可执行工具 (write_file 全量写、**edit_file 定点字串替换 (修改能力)**、read_file/grep/fast_search[/get_hook_info]、注释 keyword 的 list_keywords/search_keywords/add_keyword、update_todo)，由 AI 层 `ai-model.service` 的 `createAgent` 内部执行工具循环，**无 JSON 解析**；工具闭包绑 planId/taskId/runnerId，内部调 `runner.app.codeAgentFs.*` / `runner.app.appTag.*` / `runner.system.hookbus.getInfo`；write_file 或 edit_file 成功即闭包捕获完成。join 汇成 `changePlan.build`。**修改能力 (edit_file)**：build-test 返修时 Send 载荷带 `fix.issue` → 节点进 FIX 模式, prompt 让它 read_file 现文件后**优先 edit_file 定点改**(只换坏的片段、不重写整份、不碰无关处), 走 `runner.app.codeAgentFs.editFile` (原子字串替换); 这就是"在返修环节给代码节点加的修改原语", 也预留给未来 op:modify。
+  - **注释 keyword 纪律 (补全注释是完成的一部分, 由 todo 监督)**：生成的文件必须补**文档注释**, 用**单个 `@keyword` 行**, 词按 `维度:词` 标注; 维度是**固定的工程向 4 维** (`功能职责/技术栈/数据接口/依赖关系`, 不在集内归 `其他`) —— 即"限定 tag 维度"是限维度、维度下的词开放。prompt 让 LLM 逐符号沿 4 维想、每维给个词 (共 2-5 个), 用前先 list_keywords/search_keywords 复用、找不到才 add_keyword({dimension,keyword}), 不许编造。**代码不只靠 prompt**：`validateGeneratedFile` (完成②) 对含声明的代码文件强制校验 `@keyword` 存在 (兼容旧 `-cn/-en`), 缺则 generate-file todo 不关、循环催办补注释 —— "todo 监督这部分"。
+  - **构建后代码回填词表**：build-join 里 `collectAndSyncKeywords` 调 `runner.app.codeAgentFs.collectKeywords` 扫**全部文件**的 `@keyword` (解析 `维度:词` 条目、每行截 5、去 @)、按 appId 分组, 再 `runner.app.appTag.ensureMany` 按维度同步进 `tags.json` (维度归一到 4 维+其他、去重、只加缺的)。即 **维度化 tags.json (`{维度:[词]}`) 由代码从文件真实收集回填**, 不只靠 LLM add_keyword; best-effort, 同步失败不阻断构建。
+  - **todo 驱动的完成循环 (单文件内)**：每个文件有 `generate-file:<taskId>` todo。每轮跑一次完整 tool-calling 回复后，**代码按真实产物判完成** (写过 write_file + 非空 + ②规则通过) → 代码权威关 todo 为 done；未完成则把原因写进 todo 进展、下一轮 prompt **按 todo 催办**重跑 (至 `maxGenerateRounds`)。LLM 可用 `update_todo` 调进展/置 in_progress，但**不能自己置 done** (done 是代码保底)。这就是"LLM 做事为主、代码权威兜底"落到单文件。
+  - **完成判定三层**：① LLM 自驱做事 (调工具写文件)；② 文件级规则校验 (`validateGeneratedFile`, todo 监督)：含声明的代码文件强制 `@keyword-cn`/`@keyword-en` 文档注释, 缺即未完成 (Astro parse 规则后续)；③ 代码兜底 (没写/空文件/校验失败=未完成 → 催办重跑；轮次用尽仍不成 → 结果 failed → build-join 置 blocked, 不谎报 ready)。checkpointer 做重试隔离, 不拆 thread；全并发生成、topoOrder 只喂上下文不串行化。
+  - **AI adapter**：`AgentAiRequest` 增 `tools?` 字段，`buildAiRequest` 里**每次调用的 tools 覆盖 adapter 固定工具**，让 code 生成节点跑自己那组工具 (纯附加, 不影响不传 tools 的调用)。
+  - **验证 + repair 回环 (跨文件断链兜底)**：全并发 generate-file 跑完后 `build-verify` 调 `runner.app.codeAgentFs.verifyTasks` 按 **changePlan 落盘真相**查哪些文件没建 (不存在/空)；缺文件就从 `state.buildFiles` 过滤出对应 Send 载荷、Send **重触发**那些 generate-file (回到 verify, 成环)，最多 `maxRepairRounds` 轮；齐了→`build-join`(ready)，超轮仍缺→`build-join` 置 **blocked** + reason 列缺失文件。verify 出错 fail-open (视为齐全) 免死循环；buildResults reducer 跨 repair 轮累加, finalize 按 taskId 取最后一次。这修的是"全并发下某文件掉点→兄弟断链"。
+  - **待接 (下一刀)**：Astro 单文件校验规则；Integrator 按 topoOrder 装配 (import 精连/zod from schema)；影子测试 + QA 节点。

@@ -4,7 +4,7 @@ import type { HookResultStatus, HookPhase } from '../enums/hook.enums';
  * @title Hook 类型定义 (SaaS)
  * @description 统一 SaaS / Runner 两端的 Hook 协议外形:
  *              - HookEvent 是入口标准消息, 携带 payload (LLM 可控) + context (运行时注入,LLM 不可见)
- *              - 底层 HookHandler / HookMiddleware 直接接收 event, SaaS 业务层通过 HookController 声明位置参数
+ *              - 底层 HookHandler / HookMiddleware 直接接收 event, SaaS 业务层通过 HookController 声明单对象 payload
  *              - HookInvocationContext 是 token / principalId / traceId 等环境信息的统一通道
  * @keywords-cn Hook类型, 调用上下文, 事件外形, 中间件, 运行时注入
  * @keywords-en hook-types, invocation-context, event-shape, middleware, runtime-injected

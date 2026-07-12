@@ -4,13 +4,14 @@ SaaS Solution 模块
 
 ## 概述 (Overview)
 
-提供 SaaS 侧 Solution 管理、跨 Runner 聚合检索、批量详情、批量应用列表和批量单元列表能力。HTTP 路由与 Hook 同源声明，外部入口均在注册处同址挂载 `@CheckAbility` 与 `@HookRoute`。
+提供 SaaS 侧 Solution 管理、跨 Runner 聚合检索、批量详情、批量应用列表和批量单元列表能力。HTTP 路由 (`SolutionController`) 与 Hook 声明 (`SolutionHookController`, 单对象 payload) 已解耦, 各自在注册处同址挂载 `@CheckAbility`。
 
 ## 文件清单 (File List)
 
 - `entities/solution.entity.ts` — Solution TypeORM 实体。
 - `entities/solution-purchase.entity.ts` — Solution 购买记录实体。
-- `controllers/solution.controller.ts` — Solution HTTP 与 Hook 入口。
+- `controllers/solution.controller.ts` — Solution HTTP 入口 (hook 已迁出)。
+- `controllers/solution.hook-controller.ts` — Solution Hook 声明层 (单对象 payload)。
 - `services/solution.service.ts` — Solution CRUD、Runner hook 聚合与批量关联查询。
 - `types/solution.types.ts` — Zod schema、请求类型与响应类型。
 - `enums/solution.enums.ts` — Solution 状态、来源、包含内容枚举。
@@ -33,6 +34,23 @@ SaaS Solution 模块
 - `SolutionController.purchase(body, req)` — 创建 Solution 购买记录 | keywords: purchase-solution
 - `SolutionController.getRunners()` — 列出可见 Runner | keywords: get-runners
 - `SolutionController.getTags()` — 聚合 Solution 标签频次 | keywords: get-tags
+- `resolveSolutionUserId(context)` — 从 hook invocationContext 解析用户 id (缺省 system) | keywords: resolve-solution-user-id
+- `SolutionHookController.create(payload, _principal, context)` — hook 创建本地 Solution | keywords: create-solution
+- `SolutionHookController.searchRunnerSolutions(payload, _principal, _context)` — hook 搜索 Runner Solution 摘要 | keywords: runner-solution-search, batch-runner
+- `SolutionHookController.getBatchDetails(payload, _principal, _context)` — hook 批量 Solution 详情 | keywords: batch-solution-detail, app-unit-detail
+- `SolutionHookController.listSolutionApps(payload, _principal, _context)` — hook 批量 Solution 应用 | keywords: solution-app-list, batch-solution-association
+- `SolutionHookController.listSolutionUnits(payload, _principal, _context)` — hook 批量 Solution 单元 | keywords: solution-unit-list, batch-solution-association
+- `SolutionHookController.getById(payload, _principal, _context)` — hook 本地 Solution 详情 | keywords: get-solution
+- `SolutionHookController.update(payload, _principal, context)` — hook 更新本地 Solution (id 平铺) | keywords: update-solution
+- `SolutionHookController.delete(payload, _principal, _context)` — hook 软删除本地 Solution | keywords: delete-solution
+- `SolutionHookController.list(payload, _principal, _context)` — hook 跨 Runner 聚合列表 | keywords: list-solutions
+- `SolutionHookController.listMarketplace(payload, _principal, _context)` — hook marketplace 占位列表 | keywords: list-marketplace
+- `SolutionHookController.install(payload, _principal, context)` — hook 安装到 Runner (id 平铺) | keywords: install-solution
+- `SolutionHookController.uninstall(payload, _principal, context)` — hook 从 Runner 卸载 (id 平铺) | keywords: uninstall-solution
+- `SolutionHookController.getPurchases(_principal, context)` — hook 购买记录占位 | keywords: get-purchases
+- `SolutionHookController.purchase(payload, _principal, context)` — hook 创建购买记录 | keywords: purchase-solution
+- `SolutionHookController.getRunners(_principal, _context)` — hook 列出可见 Runner | keywords: get-runners
+- `SolutionHookController.getTags(_principal, _context)` — hook 聚合标签频次 | keywords: get-tags
 - `SolutionService.create(userId, data)` — 创建本地 Solution 实体 | keywords: create-solution
 - `SolutionService.getById(id)` — 按本地 id 获取 Solution 实体 | keywords: get-solution-by-id
 - `SolutionService.update(id, userId, data)` — 更新 Solution 实体 | keywords: update-solution
@@ -78,6 +96,9 @@ SaaS Solution 模块
 | 跨Runner聚合 | cross-runner-aggregate |
 | 合成Solution标识 | synthetic-solution-id |
 | Runner方案关联 | runner-solution-association |
+| Solution Hook声明 | solution-hook-controller |
+| 单对象payload | single-object-payload |
+| 解析用户ID | resolve-solution-user-id |
 
 ## 类型导出 (Type Exports)
 

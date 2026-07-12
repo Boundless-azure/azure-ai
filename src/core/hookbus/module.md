@@ -4,7 +4,7 @@
 - 提供本地队列的 Hook 总线，支持注册/筛选/调用与中间件链，并提供状态缓存。
 - 每个进程维护独立的 Hook 队列，不进行跨进程分发；慢钩子并行执行，不阻塞其他钩子。
 - 与 Runner 端 hookbus 共用同一套底层类型语义: `HookEvent` 携带 payload (业务) + context (运行时, LLM 不可见)。
-- SaaS 业务 hook 统一通过 `@HookController` + `@HookRoute` 声明, LLM-facing payload 必须是数组并按方法形参展开。
+- SaaS 业务 hook 统一通过 `@HookController` + `@HookRoute` 声明, LLM-facing payload 是**单对象** (args[0] 即方法第一形参; 无参 hook 传 `{}`; id+body 平铺为 `{ id, ...body }`)。
 
 文件清单（File List）
 - core/hookbus/enums/hook.enums.ts
@@ -43,7 +43,7 @@
 - HookBusService.listRegistrations()
 - HookBusService.onDebug(listener)
 - HookAuthMiddlewareService.onModuleInit()  -- 注册全局 auth mw, 解析 token → principalId / principalType / extras.tenantId
-- HookControllerExplorerService.onModuleInit()  -- 扫描 @HookController/@HookRoute, 注册数组形参 hook
+- HookControllerExplorerService.onModuleInit()  -- 扫描 @HookController/@HookRoute, 注册单对象 payload hook (args[0]→方法第一形参; 无参→{})
 - HookDebugStateService.getEnabled()
 - HookDebugStateService.setEnabled(next)
 - HookbusDebugController.getState()
@@ -109,7 +109,7 @@ HookBus 模块是系统的事件编排核心，支持同名 Hook 的多插件实
 - HookAuthMiddleware 解析 token, 校验后回填 principalId / principalType / extras.tenantId, handler 通过 event.context 直接读
 - LLM tool schema 不暴露 context 字段, LLM 不可见不可改
 
-底层 handler / middleware 签名仍为 `(event, next?) => HookResult`；SaaS 业务声明层使用 `@HookRoute` 方法签名，`payload: [arg1, arg2]` 会按顺序展开成方法形参。
+底层 handler / middleware 签名仍为 `(event, next?) => HookResult`；SaaS 业务声明层使用 `@HookRoute` 方法签名，单对象 `payload` 作为方法第一形参 (payload, principal, context, event)；无参 hook (args:[]) 不传 payload。
 
 权限校验 (与 HTTP @CheckAbility 对齐):
 - HookMetadata.requiredAbility = { action, subject } 或数组 (AND); `@HookRoute` 可显式写,
@@ -131,9 +131,9 @@ HookBus 模块是系统的事件编排核心，支持同名 Hook 的多插件实
 - CLAUDE.md 强约束: handler 禁 console.log / 独立 LogRecord, 一律走 event.log
 
 payload schema 校验 (zod, SSOT, 全项目唯一校验路径):
-- @HookRoute 注册: args 是位置参数 schema 数组, hook-controller-explorer 自动包成 tuple schema 写入 metadata.payloadSchema
+- @HookRoute 注册: args 是单对象 schema (args[0]); hook-controller-explorer 直接取 args[0] 作 metadata.payloadSchema (无参 hook args:[] → `z.object({}).passthrough().optional()`)
 - 无参 HookRoute 兼容 `[]` 和 `[{}]`, 但调用 controller 方法时会忽略空对象, 仍只追加 principal/context/event
-- HookInvokerService.runHandlerWithSchema 在 handler 执行前自动 safeParse, 校验失败返回
+- HookInvokerService.runHandlerWithSchema 在 handler 执行前**先统一归一空占位** (`normalizePayloadEmpties`: payload 现为单对象 —— **整个 payload 为空占位 (`""`/null/undefined)→`{}`**, **payload 是对象且某字段为空占位→该字段值置 `null`**; 无空占位原样不动) 再 safeParse; 校验/报错/handler 都用归一后的 payload。校验失败返回
   `payload-schema-invalid: field=payload[0].xxx actualType=... actualValue=... fieldSchema={该字段自己的子schema} message="..."` + **指令在前、逐字段 schema 随行**的修复指引: 每个报错字段都带上 `fieldSchema=` (由 toJsonSchemaSafe 转一次 + resolveFieldSchema 按 path 提取), 先硬指认"这是你构造的形状错、传输层不改写/清空 payload、非平台或序列化故障"(payload 为 ""/null 空占位时额外点名 `payload=[""]`), 再要求 LLM **照每个字段自己的 fieldSchema 只重生成该字段的值** (对象参数包成 payload[0] 如 `[{...}]`, 无参传 `[]`, 禁止 ""/null/占位), 不进入 handler; **全量 `expectedPayloadSchema` 仍完整不截断、仅作兜底置于消息末尾 (L2 自愈)**, schema 错误不要求走 init_tip; 同一 hook 第二次 schema 失败由 call_hook 升级 (L3 保底, 见 agent-runtime), L3 同样重申"仍是 payload 形状错、非平台故障", 缺值时引导去取真实数据而非塞占位
 - hook-controller 方法签名复用 `z.infer<typeof xxxSchema>`, schema 即类型源
 - 缺省 payloadSchema 时跳过校验 (兼容存量); LLM 通过 get_hook_info 拿到的 JSON Schema 也来自此字段

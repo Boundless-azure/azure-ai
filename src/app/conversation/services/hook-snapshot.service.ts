@@ -92,7 +92,7 @@ export class HookSnapshotService {
   }
 
   /**
-   * 经 HookBus 调用 hook,payload 规范化为位置参数数组(与 /hook-invoke 一致)。
+   * 经 HookBus 调用 hook,payload 规范化为单对象(与 /hook-invoke 一致, 单对象 payload 约定)。
    * @keyword-en emit-hook-via-bus
    */
   private async emitHook(
@@ -102,11 +102,11 @@ export class HookSnapshotService {
   ): Promise<{ ok: boolean; data?: unknown; errorMsg?: string }> {
     let normalized: unknown;
     if (payload === undefined || payload === null) {
-      normalized = [{}];
+      normalized = {};
     } else if (Array.isArray(payload)) {
-      normalized = payload.length > 0 ? payload : [{}];
+      normalized = payload.length > 0 ? payload[0] : {};
     } else {
-      normalized = [payload];
+      normalized = payload;
     }
 
     const results = await this.hookBus.emit({

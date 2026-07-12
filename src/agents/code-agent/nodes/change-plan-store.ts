@@ -56,6 +56,7 @@ export class ChangePlanStore {
     runnerId?: string;
     requirement?: string;
     solutionIds?: string[];
+    scopeRoots?: string[];
   }): Promise<void> {
     await this.call('runner.app.codeAgentPlan.ensurePlan', payload);
   }
@@ -270,11 +271,14 @@ function normalizeStoredTask(
     targetId: readStringField(value, 'targetId') || undefined,
     solutionId: readStringField(value, 'solutionId') || undefined,
     ...(action ? { action: action as CodeGraphChangeTask['action'] } : {}),
-    op: 'create',
+    op: readStringField(value, 'op') === 'modify' ? 'modify' : 'create',
     path: readStringField(value, 'path'),
     summary: readStringField(value, 'summary') || undefined,
     hooks,
     ...(dependsOn ? { dependsOn } : {}),
+    ...(readStringArray(value.chapters)
+      ? { chapters: readStringArray(value.chapters) }
+      : {}),
     reason: readStringField(value, 'reason') || undefined,
   };
 }

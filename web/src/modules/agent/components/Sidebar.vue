@@ -321,6 +321,8 @@ const menuItems = [
   { id: 'runners', icon: 'play' },
   { id: 'tasks', icon: 'clipboard-list' },
   { id: 'todos', icon: 'list-check' },
+  // AGENT-MONITOR-TEMP :: 临时调试监听入口, 后期删 (grep AGENT-MONITOR-TEMP)
+  { id: 'codeGraphMonitor', icon: 'diagram-project' },
 ];
 
 /**

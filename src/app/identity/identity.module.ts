@@ -21,6 +21,12 @@ import { OrganizationController } from './controllers/organization.controller';
 import { RoleController } from './controllers/role.controller';
 import { MembershipController } from './controllers/membership.controller';
 import { UsersController } from './controllers/users.controller';
+import { PrincipalHookController } from './controllers/principal.hook-controller';
+import { OrganizationHookController } from './controllers/organization.hook-controller';
+import { RoleHookController } from './controllers/role.hook-controller';
+import { MembershipHookController } from './controllers/membership.hook-controller';
+import { UsersHookController } from './controllers/users.hook-controller';
+import { PermissionDefinitionHookController } from './controllers/permission-definition.hook-controller';
 
 /**
  * @title Identity 模块
@@ -50,6 +56,12 @@ import { UsersController } from './controllers/users.controller';
     PermissionDefinitionService,
     HookAbilityMiddlewareService,
     IdentityComponentsService,
+    PrincipalHookController,
+    OrganizationHookController,
+    RoleHookController,
+    MembershipHookController,
+    UsersHookController,
+    PermissionDefinitionHookController,
   ],
   controllers: [
     PrincipalController,

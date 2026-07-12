@@ -5,6 +5,7 @@ import { TodoFollowupEntity } from './entities/todo-followup.entity';
 import { TodoFollowupCommentEntity } from './entities/todo-followup-comment.entity';
 import { TodoService } from './services/todo.service';
 import { TodoController } from './controllers/todo.controller';
+import { TodoHookController } from './controllers/todo.hook-controller';
 import { TodoComponentsService } from './services/todo-components.service';
 import { IdentityModule } from '@/app/identity/identity.module';
 
@@ -26,7 +27,7 @@ import { IdentityModule } from '@/app/identity/identity.module';
     ]),
     IdentityModule, // 提供 AbilityService + DataPermissionService (后者由 IdentityModule 通过 forRoot global 引入)
   ],
-  providers: [TodoService, TodoComponentsService],
+  providers: [TodoService, TodoComponentsService, TodoHookController],
   controllers: [TodoController],
   exports: [TodoService],
 })

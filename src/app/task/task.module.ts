@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TaskController } from './controllers/task.controller';
+import { TaskHookController } from './controllers/task.hook-controller';
 import { TaskEntity } from './entities/task.entity';
 import { TaskService } from './services/task.service';
 
@@ -12,7 +13,7 @@ import { TaskService } from './services/task.service';
  */
 @Module({
   imports: [TypeOrmModule.forFeature([TaskEntity])],
-  providers: [TaskService],
+  providers: [TaskService, TaskHookController],
   controllers: [TaskController],
   exports: [TaskService],
 })

@@ -96,17 +96,26 @@ export async function loadPlanningManuals(args: {
       );
       return empty;
     }
-    const manualText = await loadChapters(
+    const records = await loadChapterRecords(
       args.hookBus,
       args.workflowContext,
       bookIds,
     );
+    const manualText = assembleManual(records);
+    // 章节目录 (id+title) 给 change-plan 让 LLM 按文件选章; 正文由 dispatch 按选中章加载
+    const catalog = records.map((c) => ({ id: c.id, title: c.title }));
     args.graphLog.info('knowledge:selected', 'selected planning manuals', {
       bookIds,
+      chapters: catalog.length,
       manualChars: manualText.length,
       notice: notice ?? null,
     });
-    return { bookIds, manualText, ...(notice ? { notice } : {}) };
+    return {
+      bookIds,
+      manualText,
+      chapters: catalog,
+      ...(notice ? { notice } : {}),
+    };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     logger.warn(`change-plan manual selection failed: ${reason}`);
@@ -133,7 +142,7 @@ async function listCandidateBooks(
   const data = await callSaasHook(
     hookBus,
     'saas.app.knowledge.search',
-    [{ limit: 100 }],
+    { limit: 100 },
     workflowContext,
   );
   return readItems(data)
@@ -239,22 +248,24 @@ function buildBookPickPrompt(
   ].join('\n');
 }
 
+/** 一章的加载结果 (id 供按文件选章; title/content 供拼装手册) */
+export type ChapterRecord = { id: string; title: string; content: string };
+
 /**
- * Load and assemble chapter content (incl LM必读) for the picked books, capped in length.
- * @keyword-cn 章节加载, 手册拼接
- * @keyword-en load-chapters, manual-assemble
+ * Load the picked books' chapters as records (id/title/content). getChapter without chapterIds only
+ * returns LM必读 for local books, so getToc first to pull ALL chapterIds (incl detail chapters).
+ * @keyword-cn 章节记录加载, 手册章节
+ * @keyword-en load-chapter-records, manual-chapters
  */
-async function loadChapters(
+export async function loadChapterRecords(
   hookBus: SaasHookBusLike,
   workflowContext: WorkflowContext | null,
   bookIds: string[],
-): Promise<string> {
-  // getChapter 不传 chapterIds 时本地书只回 LM必读; 先用 getToc 拿全部 chapterId,
-  // 才能把「Astro 站点」等详情章一并取回。
+): Promise<ChapterRecord[]> {
   const tocData = await callSaasHook(
     hookBus,
     'saas.app.knowledge.getToc',
-    [{ bookIds }],
+    { bookIds },
     workflowContext,
   );
   const chapterIds = collectChapterRecords(tocData, bookIds)
@@ -263,22 +274,52 @@ async function loadChapters(
   const data = await callSaasHook(
     hookBus,
     'saas.app.knowledge.getChapter',
-    [{ bookIds, ...(chapterIds.length > 0 ? { chapterIds } : {}) }],
+    { bookIds, ...(chapterIds.length > 0 ? { chapterIds } : {}) },
     workflowContext,
   );
+  return collectChapterRecords(data, bookIds)
+    .map((chapter) => ({
+      id: readStringField(chapter, 'id'),
+      title: readStringField(chapter, 'title'),
+      content: readStringField(chapter, 'content'),
+    }))
+    .filter((c) => Boolean(c.content));
+}
+
+/**
+ * Assemble chapter records into one manual text, capped in length (chapters kept in given order).
+ * @keyword-cn 手册拼接, 章节拼装
+ * @keyword-en manual-assemble, assemble-chapters
+ */
+export function assembleManual(
+  chapters: ChapterRecord[],
+  cap = MANUAL_TEXT_CAP,
+): string {
   const parts: string[] = [];
   let total = 0;
-  // 按 bookIds 顺序拼 (最具体的前端手册在前, 保证在 cap 内一定落入)。
-  for (const chapter of collectChapterRecords(data, bookIds)) {
-    const title = readStringField(chapter, 'title');
-    const content = readStringField(chapter, 'content');
-    if (!content) continue;
-    const block = `## ${title}\n${content}`.trim();
-    if (total + block.length > MANUAL_TEXT_CAP) break;
+  for (const chapter of chapters) {
+    if (!chapter.content) continue;
+    const block = `## ${chapter.title}\n${chapter.content}`.trim();
+    if (total + block.length > cap) break;
     parts.push(block);
     total += block.length;
   }
   return parts.join('\n\n');
+}
+
+/**
+ * Load and assemble chapter content (incl LM必读) for the picked books, capped in length.
+ * @keyword-cn 章节加载, 手册拼接
+ * @keyword-en load-chapters, manual-assemble
+ */
+export async function loadChapters(
+  hookBus: SaasHookBusLike,
+  workflowContext: WorkflowContext | null,
+  bookIds: string[],
+): Promise<string> {
+  return assembleManual(
+    await loadChapterRecords(hookBus, workflowContext, bookIds),
+  );
 }
 
 /**

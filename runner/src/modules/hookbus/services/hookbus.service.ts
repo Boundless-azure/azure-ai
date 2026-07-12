@@ -338,21 +338,16 @@ export class RunnerHookBusService {
   /**
    * 紧贴 handler 的 zod payload 校验; metadata.payloadSchema 缺省时跳过 (兼容存量 hook)。
    *
-   * **智能 array unwrap (args 形参约定适配)**:
-   * SaaS 端 call_hook / search_hook 等工具都按 "args 数组形参" 约定把 payload 包成 `[{...}]` 数组,
-   * 这是因为 SaaS @HookRoute({args:[...]}) 装饰器自动用 z.tuple(...) 包了一层 schema。
-   * Runner 端 unit hook (terminal/mongo/file 等) 直接传 z.object(...) 单对象 schema, 没有 tuple 包装,
-   * 直接 safeParse 数组 payload 会得到 `expected object, received array` 失败。
+   * **智能 array unwrap (向后兼容)**:
+   * SaaS 端 call_hook 已统一为**单对象** payload (业务 hook 直接收到 `{...}` 单对象), runner unit hook 也是
+   * z.object(...) 单对象 schema → 第一遍 safeParse 即通过, 不需要 unwrap。
+   * 保留 array unwrap 仅为向后兼容: 存量调用方 / runner meta hook (payloadSchema=z.tuple([...])) 仍可能送 `[{...}]`;
+   * 或旧式调用方把单参包成数组时, 取 payload[0] 再试, 避免 `expected object, received array`。
    *
    * 兼容策略:
-   *   1. 先按 schema 直接 safeParse 原 payload (跟 SaaS HookInvoker 行为对齐)
-   *   2. 失败且 payload 是数组 → 取 payload[0] 再 safeParse (适配 SaaS 包 array 调过来的业务 hook)
+   *   1. 先按 schema 直接 safeParse 原 payload (单对象直接通过; tuple schema 的 meta hook 收 array 也直接通过)
+   *   2. 失败且 payload 是数组 → 取 payload[0] 再 safeParse (兼容旧式包 array 的调用)
    *   3. 仍失败 → 返回原 error (包含字段路径), 让 LLM 看到具体哪里错
-   *
-   * 这样:
-   *   - meta hook (payloadSchema=z.tuple([...])) 直接 array 校验通过, 不进 unwrap
-   *   - 业务 hook (payloadSchema=z.object({...})) 通过 unwrap 兼容 SaaS 调用
-   *   - runner 内部直传 object 的调用 (source=system/runner) 直接通过, 不受影响
    * @keyword-en run-handler-with-schema, array-unwrap-fallback
    */
   private async runHandlerWithSchema(
