@@ -19,13 +19,17 @@ import type {
 
 const logger = new Logger('CodeAgentProjectInit');
 const MAX_INIT_ROUNDS = 2;
+
+/** Init phase: 'scaffold' creates project structure (no install); 'deps' installs node_modules. */
+export type InitPhase = 'scaffold' | 'deps';
 const MANUAL_CAP = 8000;
 // 终端命令输出小, 但给足预算避免 max_tokens 截断成空 content (per-call 覆盖模型默认 4096 兜底)
 const INIT_MAX_TOKENS = 8000;
 
 /**
- * Project-init node: for each app target change-plan judged as needing init, run an LLM terminal
- * tool-loop (run_terminal / read_file, cwd-fenced to the app dir) to scaffold + install per the manual.
+ * Project-init node (SCAFFOLD phase): for each app target change-plan judged as needing init, run an
+ * LLM terminal tool-loop (run_terminal / read_file, cwd-fenced to the app dir) to create the project
+ * STRUCTURE per the manual — NO dependency install (that runs in a parallel later step via runInstallDeps).
  * @keyword-cn 项目初始化节点, 脚手架
  * @keyword-en project-init-node, scaffold
  */
@@ -37,7 +41,9 @@ export async function runProjectInit(args: {
   hookCaller: HookCaller | null;
   hookBus: SaasHookBusLike | null;
   workflowContext: WorkflowContext | null;
+  phase?: InitPhase;
 }): Promise<CodeGraphDependencyCheckResult> {
+  const phase: InitPhase = args.phase ?? 'scaffold';
   const changePlan = args.dependencyCheck.changePlan;
   const initPlan = changePlan?.initPlan ?? [];
   if (
@@ -65,6 +71,7 @@ export async function runProjectInit(args: {
       hookCaller: args.hookCaller,
       workflowContext: args.workflowContext,
       manualText,
+      phase,
     });
     targets.push(result);
   }
@@ -78,7 +85,7 @@ export async function runProjectInit(args: {
     targets,
   };
   logger.log(
-    `project-init: ${ok}/${targets.length} app(s) initialized` +
+    `project-init[${phase}]: ${ok}/${targets.length} app(s) processed` +
       (failed.length > 0
         ? `; failed: ${failed.map((t) => t.appDir).join(', ')}`
         : ''),
@@ -101,6 +108,26 @@ export async function runProjectInit(args: {
 }
 
 /**
+ * Install-deps node (DEPS phase): same shape as runProjectInit but runs the dependency-install loop
+ * (`pnpm install` / manual's install command) into the already-scaffolded app dir. Runs in PARALLEL
+ * with file generation, so the graph node ignores this return value for state (avoids racing the build
+ * branch's dependencyCheck writes) — the loop's effect (node_modules on disk) is what matters downstream.
+ * @keyword-cn 依赖安装节点, 并行装依赖
+ * @keyword-en install-deps-node, parallel-deps
+ */
+export async function runInstallDeps(args: {
+  dependencyCheck: CodeGraphDependencyCheckResult;
+  request: CodeGraphRequest;
+  input: CodeGenOrchestrateInput;
+  aiAdapter: AgentAiServer | null;
+  hookCaller: HookCaller | null;
+  hookBus: SaasHookBusLike | null;
+  workflowContext: WorkflowContext | null;
+}): Promise<CodeGraphDependencyCheckResult> {
+  return runProjectInit({ ...args, phase: 'deps' });
+}
+
+/**
  * Initialize one app target: bounded LLM tool-loop (terminal + read), then verify package.json landed.
  * @keyword-cn 单目标初始化, 工具循环
  * @keyword-en init-one-target, tool-loop
@@ -114,8 +141,9 @@ async function initOneTarget(args: {
   hookCaller: HookCaller;
   workflowContext: WorkflowContext | null;
   manualText: string;
+  phase: InitPhase;
 }): Promise<{ appDir: string; ok: boolean; turns: number; error?: string }> {
-  const { target } = args;
+  const { target, phase } = args;
   const call = (hookName: string, payload: unknown): Promise<unknown> =>
     callRunnerHookData(
       args.hookCaller,
@@ -142,7 +170,7 @@ async function initOneTarget(args: {
         messages: [
           {
             role: 'user',
-            content: buildInitPrompt(target, args.manualText, miss),
+            content: buildInitPrompt(target, args.manualText, miss, phase),
           },
         ],
         tools,
@@ -150,11 +178,15 @@ async function initOneTarget(args: {
       });
     } catch (error) {
       logger.warn(
-        `project-init ${target.appDir} round ${round} loop error: ${asMessage(error)}`,
+        `project-init[${phase}] ${target.appDir} round ${round} loop error: ${asMessage(error)}`,
       );
     }
+    if (phase === 'deps') {
+      // deps 阶段: 结构已在, 只跑安装循环 (幂等); LLM 跑完即认完成, 不校验/不写 init.lock
+      return { appDir: target.appDir, ok: true, turns: state.toolCalls };
+    }
     if (!target.needsScaffold) {
-      // 已脚手架 (有 init.lock), 本轮只做依赖增删; LLM 跑完即认完成, 不重写 init.lock
+      // 已脚手架 (有 init.lock), scaffold 阶段无事可做; 跑完即认完成, 不重写 init.lock
       return { appDir: target.appDir, ok: true, turns: state.toolCalls };
     }
     const ok = await isScaffolded(args.planId, target.appDir, call);
@@ -174,7 +206,7 @@ async function initOneTarget(args: {
     }
     miss = state.lastError
       ? `last command failed: ${state.lastError}`
-      : 'package.json not found in the app dir — scaffold is incomplete';
+      : 'package.json is missing OR not valid JSON — scaffold is incomplete. Do NOT hand-write it; re-run the scaffolder so it emits a real package.json.';
   }
   return {
     appDir: target.appDir,
@@ -185,7 +217,9 @@ async function initOneTarget(args: {
 }
 
 /**
- * Verify the app got scaffolded: package.json exists (read via the fenced readFile hook).
+ * Verify the app got scaffolded: package.json exists AND is valid JSON (read via the fenced readFile hook).
+ * 光"非空"不够 —— LLM 用 echo/cat 手搓 package.json 常被逐行转义写坏 (每行成 JSON.stringify 串), 那种坏文件
+ * 非空但 JSON.parse 必炸; 只有 parse 得过才算真脚手架, 否则判未完成→重试, 不写 init.lock 把坏结构锁死。
  * @keyword-cn 脚手架校验, package检测
  * @keyword-en scaffold-verify, package-check
  */
@@ -199,8 +233,18 @@ async function isScaffolded(
       planId,
       path: `${appDir}/package.json`,
     });
-    return Boolean(readStringField(asRecord(data), 'content').trim());
+    const content = readStringField(asRecord(data), 'content').trim();
+    if (!content) return false;
+    const parsed: unknown = JSON.parse(content);
+    // 合法 JSON 且是对象且带 name/scripts/dependencies 之一 (排除 `{}` 或 JSON 数组这类 parse 得过但不是真 manifest)
+    return (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      Object.keys(parsed as Record<string, unknown>).length > 0
+    );
   } catch {
+    // readFile 失败 (不存在) 或 JSON.parse 失败 (被写坏) → 都判未完成
     return false;
   }
 }
@@ -265,6 +309,38 @@ function buildInitTools(args: {
       },
     ),
     tool(
+      async ({ path, content }: { path: string; content: string }) => {
+        state.toolCalls += 1;
+        try {
+          const data = await call('runner.app.codeAgentFs.writeFile', {
+            planId,
+            path,
+            content,
+          });
+          const rec = asRecord(data);
+          return `written ${readStringField(rec, 'path') || path} (${readNumberField(rec, 'bytes')} bytes).`;
+        } catch (error) {
+          state.lastError = asMessage(error);
+          return `write_file failed: ${state.lastError}`;
+        }
+      },
+      {
+        name: 'write_file',
+        description:
+          'Write a NON-scaffolder text file verbatim (e.g. the app-root tags.json keyword vocabulary) by supplying its path + full content. The content is written EXACTLY as given — this is the ONLY correct way to author such files. NEVER use run_terminal echo/cat/heredoc for file content (it gets mangled). Do NOT write package.json / astro.config / tsconfig here — those come from the scaffolder.',
+        schema: z.object({
+          path: z
+            .string()
+            .describe(
+              'workspace-relative path, e.g. solutions/<sol>/apps/<app>/tags.json',
+            ),
+          content: z
+            .string()
+            .describe('the entire file content, written verbatim'),
+        }),
+      },
+    ),
+    tool(
       async ({ path }: { path: string }) => {
         state.toolCalls += 1;
         try {
@@ -272,9 +348,14 @@ function buildInitTools(args: {
             planId,
             path,
           });
+          const content = readStringField(asRecord(data), 'content');
+          if (!content) return '(empty)';
+          // 整份优先: 上限内直接全返, 超上限不静默截断, 明确告知这是大文件、只给了头部
+          const READ_WHOLE_CAP = 16000;
+          if (content.length <= READ_WHOLE_CAP) return content;
           return (
-            readStringField(asRecord(data), 'content').slice(0, 4000) ||
-            '(empty)'
+            `(large file: ${content.length} chars total; showing the first ${READ_WHOLE_CAP}. This is only the HEAD.)\n` +
+            content.slice(0, READ_WHOLE_CAP)
           );
         } catch (error) {
           return `read_file error: ${asMessage(error)}`;
@@ -283,7 +364,7 @@ function buildInitTools(args: {
       {
         name: 'read_file',
         description:
-          'Read a file in this plan by path (e.g. to check package.json / astro.config).',
+          'Read a file in this plan by path (e.g. to check package.json / astro.config). Returns the WHOLE file by default (up to a large cap); if the response says it is large/truncated, it showed only the head — read again for the rest.',
         schema: z.object({ path: z.string() }),
       },
     ),
@@ -311,11 +392,60 @@ function commandIsInPlace(command: string): boolean {
 }
 
 /**
- * Build the instruction prompt for initializing one app target (tool-driven).
+ * Build the instruction prompt for initializing one app target (tool-driven), per phase:
+ * scaffold = create STRUCTURE only (NO install), deps = install node_modules into existing structure.
  * @keyword-cn 初始化提示, 工具驱动
  * @keyword-en init-prompt, tool-driven
  */
 function buildInitPrompt(
+  target: CodeGraphInitTarget,
+  manualText: string,
+  miss: string,
+  phase: InitPhase,
+): string {
+  return phase === 'deps'
+    ? buildDepsPrompt(target, manualText, miss)
+    : buildScaffoldPrompt(target, manualText, miss);
+}
+
+/**
+ * SCAFFOLD-phase prompt: create the project structure + tags.json vocabulary WITHOUT installing deps.
+ * @keyword-cn 脚手架提示, 结构生成
+ * @keyword-en scaffold-prompt, structure-only
+ */
+function buildScaffoldPrompt(
+  target: CodeGraphInitTarget,
+  manualText: string,
+  miss: string,
+): string {
+  return [
+    miss
+      ? `⚠ NOT DONE YET. ${miss}. Read the manual and re-run the commands; make sure package.json exists.`
+      : '',
+    'You set up the STRUCTURE of ONE app project. Two tools: run_terminal (RUN commands — the scaffolder, etc.) and write_file (author a non-scaffolder text file verbatim, e.g. tags.json). Do not write source files here (that happens later); only create the framework skeleton (via the scaffolder) + the app-root tags.json keyword vocabulary (via write_file).',
+    `App dir: ${target.appDir}${target.archetype ? ` · archetype: ${target.archetype}` : ''}. run_terminal ALREADY runs inside this dir — treat it as your working directory.`,
+    'CRITICAL — scaffold IN PLACE: any scaffolder (npm/npx create…) MUST receive "." as the project directory so it builds into the current dir. NEVER pass a project name or a path — that creates a wrong nested folder and will be REFUSED. Scaffold at most ONCE.',
+    'CRITICAL — NEVER hand-write package.json / astro.config / tsconfig by piping content through the shell (echo/cat/printf/heredoc/`>` redirection). Those files MUST be produced by the SCAFFOLDER command only. Hand-authored config gets mangled (each line wrongly quoted/escaped) and corrupts the project. If the scaffolder errored, read its stderr and re-run the SCAFFOLDER correctly — do NOT fabricate the files yourself.',
+    'CRITICAL — DO NOT INSTALL DEPENDENCIES. Do NOT run `npm/pnpm/yarn install`, `pnpm add/remove`, or any `create` that auto-installs. If a scaffolder supports it, pass `--no-install` (and skip any `--install` flag). Dependency install runs in a SEPARATE later step. Your job is ONLY the file structure.',
+    target.needsScaffold
+      ? 'SCAFFOLD per the manual with pnpm, WITHOUT installing. Run EXACTLY this (note the `.` and `--no-install`): `pnpm create astro@latest . --template minimal --no-install --no-git --skip-houston --yes`. A package.json + the project structure must exist at the app-dir root afterward.'
+      : 'This app is ALREADY scaffolded — do NOT re-scaffold and do NOT install anything.',
+    'Ensure the app-root tags.json keyword vocabulary file exists per the manual — create it with write_file (NOT run_terminal echo/cat).',
+    'Stop making tool calls once package.json + the project structure (from the scaffolder) + tags.json (via write_file) exist.',
+    manualText.trim()
+      ? `\nDevelopment manual (AUTHORITATIVE for archetype + scaffold):\n${manualText}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * DEPS-phase prompt: install node_modules into the already-scaffolded structure (no structure recreation).
+ * @keyword-cn 依赖安装提示, 装依赖
+ * @keyword-en deps-prompt, install-deps
+ */
+function buildDepsPrompt(
   target: CodeGraphInitTarget,
   manualText: string,
   miss: string,
@@ -334,23 +464,16 @@ function buildInitPrompt(
     );
   }
   return [
-    miss
-      ? `⚠ NOT DONE YET. ${miss}. Read the manual and re-run the commands; make sure package.json exists.`
-      : '',
-    'You set up ONE app project by CALLING run_terminal. Do not write source files here (that happens later); only bootstrap + manage dependencies.',
+    miss ? `⚠ NOT DONE YET. ${miss}. Re-run the install command.` : '',
+    'You INSTALL the dependencies of ONE app project by CALLING run_terminal. The project STRUCTURE already exists — do NOT scaffold, do NOT recreate files, do NOT write source files.',
     `App dir: ${target.appDir}${target.archetype ? ` · archetype: ${target.archetype}` : ''}. run_terminal ALREADY runs inside this dir — treat it as your working directory.`,
-    'CRITICAL — scaffold IN PLACE: any scaffolder (npm/npx create…) MUST receive "." as the project directory so it builds into the current dir. NEVER pass a project name or a path — that creates a wrong nested folder and will be REFUSED. Scaffold at most ONCE.',
-    target.needsScaffold
-      ? 'Step 1 — SCAFFOLD per the manual with pnpm (a shared store makes install fast). Run EXACTLY this (note the `.`): `pnpm create astro@latest . --template minimal --install --no-git --skip-houston --yes`. A package.json must exist at the app-dir root afterward.'
-      : 'This app is ALREADY scaffolded — do NOT re-scaffold. Only apply the dependency changes below.',
+    'Step 1 — INSTALL: run the dependency install so node_modules is present. Use `pnpm install` (or the install command the manual specifies). A shared store makes this fast; the command blocks until done.',
     depLines.length > 0
-      ? `Step 2 — DEPENDENCIES (apply exactly these; do not add extras):\n${depLines.join('\n')}`
-      : target.needsScaffold
-        ? ''
-        : 'No dependency changes requested.',
+      ? `Step 2 — DEPENDENCY CHANGES (apply exactly these; do not add extras):\n${depLines.join('\n')}`
+      : 'No extra dependency changes requested — just run the install.',
     'When done, stop making tool calls.',
     manualText.trim()
-      ? `\nDevelopment manual (AUTHORITATIVE for archetype + scaffold):\n${manualText}`
+      ? `\nDevelopment manual (AUTHORITATIVE for the install command):\n${manualText}`
       : '',
   ]
     .filter(Boolean)

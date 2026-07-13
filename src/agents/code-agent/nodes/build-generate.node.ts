@@ -93,7 +93,10 @@ export async function dispatchBuildFiles(args: {
       .map((id) => chapterById.get(id))
       .filter((c): c is ChapterRecord => Boolean(c));
     if (picked.length === 0) return fallbackManual;
-    return assembleManual(picked).slice(0, BUILD_GENERATE_LIMITS.maxManualChars);
+    return assembleManual(picked).slice(
+      0,
+      BUILD_GENERATE_LIMITS.maxManualChars,
+    );
   };
 
   const store = new ChangePlanStore({
@@ -119,25 +122,13 @@ export async function dispatchBuildFiles(args: {
   logger.log(
     `build-dispatch: ${ordered.length} files queued for concurrent generation (planId=${planId})`,
   );
-  // 按 taskId 归拢该文件参与的联动契约, 注入每个 Send 载荷 (联动的文件都拿到同一份约定)
-  const contractsByTask = new Map<
-    string,
-    Array<{ name?: string; description?: string; spec?: unknown }>
-  >();
-  for (const contract of changePlan.contracts ?? []) {
-    const entry = {
-      ...(contract.name ? { name: contract.name } : {}),
-      ...(contract.description ? { description: contract.description } : {}),
-      ...(contract.spec !== undefined ? { spec: contract.spec } : {}),
-    };
-    for (const taskId of contract.taskIds ?? []) {
-      const arr = contractsByTask.get(taskId) ?? [];
-      arr.push(entry);
-      contractsByTask.set(taskId, arr);
-    }
-  }
+  // 所有生成节点默认读**全部**契约 (文字说明数组), 每个 Send 都拿同一份完整契约 —— 不再按 taskId 分发。
+  const allContracts = (changePlan.contracts ?? []).map((contract) => ({
+    ...(contract.name ? { name: contract.name } : {}),
+    ...(contract.description ? { description: contract.description } : {}),
+    ...(contract.spec !== undefined ? { spec: contract.spec } : {}),
+  }));
   return ordered.map((task) => {
-    const contracts = contractsByTask.get(task.taskId) ?? [];
     return {
       planId,
       runnerId: args.request.runner_id,
@@ -163,7 +154,7 @@ export async function dispatchBuildFiles(args: {
           ...(dep?.summary ? { summary: dep.summary } : {}),
         };
       }),
-      ...(contracts.length > 0 ? { contracts } : {}),
+      ...(allContracts.length > 0 ? { contracts: allContracts } : {}),
     };
   });
 }
@@ -329,7 +320,9 @@ function seedFileTodos(send: BuildFileSend): FileTodo[] {
     items.push(`按需求就地修改本文件 (读现文件 → 定点改)`);
   items.push(`实现文件内容: ${send.task.summary ?? send.task.path}`);
   for (const contract of send.contracts ?? []) {
-    items.push(`遵守共享契约: ${contract.name ?? contract.description ?? '(见契约)'}`);
+    items.push(
+      `遵守共享契约: ${contract.name ?? contract.description ?? '(见契约)'}`,
+    );
   }
   if (send.task.action === 'unit' && send.task.hooks.length > 0) {
     items.push(`声明/实现 hooks: ${send.task.hooks.join(', ')}`);
@@ -345,7 +338,9 @@ function seedFileTodos(send: BuildFileSend): FileTodo[] {
 
 /** 未完成 todo 文本列表 (催办提示用) */
 function openTodoTexts(todos: FileTodo[]): string[] {
-  return todos.filter((t) => t.status === 'open').map((t) => `[${t.id}] ${t.text}`);
+  return todos
+    .filter((t) => t.status === 'open')
+    .map((t) => `[${t.id}] ${t.text}`);
 }
 
 /**
@@ -439,7 +434,9 @@ function buildFileNodeTools(args: {
                   .number()
                   .int()
                   .positive()
-                  .describe('1-based first line to replace (from read_file numbers)'),
+                  .describe(
+                    '1-based first line to replace (from read_file numbers)',
+                  ),
                 endLine: z
                   .number()
                   .int()
@@ -447,7 +444,9 @@ function buildFileNodeTools(args: {
                   .describe('1-based last line to replace, inclusive'),
                 newText: z
                   .string()
-                  .describe('replacement text (multi-line ok; empty deletes the lines)'),
+                  .describe(
+                    'replacement text (multi-line ok; empty deletes the lines)',
+                  ),
               }),
             )
             .min(1),
@@ -478,10 +477,23 @@ function buildFileNodeTools(args: {
           const base = readNumberField(rec, 'startLine') || 1;
           const total = readNumberField(rec, 'totalLines') || 0;
           const shown = content.split(/\r?\n/).length;
-          const header = total
-            ? `(lines ${base}-${base + shown - 1} of ${total})\n`
-            : '';
-          return clip(header + numberLines(content, base), 16000);
+          const numbered = numberLines(content, base);
+          // 整份优先: 上限内直接全返; 超上限不静默截断, 明确指引按"大窗口"续读, 避免一段段读改导致改一块缺一块
+          const READ_WHOLE_CAP = 16000;
+          if (numbered.length <= READ_WHOLE_CAP) {
+            const header = total
+              ? `(lines ${base}-${base + shown - 1} of ${total})\n`
+              : '';
+            return header + numbered;
+          }
+          const headChunk = clip(numbered, READ_WHOLE_CAP);
+          const headShown = headChunk.split(/\r?\n/).length;
+          return (
+            `(large file: ${total} lines total; showing lines ${base}-${base + headShown - 1}. ` +
+            `To read the rest, call read_file again with a LARGE startLine/endLine span — a few hundred lines at a time (as much as fits), ` +
+            `NOT a few lines. Reading small windows makes you edit one part and miss another.)\n` +
+            headChunk
+          );
         } catch (error) {
           return `read_file error: ${asMessage(error)}`;
         }
@@ -489,7 +501,11 @@ function buildFileNodeTools(args: {
       {
         name: 'read_file',
         description:
-          'Read a file in this plan, returned WITH 1-based line numbers ("<n>\\t<line>"). Optionally pass startLine/endLine to read ONLY that window (use for large files — read around the spot you located). Use the numbers for edit_file line ranges.',
+          'Read a file in this plan, returned WITH 1-based line numbers ("<n>\\t<line>"). ' +
+          'DEFAULT — omit startLine/endLine to read the WHOLE file (returned in full up to a large cap); do this FIRST to grab the full picture, then make ALL your changes in ONE edit_file. ' +
+          'ONLY when the tool response says the file is large/truncated do you read the rest — and then use a LARGE startLine/endLine span (hundreds of lines at a time), NEVER a few lines. ' +
+          'Reading small windows one at a time makes you edit one block and miss another. ' +
+          'Use the returned line numbers for edit_file ranges.',
         schema: z.object({
           path: z.string(),
           startLine: z.number().int().positive().optional(),
@@ -547,7 +563,8 @@ function buildFileNodeTools(args: {
       },
       {
         name: 'grep',
-        description: 'Search file contents by regex within this plan.',
+        description:
+          'Prefer search_by_tag / fast_search FIRST (much faster, more precise); use grep only as a regex-content FALLBACK when tag/filename search does not pinpoint the code. Search file contents by regex within this plan.',
         schema: z.object({
           pattern: z.string(),
           flags: z.string().optional(),
@@ -570,7 +587,8 @@ function buildFileNodeTools(args: {
       },
       {
         name: 'fast_search',
-        description: 'Find files by filename substring within this plan.',
+        description:
+          'FAST filename-substring search — one of the two first-choice ways (with search_by_tag) to locate WHICH file to read/edit, before falling back to grep. Find files by filename substring within this plan.',
         schema: z.object({ query: z.string() }),
       },
     ),
@@ -621,7 +639,7 @@ function buildFileNodeTools(args: {
         {
           name: 'search_by_tag',
           description:
-            "LOCATE code by its @keyword tag (reverse-lookup via ripgrep): returns matching files with the line number + the annotation node of each hit. When you need to find WHERE to edit, try THIS FIRST — the line number feeds edit_file directly (read_file that window only if you need more context). tag must be one from list_keywords; an undeclared tag returns the available vocabulary.",
+            "LOCATE code by its @keyword tag (reverse-lookup via ripgrep): returns matching files with the line number + the annotation node of each hit. Use it to find WHICH file / roughly WHERE to edit — then read_file the WHOLE file for full context before editing (don't edit off the tiny node snippet alone). tag must be one from list_keywords; an undeclared tag returns the available vocabulary.",
           schema: z.object({ tag: z.string() }),
         },
       ),
@@ -1074,7 +1092,7 @@ function buildGeneratePrompt(
       ? [
           '⚠ FIX MODE — this file ALREADY EXISTS and the project build reported a problem with it:',
           `    ${send.fix.issue.trim()}`,
-          'To LOCATE the code to fix: (1) search_by_tag by a declared tag (from list_keywords) → gives the hit path + line; (2) read_node({path, line}) → reads that symbol\'s code body WITH line numbers. If search_by_tag does not find it, fall back to read_file (optionally a startLine/endLine window). Then make a TARGETED fix with edit_file BY LINE RANGE — startLine/endLine + newText; change only the affected lines, do NOT rewrite the whole file. Keep the required @keyword doc comments intact. (Fall back to write_file only if the change spans most of the file.)',
+          "To LOCATE the code to fix (FAST first): (1) search_by_tag by a declared tag (from list_keywords) → gives the hit path + line; (2) read_node({path, line}) → reads that symbol's code body WITH line numbers. If search_by_tag does not find it, use fast_search (by filename) or grep (regex-content fallback), then read_file the WHOLE file for full context (only window a LARGE span if the tool says it is large). Then make a TARGETED fix with edit_file BY LINE RANGE — startLine/endLine + newText; change only the affected lines, do NOT rewrite the whole file. Keep the required @keyword doc comments intact. (Fall back to write_file only if the change spans most of the file.)",
           '',
         ]
       : [];
@@ -1083,7 +1101,7 @@ function buildGeneratePrompt(
     !send.fix && send.op === 'modify'
       ? [
           '⚠ MODIFY MODE — this file ALREADY EXISTS. Change it IN PLACE to satisfy the requirement below; do NOT recreate it from scratch.',
-          'To LOCATE what to change: (1) search_by_tag by a declared tag (from list_keywords) → gives the hit path + line; (2) read_node({path, line}) → reads that symbol\'s code body WITH line numbers. If search_by_tag does not find it, fall back to read_file (optionally a startLine/endLine window). Then make TARGETED changes with edit_file BY LINE RANGE — replace only the line ranges that must change; leave everything else untouched. Keep the required @keyword doc comments intact (add/adjust only for lines you actually change). (Fall back to write_file only if the change spans most of the file.)',
+          "To LOCATE what to change (FAST first): (1) search_by_tag by a declared tag (from list_keywords) → gives the hit path + line; (2) read_node({path, line}) → reads that symbol's code body WITH line numbers. If search_by_tag does not find it, use fast_search (by filename) or grep (regex-content fallback), then read_file the WHOLE file for full context (only window a LARGE span if the tool says it is large). Then make TARGETED changes with edit_file BY LINE RANGE — replace only the line ranges that must change; leave everything else untouched. Keep the required @keyword doc comments intact (add/adjust only for lines you actually change). (Fall back to write_file only if the change spans most of the file.)",
           '',
         ]
       : [];
@@ -1102,7 +1120,7 @@ function buildGeneratePrompt(
       ? `SHARED CONTRACTS you MUST honor (agreed with your coupled files — use the EXACT ids / names / shapes below; do NOT invent your own, or cross-file wiring breaks):\n${JSON.stringify(send.contracts, null, 2)}`
       : '',
     '',
-    'Workflow: FIRST call todo_list to read your per-file todos; work them one by one, marking each todo_update({id, status:"done"}) as you finish it (add_todo if you discover more). You may read_file/grep/fast_search to check existing or sibling files (dependsOn siblings may still be generating concurrently — prefer their summaries above). Call write_file ONCE with the complete file content. Stop calling tools only when EVERY todo is done and the file is written.',
+    'Workflow: FIRST call todo_list to read your per-file todos; work them one by one, marking each todo_update({id, status:"done"}) as you finish it (add_todo if you discover more). To LOCATE existing/sibling code, use search_by_tag (by @keyword tag — fastest, most precise) or fast_search (by filename) FIRST; use grep only as a regex-content fallback. Then read the WHOLE file (read_file returns it whole by default) before editing — small windows make you edit one part and miss another. (dependsOn siblings may still be generating concurrently — prefer their summaries above.) Call write_file ONCE with the complete file content. Stop calling tools only when EVERY todo is done and the file is written.',
     'Comments (REQUIRED to finish this file): every function / component / interface / exported symbol needs a doc comment in EXACTLY this project format — a SINGLE `@keyword` line whose terms are DIMENSION-QUALIFIED as `<dimension>:<term>`. The dimensions are a FIXED set — think about the code along each and give a term for each RELEVANT one (2-5 terms total):',
     ' · 功能职责 — what this code is / does (its responsibility)',
     ' · 技术栈 — the technology/framework it uses',

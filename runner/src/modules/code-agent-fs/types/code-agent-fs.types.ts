@@ -18,7 +18,8 @@ export const CODE_AGENT_FS_LIMITS = {
   maxCommandOutputBytes: 256 * 1024,
   // searchByTag: 内置 ripgrep 快速 tag 搜索的命中上限、单个注释节点最大行数、rg 超时
   maxTagHits: 60,
-  maxCommentNodeLines: 60,
+  // 单个符号体读取上限: 调大到 200, 让 readNode 一次给更完整的上下文 (少一段一段读)
+  maxCommentNodeLines: 200,
   tagSearchTimeoutMs: 15_000,
 } as const;
 
@@ -35,6 +36,21 @@ export const WriteTaskFilePayloadSchema = z.object({
   content: z.string(),
 });
 export type WriteTaskFilePayload = z.infer<typeof WriteTaskFilePayloadSchema>;
+
+/**
+ * @title writeFile 入参 (按路径逐字写)
+ * @description 写 plan 目标根内的一个文件: LLM 提供 workspace 相对 `path` + `content`, 内容**原样落盘** (走工具入参,
+ *   不经 shell echo/cat/heredoc → 根除逐行转义写坏)。越界即拒, 目录不存在自动建。供 project-init 写 tags.json 等
+ *   非 task 的结构/配置文本文件 (task 文件仍走 writeTaskFile, 路径权威)。
+ * @keyword-cn 写文件入参, 逐字落盘
+ * @keyword-en write-file-payload, verbatim-write
+ */
+export const WriteFilePayloadSchema = z.object({
+  planId: z.string().min(1),
+  path: z.string().min(1),
+  content: z.string(),
+});
+export type WriteFilePayload = z.infer<typeof WriteFilePayloadSchema>;
 
 /**
  * @title editFile 入参 (按行号区间修改)
@@ -62,10 +78,11 @@ export type EditFilePayload = z.infer<typeof EditFilePayloadSchema>;
 
 /**
  * @title readFile 入参
- * @description 读 plan 目标根内的一个文件 (workspace 相对路径), 越界即拒。可选 1-based `startLine`/`endLine`
- *   (含端点) 只读某段, 大文件按行号窗口读、避免整份灌进上下文。
- * @keyword-cn 读文件入参, 行号窗口
- * @keyword-en read-file-payload, line-window
+ * @description 读 plan 目标根内的一个文件 (workspace 相对路径), 越界即拒。**默认不传 startLine/endLine → 返回整份文件**,
+ *   优先这样做 (改文件前先整份读一次拿全貌, 再一次性批量 edit, 别一小段一小段读改)。仅当文件确实超大 (几千行) 才用
+ *   可选 1-based `startLine`/`endLine` (含端点) 读一个宽裕的行号窗口。
+ * @keyword-cn 读文件入参, 整份优先
+ * @keyword-en read-file-payload, whole-file-first
  */
 export const ReadFilePayloadSchema = z.object({
   planId: z.string().min(1),

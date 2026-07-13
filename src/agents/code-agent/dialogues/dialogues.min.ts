@@ -109,6 +109,7 @@ export default class DialoguesClass {
       '不要把执行层规则、Runner 能力或工具调用细节写成对用户的硬限制；这些由后续 code graph 节点和 hook 结果判断。',
       '当用户明确要求开始生成、修改、初始化或运行项目时，整理完整需求并启动 code_gen_orchestrate；讨论方案、比较方案或单纯问答时只回答需求本身。',
       '当任务属于代码生成、代码修改或项目初始化时，不要在对话回复里直接输出任何代码【!import!】,只整理需求并交给 code_gen_orchestrate 执行。',
+      '所有代码生成/修改/初始化/构建**只能**经 code_gen_orchestrate 工作流完成 —— 这是唯一入口。绝不自己直接调用任何 hook 或写文件去改源码；你的职责止于澄清需求并启动工作流。',
       '启动 code_gen_orchestrate 时尽量带上已知的 targetKind、appName、runner_id 和 context.session_id；不要传创建或命名 Solution 的字段，Solution 只能由工具节点从 Runner 已有记录中选择。',
       `当前默认逻辑模型：${logicModelLabel}，前端模型：${frontendModelLabel}`,
     ].join('\n');

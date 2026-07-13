@@ -55,6 +55,7 @@ import { ModuleRef } from '@nestjs/core';
 import { selectProcessor } from '../processors';
 import type { ChunkContext } from '../processors';
 import { KimiChatOpenAI } from '../providers/kimi-chat-openai';
+import { anthropicUsageSafeFetch } from '../providers/anthropic-usage-safe-fetch';
 
 /**
  * AI模型服务
@@ -208,7 +209,9 @@ export class AIModelService implements OnModuleInit {
                 ...(anthropicThinkingKwargs && {
                   modelKwargs: anthropicThinkingKwargs,
                 }),
-                clientOptions: { baseURL },
+                // MiniMax 的 /anthropic SSE 的 message_delta 不带 usage, langchain 直读会崩;
+                // 包一层 fetch 给缺失的 usage 兜底 (见 anthropic-usage-safe-fetch)
+                clientOptions: { baseURL, fetch: anthropicUsageSafeFetch },
               });
             } else {
               const baseURL = config.baseURL || 'https://api.minimaxi.com/v1';
@@ -715,6 +718,9 @@ export class AIModelService implements OnModuleInit {
       );
       const runIdToToolId = new Map<string, string>();
       let finalOutput: unknown = null;
+      // 累加流式文本 :: finalOutput 依赖 on_chain_end(name==='AgentExecutor'), 但裸 model.chat /
+      // 新版 langgraph 顶层链名不匹配时 finalOutput 恒 null → content 会退成 '""'。累加真实 delta 文本兜底。
+      let streamedText = '';
       for await (const event of stream) {
         const data = event.data as {
           chunk?: AIMessageChunk;
@@ -727,6 +733,8 @@ export class AIModelService implements OnModuleInit {
           case 'on_chat_model_stream': {
             const chunk = data?.chunk;
             if (!chunk) break;
+            // 兜底累加助手文本 (仅 text, extractMessageText 不含 thinking / tool 参数)
+            streamedText += this.extractMessageText(chunk.content);
             const tags = (event as { tags?: string[] }).tags;
             const ctx: ChunkContext = {
               isSubagent: Array.isArray(tags) && tags.includes('subagent'),
@@ -808,12 +816,21 @@ export class AIModelService implements OnModuleInit {
 
       const responseTime = Date.now() - startTime;
 
-      // 返回最终响应
+      // 返回最终响应 :: 优先 finalOutput 的字符串 content; 缺失/空时用累加的 streamedText 兜底
+      // (裸 model.chat / 新版 langgraph 顶层链名不匹配时 finalOutput 恒 null, 否则 content 会退成 '""');
+      // 两者都没有才退回 JSON.stringify(finalOutput)。
+      const finalOutputContent = (finalOutput as { content?: unknown })
+        ?.content;
       const aiResponse: AIModelResponse = {
         content:
-          typeof (finalOutput as { content?: unknown })?.content === 'string'
-            ? ((finalOutput as { content?: unknown }).content as string)
-            : JSON.stringify(finalOutput ?? ''),
+          typeof finalOutputContent === 'string' &&
+          finalOutputContent.length > 0
+            ? finalOutputContent
+            : streamedText.length > 0
+              ? streamedText
+              : typeof finalOutputContent === 'string'
+                ? finalOutputContent
+                : JSON.stringify(finalOutput ?? ''),
         model: request.modelId,
         responseTime,
         requestId: this.generateRequestId(),

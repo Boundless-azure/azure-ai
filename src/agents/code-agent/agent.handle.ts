@@ -42,7 +42,7 @@ import type {
   BuildFileResult,
   BuildFileSend,
 } from './nodes/build-generate.types';
-import { runProjectInit } from './nodes/project-init.node';
+import { runProjectInit, runInstallDeps } from './nodes/project-init.node';
 import { runBuildTest } from './nodes/build-test.node';
 import { runDependencyCheckNode } from './nodes/dependency-check.node';
 import { runTargetBootstrapNode } from './nodes/target-bootstrap.node';
@@ -94,7 +94,27 @@ const CodeGenGraphAnnotation = Annotation.Root({
   request: Annotation<CodeGraphRequest>(),
   input: Annotation<CodeGenOrchestrateInput>(),
   targetKind: Annotation<CodeAgentTargetKind>(),
-  dependencyCheck: Annotation<CodeGraphDependencyCheckResult | undefined>(),
+  // fork/join (project-init → install-deps ‖ build-dispatch→…→build-join) 两分支都携带此通道:
+  // install-deps 分支带旧值 (无 changePlan.build), build 分支带 finalizeBuild 后的新值 (有 changePlan.build)。
+  // 无 reducer 的 LastValue 通道遇并发多值会抛 "Invalid update"; 加 reducer 解冲突 —— 偏向"更进"的
+  // build 分支值 (顺序无关: 谁有 changePlan.build 取谁), 早期串行节点仍是"后写覆盖"。
+  dependencyCheck: Annotation<CodeGraphDependencyCheckResult | undefined>({
+    reducer: (
+      current: CodeGraphDependencyCheckResult | undefined,
+      update: CodeGraphDependencyCheckResult | undefined,
+    ) => {
+      if (update === undefined) return current;
+      if (current === undefined) return update;
+      const hasBuild = (v: CodeGraphDependencyCheckResult): boolean =>
+        Boolean(
+          (v.changePlan as { build?: unknown } | undefined)?.build,
+        );
+      if (hasBuild(update) && !hasBuild(current)) return update;
+      if (hasBuild(current) && !hasBuild(update)) return current;
+      return update;
+    },
+    default: () => undefined,
+  }),
   // 构建子图: 派发出的每文件任务、Send 当前文件、并发结果 (reducer 累加)
   buildFiles: Annotation<BuildFileSend[] | undefined>(),
   currentFile: Annotation<BuildFileSend | undefined>(),
@@ -119,6 +139,7 @@ type CodeGenGraphNodeName =
   | 'target-bootstrap'
   | 'change-plan'
   | 'project-init'
+  | 'install-deps'
   | 'build-dispatch'
   | 'generate-file'
   | 'build-verify'
@@ -852,17 +873,20 @@ function fanOutBuildTestRepair(
 }
 
 /**
- * Provision → generation boundary: enter the generation phase ONLY if provisioning succeeded.
- * A blocked status after project-init means the env could not be provisioned (scaffold/install) —
- * or the plan itself was blocked — so generating code into a non-ready env is pointless: end instead.
- * Keeps env-provision failure (this gate) distinct from code-generation failure (the repair loop).
- * @keyword-cn 初始化生成边界, 环境闸门
- * @keyword-en provision-gate, phase-boundary
+ * Scaffold → (install-deps ‖ generation) boundary: after the SCAFFOLD phase, if the structure could
+ * not be provisioned (blocked status / blocked plan) end — generating into a non-ready env is pointless.
+ * Otherwise FAN OUT to BOTH 'install-deps' (parallel `pnpm install`) AND 'build-dispatch' (file gen):
+ * scaffold already wrote the structure, so file-writing and node_modules install are independent and
+ * run concurrently; build-test later fans them back in. Keeps provision failure distinct from gen failure.
+ * @keyword-cn 脚手架并行边界, 环境闸门
+ * @keyword-en scaffold-gate, phase-boundary
  */
-function gateAfterProvision(
+function gateAfterScaffold(
   state: CodeGenGraphState,
-): 'build-dispatch' | typeof END {
-  return state.dependencyCheck?.status === 'blocked' ? END : 'build-dispatch';
+): Array<'install-deps' | 'build-dispatch'> | typeof END {
+  return state.dependencyCheck?.status === 'blocked'
+    ? END
+    : ['install-deps', 'build-dispatch'];
 }
 
 /**
@@ -947,6 +971,23 @@ function buildCodeGenWorkflowGraph(args: {
           })
         : state.dependencyCheck,
     }))
+    // install-deps: DEPS 阶段, 与 build 分支并行跑 `pnpm install`。
+    // 关键: dependencyCheck 无 reducer (末写覆盖), build 分支同 superstep 也写它 —— 本节点绝不写
+    // dependencyCheck 以免竞争覆盖 build 分支的更新; 返 {} (装依赖的效果是 node_modules 落盘)。
+    .addNode('install-deps', async (state: CodeGenGraphState) => {
+      if (state.dependencyCheck) {
+        await runInstallDeps({
+          dependencyCheck: state.dependencyCheck,
+          request: state.request,
+          input: state.input,
+          aiAdapter: args.aiAdapter,
+          hookCaller: args.hookCaller,
+          hookBus: args.hookBus,
+          workflowContext: args.workflowContext,
+        });
+      }
+      return {};
+    })
     .addNode('build-dispatch', async (state: CodeGenGraphState) => ({
       buildFiles: state.dependencyCheck
         ? await dispatchBuildFiles({
@@ -1029,8 +1070,9 @@ function buildCodeGenWorkflowGraph(args: {
     .addEdge('target-resolution', 'target-bootstrap')
     .addEdge('target-bootstrap', 'change-plan')
     .addEdge('change-plan', 'project-init')
-    // provision→generation 边界: 供成功才进生成阶段, 环境没搭好直接收尾 (init 失败 ≠ 生成失败)
-    .addConditionalEdges('project-init', gateAfterProvision, [
+    // scaffold 后并行边界: 结构搭好则扇出到 install-deps ‖ build-dispatch, blocked 直接收尾
+    .addConditionalEdges('project-init', gateAfterScaffold, [
+      'install-deps',
       'build-dispatch',
       END,
     ])
@@ -1043,6 +1085,8 @@ function buildCodeGenWorkflowGraph(args: {
       'generate-file',
       'build-join',
     ])
+    // build-test 是 install-deps + build-join 的扇入 (等两者都完成): 两条入边, LangGraph 视为 join
+    .addEdge('install-deps', 'build-test')
     // 文件齐 → 过 build-test (LLM 跑 build + 判返修); 通过则 END, 有返修则复用 generate-file 修后回环
     .addEdge('build-join', 'build-test')
     .addConditionalEdges('build-test', fanOutBuildTestRepair, [

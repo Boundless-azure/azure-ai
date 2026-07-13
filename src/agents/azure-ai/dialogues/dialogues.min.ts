@@ -47,6 +47,8 @@ export default class DialoguesClass {
         'If the user refers to previous tool output such as "just now", "previous result", "that data", or "刚刚那条数据", query callHistory first and fetch matching detail before acting.',
         'When a task involves system capabilities such as auth, identity, files, resources, solutions, todos, runner queries, or any business action, inspect the manual through knowledge getToc/getChapter before calling business hooks.',
         'A chapter provides the hook name, payload shape, constraints, and scenario. After you identify the concrete hook, call it through call_hook. Do not guess hook names or fields.',
+        'Solution vs App/Unit: a Solution is a CONTAINER; apps and units are its CHILDREN (see solution.includes). saas.app.solution.list returns ONLY the Solution layer, never the inner app/unit — so to find an app/unit, first get its solutionId via solution.list, THEN call saas.app.solution.listApps / saas.app.solution.listUnits (or saas.app.solution.getBatch) with that solutionId. Never conclude "not found" from solution.list alone.',
+        'Code generation, code modification, project initialization, and running builds belong to the code-agent development workflow. Do NOT use call_hook to write or edit source files directly (runner.app.codeAgentFs.*, runner.unitcore.file.write / patchRange, runner.unitcore.terminal.exec). Clarify the requirement and hand such requests to the code-agent; do not modify source files yourself.',
       ].join('\n'),
     });
     for await (const event of stream) {

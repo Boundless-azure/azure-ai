@@ -15,6 +15,7 @@ import {
   RunCommandPayloadSchema,
   SearchByTagPayloadSchema,
   VerifyTasksPayloadSchema,
+  WriteFilePayloadSchema,
   WriteTaskFilePayloadSchema,
 } from '../types/code-agent-fs.types';
 
@@ -23,9 +24,10 @@ const TAGS = ['code-agent', 'code-gen', 'runner-local'];
 
 /**
  * @title 注册 code-agent 生成文件工具 hook
- * @description 在 Runner HookBus 上注册 runner.app.codeAgentFs.{writeTaskFile,readFile,grep,fastSearch}
- *   四个业务 hook, 给 code-agent 并发代码节点提供 plan 作用域的文件读写/搜索。writeTaskFile 只写 task 里
- *   存的权威 path (填已规划文件、不即兴造); read/grep/search 围栏在该 plan 的目标根内。内部经
+ * @description 在 Runner HookBus 上注册 runner.app.codeAgentFs.{writeTaskFile,writeFile,readFile,grep,fastSearch…}
+ *   等业务 hook, 给 code-agent 并发代码节点提供 plan 作用域的文件读写/搜索。writeTaskFile 只写 task 里
+ *   存的权威 path (填已规划文件、不即兴造); writeFile 按 LLM 提供的 path 逐字写 (project-init 写 tags.json 等
+ *   非 task 文本, 内容原样落盘不经 shell); read/grep/search 围栏在该 plan 的目标根内。内部经
  *   RunnerCodeAgentPlanService 解析 task 路径 (计划集合仍归 plan store)。requiredAbility 复用 solution
  *   subject。重复挂载安全。
  * @keyword-cn 生成文件hook注册, 业务hook
@@ -84,6 +86,24 @@ export function registerCodeAgentFsHooks(
     );
   }
 
+  if (!existing.has('runner.app.codeAgentFs.writeFile')) {
+    hookBus.register(
+      'runner.app.codeAgentFs.writeFile',
+      async (event) =>
+        withService((svc) =>
+          svc.writeFile(WriteFilePayloadSchema.parse(event.payload ?? {})),
+        ),
+      {
+        description:
+          '按 workspace 相对 path 逐字写 plan 目标根内的一个文件 (越界拒, 目录自建); 内容原样落盘、不经 shell → 供 project-init 写 tags.json 等非 task 文本, 根除手搓文件被逐行转义写坏',
+        tags: TAGS,
+        pluginName: PLUGIN_NAME,
+        payloadSchema: WriteFilePayloadSchema,
+        requiredAbility: { action: 'create', subject: 'solution' },
+      },
+    );
+  }
+
   if (!existing.has('runner.app.codeAgentFs.editFile')) {
     hookBus.register(
       'runner.app.codeAgentFs.editFile',
@@ -110,7 +130,9 @@ export function registerCodeAgentFsHooks(
           svc.readFile(ReadFilePayloadSchema.parse(event.payload ?? {})),
         ),
       {
-        description: '读 plan 目标根内的一个文件 (workspace 相对路径, 越界拒)',
+        description:
+          '读 plan 目标根内的一个文件 (workspace 相对路径, 越界拒)。默认不传行号→返回整份; ' +
+          '改文件前优先整份读一次拿全貌再批量 edit, 别一小段一小段读改; 仅超大文件才用 startLine/endLine 窗口',
         tags: TAGS,
         pluginName: PLUGIN_NAME,
         payloadSchema: ReadFilePayloadSchema,
@@ -299,7 +321,9 @@ function ensureWorkspacePnpmStore(workspacePath: string): void {
       ? readFileSync(npmrcPath, 'utf8')
       : '';
     if (/^store-dir=/m.test(current)) return;
-    const next = current.trim() ? `${current.trimEnd()}\n${line}\n` : `${line}\n`;
+    const next = current.trim()
+      ? `${current.trimEnd()}\n${line}\n`
+      : `${line}\n`;
     writeFileSync(npmrcPath, next, 'utf8');
   } catch {
     // 配不上不致命: pnpm 默认 store 在同盘时也能硬链接

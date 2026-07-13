@@ -333,9 +333,15 @@ function buildBuildTestTools(args: {
             planId,
             path: input.path,
           });
+          const content = readStringField(asRecord(data), 'content');
+          if (!content) return '(empty or missing)';
+          // 整份优先: 上限内直接全返, 超上限不静默截断, 明确告知这是大文件、只给了头部
+          const READ_WHOLE_CAP = 16000;
+          if (content.length <= READ_WHOLE_CAP) return content;
           return (
-            readStringField(asRecord(data), 'content').slice(0, 6000) ||
-            '(empty or missing)'
+            `(large file: ${content.length} chars total; showing the first ${READ_WHOLE_CAP}. ` +
+            `This is only the HEAD — usually the build error already names the exact file + line, so read only what you need.)\n` +
+            content.slice(0, READ_WHOLE_CAP)
           );
         } catch (error) {
           return `read_file error: ${asMessage(error)}`;
@@ -344,7 +350,7 @@ function buildBuildTestTools(args: {
       {
         name: 'read_file',
         description:
-          'Read a source file to understand a build error before deciding a rework task.',
+          'Read a source file to understand a build error before deciding a rework task. Returns the WHOLE file by default (up to a large cap); if the response says it is large/truncated, it showed only the head. Usually the build error already names the offending file + line, so you rarely need this.',
         schema: z.object({ path: z.string() }),
       },
     ),

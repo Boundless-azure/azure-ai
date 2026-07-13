@@ -217,6 +217,8 @@ export class AgentRuntimeService {
       invocationContext?: HookInvocationContext;
       /** 当前 Agent 的运行时身份信息, 仅注入系统提示词辅助 LLM 认知 */
       agentContext?: AgentRuntimeContext;
+      /** 会话 ID :: 开启 checkpoint 会话记忆 (thread = sessionId:agentPrincipalId); 缺省则退回无状态全量历史 */
+      sessionId?: string;
     },
   ): AsyncGenerator<ModelSseEvent> {
     const loaded = await this.load(agentDir, {
@@ -227,6 +229,23 @@ export class AgentRuntimeService {
     if (!loaded.dialogues) {
       throw new Error('该 Agent 未提供对话层 (dialogues)');
     }
+    // S3 checkpoint 融合 (中心化, 对所有 agent 对话层通用) :: 有 sessionId 就给对话专用 adapter 挂 checkpoint 上下文,
+    // adapter 在 chatStream 时统一 → 只发最新一条 + 挂 checkpointer + thread=sessionId:agentPrincipalId; 历史(含 tool 轮)由
+    // checkpoint append-only 持久。工作流的 handle-adapter 不带此上下文, 不受影响。
+    const cpSessionId = options?.sessionId ?? options?.proactiveContext?.sessionId;
+    const cpAgentPrincipalId =
+      options?.agentContext?.agentPrincipalId ??
+      options?.proactiveContext?.agentPrincipalId;
+    const checkpoint =
+      cpSessionId && this.checkpointer
+        ? {
+            sessionId: cpSessionId,
+            threadKey: cpAgentPrincipalId
+              ? `${cpSessionId}:${cpAgentPrincipalId}`
+              : cpSessionId,
+            checkpointer: this.checkpointer as unknown,
+          }
+        : undefined;
     // session_data 不再自动注入 user message; directive/preference/handbook 通过 saas.app.conversation.initTip 的 suggestions 推过去 (callHistoryHints / handbookInventory / activeDirectives), LLM 自行 sessionData.get 取真内容.
     loaded.dialogues.handleAiServer(
       this.buildAiAdapter({
@@ -234,6 +253,7 @@ export class AgentRuntimeService {
         tools: loaded.tools,
         agentContext: options?.agentContext,
         aiModelIds: options?.aiModelIds,
+        checkpoint,
       }),
     );
     loaded.dialogues.setAgentConfig?.({ aiModelIds: options?.aiModelIds });
@@ -302,10 +322,17 @@ export class AgentRuntimeService {
     agentContext?: AgentRuntimeContext;
     aiModelIds?: string[];
     mergeSystemPrompt?: boolean;
+    /** 有值 → 该 adapter 的 chatStream 开 checkpoint 会话记忆: 只发最新一条 + 挂 checkpointer + thread=threadKey */
+    checkpoint?: {
+      sessionId: string;
+      threadKey: string;
+      checkpointer: unknown;
+    };
   }): AgentAiServer {
     const proactiveContext = options?.proactiveContext;
     const tools = options?.tools;
     const agentContext = options?.agentContext;
+    const checkpoint = options?.checkpoint;
     const mergeSystemPrompt = options?.mergeSystemPrompt ?? true;
     const configuredModelIds = Array.isArray(options?.aiModelIds)
       ? options.aiModelIds.map((item) => item.trim()).filter(Boolean)
@@ -381,6 +408,16 @@ export class AgentRuntimeService {
       x !== null &&
       'put' in (x as Record<string, unknown>);
 
+    // checkpoint 模式的消息裁剪 :: 只发"本轮新增" —— 从最后一条 user 消息起截 (保证含 user 且非空,
+    // 避免只剩 system 触发 Anthropic "messages must not be empty"); 找不到 user (如主动模式) 则发全量兜底。
+    const trimToLastUserTurn = (msgs: ChatMessage[]): ChatMessage[] => {
+      if (msgs.length <= 1) return msgs;
+      let i = msgs.length - 1;
+      while (i >= 0 && msgs[i].role !== 'user') i -= 1;
+      const sliced = i >= 0 ? msgs.slice(i) : msgs;
+      return sliced.length > 0 ? sliced : msgs;
+    };
+
     const buildAiRequest = (
       modelId: string,
       req: AgentAiRequest,
@@ -391,13 +428,17 @@ export class AgentRuntimeService {
         (agentContext?.agentId
           ? `agent-runtime:${agentContext.agentId}`
           : undefined),
-      messages: req.messages,
+      // checkpoint 模式: 历史(含 tool 轮)由 checkpoint 供, 只发本轮新增(从最后一条 user 起); 无 checkpoint 走原全量
+      messages: checkpoint ? trimToLastUserTurn(req.messages) : req.messages,
       systemPrompt: buildMergedSystemPrompt(req.systemPrompt),
-      sessionId: req.sessionId,
-      conversationGroupId: req.conversationGroupId,
-      checkpointer: isCheckpointSaver(req.checkpointer)
-        ? req.checkpointer
-        : undefined,
+      // checkpoint 模式统一注 :: sessionId 保真 + conversationGroupId=threadKey(→ thread_id) + checkpointer
+      sessionId: checkpoint?.sessionId ?? req.sessionId,
+      conversationGroupId: checkpoint?.threadKey ?? req.conversationGroupId,
+      checkpointer: checkpoint
+        ? (checkpoint.checkpointer as AIModelRequest['checkpointer'])
+        : isCheckpointSaver(req.checkpointer)
+          ? req.checkpointer
+          : undefined,
       params: req.params as AIModelRequest['params'],
       isolateCallbacks: req.isolateCallbacks,
       // 每次调用显式注入的工具覆盖 adapter 固定工具 (让 code 生成节点跑自己的 write_file/read_file 循环);

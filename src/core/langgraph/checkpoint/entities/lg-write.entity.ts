@@ -59,6 +59,7 @@ export class LGWriteEntity extends BaseAuditedEntity {
   @Column({ name: 'value_type', type: 'varchar', length: 128 })
   valueType!: string;
 
-  @Column({ name: 'value_b64', type: 'text' })
-  valueB64!: string;
+  /** 写入值的原始 JSON 文本 (曾为 base64, 已去掉那层多此一举的编码) */
+  @Column({ name: 'value_json', type: 'text' })
+  valueJson!: string;
 }

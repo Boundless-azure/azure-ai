@@ -46,6 +46,8 @@ export const CHANGE_PLAN_LIMITS = {
   existingHookSearchLimit: 60,
   // 单轮工具调用的输出预算: 一轮可能 upsert 很多文件 (每个一次 tool call), 4096 兜底会截断; per-call 覆盖模型默认
   maxTokens: 16000,
+  // #4 瘦 prompt: 后续(非首轮/非分析轮)只发手册开头这么多字符 (LM必读要义), 不每轮重发整份
+  laterRoundManualChars: 2000,
 } as const;
 
 /**
@@ -138,29 +140,12 @@ export const ChangeTaskInputSchema = z.object({
 export const ContractInputSchema = z.object({
   contractId: z.string().min(1),
   name: z.string().optional(),
+  // 契约以**文字说明**承载 (description): 把锚点/id/形状等确定值写进这句话即可, 不必再生成 JSON spec
   description: z.string().optional(),
   spec: z.unknown().optional(),
-  taskIds: z.array(z.string()),
+  // 所有 generate-file 节点默认读全部契约, 无需列 party taskIds (保留可选, 仅作可读性备注)
+  taskIds: z.array(z.string()).optional(),
 });
-
-/**
- * @title Dependency decision payload
- * @description change-plan 的依赖判定 LLM 输出: 每个 app 目标要 add(引入)/remove(移除) 哪些 npm 包。
- * @keyword-cn 依赖判定, LLM输出
- * @keyword-en dependency-decision, llm-output
- */
-export const DepDecisionSchema = z.object({
-  targets: z
-    .array(
-      z.object({
-        routeId: z.string(),
-        add: z.array(z.string()).optional(),
-        remove: z.array(z.string()).optional(),
-      }),
-    )
-    .optional(),
-});
-export type DepDecisionPayload = z.infer<typeof DepDecisionSchema>;
 
 /**
  * @title record_analysis tool input

@@ -167,6 +167,39 @@ export class AiCallLogService {
   }
 
   /**
+   * 按时间窗口取该 session 的调用日志 (含完整 payload/result), 供 smart 分段把 tool 交互纳入段摘要。
+   * 以 DB created_at 对齐消息时间轴 (消息与调用同用 created_at); FIFO 上限内条数少, 直接取 active 全量再按窗口过滤。
+   * @keyword-cn 时间窗口查询, 分段用, tool召回
+   * @keyword-en list-call-log-by-time-range, for-segment, tool-recall
+   */
+  async listByTimeRange(
+    sessionId: string,
+    fromMs: number,
+    toMs: number,
+  ): Promise<Array<CallLogRecord & { id: string; ts: number }>> {
+    if (!sessionId) return [];
+    const rows = await this.dataRepo
+      .createQueryBuilder('d')
+      .where('d.for_session_id = :sid', { sid: sessionId })
+      .andWhere('d.data_type = :type', { type: SessionDataType.AiCallLog })
+      .andWhere('d.is_delete = false')
+      .andWhere('d.created_at >= :from', { from: new Date(fromMs) })
+      .andWhere('d.created_at <= :to', { to: new Date(toMs) })
+      .orderBy('d.created_at', 'ASC')
+      .getMany();
+    const out: Array<CallLogRecord & { id: string; ts: number }> = [];
+    for (const r of rows) {
+      try {
+        const rec = JSON.parse(r.dataVal) as CallLogRecord;
+        out.push({ ...rec, id: r.id, ts: rec.ts ?? r.createdAt.getTime() });
+      } catch {
+        // 跳过坏行
+      }
+    }
+    return out;
+  }
+
+  /**
    * 清除指定 session 的全部 call log (会话结束时可调; 当前未接入清理时机)
    * @keyword-en clear-session-call-log
    */

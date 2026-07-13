@@ -7,6 +7,7 @@
 ## 文件清单
 
 - `kimi-chat-openai.ts` - Kimi / Moonshot OpenAI-compatible 专用适配器，保留并回放 thinking + tool calling 所需的 `reasoning_content`。
+- `anthropic-usage-safe-fetch.ts` - Anthropic 兼容端点 (MiniMax /anthropic 等) 的 usage 兜底 fetch：SSE 流里给缺 `usage` 的 `message_delta` 注入占位，修复 `@langchain/anthropic` 直读 `data.usage.output_tokens` 的流式崩溃。
 
 ## 函数清单
 
@@ -29,6 +30,9 @@
 - `extractReasoningContent(value)`：提取 Kimi `reasoning_content`。
 - `attachReasoningContent(message, raw)`：把 Kimi `reasoning_content` 写入 LangChain additional_kwargs。
 - `findStringField(value, field, depth?)`：深度查找 provider 私有字符串字段。
+- `anthropicUsageSafeFetch(input, init?)`：usage 兜底 fetch，透传普通响应、对 SSE 流规整；传给 `ChatAnthropic({ clientOptions: { fetch } })` | keywords: anthropic-usage-safe-fetch, stream-crash-fix。
+- `normalizeSseDataLine(line)`：单行 SSE 规整，给缺 usage 的 message_delta 注入占位 | keywords: normalize-sse-line, inject-message-delta-usage。
+- `createSseUsageInjector()`：字节流 TransformStream，缓冲半行逐行规整 | keywords: sse-byte-transform, line-buffering。
 
 ## 关键词索引
 
@@ -36,6 +40,9 @@
 - kimi-completions-adapter -> `kimi-chat-openai.ts`
 - reasoning-content -> `kimi-chat-openai.ts`
 - tool-calling -> `kimi-chat-openai.ts`
+- anthropic-usage-safe-fetch -> `anthropic-usage-safe-fetch.ts`
+- minimax-stream-crash -> `anthropic-usage-safe-fetch.ts`
+- sse-normalize -> `anthropic-usage-safe-fetch.ts`
 
 ## 函数哈希映射
 

@@ -223,7 +223,10 @@ export class SolutionHookController {
    */
   @HookRoute({
     hook: 'saas.app.solution.list',
-    description: 'Solution 跨 Runner 聚合列表',
+    description:
+      'Solution 跨 Runner 聚合列表。⚠ 只返 **Solution 层**, 不含内部 app/unit —— ' +
+      '要找某个 app/unit 别指望这个 hook(会误报"没有"): 先用它拿到 solutionId, 再调 ' +
+      'saas.app.solution.listApps / listUnits (或 getBatch) 传 solutionId 才看得到子实体。',
     args: [ListSolutionsQuerySchema],
   })
   @CheckAbility('read', 'solution')

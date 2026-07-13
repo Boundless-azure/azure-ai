@@ -7,6 +7,7 @@ import { AIModelEntity } from '@core/ai/entities/ai-model.entity';
 import { ChatMessageType } from '@core/ai/enums/chat.enums';
 import { AgentEntity } from '@/app/agent/entities/agent.entity';
 import { SmartLlmGeneratorService } from './smart-llm-generator.service';
+import { AiCallLogService } from './ai-call-log.service';
 
 const SMART_SEGMENT_TARGET_CHARS_DEFAULT = 5000;
 const SMART_ANALYZE_DEBOUNCE_MS = 3000;
@@ -40,6 +41,9 @@ interface SegmentBuildResult {
   text: string;
   ruleKeywords: { zh: string[]; en: string[] };
   ruleSummary: string;
+  /** 段时间窗口 (首/末消息 createdAt 毫秒), 用于拉取本段内的 tool 调用纳入摘要 */
+  fromMs: number;
+  toMs: number;
 }
 
 interface ModelContext {
@@ -87,6 +91,7 @@ export class ChatSessionSmartService {
     @InjectRepository(AgentEntity)
     private readonly agentRepo: Repository<AgentEntity>,
     private readonly llmGen: SmartLlmGeneratorService,
+    private readonly callLog: AiCallLogService,
   ) {}
 
   /**
@@ -177,7 +182,14 @@ export class ChatSessionSmartService {
         break;
       }
 
-      const enriched = await this.tryLlmEnrich(cachedCtx.modelId, seg);
+      // 本段时间窗口内的 tool 调用 (call_history) 折进摘要输入, 让段摘要忠实记住"这段干过啥 hook"
+      const toolCalls = await this.callLog.listByTimeRange(
+        sessionId,
+        seg.fromMs,
+        seg.toMs,
+      );
+      const toolText = formatToolInteractions(toolCalls);
+      const enriched = await this.tryLlmEnrich(cachedCtx.modelId, seg, toolText);
       await this.smartRepo.save(
         this.smartRepo.create({
           sessionId,
@@ -374,12 +386,14 @@ export class ChatSessionSmartService {
   private async tryLlmEnrich(
     modelId: string | null,
     seg: SegmentBuildResult,
+    toolText?: string,
   ): Promise<{
     summary: string;
     keywords: { zh: string[]; en: string[] };
     source: 'llm' | 'rule';
   }> {
     if (!modelId) {
+      // 兜底规则摘要不含 tool (无模型时降级); tool 折进只作用于 LLM 摘要
       return {
         summary: seg.ruleSummary,
         keywords: seg.ruleKeywords,
@@ -387,7 +401,8 @@ export class ChatSessionSmartService {
       };
     }
     try {
-      const r = await this.llmGen.generate(modelId, seg.text);
+      const enrichInput = toolText ? `${seg.text}\n\n${toolText}` : seg.text;
+      const r = await this.llmGen.generate(modelId, enrichInput);
       return { summary: r.summary, keywords: r.keywords, source: 'llm' };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -463,6 +478,8 @@ export class ChatSessionSmartService {
       text,
       ruleKeywords: extractKeywords(text),
       ruleSummary: summarizeSegment(segment),
+      fromMs: segment[0].createdAt.getTime(),
+      toMs: segment[segment.length - 1].createdAt.getTime(),
     };
   }
 }
@@ -509,6 +526,58 @@ function visibleMessageText(msg: ChatMessageEntity): string {
  */
 function countTextChars(text: string): number {
   return text.trim().length;
+}
+
+/**
+ * 把本段时间窗口内的 tool 调用压成紧凑文本, 折进段摘要输入, 让摘要器记住"这段调了哪些 hook / 结果概况"。
+ * 空调用返回空串 (不影响原有纯文本摘要)。
+ * @keyword-cn 工具交互摘要, 分段召回
+ * @keyword-en format-tool-interactions, segment-tool-recall
+ */
+function formatToolInteractions(
+  calls: Array<{ hookName: string; payload: unknown; result: unknown }>,
+): string {
+  if (!calls.length) return '';
+  const lines = calls.map((c) => {
+    const p = previewSmartValue(c.payload, 60);
+    const r = previewSmartResult(c.result, 80);
+    return `- ${c.hookName}${p ? ` payload=${p}` : ''} → ${r}`;
+  });
+  return `[本段工具调用 ${calls.length} 次]\n${lines.join('\n')}`;
+}
+
+/**
+ * 压缩展示任意值 (JSON 化 + 截断), 供 tool 交互摘要用。
+ * @keyword-en preview-smart-value
+ */
+function previewSmartValue(value: unknown, max: number): string {
+  if (value == null) return '';
+  let s: string;
+  try {
+    s = typeof value === 'string' ? value : JSON.stringify(value);
+  } catch {
+    s = String(value);
+  }
+  if (!s) return '';
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
+/**
+ * 概括 hook 结果: 数组 / { items } / { data.items } 给条数, 其余给截断预览, 空给 ok。
+ * @keyword-en preview-smart-result
+ */
+function previewSmartResult(value: unknown, max: number): string {
+  if (value == null) return 'ok';
+  if (Array.isArray(value)) return `${value.length} 项`;
+  if (typeof value === 'object') {
+    const rec = value as Record<string, unknown>;
+    if (Array.isArray(rec.items)) return `${rec.items.length} 项`;
+    if (rec.data && typeof rec.data === 'object') {
+      const d = rec.data as Record<string, unknown>;
+      if (Array.isArray(d.items)) return `${d.items.length} 项`;
+    }
+  }
+  return previewSmartValue(value, max) || 'ok';
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   type TagHit,
   type VerifyTasksPayload,
   type VerifyTasksResult,
+  type WriteFilePayload,
   type WriteTaskFilePayload,
 } from '../types/code-agent-fs.types';
 
@@ -96,7 +97,12 @@ export class RunnerCodeAgentFsService {
    */
   async editFile(
     payload: EditFilePayload,
-  ): Promise<{ path: string; bytes: number; applied: number; content: string }> {
+  ): Promise<{
+    path: string;
+    bytes: number;
+    applied: number;
+    content: string;
+  }> {
     const tasks = await this.planService.searchTasks({
       planId: payload.planId,
       taskIds: [payload.taskId],
@@ -149,7 +155,11 @@ export class RunnerCodeAgentFsService {
     const desc = [...payload.edits].sort((a, b) => b.startLine - a.startLine);
     for (const edit of desc) {
       const newLines = edit.newText === '' ? [] : edit.newText.split(/\r?\n/);
-      lines.splice(edit.startLine - 1, edit.endLine - edit.startLine + 1, ...newLines);
+      lines.splice(
+        edit.startLine - 1,
+        edit.endLine - edit.startLine + 1,
+        ...newLines,
+      );
     }
     content = lines.join(eol);
     await fs.writeFile(abs, content, 'utf8');
@@ -180,12 +190,34 @@ export class RunnerCodeAgentFsService {
     const start =
       payload.startLine != null ? Math.max(1, payload.startLine) : 1;
     const end =
-      payload.endLine != null ? Math.min(totalLines, payload.endLine) : totalLines;
+      payload.endLine != null
+        ? Math.min(totalLines, payload.endLine)
+        : totalLines;
     const content =
       start === 1 && end === totalLines
         ? full
         : lines.slice(start - 1, Math.max(start - 1, end)).join('\n');
     return { path: this.toRel(abs), content, startLine: start, totalLines };
+  }
+
+  /**
+   * 写 plan 目标根内的一个文件 (LLM 提供 workspace 相对 path + content); 越界拒, 目录不存在自动建。
+   * 内容走工具入参、原样落盘, 不经 shell echo/cat/heredoc → 根除 project-init 手搓文件被逐行转义写坏。
+   * task 文件仍走 writeTaskFile (路径权威); 此方法给 tags.json 等非 task 的结构/配置文本。
+   * @keyword-cn 写文件, 作用域围栏
+   * @keyword-en write-file, scope-fence
+   */
+  async writeFile(
+    payload: WriteFilePayload,
+  ): Promise<{ path: string; bytes: number }> {
+    const roots = await this.allowedRoots(payload.planId);
+    const abs = this.resolveInsideRoots(payload.path, roots);
+    await fs.mkdir(dirname(abs), { recursive: true });
+    await fs.writeFile(abs, payload.content, 'utf8');
+    return {
+      path: this.toRel(abs),
+      bytes: Buffer.byteLength(payload.content, 'utf8'),
+    };
   }
 
   /**
@@ -235,27 +267,89 @@ export class RunnerCodeAgentFsService {
       payload.maxResults ?? 60,
       CODE_AGENT_FS_LIMITS.maxGrepMatches,
     );
-    const re = new RegExp(payload.pattern, payload.flags ?? '');
     const roots = await this.allowedRoots(payload.planId);
-    const files = await this.walkFiles(roots);
-    const matches: GrepMatch[] = [];
-    for (const abs of files) {
-      const text = await this.readTextSafe(abs);
-      if (text == null) continue;
-      const relPath = this.toRel(abs);
-      const lines = text.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        if (re.test(lines[i])) {
-          matches.push({
-            path: relPath,
-            line: i + 1,
-            text: lines[i].slice(0, 240),
-          });
-          if (matches.length >= cap) return { matches };
-        }
-      }
-    }
+    if (roots.length === 0) return { matches: [] };
+    // 改用内置 ripgrep (跟 searchByTag 一致): 快、正确 —— 根除旧 JS 遍历的慢 + `g` flag 下 re.test 有状态漏行 bug。
+    // flags 只取大小写 (i); rg 行内本就找全部命中, g/m/s 无意义。
+    const caseInsensitive = (payload.flags ?? '').includes('i');
+    const matches = await this.runRipgrepContent(
+      roots,
+      payload.pattern,
+      caseInsensitive,
+      cap,
+    );
     return { matches };
+  }
+
+  /**
+   * 用内置 ripgrep 在 roots (绝对路径) 内按正则搜内容, 回 {path(相对 workspace), line, text}; bounded + 超时 best-effort。
+   * @keyword-cn ripgrep内容搜索, grep
+   * @keyword-en ripgrep-content-search, grep
+   */
+  private runRipgrepContent(
+    roots: string[],
+    pattern: string,
+    caseInsensitive: boolean,
+    cap: number,
+  ): Promise<GrepMatch[]> {
+    const args = [
+      '--no-heading',
+      '--line-number',
+      '--color',
+      'never',
+      caseInsensitive ? '--ignore-case' : '--case-sensitive',
+      '-g',
+      '!**/node_modules/**',
+      '-g',
+      '!**/dist/**',
+      '-g',
+      '!**/.git/**',
+      '-g',
+      '!**/.astro/**',
+      '-g',
+      '!**/.pnpm-store/**',
+      '--max-count',
+      String(cap),
+      '-e',
+      pattern,
+      ...roots,
+    ];
+    return new Promise((resolvePromise) => {
+      const out: GrepMatch[] = [];
+      let buffer = '';
+      let done = false;
+      const child = spawn(rgPath, args, { windowsHide: true });
+      const finish = (): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolvePromise(out);
+      };
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        finish();
+      }, CODE_AGENT_FS_LIMITS.tagSearchTimeoutMs);
+      child.stdout?.on('data', (d: Buffer) => {
+        if (out.length >= cap) return;
+        buffer += d.toString();
+        let nl: number;
+        while ((nl = buffer.indexOf('\n')) !== -1) {
+          const raw = buffer.slice(0, nl);
+          buffer = buffer.slice(nl + 1);
+          // rg 行: `<file>:<line>:<text>`; 非贪婪定位到 :<digits>: 这一处 (盘符 C: 不含数字, 不误匹配)
+          const m = /^(.*?):(\d+):(.*)$/.exec(raw);
+          if (m && out.length < cap) {
+            out.push({
+              path: this.toRel(m[1]),
+              line: Number(m[2]),
+              text: m[3].slice(0, 240),
+            });
+          }
+        }
+      });
+      child.on('error', finish);
+      child.on('close', finish);
+    });
   }
 
   /**
@@ -542,7 +636,11 @@ export class RunnerCodeAgentFsService {
     const dir = await this.resolveAppDir(payload.planId, payload.appId);
     await fs.mkdir(dir, { recursive: true });
     const file = join(dir, INIT_LOCK_FILE);
-    await fs.writeFile(file, `initialized ${new Date().toISOString()}\n`, 'utf8');
+    await fs.writeFile(
+      file,
+      `initialized ${new Date().toISOString()}\n`,
+      'utf8',
+    );
     return { ok: true, path: this.toRel(file) };
   }
 
@@ -566,7 +664,9 @@ export class RunnerCodeAgentFsService {
       target = tasks.find((t) => {
         const root = rootOf(t);
         const name = root ? root.split('/').pop() : '';
-        return name ? appId.includes(`-${name}-`) || appId.endsWith(name) : false;
+        return name
+          ? appId.includes(`-${name}-`) || appId.endsWith(name)
+          : false;
       });
     }
     if (!target) {
@@ -818,7 +918,11 @@ function extractCommentNode(content: string, lineNo: number): string {
     }
   }
   if (open !== -1) {
-    for (let i = Math.max(open, idx); i < lines.length && i - open <= maxSpan; i++) {
+    for (
+      let i = Math.max(open, idx);
+      i < lines.length && i - open <= maxSpan;
+      i++
+    ) {
       if (lines[i].includes('*/')) return withDecl(open, i);
     }
   }
@@ -833,7 +937,11 @@ function extractCommentNode(content: string, lineNo: number): string {
     }
   }
   if (hopen !== -1) {
-    for (let i = Math.max(hopen, idx); i < lines.length && i - hopen <= maxSpan; i++) {
+    for (
+      let i = Math.max(hopen, idx);
+      i < lines.length && i - hopen <= maxSpan;
+      i++
+    ) {
       if (lines[i].includes('-->')) return withDecl(hopen, i);
     }
   }
@@ -844,7 +952,12 @@ function extractCommentNode(content: string, lineNo: number): string {
     let s = idx;
     let e = idx;
     while (s > 0 && isLineComment(lines[s - 1]) && idx - s < maxSpan) s--;
-    while (e < lines.length - 1 && isLineComment(lines[e + 1]) && e - idx < maxSpan) e++;
+    while (
+      e < lines.length - 1 &&
+      isLineComment(lines[e + 1]) &&
+      e - idx < maxSpan
+    )
+      e++;
     return withDecl(s, e);
   }
 

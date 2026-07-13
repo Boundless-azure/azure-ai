@@ -5,7 +5,6 @@ import type { AgentAiServer } from '@/core/agent-runtime/types/agent-runtime.typ
 import { readContextString, readStringField } from './dependency-check-context';
 import {
   compactRequirementForRouting,
-  parseJsonObjectLoose,
   selectLogicModel,
 } from './dependency-check-decision';
 import { sendDependencyNotice } from './dependency-choice-card';
@@ -21,7 +20,6 @@ import {
   CHANGE_PLAN_TODO_STATUS,
   ChangeTaskInputSchema,
   ContractInputSchema,
-  DepDecisionSchema,
   RecordAnalysisInputSchema,
   type AnalysisFinding,
   type ChangePlanTaskInput,
@@ -197,6 +195,11 @@ export async function runChangePlanNode(args: {
 
       shared.sawSearch = false;
       const tasks = await store.searchTasks(planId, { limit: 200 });
+      // 手册规划/分析轮**必须全量给** —— 前端 Astro 的多模块拆分约定就在里面, 削了 LLM 会退化成规划单个 index.html。
+      // 只有契约复盘轮 (不涉及框架约定, 只找跨文件联动) 才瘦身, 省点重复大块。
+      const manualForRound = isContractRound
+        ? manuals.manualText.slice(0, CHANGE_PLAN_LIMITS.laterRoundManualChars)
+        : manuals.manualText;
       await runChangePlanRound({
         aiAdapter: args.aiAdapter,
         input: args.input,
@@ -207,7 +210,7 @@ export async function runChangePlanNode(args: {
         existingHooks: [...foundExisting.values()],
         contracts: [...contracts.values()],
         analysis,
-        manualText: manuals.manualText,
+        manualText: manualForRound,
         chapterCatalog: manuals.chapters ?? [],
         tools,
         round: i,
@@ -216,9 +219,11 @@ export async function runChangePlanNode(args: {
         graphLog,
       });
 
-      // 分析闸门闭合 (code 权威): 已 record_analysis 且本轮真检索过代码 → 关 analyze-target + seed 该 route 的
-      // plan-target; 试满 2 轮仍没落结论 → fail-open 强制放行 (免死循环), 但会 warn。
+      // 分析闸门闭合 (code 权威): 已 record_analysis 且本轮真检索过代码 → 关 analyze-target。
+      // #2 合并: 分析轮现在也就地规划任务; 该 route 已有任务 (task.targetId===useTarget.id) → 不再单开
+      // plan-target 轮 (省一轮); 只分析没规划出任务才兜底 seed plan-target。试满 2 轮没落结论 → fail-open。
       if (isAnalysisRound) {
+        const postTasks = await store.searchTasks(planId, { limit: 200 });
         for (const todo of openTodos.filter(
           (t) => t.type === 'analyze-target',
         )) {
@@ -231,25 +236,36 @@ export async function runChangePlanNode(args: {
             const target = targetPlan.find((t) => t.routeId === routeId);
             const targetName =
               target?.useTarget?.name ?? target?.newTarget?.name ?? routeId;
+            const targetIdForRoute = target?.useTarget?.id;
+            const alreadyPlanned = Boolean(
+              targetIdForRoute &&
+              postTasks.some((t) => t.targetId === targetIdForRoute),
+            );
             await store.upsertTodos(planId, [
               { todoId: todo.todoId, status: 'done' },
-              {
-                todoId: `plan-target:${routeId}`,
-                type: 'plan-target',
-                status: 'pending',
-                title: `Plan changes for EXISTING ${target?.action ?? 'app'} target ${targetName} using your analysis: op:modify the located files / op:create only genuinely new files`,
-                payload: {
-                  routeId,
-                  action: target?.action,
-                  existing: true,
-                  targetName,
-                },
-              },
             ]);
+            if (!alreadyPlanned) {
+              // 分析了但没就地规划出任务 → 兜底单开 plan-target 轮 (退回原两轮行为, 不丢文件)
+              await store.upsertTodos(planId, [
+                {
+                  todoId: `plan-target:${routeId}`,
+                  type: 'plan-target',
+                  status: 'pending',
+                  title: `Plan changes for EXISTING ${target?.action ?? 'app'} target ${targetName} using your analysis: op:modify the located files / op:create only genuinely new files`,
+                  payload: {
+                    routeId,
+                    action: target?.action,
+                    existing: true,
+                    targetName,
+                  },
+                },
+              ]);
+            }
             graphLog.info('analyze-target:done', 'analysis gate closed', {
               routeId,
               findings: analysis.get(routeId)?.length ?? 0,
               forced: forced && !(recorded && shared.sawSearch),
+              merged: alreadyPlanned,
             });
           } else {
             graphLog.info(
@@ -304,6 +320,49 @@ export async function runChangePlanNode(args: {
         }
       }
     }
+
+    // 契约兜底 (code 强制保证一次): 规划循环跑完 contracts 仍为空且有 ≥2 个文件 →
+    // mid-loop 的 contract-review 门从没被触发过 (常见: LLM 没 update_todo 关 plan-target → planningDone 恒 false;
+    // 或 analysis 轮就地规划完直接 break; 或撞 maxIterations)。这里无条件补跑一轮专做契约,
+    // 保证 declare_contract 一定有一次机会 —— 否则并发盲生成的跨文件符号必漂。
+    const tasksForContract = await store.searchTasks(planId, { limit: 200 });
+    if (contracts.size === 0 && tasksForContract.length >= 2) {
+      graphLog.info(
+        'contract-review:forced',
+        'planning ended with no contracts; running a guaranteed contract pass',
+        { tasks: tasksForContract.length },
+      );
+      shared.sawSearch = false;
+      await runChangePlanRound({
+        aiAdapter: args.aiAdapter,
+        input: args.input,
+        requirement,
+        targetPlan,
+        openTodos: [],
+        tasks: tasksForContract,
+        existingHooks: [...foundExisting.values()],
+        contracts: [...contracts.values()],
+        analysis,
+        manualText: manuals.manualText.slice(
+          0,
+          CHANGE_PLAN_LIMITS.laterRoundManualChars,
+        ),
+        chapterCatalog: manuals.chapters ?? [],
+        tools,
+        round: iterations,
+        isAnalysisRound: false,
+        isContractRound: true,
+        graphLog,
+      });
+      graphLog.info(
+        'contract-review:forced-done',
+        'guaranteed contract pass complete',
+        {
+          contracts: contracts.size,
+        },
+      );
+    }
+
     const notice = shared.notice;
 
     const snapshot = await store.getSnapshot(planId);
@@ -417,7 +476,9 @@ export async function runChangePlanNode(args: {
  * @keyword-en modifiable-target, create-or-modify
  */
 function isModifiableTarget(target: CodeGraphTargetRouteDecision): boolean {
-  return target.decision === 'reuse' && !target.downgraded && !!target.useTarget;
+  return (
+    target.decision === 'reuse' && !target.downgraded && !!target.useTarget
+  );
 }
 
 /**
@@ -442,7 +503,7 @@ async function seedTargetTodos(
           todoId: `analyze-target:${target.routeId}`,
           type: 'analyze-target',
           status: 'pending',
-          title: `Analyze EXISTING ${target.action} target ${targetName}: break the requirement into change-intents and LOCATE the existing files for each (read_tags → search_by_tag/read_file), then record_analysis`,
+          title: `Analyze EXISTING ${target.action} target ${targetName}: break the requirement into change-intents and LOCATE the existing files for each (read_tags → search_by_tag), then record_analysis`,
           payload: {
             routeId: target.routeId,
             action: target.action,
@@ -525,7 +586,7 @@ function buildChangePlanTools(deps: {
       {
         name: 'upsert_task',
         description:
-          'Add or update ONE change task = a file to produce. `op`: "create" (default) writes a NEW file; "modify" edits an EXISTING file IN PLACE — use modify ONLY for a file you have actually located (via search_by_tag / search_files / read_file) and give its real existing path. ALWAYS set routeId to the target this file belongs to. For a unit (backend) file, put its hook contracts in `hooks` (name + optional signature/calls/compatibleWith). Reuse the same taskId to refine a task. Use `dependsOn` for sibling files this one relies on.',
+          'Add or update ONE change task = a file to produce. `op`: "create" (default) writes a NEW file; "modify" edits an EXISTING file IN PLACE — use modify ONLY for a file you have actually located (via search_by_tag / search_files) and give its real existing path. ALWAYS set routeId to the target this file belongs to. For a unit (backend) file, put its hook contracts in `hooks` (name + optional signature/calls/compatibleWith). Reuse the same taskId to refine a task. Use `dependsOn` for sibling files this one relies on.',
         schema: ChangeTaskInputSchema,
       },
     ),
@@ -552,27 +613,6 @@ function buildChangePlanTools(deps: {
       },
     ),
     tool(
-      async (input: { path: string }) => {
-        deps.shared.sawSearch = true;
-        try {
-          const data = await call('runner.app.codeAgentFs.readFile', {
-            planId: deps.planId,
-            path: input.path,
-          });
-          const content = readStringField(asPlainRecord(data), 'content');
-          return content ? content.slice(0, 4000) : '(empty or missing)';
-        } catch (error) {
-          return `read_file error: ${asErrorMessage(error)}`;
-        }
-      },
-      {
-        name: 'read_file',
-        description:
-          'Read an EXISTING file in this plan to judge what is needed or what to modify — especially for reused targets. New targets have no files yet.',
-        schema: z.object({ path: z.string() }),
-      },
-    ),
-    tool(
       async (input: { pattern: string; flags?: string }) => {
         deps.shared.sawSearch = true;
         try {
@@ -589,7 +629,7 @@ function buildChangePlanTools(deps: {
       {
         name: 'grep',
         description:
-          'Regex-search the contents of existing files within this plan.',
+          'Prefer search_by_tag / search_files FIRST (much faster, more precise); use grep only as a regex-content FALLBACK when tag/filename search does not pinpoint the code. Regex-search the contents of existing files within this plan.',
         schema: z.object({
           pattern: z.string(),
           flags: z.string().max(8).optional(),
@@ -612,7 +652,7 @@ function buildChangePlanTools(deps: {
       {
         name: 'search_files',
         description:
-          'Find existing files by filename substring within this plan.',
+          'FAST filename-substring search — one of the two first-choice ways (with search_by_tag) to locate WHICH file to inspect/modify, before falling back to grep. Find existing files by filename substring within this plan.',
         schema: z.object({ query: z.string() }),
       },
     ),
@@ -664,7 +704,7 @@ function buildChangePlanTools(deps: {
       {
         name: 'search_by_tag',
         description:
-          "Fast reverse-lookup (built-in ripgrep): find EXISTING files in a target whose @keyword comments carry `tag`, and get back the full annotation node of each hit — the precise way to locate code to reuse or modify. `tag` MUST be a term declared in that app's tags.json (call read_tags first); an undeclared tag returns declared=false + the available vocabulary so you can retry with a real tag.",
+          "FIRST CHOICE to locate code (fastest, most precise) — reach for this before grep. Fast reverse-lookup (built-in ripgrep): find EXISTING files in a target whose @keyword comments carry `tag`, and get back the full annotation node of each hit — the precise way to locate code to reuse or modify. `tag` MUST be a term declared in that app's tags.json (call read_tags first); an undeclared tag returns declared=false + the available vocabulary so you can retry with a real tag. Use grep only as a regex-content fallback when tag/filename search does not pinpoint it.",
         schema: z.object({
           tag: z.string(),
           routeId: z.string().optional(),
@@ -674,9 +714,7 @@ function buildChangePlanTools(deps: {
     tool(
       (input: RecordAnalysisInput) => {
         const soleRouteId =
-          deps.targetCtx.size === 1
-            ? [...deps.targetCtx.keys()][0]
-            : undefined;
+          deps.targetCtx.size === 1 ? [...deps.targetCtx.keys()][0] : undefined;
         const routeId = input.routeId ?? soleRouteId ?? '';
         if (!routeId) {
           return 'record_analysis error: unknown target — pass routeId of the existing target you analyzed.';
@@ -696,7 +734,7 @@ function buildChangePlanTools(deps: {
       {
         name: 'record_analysis',
         description:
-          'Record your analysis of an EXISTING target BEFORE planning it: decompose the requirement into change-intents, and for each list the existing files you LOCATED (via read_tags/search_by_tag/read_file) that it touches. This gate must be satisfied (with real code inspection) before the target can be planned — do NOT fabricate file paths you did not find.',
+          'Record your analysis of an EXISTING target BEFORE planning it: decompose the requirement into change-intents, and for each list the existing files you LOCATED (via read_tags/search_by_tag) that it touches. This gate must be satisfied (with real code inspection) before the target can be planned — do NOT fabricate file paths you did not find.',
         schema: RecordAnalysisInputSchema,
       },
     ),
@@ -762,8 +800,27 @@ function buildChangePlanTools(deps: {
       {
         name: 'declare_contract',
         description:
-          'Declare a coupling contract (联动开发): a shared agreement several files must AGREE on to interoperate — anchor ids, shared class/symbol names, event names, config keys, or a shared data/payload shape. Put the AGREED concrete values/names/shape in `spec` (semantic, concrete) and list ALL party taskIds. Every listed task is injected this contract when generated, so cross-file symbols do not drift.',
+          'Add/update ONE coupling contract (联动开发): a shared agreement several concurrently-generated files must AGREE on. ' +
+          'ALL generate-file nodes read the WHOLE contract array by default, so you do NOT list party taskIds. ' +
+          'Write the agreement as a **plain-text statement** (`description`) with the concrete names/ids/shapes inline — NO JSON spec needed. ' +
+          'e.g. "锚点 id: nav 链接 #about #ai #apollo, 各 Section 用同名 id, 客户端脚本 querySelector 这些 id" or ' +
+          '"Hero.astro 导出组件 Hero, props {title, subtitle}; index.astro 按此 import 并传参". ' +
+          'Same contractId re-declares (updates); to remove a stale one call remove_contract. One contract per distinct coupling.',
         schema: ContractInputSchema,
+      },
+    ),
+    tool(
+      (input: { contractId: string }) => {
+        const existed = deps.contracts.delete(input.contractId);
+        return existed
+          ? `contract "${input.contractId}" removed`
+          : `contract "${input.contractId}" not found`;
+      },
+      {
+        name: 'remove_contract',
+        description:
+          'Remove a stale coupling contract by contractId (增删改查的删). The current contract array is shown to you each contract round.',
+        schema: z.object({ contractId: z.string().min(1) }),
       },
     ),
     tool(
@@ -853,7 +910,7 @@ async function runChangePlanRound(args: {
 }
 
 // NOTE: applyTurn / runSearchRequests / runFileReads were removed in the tool-calling refactor —
-// their logic now lives as tool funcs (upsert_task / update_todo / read_file / grep / search_files /
+// their logic now lives as tool funcs (upsert_task / update_todo / grep / search_files /
 // search_hooks) inside buildChangePlanTools above. No big-JSON turn is parsed anymore.
 
 /**
@@ -1002,6 +1059,10 @@ async function decideInitTargets(args: {
     finalTasks: args.finalTasks,
     requirement: args.requirement,
     manualText: args.manualText,
+    planId: args.planId,
+    runnerId: args.runnerId,
+    hookCaller,
+    workflowContext: args.workflowContext,
     graphLog: args.graphLog,
   });
   const out: CodeGraphInitTarget[] = [];
@@ -1052,7 +1113,8 @@ async function decideInitTargets(args: {
 }
 
 /**
- * change-plan 决定每个 app 要增删哪些 npm 依赖 (一次 LLM, 按已规划文件/需求推断; 保持最小)。
+ * change-plan 决定每个 app 要增删哪些 npm 依赖: 一轮 **工具循环** —— LLM 可先 read_file 现有
+ * package.json / search_files 探查已装依赖, 再逐 app 调 set_deps 落决策 (保持最小)。
  * @keyword-cn 依赖判定, 依赖增删
  * @keyword-en dependency-decision, dep-add-remove
  */
@@ -1063,13 +1125,91 @@ async function decideDependencies(args: {
   finalTasks: CodeGraphChangeTask[];
   requirement: string;
   manualText: string;
+  planId: string;
+  runnerId: string;
+  hookCaller: HookCaller;
+  workflowContext: WorkflowContext | null;
   graphLog: CodeGraphNodeLogger;
 }): Promise<Map<string, { add: string[]; remove: string[] }>> {
   const map = new Map<string, { add: string[]; remove: string[] }>();
   if (!args.aiAdapter) return map;
+  const validRouteIds = new Set(args.candidates.map((c) => c.routeId));
+  const call = (hook: string, payload: unknown) =>
+    callRunnerHookData(
+      args.hookCaller,
+      args.runnerId,
+      hook,
+      payload,
+      args.workflowContext,
+    );
+  const tools = [
+    tool(
+      async (input: { path: string }) => {
+        try {
+          const data = await call('runner.app.codeAgentFs.readFile', {
+            planId: args.planId,
+            path: input.path,
+          });
+          const content = readStringField(asPlainRecord(data), 'content');
+          if (!content) return '(empty or missing)';
+          // 依赖判定只需看 package.json / 少量清单, 8000 足够, 超出给头部即可
+          return content.length <= 8000 ? content : content.slice(0, 8000);
+        } catch (error) {
+          return `read_file error: ${asErrorMessage(error)}`;
+        }
+      },
+      {
+        name: 'read_file',
+        description:
+          'Read an EXISTING file (e.g. an app’s current package.json) to see what is ALREADY installed before deciding add/remove. New apps have no files yet.',
+        schema: z.object({ path: z.string() }),
+      },
+    ),
+    tool(
+      async (input: { query: string }) => {
+        try {
+          const data = await call('runner.app.codeAgentFs.fastSearch', {
+            planId: args.planId,
+            query: input.query,
+          });
+          return JSON.stringify(data).slice(0, 3000);
+        } catch (error) {
+          return `search_files error: ${asErrorMessage(error)}`;
+        }
+      },
+      {
+        name: 'search_files',
+        description:
+          'Filename-substring search within this plan — e.g. locate a package.json / config to read before deciding deps.',
+        schema: z.object({ query: z.string() }),
+      },
+    ),
+    tool(
+      (input: { routeId: string; add?: string[]; remove?: string[] }) => {
+        if (!validRouteIds.has(input.routeId)) {
+          return `unknown routeId "${input.routeId}"; valid: ${[...validRouteIds].join(', ')}`;
+        }
+        map.set(input.routeId, {
+          add: dedupePackages(input.add ?? []),
+          remove: dedupePackages(input.remove ?? []),
+        });
+        return `deps for "${input.routeId}" set (add ${input.add?.length ?? 0}, remove ${input.remove?.length ?? 0})`;
+      },
+      {
+        name: 'set_deps',
+        description:
+          'Record the FINAL npm dependency decision for ONE app (call once per app). `add` = real npm packages the planned files actually import and the scaffold does NOT already provide; `remove` = packages to drop (only ones you CONFIRMED are installed via read_file). Keep it MINIMAL — many simple sites need no extra deps: call set_deps with empty arrays. Re-call to correct.',
+        schema: z.object({
+          routeId: z.string(),
+          add: z.array(z.string()).optional(),
+          remove: z.array(z.string()).optional(),
+        }),
+      },
+    ),
+  ];
   try {
     const model = selectLogicModel(args.aiAdapter, args.input);
-    const response = await model.chat({
+    await model.chat({
       source: 'code-agent.change-plan.deps',
       isolateCallbacks: true,
       messages: [
@@ -1083,17 +1223,9 @@ async function decideDependencies(args: {
           ),
         },
       ],
-      params: { temperature: 0, responseFormat: { type: 'json_object' } },
+      tools,
+      params: { temperature: 0, maxTokens: 4000 },
     });
-    const parsed = DepDecisionSchema.parse(
-      parseJsonObjectLoose(response.content),
-    );
-    for (const target of parsed.targets ?? []) {
-      map.set(target.routeId, {
-        add: dedupePackages(target.add ?? []),
-        remove: dedupePackages(target.remove ?? []),
-      });
-    }
     args.graphLog.info('deps', 'decided app dependencies', {
       apps: map.size,
     });
@@ -1133,10 +1265,11 @@ function buildDepsPrompt(
     files: (byRoute.get(target.routeId) ?? []).slice(0, 40),
   }));
   return [
-    'You decide the npm dependencies each app needs. Return strict JSON only, no markdown.',
-    'For each app: "add" = packages to INTRODUCE (real npm package names the planned files actually import/use), "remove" = packages to drop. Keep it MINIMAL — add ONLY what the features truly require; never add a package the archetype scaffold already provides (e.g. astro itself). Many simple sites need no extra deps at all.',
-    'Use only real, existing npm package names — no versions, no invented scoped names. Empty add/remove when nothing is needed.',
-    'JSON shape: {"targets":[{"routeId":"step-1","add":["chart.js"],"remove":[]}]}',
+    'You decide the npm dependencies each app needs, by CALLING TOOLS (do NOT return JSON).',
+    'Tools: read_file (read an existing package.json to see what is ALREADY installed), search_files (locate a package.json/config), set_deps({routeId, add, remove}) to record the decision for ONE app.',
+    'Process: for EACH app below — if it already exists on disk, first read_file its package.json to know its current deps (so you only "remove" things truly installed and only "add" things missing); a brand-new app has no files yet, judge purely from its planned files. Then call set_deps ONCE for that app.',
+    '"add" = real npm package names the planned files actually import/use and the archetype scaffold does NOT already provide (e.g. never re-add astro itself); "remove" = packages to drop. Keep it MINIMAL — many simple sites need no extra deps: call set_deps with empty add/remove. Use only real, existing package names — no versions, no invented scoped names.',
+    'Call set_deps for every app, then stop.',
     '',
     `Requirement:\n${requirement}`,
     '',
@@ -1232,20 +1365,17 @@ function buildContractReviewPrompt(args: {
     ' · shared class / data-attribute / CSS custom-property names one file uses and another styles or queries.',
     ' · event names / custom-event detail shapes one file dispatches and another listens for.',
     ' · a shared data / payload / props shape, config keys, route paths, storage keys.',
-    'For EACH coupling, call declare_contract({ contractId, name, description, spec, taskIds }):',
-    ' · spec = the AGREED concrete values/names/shape, written out (e.g. the exact id list with labels, or the exact event name + detail fields) — every party file copies this verbatim.',
-    ' · taskIds = EVERY file party to it (the nav file AND each section file AND the script…).',
+    'For EACH coupling, call declare_contract({ contractId, name, description }):',
+    ' · description = a PLAIN-TEXT agreement with the concrete names/ids/shapes inline (NO JSON). e.g. "锚点 id: nav 链接 #about #ai #apollo, 各 Section 用同名 id, 客户端脚本 querySelector 这些 id" / "Hero.astro 导出 Hero, props {title, subtitle}; index.astro 按此 import 传参".',
+    ' · No taskIds needed — EVERY generate-file node reads the WHOLE contract array by default. Use remove_contract to drop a stale one.',
     'Declare one contract per distinct coupling. Only if you are certain there is genuinely NO cross-file shared symbol, declare nothing. When done, stop calling tools.',
     args.contracts.length > 0
-      ? `Contracts already declared (refine or add):\n${JSON.stringify(
-          args.contracts.map((contract) => ({
-            contractId: contract.contractId,
-            name: contract.name,
-            taskIds: contract.taskIds,
-          })),
-          null,
-          2,
-        )}`
+      ? `Contracts already declared (refine / remove / add):\n${args.contracts
+          .map(
+            (c) =>
+              `- ${c.contractId}${c.name ? ` (${c.name})` : ''}: ${c.description ?? c.spec ?? ''}`,
+          )
+          .join('\n')}`
       : '',
     '',
     `Requirement (context):\n${args.requirement}`,
@@ -1258,8 +1388,8 @@ function buildContractReviewPrompt(args: {
 
 /**
  * Build the tool-calling prompt for one change-plan round: the LLM CONSTRUCTS the change set by
- * CALLING TOOLS (upsert_task / update_todo / read_file / grep / search_files / search_hooks /
- * get_hook_info / declare_contract / set_notice) — no JSON is returned or parsed.
+ * CALLING TOOLS (upsert_task / update_todo / grep / search_files / search_hooks /
+ * get_hook_info / declare_contract / remove_contract / set_notice) — no JSON is returned or parsed.
  * @keyword-cn 变更集提示, 工具调用
  * @keyword-en change-plan-prompt, tool-calling
  */
@@ -1322,12 +1452,13 @@ function buildChangePlanPrompt(args: {
       ? 'Goal: for each target across the routePlan, plan the change set. NEW targets (existing:false) are create-only — every file op="create". EXISTING targets (existing:true) already have files on disk: plan op="modify" for files that must change and op="create" only for genuinely new files. You do NOT write code / function bodies here — only WHICH files (and, for units, which hooks).'
       : 'Goal: plan WHICH new files to create for each target across the whole routePlan. CREATE-ONLY: every file is op="create"; never plan modify or delete. You do NOT write code / function bodies here — only WHICH files (and, for units, which hooks).',
     '',
-    'Tools: upsert_task (plan one file), update_todo (close a plan-target when its files are planned), read_file / grep / search_files (inspect EXISTING files), read_tags / search_by_tag (declared-keyword reverse-lookup: locate existing files to reuse or modify — read_tags for a target first, then search_by_tag with a DECLARED tag), search_hooks / get_hook_info (find existing runner hooks for unit edges), declare_contract (a shared cross-file agreement), set_notice (one short user notice).',
+    'Tools: upsert_task (plan one file), update_todo (close a plan-target when its files are planned), grep / search_files (find text/filenames in EXISTING files), read_tags / search_by_tag (declared-keyword reverse-lookup: locate existing files to reuse or modify — read_tags for a target first, then search_by_tag with a DECLARED tag), search_hooks / get_hook_info (find existing runner hooks for unit edges), declare_contract / remove_contract (maintain the shared cross-file contract list), set_notice (one short user notice).',
+    'LOCATING CODE (do it FAST): you only LOCATE which files change and capture the thinking-chain — you do NOT read file bodies here. To find WHICH existing file changes, use search_by_tag (by @keyword tag — fastest, most precise) or search_files (by filename) FIRST; fall back to grep only as a regex-content search when those do not pinpoint it. Put the exact edit intent into the task summary; generate-file re-searches and reads the file itself when it produces that one file.',
     '',
     'You are driven by the OPEN TODOS below. Work them each round:',
     '- plan-target (NEW target, existing:false): call upsert_task (op="create") for EVERY file that target needs (for action="unit", include its hooks), then call update_todo({todoId, status:"done"}).',
     hasExisting
-      ? '- plan-target (EXISTING target, existing:true) — 二次修改: the app ALREADY has files. Do NOT recreate it. FIRST inspect: read_tags({routeId}) for its declared keywords, then search_by_tag({tag, routeId}) with a DECLARED tag (and/or search_files/read_file) to find the exact files the requirement touches. THEN upsert_task op="modify" (with the file\'s REAL existing path) for each file that must change, and op="create" only for genuinely new files. Plan ONLY the files that actually change — do NOT re-plan unchanged files. Close the plan-target todo when the needed changes are planned.'
+      ? '- plan-target (EXISTING target, existing:true) — 二次修改: the app ALREADY has files. Do NOT recreate it. FIRST inspect: read_tags({routeId}) for its declared keywords, then search_by_tag({tag, routeId}) with a DECLARED tag (and/or search_files) to find the exact files the requirement touches. THEN upsert_task op="modify" (with the file\'s REAL existing path) for each file that must change, and op="create" only for genuinely new files. Plan ONLY the files that actually change — do NOT re-plan unchanged files. Close the plan-target todo when the needed changes are planned.'
       : '',
     '- resolve-edge (units only): a hook references another hook not defined here nor found existing. Resolve by upsert_task-ing a file that defines it, or search_hooks to ground it on an existing hook. Do NOT close it yourself — the system re-derives and closes it.',
     'Only close plan-target todos. The system owns resolve-edge / fix-validation status (re-derived from real edges each round).',
@@ -1394,6 +1525,7 @@ function buildAnalysisPrompt(args: {
   requirement: string;
   targetPlan: CodeGraphTargetRouteDecision[];
   openTodos: Array<{ todoId: string; type?: string; title?: string }>;
+  manualText?: string;
 }): string {
   const routeIds = new Set(
     args.openTodos
@@ -1409,17 +1541,23 @@ function buildAnalysisPrompt(args: {
       basePath: deriveTargetBasePath(target),
       summary: target.summary,
     }));
+  // 选中的手册 (前端 Astro 多模块约定等) 必须投给分析轮的 LLM —— 本轮已就地规划文件, 没约定就退化成单个 index.html。
+  const manual = (args.manualText ?? '').trim();
   return [
-    'ANALYSIS STEP (二次修改). The target(s) below ALREADY EXIST with real code. Before ANY file is planned you must ANALYZE — do NOT call upsert_task in this step.',
+    'LOCATE + PLAN STEP (二次修改, 轻量一轮). The target(s) below ALREADY EXIST with real code. Your job here is LIGHT: LOCATE which files are likely affected and PLAN them with a thinking hint. You do NOT deep-read files, trace exact dependencies, or resolve the precise code changes — generate-file does its own fast search and figures out the specifics per file, and each generate-file writes its ONE file only.',
+    manual
+      ? `PROJECT MANUAL — follow these framework/module conventions when you plan files (e.g. front-end = Astro, split into src/pages + src/components + src/layouts + src/styles + src/scripts, one component per file — do NOT plan a single index.html):\n${manual}\n`
+      : '',
     'For EACH target under review:',
-    '1. Read the requirement and break it into concrete CHANGE-INTENTS — what behavior / UI / capability must change or be added.',
-    "2. For each intent, LOCATE the existing code it touches: call read_tags({routeId}) to see the app's DECLARED keyword vocabulary, then search_by_tag({tag, routeId}) with a DECLARED tag (and/or search_files / read_file / grep) to find the exact existing files. You MUST actually inspect the code — never guess a path.",
-    '3. Call record_analysis({ routeId, findings: [{ intent, files: [the REAL located paths], note }] }) — one call per target, list every intent in findings. If an intent needs a brand-new file (nothing existing to change), record it with empty files and note "new file".',
-    'After you have recorded analysis for every target under review, STOP calling tools — planning happens in the next step, grounded on what you found.',
+    '1. Break the requirement into concrete CHANGE-INTENTS — what behavior / UI / capability must change or be added.',
+    '2. LOCATE the likely-affected files (LIGHT + fast): read_tags({routeId}) then search_by_tag({tag, routeId}) with a DECLARED tag, and/or search_files (by filename). Locating the file(s) is ENOUGH — do NOT read full file contents here; generate-file will search + read the specifics itself when it writes. Do not invent paths.',
+    '3. Call record_analysis({ routeId, findings: [{ intent, files: [located paths], note }] }) — note = a short THINKING-CHAIN / likely issue for each intent (what to change, what to watch for), NOT the exact code.',
+    '4. PLAN in this SAME step: upsert_task op="modify" for each located file (REAL existing path), op="create" only for genuinely new files (split per the manual\'s module conventions). Put the intent + thinking-chain in the task SUMMARY so generate-file knows WHAT to change and WHAT to watch for — generate-file resolves the exact edit itself.',
+    'Keep it LIGHT: locate the files + give a thinking hint, do NOT solve the change here. But do a real tag/file search to locate — do not guess paths.',
     '',
     `Requirement:\n${args.requirement}`,
     '',
-    `Existing targets to analyze:\n${JSON.stringify(targets, null, 2)}`,
+    `Existing targets to locate + plan:\n${JSON.stringify(targets, null, 2)}`,
   ]
     .filter(Boolean)
     .join('\n');

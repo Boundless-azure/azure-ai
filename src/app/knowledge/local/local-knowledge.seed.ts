@@ -2420,7 +2420,7 @@ search_by_tag({ tag, routeId })
 
 > ⚠ **tag 必须是 read_tags 里已声明的词**。搜一个没声明的 tag, 只会返回 \`declared:false\` + 可用词表 —— 这不是报错, 是提示你**换一个真实存在的 tag 再搜**。不要编造 tag, 也不要跳过 read_tags 直接猜。
 
-标准动作: \`read_tags\` 看词表 → 挑最贴近需求的已声明 tag → \`search_by_tag\` 拿到关联文件与注释节点 → 需要看全文再 \`read_file\`。
+标准动作: \`read_tags\` 看词表 → 挑最贴近需求的已声明 tag → \`search_by_tag\` 定位到**是哪个文件、大概哪一段** → 然后 \`read_file\` **整份读一次拿全貌**(默认不传行号即整份, 输出带行号), 再用行号一次性批量 edit。别只盯着 tag 命中的小片段就改, 也别一小段一小段读改 —— 整份读一次比多次小窗口读更省、更不容易改错行号。文件确实超大(几千行)时才用 startLine/endLine 读一个宽裕窗口。
 
 ## 规划修改任务: upsert_task 带 op
 

@@ -991,6 +991,8 @@ export class ImMessageService {
         },
         invocationContext,
         agentContext: this.buildAgentRuntimeContext(agent, invocationContext),
+        // checkpoint 会话记忆 :: thread = sessionId:agentPrincipalId
+        sessionId: payload.sessionId,
       },
     ) as AsyncGenerator<unknown>;
 
@@ -1282,6 +1284,8 @@ export class ImMessageService {
         aiModelIds: Array.isArray(agent.aiModelIds) ? agent.aiModelIds : [],
         invocationContext,
         agentContext: this.buildAgentRuntimeContext(agent, invocationContext),
+        // checkpoint 会话记忆 :: thread = sessionId:agentPrincipalId
+        sessionId: payload.sessionId,
       },
     ) as AsyncGenerator<unknown>;
 

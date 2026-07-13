@@ -17,6 +17,31 @@ import { LGWriteEntity } from '../entities/lg-write.entity';
 
 type CheckpointSaverOptions = Record<string, never>;
 
+/**
+ * 存 checkpoint/writes 时剥掉的**纯遥测**字段 —— 这些是模型输出的统计信息, 不作为下轮模型输入,
+ * 回灌完全用不上, 剥掉可显著精简 lg_checkpoints/lg_writes 体积。content(含 thinking 签名)、tool_calls、id 等回灌必需字段保留。
+ * @keyword-cn 精简存储, 剥离遥测
+ * @keyword-en lean-checkpoint, strip-telemetry
+ */
+const CHECKPOINT_STRIP_KEYS = new Set(['response_metadata', 'usage_metadata']);
+
+/**
+ * JSON.stringify replacer :: 丢弃纯遥测字段 + 空的流式残留数组, 精简持久化体积。
+ * @keyword-cn 精简存储, JSON剥离
+ * @keyword-en lean-checkpoint-replacer, strip-telemetry
+ */
+function leanCheckpointReplacer(key: string, value: unknown): unknown {
+  if (CHECKPOINT_STRIP_KEYS.has(key)) return undefined;
+  if (
+    (key === 'tool_call_chunks' || key === 'invalid_tool_calls') &&
+    Array.isArray(value) &&
+    value.length === 0
+  ) {
+    return undefined;
+  }
+  return value;
+}
+
 type CheckpointWorkflowContext = {
   sessionId?: string;
   agentId?: string;
@@ -84,7 +109,7 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
 
     const pendingWrites = writes.map(
       (w) =>
-        [w.taskId, w.channel, this.decodeValue(w.valueType, w.valueB64)] as [
+        [w.taskId, w.channel, this.decodeValue(w.valueType, w.valueJson)] as [
           string,
           string,
           unknown,
@@ -198,7 +223,7 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
       agentId: workflowContext.agentId,
       agentPrincipalId: workflowContext.agentPrincipalId,
       aiModelIds: workflowContext.aiModelIds,
-      checkpointJson: JSON.stringify(serialized),
+      checkpointJson: JSON.stringify(serialized, leanCheckpointReplacer),
       metadataJson: this.mergeWorkflowMetadata(metadata, workflowContext),
       parentsJson:
         (metadata as unknown as { parents?: Record<string, string> }).parents ??
@@ -252,7 +277,7 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
         idx: idx++,
         channel: String(channel),
         valueType: type,
-        valueB64: b64,
+        valueJson: b64,
         isDelete: false,
       });
       await this.writeRepo.save(e);
@@ -367,11 +392,13 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
     v: number;
     id: string;
     ts: string;
-    channel_values: Record<string, { t: string; b64: string }>;
+    channel_values: Record<string, unknown>;
     channel_versions: Record<string, string | number>;
     versions_seen: Record<string, Record<string, string | number>>;
   } {
-    const channelValues: Record<string, { t: string; b64: string }> = {};
+    // 直接存原始值 (可读嵌套 JSON), 不再 {t,b64}/base64 编码 —— 值本来就是 JSON, base64 是多此一举;
+    // parseCheckpoint 仍兼容旧 {t,b64} 编码行。
+    const channelValues: Record<string, unknown> = {};
     const ck = checkpoint as unknown as {
       v: number;
       id: string;
@@ -381,8 +408,7 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
       versions_seen?: Record<string, Record<string, string | number>>;
     };
     for (const [ch, val] of Object.entries(ck.channel_values ?? {})) {
-      const enc = this.encodeValue(val);
-      channelValues[ch] = { t: enc.t, b64: enc.b64 };
+      channelValues[ch] = val;
     }
     return {
       v: ck.v,
@@ -441,31 +467,36 @@ export class TypeOrmCheckpointSaver extends BaseCheckpointSaver {
   }
 
   /**
-   * 将任意写入值编码为 base64 JSON。
+   * 将写入值存为**原始 JSON 文本**(不再 base64, 多此一举)。value_json 列直接放 JSON 串, 可读可 grep。
    * @keyword-en value-encoding, pending-writes, custom-saver
    */
   private encodeValue(val: unknown): { t: string; b64: string } {
-    const str = JSON.stringify(val);
+    const str = JSON.stringify(val, leanCheckpointReplacer);
     if (typeof str !== 'string') {
       return { t: 'undefined', b64: '' };
     }
-    return { t: 'json', b64: Buffer.from(str, 'utf8').toString('base64') };
+    return { t: 'json', b64: str };
   }
 
   /**
-   * 从 base64 JSON 还原 pending write 值。
-   * @keyword-en value-decoding, pending-writes, custom-saver
+   * 还原 pending write 值:优先直接 JSON.parse(新格式原始 JSON);失败再回退 base64 解码(兼容旧行)。
+   * @keyword-en value-decoding, pending-writes, custom-saver, legacy-base64-compat
    */
   private decodeValue(t: string, b64: string): unknown {
     if (t === 'undefined') {
       return undefined;
     }
     if (t === 'json') {
-      const str = Buffer.from(b64, 'base64').toString('utf8');
+      // 新: 原始 JSON 文本
       try {
-        return JSON.parse(str);
+        return JSON.parse(b64);
       } catch {
-        return str;
+        // 旧: base64(JSON) → 解码再 parse
+        try {
+          return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+        } catch {
+          return b64;
+        }
       }
     }
     return Buffer.from(b64, 'base64');

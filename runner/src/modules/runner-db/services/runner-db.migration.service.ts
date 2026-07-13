@@ -76,7 +76,9 @@ export class RunnerDbMigrationService {
     await db
       .collection(RunnerDbCollection.AppDomains)
       .createIndex({ appId: 1, domain: 1 }, { unique: true });
-    await db.collection(RunnerDbCollection.AppDomains).createIndex({ domain: 1 });
+    await db
+      .collection(RunnerDbCollection.AppDomains)
+      .createIndex({ domain: 1 });
   }
 
   /**
@@ -101,7 +103,10 @@ export class RunnerDbMigrationService {
    * @keywords-cn 确保集合, 创建集合, Mongo
    * @keywords-en ensure-collection, create-collection, mongo
    */
-  private async ensureCollection(db: Db, name: RunnerDbCollection): Promise<Collection> {
+  private async ensureCollection(
+    db: Db,
+    name: RunnerDbCollection,
+  ): Promise<Collection> {
     const collections = await db.listCollections({ name }).toArray();
     if (collections.length > 0) {
       return db.collection(name);

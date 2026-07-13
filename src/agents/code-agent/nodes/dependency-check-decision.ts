@@ -217,19 +217,38 @@ async function requestDependencyDecision(args: {
   } = {};
   const tools = [
     tool(
-      (route: z.infer<typeof DecisionRouteInputSchema>) => {
-        routes.push(route);
+      (routeInput: z.infer<typeof DecisionRouteInputSchema>) => {
+        // action 缺省兜底: LLM 既没定 useAction 也没 waitChooseAction → 默认取 targetKind, 免得它对着
+        // "undecided" 提示无限重提交空转 (不回诱导 re-commit 的话)。
+        const route =
+          !routeInput.useAction &&
+          (routeInput.waitChooseAction?.length ?? 0) === 0
+            ? { ...routeInput, useAction: args.targetKind }
+            : routeInput;
+        // 按 id 去重 upsert: 同一 requirement item (同 id) 重复提交 → 覆盖既有条目, 不追加重复 route。
+        const id = route.id?.trim();
+        const existingIdx = id
+          ? routes.findIndex((r) => r.id?.trim() === id)
+          : -1;
+        if (existingIdx >= 0) {
+          routes[existingIdx] = route;
+        } else {
+          routes.push(route);
+        }
         const where = route.useSolution?.name
           ? `reuse ${route.useSolution.name}`
           : (route.waitChoose?.length ?? 0) > 0
             ? 'pending choice'
             : 'new/unresolved';
-        return `route "${route.id ?? routes.length}" committed (${route.useAction ?? 'action?'}, ${where})`;
+        const dup = existingIdx >= 0 ? ' (updated, no need to re-commit)' : '';
+        return `route "${route.id ?? routes.length}" committed${dup} (${route.useAction ?? args.targetKind}, ${where}). Done with this item — do NOT call set_route again for this id.`;
       },
       {
         name: 'set_route',
         description:
-          'Commit ONE routePlan entry = one requirement item routed to a Solution + action lane. Fields: {id, requirement, title, summary, useSolution?({solutionId,name,reason}) OR waitChoose?[] only when 2+ genuinely tie, useAction?(app|unit|data-point) OR waitChooseAction?[] only when truly undecidable, reason}. Commit the best choice; leave waitChoose/waitChooseAction empty unless you genuinely cannot decide. Call once per requirement item.',
+          'Commit ONE routePlan entry = one requirement item routed to a Solution + action lane. Fields: {id, requirement, title, summary, useSolution({solutionId,name,reason}) OR waitChoose[] only when 2+ genuinely tie, useAction(app|unit|data-point) OR waitChooseAction[] only when truly undecidable, reason}. ' +
+          'ALWAYS set useAction to your best pick (a page / site / UI / static content = "app"; a backend capability/service = "unit"; a data touchpoint = "data-point") — do NOT leave it empty; use waitChooseAction ONLY if genuinely torn between lanes. ' +
+          'Call EXACTLY ONCE per requirement item — after it returns "committed", that item is DONE; do NOT call set_route again for the same id.',
         schema: DecisionRouteInputSchema,
       },
     ),
@@ -369,6 +388,8 @@ function buildDependencyDecisionPrompt(
     'Scope: for each existing requirement item, route it to a Runner Solution (reuse an existing one or propose a new one) and pick the broad action lane: app, unit, or data-point.',
     '',
     'Tools: set_route (commit one requirement item → Solution + action lane; call once per item), propose_new_solution (ONLY when no existing Solution fits), set_notice (one short user-facing note).',
+    '',
+    '⚠ CRITICAL — no loops: call set_route AT MOST ONCE per requirement id. The moment it returns "committed", that id is FINALIZED — calling set_route again for the SAME id is a wasted loop, stop it. ALWAYS include useAction on every set_route (default to the action hint below); never leave it empty expecting to "fix it later".',
     '',
     'Decision policy (most important):',
     '- Decide, do not defer. A user choice card is shown only when a field is left unresolved, so leave a field unresolved ONLY when you genuinely cannot decide. Whenever the evidence supports one best choice, commit it and leave the matching waitChoose / waitChooseAction empty.',
@@ -1219,24 +1240,44 @@ function readContextActionList(
  */
 export function parseJsonObjectLoose(raw: string): unknown {
   const text = stripReasoningArtifacts(raw);
-  try {
-    return JSON.parse(text);
-  } catch {
-    // Continue to fenced/object extraction below.
-  }
+  // 只接受 object/array 结果: JSON.parse 出标量 (如被引号包起来的字符串 `"..."`) 不算命中,
+  // 继续走 fence / 花括号抽取 —— 否则会把标量字符串当结果返回, 上层 z.object().parse 报
+  // "expected object, received string" 这种误导性错误。
+  const direct = tryParseStructured(text);
+  if (direct !== undefined) return direct;
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenceMatch?.[1]) {
-    try {
-      return JSON.parse(fenceMatch[1].trim());
-    } catch {
-      // Continue to brace extraction below.
-    }
+    const fenced = tryParseStructured(fenceMatch[1].trim());
+    if (fenced !== undefined) return fenced;
   }
   const balanced = extractFirstJsonObject(text);
   if (balanced) {
-    return JSON.parse(balanced);
+    const parsed = tryParseStructured(balanced);
+    if (parsed !== undefined) return parsed;
   }
-  throw new Error('LLM response is not a JSON object');
+  // 带上原文片段, 便于定位模型到底吐了什么 (非 JSON / 纯文本 / 被引号包住等)
+  throw new Error(
+    `LLM response is not a JSON object: ${text.slice(0, 200).replace(/\s+/g, ' ')}`,
+  );
+}
+
+/**
+ * 尝试把文本解析成结构化 JSON (object 或 array); 标量 / 解析失败一律返回 undefined。
+ * @keyword-cn JSON解析, 结构化校验
+ * @keyword-en json-parse, structured-only
+ */
+function tryParseStructured(
+  text: string,
+): Record<string, unknown> | unknown[] | undefined {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed !== null && typeof parsed === 'object') {
+      return parsed as Record<string, unknown> | unknown[];
+    }
+  } catch {
+    // 非 JSON, 交给下游抽取
+  }
+  return undefined;
 }
 
 /**

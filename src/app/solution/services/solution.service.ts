@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { uuidv7 } from 'uuidv7';
@@ -38,6 +38,8 @@ import { RunnerStatus } from '@/app/runner/enums/runner.enums';
  */
 @Injectable()
 export class SolutionService {
+  private readonly logger = new Logger(SolutionService.name);
+
   constructor(
     @InjectRepository(SolutionEntity)
     private readonly solutionRepo: Repository<SolutionEntity>,
@@ -606,7 +608,19 @@ export class SolutionService {
     const onlineRunners = await this.getOnlineRunners(
       this.mergeRunnerIds(runnerId, runnerIds),
     );
-    if (onlineRunners.length === 0) return [];
+    if (onlineRunners.length === 0) {
+      // ① 空的最常见原因: 没有 DB status=mounted 的 runner (getOnlineRunners 只认 DB 状态, 不做 socket 二次核验)
+      const all = await this.runnerService.list({});
+      this.logger.warn(
+        `[solution.list] 无在线(mounted) runner → 返回空. ` +
+          `DB 共 ${all.length} 台: ${
+            all
+              .map((r) => `${r.alias ?? r.id}=${r.status}`)
+              .join(', ') || '(无 runner)'
+          }`,
+      );
+      return [];
+    }
 
     const replies = await Promise.all(
       onlineRunners.map((r) =>
@@ -620,8 +634,25 @@ export class SolutionService {
     const merged = new Map<string, SolutionResponse>();
     onlineRunners.forEach((runner, idx) => {
       const reply = replies[idx];
-      if (!reply || (reply.errorMsg ?? []).length > 0) return;
+      // ②/③ 逐台暴露: 报错被吞 / 该 runner 无 solution, 都在这里打出真因
+      if (!reply || (reply.errorMsg ?? []).length > 0) {
+        this.logger.warn(
+          `[solution.list] runner ${runner.alias ?? runner.id} 调 runner.app.solution.list 失败, 跳过 → ` +
+            `errorMsg=${JSON.stringify(reply?.errorMsg ?? ['no-reply'])}`,
+        );
+        return;
+      }
       const items = this.extractSolutionItems(reply.result);
+      if (items.length === 0) {
+        // 0 时把 runner 回包原样打出: 区分「runner 真返 0」vs「回包形状对不上 extractHookData 被误判 0」
+        this.logger.warn(
+          `[solution.list] runner ${runner.alias ?? runner.id} extract 出 0 个; ` +
+            `RAW reply.result=${JSON.stringify(reply.result)?.slice(0, 800)}`,
+        );
+      }
+      this.logger.log(
+        `[solution.list] runner ${runner.alias ?? runner.id} 返回 ${items.length} 个 solution`,
+      );
       for (const raw of items) {
         const normalized = this.normalizeRunnerSolution(raw, runner.id);
         const key = `${normalized.name}@${normalized.version}`;
@@ -658,15 +689,23 @@ export class SolutionService {
 
   /**
    * @title Extract hook data
-   * @description Reads the first HookResult data object from a RunnerHookRpc reply.
+   * @description 从 RunnerHookRpc reply 取第一个 handler 的 data 对象。
+   *   RunnerHookRpc.adaptResults 已把每个 HookResult.data 摊平进 reply.result 数组
+   *   (reply.result = [data, ...]), 所以 result[0] 本身即 data 对象, 不再有 .data 包一层。
+   *   兼容旧式 [{status,data}] 包装: 若 result[0] 同时带 status+data 才回退取 .data。
    * @keyword-en extract-hook-data, runner-hook-reply
    * @keyword-cn 提取Hook数据, RunnerHook响应
    */
   private extractHookData(rawResult: unknown): Record<string, unknown> | null {
     if (!Array.isArray(rawResult)) return null;
-    const first = rawResult[0] as { data?: unknown } | undefined;
-    if (!first?.data || typeof first.data !== 'object') return null;
-    return first.data as Record<string, unknown>;
+    const first = rawResult[0];
+    if (!first || typeof first !== 'object') return null;
+    const rec = first as Record<string, unknown>;
+    // 旧式 HookResult 包装 { status, data }: 仅当两者都在才回退, 避免误伤本身含 data 字段的业务对象
+    if (rec.status !== undefined && rec.data !== undefined && typeof rec.data === 'object') {
+      return rec.data as Record<string, unknown>;
+    }
+    return rec;
   }
 
   /**
